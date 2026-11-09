@@ -11,6 +11,8 @@ Rectangle {
     property bool error: false
     property bool reveal: false
     signal accepted()
+    // Being typed in.
+    readonly property bool editing: input.activeFocus
     function focusField() { input.forceActiveFocus() }
     function selectAll() { input.selectAll() }
     function select(from, to) { input.select(from, to) }

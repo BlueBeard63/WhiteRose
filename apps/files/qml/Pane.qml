@@ -29,9 +29,18 @@ FocusScope {
     // The Trash itself ("trash:"): restore and delete for good instead of
     // the usual file actions.
     readonly property bool inTrash: path === "trash:"
-    readonly property string title: path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash"
+    readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash"
         : JSON.parse(Fs.crumbs(path)).slice(-1)[0]?.name ?? path.substring(path.lastIndexOf("/") + 1)
-    readonly property var shownEntries: pane.filter === "" ? pane.entries
+    // Searching (Search.qml asks, its hits replace the listing): {text,
+    // scope, kind, size, modified}; null when not.
+    property var search: null
+    property var results: []
+    property bool searchDone: true
+    property real searchSeen: 0
+    property int searchId: -1
+    readonly property bool searching: pane.search !== null
+    readonly property var shownEntries: pane.searching ? pane.results
+        : pane.filter === "" ? pane.entries
         : pane.entries.filter(e => e.name.toLowerCase().includes(pane.filter.toLowerCase()))
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
 
@@ -75,7 +84,47 @@ FocusScope {
         return { path: pane.path, back: pane.back.slice(-50), forward: pane.forward.slice(0, 50) };
     }
 
+    // Searches (changes to the question run it again); what's asked is
+    // merged with what was.
+    function find(ask) {
+        pane.activated();
+        pane.search = Object.assign({ text: "", scope: "here", kind: "", size: "", modified: "" }, pane.search ?? {}, ask);
+        pane.filter = "";
+        pane.selected = {};
+        pane.current = 0;
+        // Nothing to look for yet: nothing found.
+        const s = pane.search;
+        if (s.text.trim() === "" && !s.kind && !s.size && !s.modified) {
+            Search.stop();
+            pane.results = [];
+            pane.searchDone = true;
+            return;
+        }
+        pane.searchDone = false;
+        pane.searchId = Search.find(JSON.stringify(Object.assign({ here: pane.path, hidden: pane.hidden }, s)));
+    }
+    function endSearch() {
+        if (!pane.searching) return;
+        Search.stop();
+        pane.search = null;
+        pane.results = [];
+        pane.searchId = -1;
+        pane.load();
+    }
+    Connections {
+        target: Search
+        function onFound(id, result) {
+            if (id !== pane.searchId) return;
+            const r = JSON.parse(result);
+            pane.results = r.hits;
+            pane.searchSeen = r.seen;
+            pane.searchDone = r.done;
+        }
+    }
+
     function load() {
+        // Searching: the same search again (things may have changed).
+        if (pane.searching) { pane.find({}); return }
         const r = JSON.parse(Fs.list(pane.path, pane.hidden, pane.sortBy, pane.descending, 48));
         if (!r.ok) { pane.error = r.error; pane.entries = []; return }
         pane.error = "";
@@ -89,7 +138,8 @@ FocusScope {
     }
     function go(p, keepForward) {
         pane.activated();
-        if (!p || p === pane.path) return;
+        if (!p || p === pane.path) { pane.endSearch(); return }
+        if (pane.searching) { pane.search = null; pane.results = []; Search.stop() }
         pane.back = pane.back.concat([pane.path]);
         if (!keepForward) pane.forward = [];
         // Coming back up: the folder we were in is selected.
@@ -161,7 +211,7 @@ FocusScope {
         interval: 1500
         repeat: true
         running: pane.visible && Qt.application.state === Qt.ApplicationActive
-        onTriggered: if (Fs.stamp(pane.path) !== pane.stamp) pane.load()
+        onTriggered: if (!pane.searching && Fs.stamp(pane.path) !== pane.stamp) pane.load()
     }
 
     // Dropped on the folder's empty space: into this folder. (Behind the
@@ -186,7 +236,8 @@ FocusScope {
         id: view
         anchors.fill: parent
         focus: true
-        sourceComponent: pane.mode === "list" ? listView : pane.mode === "columns" ? columnsView : gridView
+        // Search results come as a list (where each is matters).
+        sourceComponent: pane.mode === "list" || pane.searching ? listView : pane.mode === "columns" ? columnsView : gridView
     }
     // (Inside the views `pane` names their own property, hence view.parent.)
     Component { id: gridView; GridMode { pane: view.parent } }
@@ -194,15 +245,60 @@ FocusScope {
     Component { id: columnsView; ColumnsMode { pane: view.parent } }
     function focusView() { view.forceActiveFocus(); if (view.item) view.item.forceActiveFocus() }
 
+    // Typing filters the folder by name (Backspace takes letters off, Esc
+    // clears); Space starts nothing until something's typed.
+    Keys.onPressed: e => {
+        if (pane.searching) return;
+        const mods = e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier);
+        if (e.key === Qt.Key_Escape && pane.filter !== "") { pane.filter = ""; e.accepted = true; return }
+        if (e.key === Qt.Key_Backspace && pane.filter !== "") { pane.filter = pane.filter.slice(0, -1); e.accepted = true; return }
+        if (mods || !e.text || e.text.length !== 1 || e.text < " " || e.text === "\x7f") return;
+        if (e.text === " " && pane.filter === "") return;
+        pane.filter += e.text;
+        pane.current = 0;
+        e.accepted = true;
+    }
+    // What's being filtered by, and taking it further.
+    Rectangle {
+        visible: pane.filter !== "" && !pane.searching
+        z: 15
+        anchors { left: parent.left; bottom: parent.bottom; margins: 12 }
+        height: 36; radius: 12
+        width: filterRow.implicitWidth + 16
+        color: Theme.surface1
+        border { width: 1; color: Theme.surface2 }
+        Row {
+            id: filterRow
+            anchors.centerIn: parent
+            spacing: 6
+            Icon { anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 13; color: Theme.muted }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: pane.filter
+                color: Theme.text
+                font { family: Theme.font; pointSize: Theme.pt(12.5); weight: Font.Medium }
+            }
+            Item { width: 4; height: 1 }
+            Button { text: "In subfolders"; kind: "ghost"; onClicked: pane.find({ text: pane.filter, scope: "here" }) }
+            Button { text: "Everywhere"; kind: "ghost"; onClicked: pane.find({ text: pane.filter, scope: "everywhere" }) }
+            IconButton { width: 26; height: 26; icon: "x"; iconSize: 11; fill: "transparent"; anchors.verticalCenter: parent.verticalCenter; onClicked: { pane.filter = ""; pane.focusView() } }
+        }
+    }
+
     // Empty, or can't be opened.
     Column {
         anchors.centerIn: parent
-        visible: pane.error !== "" || (pane.shownEntries.length === 0 && pane.mode !== "columns")
+        visible: pane.error !== "" || (pane.shownEntries.length === 0 && (pane.mode !== "columns" || pane.searching))
         spacing: 8
-        Icon { anchors.horizontalCenter: parent.horizontalCenter; name: pane.error ? "lock" : "folder"; size: 34; color: Theme.faint }
+        Icon {
+            anchors.horizontalCenter: parent.horizontalCenter
+            name: pane.error ? "lock" : pane.searching ? "search" : "folder"
+            size: 34; color: Theme.faint
+        }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: pane.error || (pane.filter !== "" ? "Nothing matches “" + pane.filter + "”" : "This folder is empty")
+            text: pane.error || (pane.searching ? (!pane.searchDone ? "Looking…" : (pane.search.text.trim() || pane.search.kind || pane.search.size || pane.search.modified) ? "Nothing found" : "")
+                : pane.filter !== "" ? "Nothing matches “" + pane.filter + "”" : "This folder is empty")
             color: Theme.muted
             font { family: Theme.font; pointSize: Theme.pt(13) }
         }

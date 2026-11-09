@@ -25,7 +25,7 @@ fn main() {
         // components). A named .qrc: unnamed resource lists from two crates both
         // become `resources_0_qrc` and one (the kit's fonts) gets dropped.
         .qrc("files.qrc")
-        .files(["src/core.rs", "src/jobs.rs"])
+        .files(["src/core.rs", "src/jobs.rs", "src/finder.rs"])
         // Files on the clipboard (QML can only put text there).
         .cpp_file("cpp/clip.cpp")
         .qt_module("Gui")

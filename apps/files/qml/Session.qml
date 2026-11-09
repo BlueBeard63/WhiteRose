@@ -20,6 +20,8 @@ QtObject {
 
     // Starts the first window; returns its tabs ({tabs, current}).
     function start() {
+        // The search index, made or freshened in the background.
+        Search.keepFresh();
         const args = JSON.parse(Fs.arguments());
         if (args.length > 0) return { tabs: args.map(a => ({ path: a })), current: 0 };
         session.owner = true;

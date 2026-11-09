@@ -21,10 +21,10 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Home dashboard with drives, recents and shortcuts (Next)
 
 ## 2. Search, filtering & discovery
-- [ ] Instant indexed filename search (MVP)
-- [ ] Search across multiple locations (MVP)
-- [ ] Inline folder filtering as you type (MVP)
-- [ ] Search by file type, extension, size and date (MVP)
+- [x] Instant indexed filename search (MVP) — home and drives; built in the background at idle priority, read from disk when searching (no memory held)
+- [x] Search across multiple locations (MVP) — this folder and below (live), home, or everywhere (home and drives)
+- [x] Inline folder filtering as you type (MVP) — type in any folder; Esc clears; take it to subfolders or everywhere
+- [x] Search by file type, extension, size and date (MVP) — type, size and modified filters; `*.pdf` / `ext:pdf`
 - [ ] Regular expressions and case-sensitive search (Next)
 - [ ] Metadata and file-content search (Advanced)
 - [ ] Path autocomplete and fuzzy folder navigation (Next)
@@ -109,7 +109,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] SSH config, agent and keychain/credential integration (Advanced)
 
 ## 9. Privacy, reliability & extensibility
-- [ ] Private/local-first file indexing (MVP)
+- [x] Private/local-first file indexing (MVP) — one file in your cache folder, 0600; hidden folders, node_modules and Go's cache left out
 - [ ] Encrypted local indexes and operation history (Next)
 - [ ] System credential vault for secrets (Next)
 - [ ] Safe archive extraction and path validation (MVP)

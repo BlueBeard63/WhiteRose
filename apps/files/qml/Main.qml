@@ -10,7 +10,8 @@
 // selection there (F5 or Ctrl+R reload when not split).
 // Ctrl+L type a path, Alt+Left / Alt+Right back and forward, Alt+Up or
 // Backspace up, Ctrl+1 / 2 / 3 grid, list, columns, Ctrl+H hidden files,
-// Ctrl+A all, Ctrl+D bookmark this folder.
+// Ctrl+A all, Ctrl+D bookmark this folder. Typing filters the folder;
+// Ctrl+F searches (this folder and below, home, or everywhere).
 import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
@@ -365,6 +366,7 @@ AppWindow {
         }
         AddressBar {
             id: address
+            visible: !(win.current?.searching ?? false)
             anchors { left: arrows.right; leftMargin: 8; right: emptyTrash.visible ? emptyTrash.left : views.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
             path: win.current?.path ?? "/"
             hidden: win.current?.hidden ?? false
@@ -372,6 +374,19 @@ AppWindow {
             onDone: win.current?.focusView()
             onDropped: (paths, dest) => win.drop(paths, dest)
             z: 5
+        }
+        // Searching: what for, in place of where you are.
+        Field {
+            id: searchField
+            visible: win.current?.searching ?? false
+            anchors { left: arrows.right; leftMargin: 8; right: views.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            width: 0; height: 34
+            placeholder: "Search"
+            onTextChanged: if (searchField.visible && searchField.text !== (win.current?.search?.text ?? "")) searchSoon.restart()
+            onAccepted: { searchSoon.stop(); win.current?.find({ text: searchField.text }); win.current?.focusView() }
+            Keys.onEscapePressed: win.closeSearch()
+            Keys.onDownPressed: win.current?.focusView()
+            Timer { id: searchSoon; interval: 180; onTriggered: win.current?.find({ text: searchField.text }) }
         }
         Button {
             id: emptyTrash
@@ -384,10 +399,16 @@ AppWindow {
         }
         Segmented {
             id: views
-            anchors { right: menuButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+            anchors { right: searchButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
             options: [{ label: "Grid", value: "grid" }, { label: "List", value: "list" }, { label: "Columns", value: "columns" }]
             onPicked: v => { if (win.current) { win.current.setView({ mode: v }); Qt.callLater(() => win.current.focusView()) } }
+        }
+        IconButton {
+            id: searchButton
+            anchors { right: menuButton.left; rightMargin: 2; verticalCenter: parent.verticalCenter }
+            width: 32; height: 32; icon: win.current?.searching ? "x" : "search"; fill: "transparent"
+            onClicked: win.current?.searching ? win.closeSearch() : win.openSearch("")
         }
         IconButton {
             id: menuButton
@@ -430,10 +451,101 @@ AppWindow {
         sidebar.refresh();
     }
 
+    // ---- searching: where and what ------------------------------------------------------------
+    Item {
+        id: searchRow
+        visible: win.current?.searching ?? false
+        anchors { left: sidebar.right; right: parent.right; top: nav.bottom }
+        height: searchRow.visible ? 46 : 0
+        readonly property var ask: win.current?.search ?? ({})
+        Row {
+            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+            spacing: 8
+            Segmented {
+                value: searchRow.ask.scope ?? "here"
+                options: [{ label: "This folder", value: "here" }, { label: "Home", value: "home" }, { label: "Everywhere", value: "everywhere" }]
+                onPicked: v => win.current?.find({ scope: v })
+            }
+            Choice {
+                value: searchRow.ask.kind ?? ""
+                options: [{ label: "Any type", value: "" }, { label: "Folders", value: "folder" }, { label: "Documents", value: "document" },
+                          { label: "Images", value: "image" }, { label: "Audio", value: "audio" }, { label: "Video", value: "video" },
+                          { label: "Archives", value: "archive" }, { label: "Code", value: "code" }]
+                onPicked: v => win.current?.find({ kind: v })
+            }
+            Choice {
+                value: searchRow.ask.size ?? ""
+                options: [{ label: "Any size", value: "" }, { label: "Under 1 MB", value: "small" }, { label: "1–100 MB", value: "medium" },
+                          { label: "100 MB–1 GB", value: "large" }, { label: "Over 1 GB", value: "huge" }]
+                onPicked: v => win.current?.find({ size: v })
+            }
+            Choice {
+                value: searchRow.ask.modified ?? ""
+                options: [{ label: "Any time", value: "" }, { label: "Today", value: "today" }, { label: "Past week", value: "week" },
+                          { label: "Past month", value: "month" }, { label: "Past year", value: "year" }]
+                onPicked: v => win.current?.find({ modified: v })
+            }
+        }
+        // The index (home and drives): how fresh, and freshen it.
+        Row {
+            visible: (searchRow.ask.scope ?? "here") !== "here"
+            anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+            spacing: 4
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: Search.indexing ? "Indexing…" : Search.indexedAt > 0 ? "Indexed " + F.date(Search.indexedAt, Date.now()).replace(/^Today /, "at ") : "Not indexed yet"
+                color: Theme.faint
+                font { family: Theme.font; pointSize: Theme.pt(11) }
+            }
+            IconButton {
+                visible: !Search.indexing
+                width: 26; height: 26; icon: "restart"; iconSize: 12; fill: "transparent"
+                onClicked: Search.reindex()
+            }
+        }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.surface1 }
+    }
+    // Index done: searches of home and the drives see what it found.
+    Connections {
+        target: Search
+        function onIndexingChanged() {
+            if (Search.indexing) return;
+            for (const t of win.tabs) for (const p of t.panes) if (p.searching && p.search.scope !== "here") p.find({});
+        }
+    }
+    // A search result, in its folder.
+    function showInFolder(entry) {
+        const p = win.current;
+        const folder = entry.path.substring(0, entry.path.lastIndexOf("/")) || "/";
+        p.go(folder);
+        p.selectPaths([entry.path]);
+        p.focusView();
+    }
+    function openSearch(text) {
+        if (!win.current) return;
+        win.current.find({ text: text });
+        searchField.text = text;
+        Qt.callLater(() => searchField.focusField());
+    }
+    function closeSearch() {
+        win.current?.endSearch();
+        win.current?.focusView();
+    }
+    // The box shows the search of the tab and side in use (and one started
+    // from the type-to-filter).
+    onCurrentChanged: searchField.text = win.current?.search?.text ?? ""
+    Connections {
+        target: win.current
+        function onSearchChanged() {
+            const t = win.current?.search?.text ?? "";
+            if (!searchField.editing && searchField.text !== t) searchField.text = t;
+        }
+    }
+
     // ---- the folder -----------------------------------------------------------------------
     Item {
         id: stack
-        anchors { left: sidebar.right; right: parent.right; top: nav.bottom; bottom: status.top }
+        anchors { left: sidebar.right; right: parent.right; top: searchRow.bottom; bottom: status.top }
 
         // Right-click on files (`entry` set) or on the folder's empty space.
         Menu {
@@ -461,6 +573,7 @@ AppWindow {
                 { label: "Properties", run: () => props.show([win.current.path]) },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
+                ...(win.current?.searching ? [{ label: "Show in folder", run: () => win.showInFolder(itemMenu.entry) }] : []),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
                 { separator: true },
                 { label: "Cut", shortcut: "Ctrl+X", run: () => win.toClipboard(true) },
@@ -501,6 +614,10 @@ AppWindow {
                 if (win.notice !== "") return win.notice;
                 const p = win.current;
                 if (!p) return "";
+                if (p.searching) {
+                    const n = p.results.length;
+                    return (n === 1 ? "1 result" : n + " results") + (p.searchDone ? "" : " · looking…");
+                }
                 const n = p.shownEntries.length, sel = p.selection;
                 const items = n + (n === 1 ? " item" : " items");
                 if (sel.length === 0) return items;
@@ -518,7 +635,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible || props.visible
+    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -753,7 +870,10 @@ AppWindow {
     Shortcut { sequence: "Ctrl+L"; onActivated: address.edit() }
     Shortcut { sequence: "Alt+Left"; onActivated: win.current?.goBack() }
     Shortcut { sequence: "Alt+Right"; onActivated: win.current?.goForward() }
-    Shortcut { sequences: ["Alt+Up", "Backspace"]; enabled: !win.typing; onActivated: win.current?.up() }
+    // (Backspace is the type-to-filter's while it has letters.)
+    Shortcut { sequence: "Alt+Up"; enabled: !win.typing; onActivated: win.current?.up() }
+    Shortcut { sequence: "Backspace"; enabled: !win.typing && (win.current?.filter ?? "") === "" && !(win.current?.searching ?? false); onActivated: win.current?.up() }
+    Shortcut { sequence: "Ctrl+F"; onActivated: win.openSearch(win.current?.filter ?? "") }
     Shortcut { sequence: "Ctrl+1"; onActivated: win.current?.setView({ mode: "grid" }) }
     Shortcut { sequence: "Ctrl+2"; onActivated: win.current?.setView({ mode: "list" }) }
     Shortcut { sequence: "Ctrl+3"; onActivated: win.current?.setView({ mode: "columns" }) }

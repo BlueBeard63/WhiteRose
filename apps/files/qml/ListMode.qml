@@ -12,9 +12,11 @@ FocusScope {
     // Narrow (half a split window): Kind goes first, then the date; the name
     // keeps at least 160 px.
     readonly property real sizeW: 90
-    readonly property real dateW: root.width - 32 - 90 - 150 - (root.pane.inTrash ? 220 : 110) >= 160 || root.width - 32 - 90 - 150 >= 160 ? 150 : 0
+    // In the Trash and in search results the last column says where things are.
+    readonly property bool located: root.pane.inTrash || root.pane.searching
+    readonly property real dateW: root.width - 32 - 90 - 150 - (root.located ? 220 : 110) >= 160 || root.width - 32 - 90 - 150 >= 160 ? 150 : 0
     // In the Trash the last column is where things came from.
-    readonly property real kindW: root.width - 32 - 90 - 150 - (root.pane.inTrash ? 220 : 110) >= 160 ? (root.pane.inTrash ? 220 : 110) : 0
+    readonly property real kindW: root.width - 32 - 90 - 150 - (root.located ? 220 : 110) >= 160 ? (root.located ? 220 : 110) : 0
     readonly property real now: Date.now()
 
     // ---- headings -------------------------------------------------------------
@@ -27,10 +29,10 @@ FocusScope {
             anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
             Repeater {
                 model: [
-                    { key: "name", label: "Name", w: head.width - 32 - root.sizeW - root.dateW - root.kindW },
-                    { key: "size", label: "Size", w: root.sizeW },
-                    { key: "modified", label: root.pane.inTrash ? "Deleted" : "Modified", w: root.dateW },
-                    { key: root.pane.inTrash ? "" : "kind", label: root.pane.inTrash ? "From" : "Kind", w: root.kindW },
+                    { key: root.pane.searching ? "" : "name", label: "Name", w: head.width - 32 - root.sizeW - root.dateW - root.kindW },
+                    { key: root.pane.searching ? "" : "size", label: "Size", w: root.sizeW },
+                    { key: root.pane.searching ? "" : "modified", label: root.pane.inTrash ? "Deleted" : "Modified", w: root.dateW },
+                    { key: root.located ? "" : "kind", label: root.pane.inTrash ? "From" : root.pane.searching ? "Folder" : "Kind", w: root.kindW },
                 ].filter(c => c.w > 0)
                 delegate: Item {
                     required property var modelData
@@ -125,7 +127,7 @@ FocusScope {
                 }
                 Text { width: root.sizeW; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.dir ? "—" : F.size(row.modelData.size); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
                 Text { visible: root.dateW > 0; width: root.dateW; anchors.verticalCenter: parent.verticalCenter; text: F.date(row.modelData.modified, root.now); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
-                Text { visible: root.kindW > 0; width: root.kindW; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.origin !== undefined ? row.modelData.origin.replace(Fs.home(), "~") : F.kind(row.modelData.mime); elide: root.pane.inTrash ? Text.ElideMiddle : Text.ElideRight; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
+                Text { visible: root.kindW > 0; width: root.kindW; anchors.verticalCenter: parent.verticalCenter; text: (row.modelData.origin ?? row.modelData.folder) !== undefined ? String(row.modelData.origin ?? row.modelData.folder).replace(Fs.home(), "~") : F.kind(row.modelData.mime); elide: root.located ? Text.ElideMiddle : Text.ElideRight; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
             }
             DragSource { id: carry; paths: root.pane.selection.map(e => e.path); icon: row.modelData.icon ?? ""; }
             FolderDrop { id: drop; anchors.fill: parent; enabled: row.modelData.dir; dest: row.modelData.path; onFilesDropped: (p, d) => root.pane.dropped(p, d) }
