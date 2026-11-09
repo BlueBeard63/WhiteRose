@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,7 @@ const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "c
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
+const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -550,6 +551,28 @@ test("shot: regions, windows under the pointer, size label", () => {
     assert.equal(Shot.windowAt(wins, 700, 700, 1).id, 1);
     assert.equal(Shot.windowAt(wins, 1200, 10, 1), null);
     assert.equal(Shot.sizeLabel({ w: 560, h: 330 }, 1.25), "700 × 413");
+});
+
+// ---- Users -------------------------------------------------------------------
+test("users: suggested usernames, checks, last seen", () => {
+    assert.equal(U.suggestName("Anna-Maria Smith"), "annamaria");
+    assert.equal(U.suggestName("Zoë Ångström"), "zoe");
+    assert.equal(U.suggestName("  "), "");
+    assert.equal(U.suggestName("2pac"), "u2pac");
+    assert.equal(U.nameProblem("jack", []), "");
+    assert.equal(U.nameProblem("Jack", []), "Lowercase letters, digits, - and _, starting with a letter");
+    assert.equal(U.nameProblem("root", []), "That name is reserved");
+    assert.equal(U.nameProblem("jack", ["jack"]), "Someone already has that username");
+    assert.equal(U.passwordProblem("short", "short"), "At least 8 characters");
+    assert.equal(U.passwordProblem("longenough", "longenougH"), "The passwords don't match");
+    assert.equal(U.passwordProblem("longenough", "longenough"), "");
+    const now = new Date(2026, 10, 9, 15).getTime();
+    assert.equal(U.lastSeen(0, now), "Never signed in");
+    assert.equal(U.lastSeen(new Date(2026, 10, 9, 8).getTime() / 1000, now), "Signed in today");
+    assert.equal(U.lastSeen(new Date(2026, 10, 8, 23).getTime() / 1000, now), "Signed in yesterday");
+    assert.equal(U.lastSeen(new Date(2026, 10, 5).getTime() / 1000, now), "Signed in 4 days ago");
+    assert.equal(U.lastSeen(new Date(2026, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct");
+    assert.equal(U.lastSeen(new Date(2025, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct 2025");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

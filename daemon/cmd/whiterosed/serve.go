@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"whiterose/daemon/internal/accounts"
 
 	"github.com/godbus/dbus/v5"
 
@@ -219,6 +220,71 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			defer conn.Close()
 			return nil, netconf.Update(conn, r.UUID, ch)
 		},
+		// Accounts (Users page). Each opens its own connection: a change can
+		// wait on a polkit password prompt.
+		"users": withAccounts(func(a *accounts.Service, r server.Request) (any, error) { return a.List() }),
+		"user_name": withAccounts(func(a *accounts.Service, r server.Request) (any, error) {
+			var x struct {
+				UID  uint64 `json:"uid"`
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, err
+			}
+			return nil, a.SetRealName(x.UID, x.Name)
+		}),
+		"user_icon": withAccounts(func(a *accounts.Service, r server.Request) (any, error) {
+			var x struct {
+				UID  uint64 `json:"uid"`
+				Path string `json:"path"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, err
+			}
+			return nil, a.SetIcon(x.UID, x.Path)
+		}),
+		"user_admin": withAccounts(func(a *accounts.Service, r server.Request) (any, error) {
+			var x struct {
+				UID   uint64 `json:"uid"`
+				Admin bool   `json:"admin"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, err
+			}
+			return nil, a.SetAdmin(x.UID, x.Admin)
+		}),
+		"user_password": withAccounts(func(a *accounts.Service, r server.Request) (any, error) {
+			var x struct {
+				UID      uint64 `json:"uid"`
+				Password string `json:"password"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, err
+			}
+			return nil, a.SetPassword(x.UID, x.Password)
+		}),
+		"user_create": withAccounts(func(a *accounts.Service, r server.Request) (any, error) {
+			var x struct {
+				Name     string `json:"name"`
+				RealName string `json:"real_name"`
+				Admin    bool   `json:"admin"`
+				Password string `json:"password"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, err
+			}
+			return a.Create(x.Name, x.RealName, x.Admin, x.Password)
+		}),
+		"user_delete": withAccounts(func(a *accounts.Service, r server.Request) (any, error) {
+			var x struct {
+				UID       uint64 `json:"uid"`
+				KeepFiles bool   `json:"keep_files"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, err
+			}
+			return nil, a.Delete(x.UID, x.KeepFiles)
+		}),
 		"set_charge_limit": func(r server.Request) (any, error) {
 			conn, err := dbus.ConnectSystemBus()
 			if err != nil {
@@ -410,4 +476,16 @@ func cmdCalendar(args []string, stdout, stderr io.Writer) int {
 		printJSON(stdout, v)
 	}
 	return 0
+}
+
+// withAccounts gives an op its own AccountsService connection.
+func withAccounts(fn func(*accounts.Service, server.Request) (any, error)) func(server.Request) (any, error) {
+	return func(r server.Request) (any, error) {
+		a, err := accounts.New(uint64(os.Getuid()))
+		if err != nil {
+			return nil, err
+		}
+		defer a.Close()
+		return fn(a, r)
+	}
 }

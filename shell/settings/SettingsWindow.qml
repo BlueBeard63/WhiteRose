@@ -162,12 +162,14 @@ FloatingWindow {
     Flickable {
         id: scroller
         anchors { left: sidebar.right; right: parent.right; top: parent.top; bottom: footerBar.visible ? footerBar.top : parent.bottom }
-        contentHeight: pageLoader.height + 64
+        contentHeight: pageLoader.height + 86
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         Loader {
             id: pageLoader
-            x: 28; y: 28
+            // Below the window buttons (34 px), so a page's own buttons
+            // never sit right beside minimise / maximise / close.
+            x: 28; y: 50
             width: scroller.width - 56
             source: SettingsState.current ? "file://" + SettingsState.current.dir + "/Page.qml" : ""
             onSourceChanged: scroller.contentY = 0

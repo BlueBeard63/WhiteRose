@@ -271,6 +271,12 @@ Figma frame: `Screenshot - Region (SUPER + SHIFT + S)`.
 - **Delay** (3/5/10 s) and **Pointer** (drawn into the capture; only where the compositor draws the pointer, so greyed out nested). **Copy** puts it on the clipboard only; **Save** also writes `~/Pictures/Screenshots`. Enter saves, Ctrl+C copies, Esc cancels.
 - **The compositor captures** (`capture` request: region, pointer, save). The tool hides itself first, so it's never in the shot. A region is cropped from the frame of the output holding its centre.
 
+## Users and permissions
+
+- **The shell is the session's polkit agent** (`shell/PolkitPrompt.qml`, QuickShell's PolkitAgent). When anything needs permission, an app or Settings, a card asks for the password over a dimmed screen. A wrong password shakes it and lets you retry. Nested inside another desktop, that desktop stays the agent (polkit allows one per session).
+- **Accounts** (`daemon/internal/accounts`): AccountsService over D-Bus. Listing, name, picture, administrator rights, password, adding and removing people. Calls allow interactive authorization, so polkit asks through the prompt. Passwords are hashed in the daemon (SHA-512 crypt, checked against the specification's test vectors) and never sent in the clear. You can't remove your own administrator rights or your own account.
+- **Slow requests don't block:** whiterosed answers the optional ops (users, battery, network profiles) on their own goroutines, so a request waiting on a password doesn't hold up the shell's settings traffic. Settings requests stay in order.
+
 ## Windows
 
 - **Minimise:** a minimised window is hidden but kept, and comes back when it's focused (dock, ALT+TAB, the app's launcher entry). It stays hidden across workspace switches.
@@ -488,7 +494,9 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
 | Keyboard & Shortcuts | Compositor `shortcuts` and `keyboard` events; `keyboard.*` and `shortcuts.*` settings. |
 | Appearance | `appearance.*` and `wallpaper.*`; the wallpaper list from `find` in the folders. |
+| Users | `whiterosed` users ops (AccountsService); permission through the shell's polkit prompt. |
+| Top Bar | The `bar.*` settings. |
 | Displays | Compositor `outputs` event; Apply writes the `displays.test` trial, Keep writes `displays`. |
 | Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
 
-- **Pages not built yet** don't appear in the sidebar: Top Bar, Updates, Users, Privacy. They wait on their backends: the update system.
+- **Pages not built yet** don't appear in the sidebar: Updates, Privacy. They wait on their backends: the update system.

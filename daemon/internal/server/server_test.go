@@ -211,3 +211,28 @@ func TestStateIsPushedOnlyWhenItChanges(t *testing.T) {
 		t.Fatalf("new client: %v", m)
 	}
 }
+
+// A slow op (waiting on a password prompt) mustn't hold up the client's
+// other requests; its reply comes when it's done.
+func TestSlowOpsDontBlockOtherRequests(t *testing.T) {
+	s, sock, _ := setup(t)
+	release := make(chan struct{})
+	s.Ops = map[string]func(Request) (any, error){
+		"slow": func(Request) (any, error) { <-release; return "done", nil },
+	}
+	c := dial(t, sock)
+	c.until(func(m map[string]any) bool { return m["event"] == "settings" })
+	b, _ := json.Marshal(map[string]any{"id": 99, "op": "slow"})
+	if _, err := c.c.Write(append(b, '\n')); err != nil {
+		t.Fatal(err)
+	}
+	got := c.do(map[string]any{"op": "get", "key": "bar.seconds"})
+	if got["value"] != false {
+		t.Fatalf("get answered %v while the slow op waited", got)
+	}
+	close(release)
+	slow := c.until(func(m map[string]any) bool { return m["reply"] == float64(99) })
+	if slow["value"] != "done" {
+		t.Fatalf("slow op reply: %v", slow)
+	}
+}

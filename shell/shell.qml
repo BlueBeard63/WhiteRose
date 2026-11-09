@@ -36,6 +36,9 @@ ShellRoot {
     // Each monitor's number and name, when asked from Settings > Displays.
     IdentifyOverlay {}
 
+    // Password prompts when something needs your permission (polkit).
+    PolkitPrompt {}
+
     // SUPER+SHIFT+S: the screenshot tool.
     ScreenshotOverlay {}
 

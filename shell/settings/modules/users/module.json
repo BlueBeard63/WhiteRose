@@ -1,0 +1,11 @@
+{
+  "id": "users",
+  "name": "Users",
+  "description": "Your account and the other people who use this computer",
+  "icon": "user",
+  "category": "personal",
+  "order": 30,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["users", "user", "account", "accounts", "password", "picture", "avatar", "name", "administrator", "admin", "add user", "remove user", "people"]
+}

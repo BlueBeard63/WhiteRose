@@ -189,14 +189,24 @@ func (s *Server) serveClient(conn net.Conn) {
 			c.send(line(map[string]any{"error": "bad request: " + err.Error()}))
 			continue
 		}
-		value, err := s.Handle(req)
-		reply := map[string]any{"reply": req.ID}
-		if err != nil {
-			reply["error"] = err.Error()
-		} else if value != nil {
-			reply["value"] = value
+		answer := func() {
+			value, err := s.Handle(req)
+			reply := map[string]any{"reply": req.ID}
+			if err != nil {
+				reply["error"] = err.Error()
+			} else if value != nil {
+				reply["value"] = value
+			}
+			c.send(line(reply))
 		}
-		c.send(line(reply))
+		// Extra ops can be slow (a polkit password prompt, a D-Bus call):
+		// they answer when done, without holding up this client's other
+		// requests. Settings requests stay in order.
+		if _, slow := s.Ops[req.Op]; slow {
+			go answer()
+		} else {
+			answer()
+		}
 	}
 }
 
@@ -220,6 +230,8 @@ type Request struct {
 	// network_profile / network_update
 	UUID    string          `json:"uuid"`
 	Changes json.RawMessage `json:"changes"`
+	// Other ops' arguments (users, ...).
+	Args json.RawMessage `json:"args"`
 }
 
 // Handle runs one request (also used directly by the CLI and tests).
