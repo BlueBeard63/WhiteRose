@@ -52,9 +52,9 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Password-protected ZIP/7z and split archives (Advanced)
 
 ## 4. Previews & file inspection
-- [ ] Integrated preview/details pane (MVP)
-- [ ] Quick preview using the Space key (MVP)
-- [ ] Image, audio, video and PDF previews (MVP)
+- [x] Integrated preview/details pane (MVP) — Alt+P: preview plus kind, size, dates, dimensions / length / pages
+- [x] Quick preview using the Space key (MVP) — full window; arrows go through the folder, Enter opens
+- [x] Image, audio, video and PDF previews (MVP) — and the start of text and code; photo thumbnails in the grid
 - [ ] Markdown rendering including tables and code (Next)
 - [ ] Mermaid and LaTeX rendering in Markdown (Advanced)
 - [ ] Syntax-highlighted source code and config previews (Next)

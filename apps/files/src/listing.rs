@@ -147,6 +147,29 @@ pub fn read(dir: &Path, hidden: bool, mime: impl Fn(&str) -> String) -> Result<V
     Ok(out)
 }
 
+/// The first `limit` bytes of a file as text (cut at a character boundary),
+/// and whether there's more; None if it isn't text (a NUL byte, or not UTF-8).
+pub fn text_start(path: &Path, limit: usize) -> Option<(String, bool)> {
+    use std::io::Read;
+    let f = fs::File::open(path).ok()?;
+    let mut buf = Vec::with_capacity(limit.min(1 << 16));
+    f.take(limit as u64 + 1).read_to_end(&mut buf).ok()?;
+    let more = buf.len() > limit;
+    buf.truncate(limit);
+    if buf.contains(&0) {
+        return None;
+    }
+    let text = match std::str::from_utf8(&buf) {
+        Ok(t) => t.to_string(),
+        // Cut in the middle of a character at the end: fine; elsewhere: not text.
+        Err(e) if e.error_len().is_none() => {
+            String::from_utf8_lossy(&buf[..e.valid_up_to()]).into_owned()
+        }
+        Err(_) => return None,
+    };
+    Some((text, more))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,5 +249,23 @@ mod tests {
             .unwrap_err()
             .contains("doesn't exist"));
         fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn text_starts() {
+        let d = std::env::temp_dir().join(format!("wr-text-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("a.txt"), "héllo world").unwrap();
+        assert_eq!(
+            text_start(&d.join("a.txt"), 100),
+            Some(("héllo world".into(), false))
+        );
+        // Cut inside "é" (2 bytes at 1..3): the half character is left off.
+        assert_eq!(text_start(&d.join("a.txt"), 2), Some(("h".into(), true)));
+        fs::write(d.join("b.bin"), [0x89u8, b'P', b'N', b'G', 0, 1]).unwrap();
+        assert_eq!(text_start(&d.join("b.bin"), 100), None);
+        fs::write(d.join("c.txt"), [b'a', 0xff, b'b']).unwrap();
+        assert_eq!(text_start(&d.join("c.txt"), 100), None, "not UTF-8");
+        assert_eq!(text_start(&d.join("missing"), 100), None);
     }
 }

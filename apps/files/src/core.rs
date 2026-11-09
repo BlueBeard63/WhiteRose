@@ -8,6 +8,12 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
     }
 
+    unsafe extern "C++" {
+        include!("whiterose-files/cpp/image.h");
+        #[cxx_name = "imageSize"]
+        fn image_size(path: &str) -> String;
+    }
+
     extern "RustQt" {
         #[qobject]
         #[qml_element]
@@ -39,6 +45,10 @@ pub mod qobject {
         fn crumbs(self: &Fs, path: &QString) -> QString;
         #[qinvokable]
         fn suggest(self: &Fs, typed: &QString, hidden: bool) -> QString;
+        /// The icon for a type of file at `size` (a folder's when `dir`), "" if none.
+        #[qinvokable]
+        #[cxx_name = "typeIcon"]
+        fn type_icon(self: &Fs, mime: &QString, dir: bool, size: i32) -> QString;
         /// An icon-theme name's file ("" if none).
         #[qinvokable]
         fn icon(self: &Fs, name: &QString, size: i32) -> QString;
@@ -109,6 +119,22 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setShowsHidden"]
         fn set_shows_hidden(self: &Fs, on: bool) -> bool;
+        /// An image's size: "4032 × 3024" ("" if it can't be read).
+        #[qinvokable]
+        #[cxx_name = "imageSize"]
+        fn image_dimensions(self: &Fs, path: &QString) -> QString;
+        /// The details panel shown (everywhere).
+        #[qinvokable]
+        #[cxx_name = "showsDetails"]
+        fn shows_details(self: &Fs) -> bool;
+        #[qinvokable]
+        #[cxx_name = "setShowsDetails"]
+        fn set_shows_details(self: &Fs, on: bool) -> bool;
+        /// The start of a text file, to preview: {ok, text, more} or
+        /// {ok: false} (not text: has NULs or isn't UTF-8).
+        #[qinvokable]
+        #[cxx_name = "readText"]
+        fn read_text(self: &Fs, path: &QString, limit: i32) -> QString;
     }
 }
 
@@ -330,6 +356,20 @@ impl qobject::Fs {
         )
     }
 
+    pub fn type_icon(&self, mime: &QString, dir: bool, size: i32) -> QString {
+        let ic = icons::shared();
+        let size = size.clamp(16, 512) as u32;
+        let p = if dir {
+            ic.lookup("folder", size, 1)
+        } else {
+            ic.mime
+                .icon_names(&mime.to_string())
+                .iter()
+                .find_map(|n| ic.lookup(n, size, 1))
+        };
+        QString::from(icon_path(p).as_str())
+    }
+
     pub fn home(&self) -> QString {
         QString::from(places::home().to_string_lossy().as_ref())
     }
@@ -421,6 +461,28 @@ impl qobject::Fs {
 
     pub fn reset_view(&self, path: &QString) -> bool {
         views::change(|all| all.reset(&path.to_string()))
+    }
+
+    pub fn image_dimensions(&self, path: &QString) -> QString {
+        QString::from(qobject::image_size(&path.to_string()).as_str())
+    }
+
+    pub fn shows_details(&self) -> bool {
+        views::load_from(&views::file()).details
+    }
+
+    pub fn set_shows_details(&self, on: bool) -> bool {
+        views::change(|all| all.details = on)
+    }
+
+    pub fn read_text(&self, path: &QString, limit: i32) -> QString {
+        match crate::listing::text_start(
+            Path::new(&path.to_string()),
+            limit.clamp(1024, 1 << 20) as usize,
+        ) {
+            Some((text, more)) => q(json!({"ok": true, "text": text, "more": more})),
+            None => q(json!({"ok": false})),
+        }
     }
 
     pub fn shows_hidden(&self) -> bool {

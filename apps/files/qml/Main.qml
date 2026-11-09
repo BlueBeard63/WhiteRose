@@ -11,7 +11,8 @@
 // Ctrl+L type a path, Alt+Left / Alt+Right back and forward, Alt+Up or
 // Backspace up, Ctrl+1 / 2 / 3 grid, list, columns, Ctrl+H hidden files,
 // Ctrl+A all, Ctrl+D bookmark this folder. Typing filters the folder;
-// Ctrl+F searches (this folder and below, home, or everywhere).
+// Ctrl+F searches (this folder and below, home, or everywhere). Space looks
+// closer at the selection, Alt+P shows details beside the folder.
 import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
@@ -422,6 +423,7 @@ AppWindow {
                     { label: "New tab", shortcut: "Ctrl+T", run: () => win.newTab({ path: win.current?.path ?? "" }) },
                     { label: "New window", shortcut: "Ctrl+N", run: () => Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) },
                     { label: win.tab?.split ? "Close split" : "Split", shortcut: "F3", run: () => win.tab.setSplit(!win.tab.split) },
+                    { label: (Session.details ? "Hide" : "Show") + " details", shortcut: "Alt+P", run: () => Session.setDetails(!Session.details) },
                     ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
                     { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                     { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark this folder", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
@@ -542,10 +544,39 @@ AppWindow {
         }
     }
 
+    // ---- the selection, previewed (Alt+P) and looked at closely (Space) -------------------------
+    DetailsPanel {
+        id: details
+        visible: Session.details && win.width > 760
+        anchors { right: parent.right; top: searchRow.bottom; bottom: status.top }
+        width: Math.min(320, Math.max(240, win.width * 0.26))
+        pane: win.current
+    }
+    QuickLook {
+        id: quick
+        onStep: by => {
+            const p = win.current;
+            if (!p || p.shownEntries.length === 0) return;
+            const i = Math.max(0, Math.min(p.shownEntries.length - 1, p.current + by));
+            p.clickAt(i, false, false);
+            quick.entry = p.shownEntries[i];
+        }
+        onOpenIt: entry => { if (entry) win.current?.activate(entry) }
+        onClosed: win.current?.focusView()
+    }
+    function quickLook() {
+        const p = win.current;
+        if (!p) return;
+        const e = p.selection.length > 0 ? p.selection[0] : p.shownEntries[p.current];
+        if (!e) return;
+        quick.entry = e;
+        quick.open();
+    }
+
     // ---- the folder -----------------------------------------------------------------------
     Item {
         id: stack
-        anchors { left: sidebar.right; right: parent.right; top: searchRow.bottom; bottom: status.top }
+        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom; bottom: status.top }
 
         // Right-click on files (`entry` set) or on the folder's empty space.
         Menu {
@@ -573,6 +604,7 @@ AppWindow {
                 { label: "Properties", run: () => props.show([win.current.path]) },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
+                { label: "Quick look", shortcut: "Space", enabled: !itemMenu.many, run: () => win.quickLook() },
                 ...(win.current?.searching ? [{ label: "Show in folder", run: () => win.showInFolder(itemMenu.entry) }] : []),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
                 { separator: true },
@@ -635,7 +667,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing
+    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -874,6 +906,9 @@ AppWindow {
     Shortcut { sequence: "Alt+Up"; enabled: !win.typing; onActivated: win.current?.up() }
     Shortcut { sequence: "Backspace"; enabled: !win.typing && (win.current?.filter ?? "") === "" && !(win.current?.searching ?? false); onActivated: win.current?.up() }
     Shortcut { sequence: "Ctrl+F"; onActivated: win.openSearch(win.current?.filter ?? "") }
+    // (Space is the type-to-filter's once it has letters.)
+    Shortcut { sequence: "Space"; enabled: !win.typing && (win.current?.filter ?? "") === ""; onActivated: win.quickLook() }
+    Shortcut { sequence: "Alt+P"; onActivated: Session.setDetails(!Session.details) }
     Shortcut { sequence: "Ctrl+1"; onActivated: win.current?.setView({ mode: "grid" }) }
     Shortcut { sequence: "Ctrl+2"; onActivated: win.current?.setView({ mode: "list" }) }
     Shortcut { sequence: "Ctrl+3"; onActivated: win.current?.setView({ mode: "columns" }) }

@@ -46,6 +46,9 @@ install -Dm755 "$work/apps-target/release/whiterose-notepad" "$stage/usr/bin/whi
 install -Dm644 packaging/files/whiterose-notepad.desktop "$stage/usr/share/applications/whiterose-notepad.desktop"
 install -Dm755 "$work/apps-target/release/whiterose-files" "$stage/usr/bin/whiterose-files"
 install -Dm644 packaging/files/whiterose-files.desktop "$stage/usr/share/applications/whiterose-files.desktop"
+# The apps' icons (Settings, Notepad, Files), every size.
+mkdir -p "$stage/usr/share/icons"
+cp -r packaging/icons/hicolor "$stage/usr/share/icons/"
 # Folders open in Files, in a WhiteRose session only.
 install -Dm644 packaging/files/whiterose-mimeapps.list "$stage/etc/xdg/whiterose-mimeapps.list"
 install -Dm755 "$qs_bin" "$stage/usr/lib/whiterose/quickshell"
@@ -74,7 +77,7 @@ deb)
     libs=$(cd "$work/shlib" && dpkg-shlibdeps -O $bins 2>/dev/null | sed 's/^shlibs:Depends=//')
     # QuickShell uses Qt's private API: exactly this Qt.
     qtabi=$(dpkg-query -W -f='${Provides}\n' libqt6core6t64 libqt6qml6 2>/dev/null | tr ',' '\n' | grep -E 'private-abi' | sed 's/^ *//' | paste -sd, -)
-    extra="qml6-module-org-kde-syntaxhighlighting, qml6-module-qtquick-controls, libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime"
+    extra="qml6-module-org-kde-syntaxhighlighting, qml6-module-qtmultimedia, qml6-module-qtquick-pdf, qml6-module-qtquick-controls, libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime"
     depends="$libs${qtabi:+, $qtabi}, $extra"
     ;;
 rpm)
@@ -83,7 +86,7 @@ rpm)
     # bring their own dependencies (some private, which can't be required).
     libs=$(for b in $bins; do readelf -d "$b"; done | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u | grep -vE '^(ld-linux)' | sed 's/$/()(64bit)/' | paste -sd, -)
     qtver=$(rpm -q --qf '%{VERSION}' qt6-qtbase)
-    extra="kf6-syntax-highlighting, mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam"
+    extra="kf6-syntax-highlighting, qt6-qtmultimedia, qt6-qtpdf, mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam"
     depends="$libs, $extra"
     ;;
 *) echo "format must be deb or rpm" >&2; exit 2 ;;

@@ -67,6 +67,8 @@ pub struct Folder {
 pub struct Views {
     pub default: View,
     pub hidden: bool,
+    /// The details panel shown (everywhere).
+    pub details: bool,
     pub folders: BTreeMap<String, Folder>,
     next: u64,
 }

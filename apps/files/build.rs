@@ -16,6 +16,9 @@ fn main() {
             "qml/DragSource.qml",
             "qml/FolderDrop.qml",
             "qml/TabView.qml",
+            "qml/Preview.qml",
+            "qml/DetailsPanel.qml",
+            "qml/QuickLook.qml",
         ]
         .map(QmlFile::from),
     );
@@ -28,6 +31,7 @@ fn main() {
         .files(["src/core.rs", "src/jobs.rs", "src/finder.rs"])
         // Files on the clipboard (QML can only put text there).
         .cpp_file("cpp/clip.cpp")
+        .cpp_file("cpp/image.cpp")
         .qt_module("Gui")
         .build();
 }

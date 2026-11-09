@@ -3,5 +3,9 @@
     <file>qml/Format.js</file>
     <file>qml/Tabs.js</file>
     <file>qml/Drops.js</file>
+    <!-- Loaded only when needed, so not compiled ahead: they need Qt
+         modules that may not be installed. -->
+    <file>qml/MediaPreview.qml</file>
+    <file>qml/PdfPreview.qml</file>
 </qresource>
 </RCC>

@@ -14,6 +14,12 @@ QtObject {
     // Hidden files shown, everywhere.
     property bool hidden: Fs.showsHidden()
     function setHidden(on) { Fs.setShowsHidden(on); session.hidden = on }
+    // Qt's multimedia / PDF modules found missing (previews show icons).
+    property bool noMedia: false
+    property bool noPdf: false
+    // The details panel, everywhere.
+    property bool details: Fs.showsDetails()
+    function setDetails(on) { Fs.setShowsDetails(on); session.details = on }
     property var windows: []
     // Closed tabs, newest last: { tab: snapshot, index }.
     property var closed: []

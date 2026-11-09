@@ -54,14 +54,21 @@ GridView {
             color: cell.on || drop.over ? Theme.tint(0.22) : area.containsMouse ? Theme.surface1 : "transparent"
             border { width: drop.over || (cell.index === grid.currentIndex && grid.activeFocus) ? 1 : 0; color: Theme.tint(0.6) }
         }
+        // Pictures as themselves (decoded at icon size; up to 40 MB), the
+        // rest, or a picture that won't load, as their type's icon.
+        property bool thumbFailed: false
+        readonly property bool thumb: !cell.thumbFailed && String(cell.modelData.mime).startsWith("image/") && cell.modelData.size < 40e6
         Image {
             id: icon
-            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 12 }
-            width: 48; height: 48
-            sourceSize: Qt.size(96, 96)
-            source: cell.modelData.icon ? "file://" + cell.modelData.icon : ""
+            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: cell.thumb ? 0 : 12 }
+            width: cell.thumb ? 60 : 48; height: width
+            sourceSize: Qt.size(width * 2, height * 2)
+            fillMode: Image.PreserveAspectFit
+            source: cell.thumb ? "file://" + cell.modelData.path : cell.modelData.icon ? "file://" + cell.modelData.icon : ""
             asynchronous: true
+            autoTransform: true
             opacity: cell.modelData.hidden ? 0.55 : 1
+            onStatusChanged: if (icon.status === Image.Error && cell.thumb) cell.thumbFailed = true
         }
         // A link: a small arrow on the icon.
         Rectangle {

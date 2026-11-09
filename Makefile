@@ -6,7 +6,7 @@ DAEMON   := daemon
 WM       := compositor
 FUZZTIME ?= 20s
 
-.PHONY: check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
+.PHONY: dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
 
 check: go-check rust-check shell-check
 
@@ -60,6 +60,27 @@ build:
 run-nested:          ## WhiteRose in a window on your current desktop: bar + a terminal
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
 	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
+
+# Settings, Notepad and Files in the launcher, with their icons, running
+# straight from this checkout (your ~/.local only; dev-apps-remove undoes it).
+# An installed package's entries are shadowed by these until then.
+dev-apps:            ## Settings, Notepad and Files in your launcher, run from this checkout
+	cd apps && $(CARGO) build --release --locked
+	mkdir -p $(HOME)/.local/share/applications $(HOME)/.local/share/icons
+	for a in notepad files; do \
+		sed "s|^Exec=whiterose-|Exec=$(CURDIR)/apps/target/release/whiterose-|" packaging/files/whiterose-$$a.desktop \
+			> $(HOME)/.local/share/applications/whiterose-$$a.desktop; \
+	done
+	sed "s|^Exec=whiterose-settings|Exec=$(CURDIR)/shell/bin/whiterose-settings|" packaging/files/whiterose-settings.desktop \
+		> $(HOME)/.local/share/applications/whiterose-settings.desktop
+	cp -r packaging/icons/hicolor $(HOME)/.local/share/icons/
+	-update-desktop-database -q $(HOME)/.local/share/applications 2>/dev/null
+
+dev-apps-remove:     ## Takes dev-apps' launcher entries and icons out again
+	rm -f $(HOME)/.local/share/applications/whiterose-notepad.desktop $(HOME)/.local/share/applications/whiterose-files.desktop \
+		$(HOME)/.local/share/applications/whiterose-settings.desktop
+	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-files.png $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-notepad.png \
+		$(HOME)/.local/share/icons/hicolor/*/apps/whiterose-settings.png
 
 run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl+Alt+F3) first
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
