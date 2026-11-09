@@ -26,6 +26,11 @@ void setClipboardFiles(rust::Str uris, bool cut)
     QGuiApplication::clipboard()->setMimeData(data);
 }
 
+int keyboardModifiers()
+{
+    return int(QGuiApplication::queryKeyboardModifiers());
+}
+
 rust::String clipboardFiles()
 {
     const QMimeData *data = QGuiApplication::clipboard()->mimeData();

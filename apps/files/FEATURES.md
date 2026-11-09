@@ -32,7 +32,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 
 ## 3. File operations & organisation
 - [x] Create, copy, cut, paste, move, rename and delete (MVP)
-- [~] Multi-selection, drag and drop, clipboard integration (MVP) — selection and the clipboard (works with other file managers both ways); drag and drop next
+- [x] Multi-selection, drag and drop, clipboard integration (MVP) — drag to folders, the empty space, sidebar places, the Trash, breadcrumbs and tabs (held over a tab opens it); to and from other apps; same drive moves, another copies, Ctrl copies, Shift moves
 - [x] Background transfer queue with progress (MVP)
 - [x] Pause, resume and cancel transfers (Next)
 - [x] Side-by-side conflict resolution (Next) — size and date of both, replace / keep both / skip, same for the rest

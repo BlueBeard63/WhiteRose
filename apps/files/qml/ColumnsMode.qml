@@ -64,7 +64,8 @@ FocusScope {
                     readonly property bool on: col.last ? !!root.pane.selected[modelData.path] : modelData.path === col.openChild
                     x: 6; width: list.width - 12; height: 30
                     radius: 8
-                    color: on ? Theme.tint(col.last ? 0.22 : 0.12) : rowArea.containsMouse ? Theme.surface1 : "transparent"
+                    color: on || drop.over ? Theme.tint(col.last || drop.over ? 0.22 : 0.12) : rowArea.containsMouse ? Theme.surface1 : "transparent"
+                    border { width: drop.over ? 1 : 0; color: Theme.tint(0.6) }
                     Image {
                         id: ic
                         x: 8; anchors.verticalCenter: parent.verticalCenter
@@ -82,11 +83,27 @@ FocusScope {
                         font { family: Theme.font; pointSize: Theme.pt(12.5) }
                     }
                     Icon { id: chev; visible: row.modelData.dir; anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter } name: "chevR"; size: 11; color: Theme.faint }
+                    // In this folder's column the selection is dragged; in an
+                    // earlier one, just the item.
+                    DragSource {
+                        id: carry
+                        paths: col.last ? root.pane.selection.map(e => e.path) : [row.modelData.path]
+                        icon: row.modelData.icon ?? ""
+                    }
+                    FolderDrop { id: drop; anchors.fill: parent; enabled: row.modelData.dir; dest: row.modelData.path; onFilesDropped: (p, d) => root.pane.dropped(p, d) }
                     MouseArea {
                         id: rowArea
                         anchors.fill: parent
                         hoverEnabled: true
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onPositionChanged: m => { if (rowArea.pressedButtons & Qt.LeftButton) carry.moved(m.x, m.y) }
+                        onPressed: m => {
+                            if (m.button === Qt.LeftButton) carry.press(m.x, m.y);
+                            if (col.last && m.button === Qt.LeftButton && !row.on && !(m.modifiers & (Qt.ControlModifier | Qt.ShiftModifier))) {
+                                const i = root.pane.shownEntries.findIndex(e => e.path === row.modelData.path);
+                                if (i >= 0) root.pane.clickAt(i, false, false);
+                            }
+                        }
                         onClicked: m => {
                             if (m.button === Qt.RightButton) {
                                 // An earlier column's item: its folder becomes the open one first.

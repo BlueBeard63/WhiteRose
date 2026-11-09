@@ -22,6 +22,7 @@ const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "p
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
+const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
@@ -626,6 +627,22 @@ test("files: properties formatting and permission bits", () => {
     assert.equal(F.withBit(0o644, 0, 2, true), 0o744, "owner run on");
     assert.equal(F.withBit(0o755, 2, 2, false), 0o754, "others run off");
     assert.equal(F.withBit(0o4755, 0, 2, false), 0o4655, "other bits kept");
+});
+test("files: what's dragged and what a drop does", () => {
+    assert.equal(Drops.uris(["/home/me/a b#1.txt", "/x"]), "file:///home/me/a%20b%231.txt\r\nfile:///x\r\n");
+    assert.deepEqual(Drops.paths(["file:///home/me/a%20b%231.txt", "https://example.com/x", "file://localhost/tmp/y/"]), ["/home/me/a b#1.txt", "/tmp/y"]);
+    const a = ["/home/me/a.txt", "/home/me/photos"];
+    assert.deepEqual(Drops.plan(a, "/home/me/Documents", false, false, true), { kind: "move", paths: a }, "same drive: move");
+    assert.deepEqual(Drops.plan(a, "/media/usb", false, false, false), { kind: "copy", paths: a }, "other drive: copy");
+    assert.equal(Drops.plan(a, "/home/me/Documents", true, false, true).kind, "copy", "Ctrl copies");
+    assert.equal(Drops.plan(a, "/media/usb", false, true, false).kind, "move", "Shift moves");
+    assert.deepEqual(Drops.plan(a, "/home/me/photos", false, false, true), { kind: "move", paths: ["/home/me/a.txt"] }, "not onto itself");
+    assert.equal(Drops.plan(["/home/me/photos"], "/home/me/photos/2024", false, false, true), null, "not into itself");
+    assert.equal(Drops.plan(a, "/home/me", false, false, true), null, "moving where it already is: nothing");
+    assert.equal(Drops.plan(a, "/home/me", true, false, true).kind, "copy", "copying there: numbered copies");
+    assert.deepEqual(Drops.plan(a, "trash:", false, false, false), { kind: "trash", paths: a });
+    assert.equal(Drops.accepts(["/home/me/photos"], "/home/me/photos"), false);
+    assert.equal(Drops.accepts([], "/x"), false);
 });
 test("files: moving tabs", () => {
     assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 0, 2), ["b", "c", "a", "d"]);

@@ -11,6 +11,8 @@ Rectangle {
     property string current: ""
     property var places: ({ folders: [], bookmarks: [], drives: [] })
     signal chosen(string path)
+    // Files dropped on a place (the Trash trashes them).
+    signal dropped(var paths, string dest)
     function refresh() { side.places = JSON.parse(Fs.places()) }
     Component.onCompleted: refresh()
     // Drives come and go (a USB stick): look again every few seconds.
@@ -34,7 +36,7 @@ Rectangle {
         x: 8; width: side.width - 16
         height: total > 0 ? 44 : 32
         radius: 9
-        color: on ? Theme.surface1 : prArea.containsMouse ? Qt.rgba(Theme.surface1.r, Theme.surface1.g, Theme.surface1.b, 0.6) : "transparent"
+        color: on || prDrop.over ? Theme.surface1 : prArea.containsMouse ? Qt.rgba(Theme.surface1.r, Theme.surface1.g, Theme.surface1.b, 0.6) : "transparent"
         Image {
             id: prIcon
             x: 10; y: pr.total > 0 ? 8 : (pr.height - height) / 2
@@ -61,6 +63,8 @@ Rectangle {
                 color: (pr.free / Math.max(1, pr.total)) < 0.1 ? Theme.rose : Theme.muted
             }
         }
+        border { width: prDrop.over ? 1 : 0; color: Theme.tint(0.6) }
+        FolderDrop { id: prDrop; anchors.fill: parent; dest: pr.path; onFilesDropped: (p, d) => side.dropped(p, d) }
         MouseArea {
             id: prArea
             anchors.fill: parent

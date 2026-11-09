@@ -51,8 +51,8 @@ GridView {
         Rectangle {
             anchors { fill: parent; margins: 4 }
             radius: 12
-            color: cell.on ? Theme.tint(0.22) : area.containsMouse ? Theme.surface1 : "transparent"
-            border { width: cell.index === grid.currentIndex && grid.activeFocus ? 1 : 0; color: Theme.tint(0.6) }
+            color: cell.on || drop.over ? Theme.tint(0.22) : area.containsMouse ? Theme.surface1 : "transparent"
+            border { width: drop.over || (cell.index === grid.currentIndex && grid.activeFocus) ? 1 : 0; color: Theme.tint(0.6) }
         }
         Image {
             id: icon
@@ -81,11 +81,21 @@ GridView {
             color: cell.modelData.hidden ? Theme.muted : Theme.text
             font { family: Theme.font; pointSize: Theme.pt(12) }
         }
+        // Dragged: the selection goes (pressing an unselected item selects it first).
+        DragSource { id: carry; paths: pane.selection.map(e => e.path); icon: cell.modelData.icon ?? ""; }
+        // A folder takes drops.
+        FolderDrop { id: drop; anchors.fill: parent; enabled: cell.modelData.dir; dest: cell.modelData.path; onFilesDropped: (p, d) => pane.dropped(p, d) }
         MouseArea {
             id: area
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPositionChanged: m => { if (area.pressedButtons & Qt.LeftButton) carry.moved(m.x, m.y) }
+            onPressed: m => {
+                if (m.button === Qt.LeftButton) carry.press(m.x, m.y);
+                if (m.button === Qt.LeftButton && !cell.on && !(m.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
+                    pane.clickAt(cell.index, false, false);
+            }
             onClicked: m => {
                 grid.forceActiveFocus();
                 if (m.button === Qt.RightButton) {

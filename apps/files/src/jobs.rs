@@ -17,6 +17,8 @@ pub mod qobject {
         fn set_clipboard_files(uris: &str, cut: bool);
         #[cxx_name = "clipboardFiles"]
         fn clipboard_files() -> String;
+        #[cxx_name = "keyboardModifiers"]
+        fn keyboard_modifiers() -> i32;
     }
 
     extern "RustQt" {
@@ -58,6 +60,9 @@ pub mod qobject {
         /// {cut, paths} from the clipboard (paths empty if it holds no files).
         #[qinvokable]
         fn clipboard(self: &Ops) -> QString;
+        /// The keyboard modifiers held now (Ctrl copies a drop, Shift moves it).
+        #[qinvokable]
+        fn modifiers(self: &Ops) -> i32;
 
         /// Puts things in the Trash back where they came from:
         /// {done: [path], failed: [[path, why]]}.
@@ -486,6 +491,10 @@ impl qobject::Ops {
             .map(|p| format!("file://{}", crate::places::percent_encode(p)))
             .collect();
         qobject::set_clipboard_files(&uris.join("\n"), cut);
+    }
+
+    pub fn modifiers(&self) -> i32 {
+        qobject::keyboard_modifiers()
     }
 
     pub fn clipboard(&self) -> QString {

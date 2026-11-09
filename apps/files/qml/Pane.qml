@@ -38,6 +38,8 @@ Item {
     signal openFile(var entry)
     // Right-click: on `entry` (null: the folder itself), at x, y in the pane.
     signal menuAt(var entry, real x, real y)
+    // Files dropped on `dest` (this folder, or a folder in it).
+    signal dropped(var paths, string dest)
     // Anything worth keeping changed (Session saves it).
     signal changed()
     // A folder is shown the way it was last time (or as the folder above
@@ -155,6 +157,23 @@ Item {
         repeat: true
         running: pane.visible && Qt.application.state === Qt.ApplicationActive
         onTriggered: if (Fs.stamp(pane.path) !== pane.stamp) pane.load()
+    }
+
+    // Dropped on the folder's empty space: into this folder. (Behind the
+    // view, so a folder in it takes drops meant for it.)
+    FolderDrop {
+        id: paneDrop
+        anchors.fill: parent
+        dest: pane.path
+        onFilesDropped: (p, d) => pane.dropped(p, d)
+    }
+    Rectangle {
+        anchors { fill: parent; margins: 4 }
+        visible: paneDrop.over
+        z: 10
+        radius: 12
+        color: "transparent"
+        border { width: 2; color: Theme.tint(0.5) }
     }
 
     // ---- the view ---------------------------------------------------------------

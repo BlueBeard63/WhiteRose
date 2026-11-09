@@ -13,6 +13,8 @@ fn main() {
             "qml/ColumnsMode.qml",
             "qml/Transfers.qml",
             "qml/Properties.qml",
+            "qml/DragSource.qml",
+            "qml/FolderDrop.qml",
         ]
         .map(QmlFile::from),
     );

@@ -59,6 +59,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setMode"]
         fn set_mode(self: &Fs, path: &QString, mode: i32) -> QString;
+        /// On the same drive (a drop between them moves rather than copies).
+        #[qinvokable]
+        #[cxx_name = "sameDrive"]
+        fn same_drive(self: &Fs, a: &QString, b: &QString) -> bool;
         /// Folders named on the command line, as JSON.
         #[qinvokable]
         fn arguments(self: &Fs) -> QString;
@@ -502,6 +506,16 @@ impl qobject::Fs {
         match std::fs::set_permissions(path.to_string(), std::fs::Permissions::from_mode(mode)) {
             Ok(()) => QString::from(""),
             Err(e) => QString::from(e.to_string().as_str()),
+        }
+    }
+
+    pub fn same_drive(&self, a: &QString, b: &QString) -> bool {
+        match (
+            std::fs::symlink_metadata(a.to_string()),
+            std::fs::metadata(b.to_string()),
+        ) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev(),
+            _ => false,
         }
     }
 }

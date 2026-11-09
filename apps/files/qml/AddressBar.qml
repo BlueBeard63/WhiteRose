@@ -14,6 +14,8 @@ Rectangle {
     property var suggestions: []
     property int pick: -1
     signal go(string path)
+    // Files dropped on a crumb: into that folder.
+    signal dropped(var paths, string dest)
     height: 34
     radius: 10
     color: editing ? Theme.bg : Theme.surface1
@@ -71,7 +73,8 @@ Rectangle {
                 Rectangle {
                     width: crumbText.implicitWidth + 16; height: 26; radius: 7
                     anchors.verticalCenter: parent.verticalCenter
-                    color: crumbArea.containsMouse ? Theme.surface2 : "transparent"
+                    color: crumbArea.containsMouse || crumbDrop.over ? Theme.surface2 : "transparent"
+                    FolderDrop { id: crumbDrop; anchors.fill: parent; dest: modelData.path ?? ""; onFilesDropped: (p, d) => bar.dropped(p, d) }
                     Text {
                         id: crumbText
                         anchors.centerIn: parent

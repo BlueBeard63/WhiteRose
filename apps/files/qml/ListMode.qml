@@ -98,8 +98,8 @@ FocusScope {
             readonly property bool on: !!root.pane.selected[modelData.path]
             x: 8; width: list.width - 16; height: 32
             radius: 8
-            color: on ? Theme.tint(0.22) : rowArea.containsMouse ? Theme.surface1 : "transparent"
-            border { width: index === list.currentIndex && list.activeFocus ? 1 : 0; color: Theme.tint(0.6) }
+            color: on || drop.over ? Theme.tint(0.22) : rowArea.containsMouse ? Theme.surface1 : "transparent"
+            border { width: drop.over || (index === list.currentIndex && list.activeFocus) ? 1 : 0; color: Theme.tint(0.6) }
             Row {
                 anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
                 Item {
@@ -125,11 +125,19 @@ FocusScope {
                 Text { width: root.dateW; anchors.verticalCenter: parent.verticalCenter; text: F.date(row.modelData.modified, root.now); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
                 Text { width: root.kindW; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.origin !== undefined ? row.modelData.origin.replace(Fs.home(), "~") : F.kind(row.modelData.mime); elide: root.pane.inTrash ? Text.ElideMiddle : Text.ElideRight; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
             }
+            DragSource { id: carry; paths: root.pane.selection.map(e => e.path); icon: row.modelData.icon ?? ""; }
+            FolderDrop { id: drop; anchors.fill: parent; enabled: row.modelData.dir; dest: row.modelData.path; onFilesDropped: (p, d) => root.pane.dropped(p, d) }
             MouseArea {
                 id: rowArea
                 anchors.fill: parent
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onPositionChanged: m => { if (rowArea.pressedButtons & Qt.LeftButton) carry.moved(m.x, m.y) }
+                onPressed: m => {
+                    if (m.button === Qt.LeftButton) carry.press(m.x, m.y);
+                    if (m.button === Qt.LeftButton && !row.on && !(m.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
+                        root.pane.clickAt(row.index, false, false);
+                }
                 onClicked: m => {
                     list.forceActiveFocus();
                     if (m.button === Qt.RightButton) {

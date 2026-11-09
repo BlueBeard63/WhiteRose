@@ -14,6 +14,7 @@ import WhiteRose.Kit
 import WhiteRose.Files
 import "Format.js" as F
 import "Tabs.js" as Tabs
+import "Drops.js" as Drops
 
 AppWindow {
     id: win
@@ -35,6 +36,7 @@ AppWindow {
             visible: false
             onOpenFile: entry => Qt.openUrlExternally("file://" + entry.path)
             onMenuAt: (entry, x, y) => win.showMenu(entry, x, y)
+            onDropped: (paths, dest) => win.drop(paths, dest)
             onChanged: Session.changed()
         }
     }
@@ -149,6 +151,15 @@ AppWindow {
                         color: on || strip.hover === index ? Theme.surface1 : "transparent"
                         border { width: on ? 1 : 0; color: Theme.surface2 }
                         opacity: strip.away && strip.dragging === index ? 0.45 : 1
+                        // Files held over a tab open it (to drop in its
+                        // folder, or further in); dropped on it: into its folder.
+                        FolderDrop {
+                            id: tabDrop
+                            anchors.fill: parent
+                            dest: modelData.path
+                            onFilesDropped: (p, d) => win.drop(p, d)
+                        }
+                        Timer { running: tabDrop.over && !parent.on; interval: 600; onTriggered: win.show(index) }
                         Text {
                             id: label
                             anchors { left: parent.left; leftMargin: 13; verticalCenter: parent.verticalCenter }
@@ -238,6 +249,7 @@ AppWindow {
         width: 210
         current: win.current?.path ?? ""
         onChosen: p => { win.current?.go(p); win.current?.focusView() }
+        onDropped: (paths, dest) => win.drop(paths, dest)
     }
 
     // ---- navigation row --------------------------------------------------------------------
@@ -260,6 +272,7 @@ AppWindow {
             hidden: win.current?.hidden ?? false
             onGo: p => { win.current?.go(p); win.current?.focusView() }
             onDone: win.current?.focusView()
+            onDropped: (paths, dest) => win.drop(paths, dest)
             z: 5
         }
         Button {
@@ -421,6 +434,13 @@ AppWindow {
             w[id] = win.current;
             win.waiting = w;
         }
+    }
+    // Files dropped on folder `dest` (Drops.plan: copy or move, or trash).
+    function drop(paths, dest) {
+        const mods = Ops.modifiers();
+        const plan = Drops.plan(paths, dest, (mods & Qt.ControlModifier) !== 0, (mods & Qt.ShiftModifier) !== 0,
+                                Fs.sameDrive(paths[0], dest));
+        if (plan) win.run(plan.kind, plan.paths, plan.kind === "trash" ? "" : dest);
     }
     function toClipboard(cut) {
         const sel = win.current?.selection ?? [];

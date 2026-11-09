@@ -2,5 +2,6 @@
 <qresource prefix="/qt/qml/WhiteRose/Files">
     <file>qml/Format.js</file>
     <file>qml/Tabs.js</file>
+    <file>qml/Drops.js</file>
 </qresource>
 </RCC>
