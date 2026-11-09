@@ -67,6 +67,8 @@ fn shell_ipc_round_trip() {
         let focus = shell.recv();
         assert_eq!(focus["event"], "focus");
         assert_eq!(focus["app_id"], Value::Null);
+        let windows = shell.recv();
+        assert_eq!(windows, serde_json::json!({"event": "windows", "windows": []}));
 
         // 2. Garbage is ignored and the connection survives; duplicates aren't re-sent.
         shell.send("this is not json");
@@ -168,6 +170,7 @@ fn screenshot_without_a_renderer_reports_failure_to_the_shell() {
         let mut shell = Shell::connect(&path);
         shell.recv(); // workspaces snapshot
         shell.recv(); // focus snapshot
+        shell.recv(); // windows snapshot
         shell.send(r#"{"cmd":"screenshot"}"#);
         shell.recv()
     });

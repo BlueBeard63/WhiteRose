@@ -45,6 +45,7 @@ impl XdgShellHandler for WhiteRose {
         let area = self.usable_area().loc;
         let loc = (area.x + 48 + 32 * (n % 8), area.y + 48 + 32 * (n % 8));
         self.space.map_element(window.clone(), loc, false);
+        self.assign_window_id(&window);
         self.workspaces.add(window.clone());
         tracing::info!(workspace = self.workspaces.active() + 1, at = ?loc, "window opened");
         self.focus_window(Some(window));
@@ -124,6 +125,14 @@ impl XdgShellHandler for WhiteRose {
 
             pointer.set_grab(self, grab, serial, Focus::Clear);
         }
+    }
+
+    fn app_id_changed(&mut self, _surface: ToplevelSurface) {
+        self.ipc_sync();
+    }
+
+    fn title_changed(&mut self, _surface: ToplevelSurface) {
+        self.ipc_sync();
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {

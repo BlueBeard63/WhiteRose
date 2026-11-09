@@ -11,16 +11,21 @@ PanelWindow {
     screen: modelData
 
     anchors { top: true; left: true; right: true }
-    implicitHeight: Theme.barHeight + island.height
+    // Tall enough for the open dock while it is open or animating, so the
+    // window never resizes mid-animation; otherwise just bar + idle island.
+    implicitHeight: Theme.barHeight + (dock.expanded ? dock.openHeight + 30 : dock.height)
     exclusiveZone: Theme.barHeight
     color: "transparent"
 
     WlrLayershell.namespace: "whiterose-bar"
     WlrLayershell.layer: WlrLayer.Top
+    // The open dock takes the keyboard (Esc closes it; clicking elsewhere
+    // moves focus away, which closes it too).
+    WlrLayershell.keyboardFocus: dock.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     mask: Region {
         item: bar
-        Region { item: island }
+        Region { item: dock }
     }
 
     Rectangle {
@@ -56,11 +61,9 @@ PanelWindow {
         }
     }
 
-    Island {
-        id: island
+    Dock {
+        id: dock
         anchors { top: bar.bottom; horizontalCenter: parent.horizontalCenter }
-        // The dock panel comes next; for now clicking the grip just logs.
-        onClicked: console.info("whiterose: dock requested")
     }
 
     Connections {

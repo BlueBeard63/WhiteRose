@@ -41,6 +41,10 @@ pub enum Event {
     Action {
         name: String,
     },
+    /// Every window, most recently used first (dock, switchers).
+    Windows {
+        windows: Vec<WindowInfo>,
+    },
     /// A screenshot was saved (and put on the clipboard as image/png).
     Screenshot {
         path: String,
@@ -60,6 +64,16 @@ impl Event {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowInfo {
+    pub id: u64,
+    pub app_id: Option<String>,
+    pub title: Option<String>,
+    /// 1-based.
+    pub workspace: u8,
+    pub focused: bool,
+}
+
 /// Messages from the shell to the compositor.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
@@ -76,6 +90,12 @@ pub enum Request {
         command: String,
     },
     CloseWindow,
+    FocusWindow {
+        id: u64,
+    },
+    FocusApp {
+        app_id: String,
+    },
     /// Capture the whole screen (e.g. the screenshot toolbar's "Screen" mode).
     Screenshot,
     /// Delete a screenshot this compositor saved (the toast's trash button).
@@ -96,6 +116,8 @@ impl Request {
             Request::Spawn { command } => Action::Spawn(command),
             Request::CloseWindow => Action::CloseWindow,
             Request::Screenshot => Action::ScreenshotScreen,
+            Request::FocusWindow { id } => Action::FocusWindow(id),
+            Request::FocusApp { app_id } => Action::FocusApp(app_id),
             Request::DeleteScreenshot { path } => Action::DeleteScreenshot(path),
         }
     }
@@ -157,6 +179,7 @@ pub struct Server {
     /// Last workspaces/focus events sent, so unchanged state isn't re-sent.
     last_workspaces: Option<Event>,
     last_focus: Option<Event>,
+    last_windows: Option<Event>,
 }
 
 impl Server {
@@ -187,6 +210,7 @@ impl Server {
             next_id: 0,
             last_workspaces: None,
             last_focus: None,
+            last_windows: None,
         })
     }
 
@@ -216,6 +240,7 @@ impl Server {
         let slot = match event {
             Event::Workspaces { .. } => &mut self.last_workspaces,
             Event::Focus { .. } => &mut self.last_focus,
+            Event::Windows { .. } => &mut self.last_windows,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
                 self.broadcast(&event);
                 return;
@@ -241,7 +266,7 @@ impl Drop for Server {
 impl WhiteRose {
     fn ipc_accept(&mut self, stream: UnixStream) {
         // Bring the new shell up to date immediately.
-        let snapshot = [self.workspaces_event(), self.focus_event()];
+        let snapshot = [self.workspaces_event(), self.focus_event(), self.windows_event()];
         let Some(server) = self.ipc.as_mut() else { return };
         let (Ok(()), Ok(reader)) = (stream.set_nonblocking(true), stream.try_clone()) else { return };
         let id = server.next_id;
@@ -255,9 +280,10 @@ impl WhiteRose {
         }
         server.clients.push(client);
         // Everyone connected now has this state; don't send it again unless it changes.
-        let [ws, focus] = snapshot;
+        let [ws, focus, windows] = snapshot;
         server.last_workspaces = Some(ws);
         server.last_focus = Some(focus);
+        server.last_windows = Some(windows);
         tracing::info!(id, "shell connected");
 
         let mut lines = LineBuffer::default();
@@ -318,6 +344,26 @@ impl WhiteRose {
         }
     }
 
+    pub fn windows_event(&self) -> Event {
+        let focused = self.focused_window();
+        let windows = self
+            .workspaces
+            .mru()
+            .iter()
+            .map(|w| {
+                let (app_id, title) = toplevel_ids(w);
+                WindowInfo {
+                    id: self.window_id(w),
+                    app_id,
+                    title,
+                    workspace: self.workspaces.workspace_of(w).map(|i| i as u8 + 1).unwrap_or(0),
+                    focused: Some(w) == focused.as_ref(),
+                }
+            })
+            .collect();
+        Event::Windows { windows }
+    }
+
     pub fn focus_event(&self) -> Event {
         use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
         let (app_id, title) = self
@@ -341,12 +387,32 @@ impl WhiteRose {
 
     /// Pushes workspace and focus state to connected shells, if it changed.
     pub fn ipc_sync(&mut self) {
-        let (ws, focus) = (self.workspaces_event(), self.focus_event());
+        let (ws, focus, windows) = (self.workspaces_event(), self.focus_event(), self.windows_event());
         if let Some(server) = self.ipc.as_mut() {
             server.update(ws);
             server.update(focus);
+            server.update(windows);
         }
     }
+}
+
+/// A toplevel's (app_id, title).
+pub fn toplevel_ids(w: &smithay::desktop::Window) -> (Option<String>, Option<String>) {
+    use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
+    w.toplevel()
+        .map(|t| {
+            with_states(t.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .map(|d| {
+                        let d = d.lock().unwrap();
+                        (d.app_id.clone(), d.title.clone())
+                    })
+                    .unwrap_or_default()
+            })
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

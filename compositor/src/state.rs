@@ -37,6 +37,10 @@ use crate::{
 
 pub const WORKSPACES: usize = 9;
 
+/// Stable id given to each window for IPC (dock, switchers).
+#[derive(Debug, Clone, Copy)]
+pub struct WindowId(pub u64);
+
 /// Imports a client GPU buffer into the renderer; returns whether it worked.
 pub type DmabufImporter = Box<dyn FnMut(&Dmabuf) -> bool>;
 
@@ -63,6 +67,7 @@ pub struct WhiteRose {
     pub screenshot_tx: smithay::reexports::calloop::channel::Sender<crate::screenshot::Outcome>,
     /// Paths this compositor saved; the only files the shell may ask it to delete.
     pub saved_screenshots: Vec<std::path::PathBuf>,
+    next_window_id: u64,
     pub fitted_to: Option<(smithay::utils::Rectangle<i32, Logical>, smithay::utils::Rectangle<i32, Logical>)>,
 
     pub bindings: Bindings,
@@ -138,6 +143,7 @@ impl WhiteRose {
             restore_geometry: Vec::new(),
             fullscreen: None,
             fitted_to: None,
+            next_window_id: 1,
             screenshot_pending: false,
             screenshot_tx,
             saved_screenshots: Vec::new(),
@@ -291,6 +297,29 @@ impl WhiteRose {
         self.ipc_sync();
     }
 
+    /// Gives a new window its stable IPC id.
+    pub fn assign_window_id(&mut self, w: &Window) {
+        if w.user_data().get::<WindowId>().is_none() {
+            let id = self.next_window_id;
+            w.user_data().insert_if_missing(|| WindowId(id));
+            self.next_window_id += 1;
+        }
+    }
+
+    pub fn window_id(&self, w: &Window) -> u64 {
+        w.user_data().get::<WindowId>().map(|i| i.0).unwrap_or(0)
+    }
+
+    /// Focuses a window, switching to its workspace first if it's hidden.
+    pub fn activate_window(&mut self, w: &Window) {
+        if let Some(ws) = self.workspaces.workspace_of(w) {
+            if ws != self.workspaces.active() {
+                self.switch_workspace(ws);
+            }
+        }
+        self.focus_window(Some(w.clone()));
+    }
+
     pub fn focused_window(&self) -> Option<Window> {
         self.workspaces.focused().cloned()
     }
@@ -371,6 +400,24 @@ impl WhiteRose {
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
             Action::Quit => self.loop_signal.stop(),
             Action::ScreenshotScreen => self.request_screenshot(),
+            Action::FocusWindow(id) => {
+                let target = self.workspaces.mru().iter().find(|w| self.window_id(w) == id).cloned();
+                match target {
+                    Some(w) => self.activate_window(&w),
+                    None => tracing::debug!(id, "focus request for unknown window"),
+                }
+            }
+            Action::FocusApp(app_id) => {
+                let focused = self.focused_window();
+                let target = self.workspaces.next_for_app(
+                    |w| crate::ipc::toplevel_ids(w).0.unwrap_or_default(),
+                    &app_id,
+                    focused.as_ref(),
+                );
+                if let Some(w) = target {
+                    self.activate_window(&w);
+                }
+            }
             Action::DeleteScreenshot(path) => {
                 self.delete_screenshot(std::path::Path::new(&path));
             }

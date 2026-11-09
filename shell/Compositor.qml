@@ -17,6 +17,9 @@ Singleton {
     property var occupiedWorkspaces: []
     property string focusedAppId: ""
     property string focusedTitle: ""
+    // Every window, most recently used first:
+    // { id, app_id, title, workspace (1-based), focused }.
+    property var windows: []
 
     // A shortcut the shell should handle, e.g. "screenshot_region", "app_launcher".
     signal action(string name)
@@ -29,6 +32,9 @@ Singleton {
     function spawn(command) { send({ cmd: "spawn", command: command }) }
     function closeWindow() { send({ cmd: "close_window" }) }
     function screenshot() { send({ cmd: "screenshot" }) }
+    // Focus an app's most recent window, or cycle if it already has focus.
+    function focusApp(appId) { send({ cmd: "focus_app", app_id: appId }) }
+    function focusWindow(id) { send({ cmd: "focus_window", id: id }) }
     // The compositor only deletes files it saved itself.
     function deleteScreenshot(path) { send({ cmd: "delete_screenshot", path: path }) }
 
@@ -50,6 +56,9 @@ Singleton {
         case "focus":
             root.focusedAppId = msg.app_id ?? "";
             root.focusedTitle = msg.title ?? "";
+            break;
+        case "windows":
+            root.windows = msg.windows;
             break;
         case "action":
             root.action(msg.name);

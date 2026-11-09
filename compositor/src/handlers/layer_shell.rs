@@ -16,7 +16,12 @@ use smithay::{
     },
 };
 
+use std::cell::Cell;
+
 use crate::state::WhiteRose;
+
+/// Whether a layer surface's current exclusive-keyboard request was granted.
+struct ExclusiveGrant(Cell<bool>);
 
 impl WlrLayerShellHandler for WhiteRose {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
@@ -92,13 +97,22 @@ impl WhiteRose {
             layer.layer_surface().send_configure();
         }
 
-        // The launcher and screenshot overlay ask for exclusive keyboard focus.
+        // Panels that open (dock, launcher, screenshot overlay) ask for exclusive
+        // keyboard focus. Grant it once, when the request starts: re-granting on
+        // every commit would steal focus back from a window the user clicked,
+        // because the bar commits constantly (clock, EQ). When the request ends,
+        // hand the keyboard back to the window.
         let state = layer.cached_state();
         let wants_exclusive = state.keyboard_interactivity == KeyboardInteractivity::Exclusive
             && matches!(state.layer, Layer::Top | Layer::Overlay);
-        if wants_exclusive && self.keyboard_focus().as_ref() != Some(surface) {
+        let granted = layer.user_data().get_or_insert(|| ExclusiveGrant(Cell::new(false)));
+        if wants_exclusive && !granted.0.get() {
+            granted.0.set(true);
             let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
             keyboard.set_focus(self, Some(surface.clone()), SERIAL_COUNTER.next_serial());
+        } else if !wants_exclusive && granted.0.replace(false) && self.keyboard_focus().as_ref() == Some(surface) {
+            let window = self.focused_window();
+            self.focus_window(window);
         }
         true
     }

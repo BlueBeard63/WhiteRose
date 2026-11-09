@@ -110,6 +110,21 @@ impl<W: Clone + PartialEq> Workspaces<W> {
         &self.mru
     }
 
+    /// The window to focus when an app's dock icon is clicked: its most
+    /// recently used window, or, if one of its windows is already focused,
+    /// the next one (wrapping), so repeated clicks cycle through them.
+    pub fn next_for_app<K: PartialEq>(&self, app: impl Fn(&W) -> K, key: &K, focused: Option<&W>) -> Option<W> {
+        let windows: Vec<&W> = self.mru.iter().filter(|w| app(w) == *key).collect();
+        let current = focused.and_then(|f| windows.iter().position(|w| *w == f));
+        match current {
+            // MRU order puts the focused window first, so "next" means the
+            // least recently used one; cycling from the back visits them all.
+            Some(_) if windows.len() > 1 => windows.last().map(|w| (*w).clone()),
+            Some(i) => Some(windows[i].clone()),
+            None => windows.first().map(|w| (*w).clone()),
+        }
+    }
+
     /// Windows grouped by application, apps ordered by their most recently
     /// focused window (for ALT+TAB).
     pub fn mru_by_app<K: PartialEq>(&self, app: impl Fn(&W) -> K) -> Vec<(K, Vec<W>)> {
@@ -251,5 +266,29 @@ mod tests {
         let apps: Vec<_> = groups.iter().map(|(a, ws)| (*a, ws.len())).collect();
         assert_eq!(apps, vec![("term", 1), ("code", 1), ("browser", 2)]);
         assert_eq!(groups[2].1, vec![("browser", 3), ("browser", 1)]);
+    }
+
+    #[test]
+    fn next_for_app_cycles_through_an_apps_windows() {
+        let mut w = Workspaces::new(2);
+        for x in [("term", 1), ("browser", 2), ("term", 3)] {
+            w.add(x);
+        }
+        fn app(w: &(&'static str, i32)) -> &'static str {
+            w.0
+        }
+        // Not focused on a terminal: go to the most recent terminal.
+        w.focus(&("browser", 2));
+        assert_eq!(w.next_for_app(app, &"term", Some(&("browser", 2))), Some(("term", 3)));
+        // Clicking again while a terminal is focused cycles to the other one...
+        w.focus(&("term", 3));
+        assert_eq!(w.next_for_app(app, &"term", Some(&("term", 3))), Some(("term", 1)));
+        // ...and back again, visiting every window.
+        w.focus(&("term", 1));
+        assert_eq!(w.next_for_app(app, &"term", Some(&("term", 1))), Some(("term", 3)));
+        // Single window: stays on it.
+        assert_eq!(w.next_for_app(app, &"browser", Some(&("browser", 2))), Some(("browser", 2)));
+        // Unknown app: nothing.
+        assert_eq!(w.next_for_app(app, &"code", None), None);
     }
 }

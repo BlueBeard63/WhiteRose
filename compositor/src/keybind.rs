@@ -53,6 +53,10 @@ pub enum Action {
     /// Move the focused window to workspace N (1-based).
     MoveToWorkspace(u8),
     Spawn(String),
+    /// Focus a window by its IPC id (switching workspace if needed).
+    FocusWindow(u64),
+    /// Focus an app's most recent window, or cycle if it already has focus.
+    FocusApp(String),
     /// Delete a screenshot this compositor saved (requested by the shell).
     DeleteScreenshot(String),
     Quit,

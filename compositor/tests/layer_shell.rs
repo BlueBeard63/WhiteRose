@@ -108,3 +108,68 @@ fn layer_surface_without_any_output_is_closed() {
         |_, closed| assert!(closed, "client must be told when its panel can't be shown"),
     );
 }
+
+#[test]
+fn exclusive_focus_is_granted_once_not_stolen_back() {
+    use std::io::{BufRead, BufReader, Write};
+    let mut h = Headless::new(true);
+    let ipc_path = h.state.ipc.as_ref().unwrap().path.clone();
+    h.run(
+        move |conn| {
+            let ipc = std::os::unix::net::UnixStream::connect(&ipc_path).unwrap();
+            ipc.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
+            let mut ipc_w = ipc.try_clone().unwrap();
+            let mut ipc_r = BufReader::new(ipc);
+
+            let mut c = Client::connect(&conn);
+            let (_win, _t) = c.open_window();
+            // The window's id, from the compositor's window list.
+            let id = loop {
+                let mut line = String::new();
+                ipc_r.read_line(&mut line).unwrap();
+                let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+                if let Some(id) = v["windows"][0]["id"].as_u64() {
+                    break id;
+                }
+            };
+
+            // The dock opens and takes the keyboard...
+            let qh = c.queue.handle();
+            let surface = c.compositor.create_surface(&qh, ());
+            let layer = c.layer_shell.get_layer_surface(
+                &surface,
+                None,
+                zwlr_layer_shell_v1::Layer::Top,
+                "whiterose-dock".into(),
+                &qh,
+                (),
+            );
+            layer.set_size(400, 90);
+            layer.set_anchor(zwlr_layer_surface_v1::Anchor::Top);
+            layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
+            surface.commit();
+            c.until(|a| a.layer_configure.is_some());
+            c.attach_buffer(&surface, 400, 90);
+
+            // ...then the user clicks the window (here: focus it over IPC)...
+            ipc_w.write_all(format!("{{\"cmd\":\"focus_window\",\"id\":{id}}}\n").as_bytes()).unwrap();
+            c.queue.roundtrip(&mut c.app).unwrap();
+            // ...and the dock keeps committing frames: it must not steal focus back.
+            for _ in 0..3 {
+                surface.damage_buffer(0, 0, 1, 1);
+                surface.commit();
+                c.queue.roundtrip(&mut c.app).unwrap();
+            }
+            id
+        },
+        |state, id| {
+            let w = state.focused_window().unwrap();
+            assert_eq!(state.window_id(&w), id);
+            assert_eq!(
+                state.keyboard_focus().as_ref(),
+                Some(w.toplevel().unwrap().wl_surface()),
+                "a committing exclusive layer stole the keyboard back from the window"
+            );
+        },
+    );
+}
