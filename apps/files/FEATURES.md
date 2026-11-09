@@ -78,7 +78,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Custom toolbar buttons and layouts (Next)
 - [ ] Customisable right-click context menus (Next)
 - [ ] Fully remappable keyboard shortcuts (MVP)
-- [ ] Custom view columns and sorting preferences (Next)
+- [~] Custom view columns and sorting preferences (Next) — view and sort remembered per folder, lent to subfolders, or the default for everywhere; choosing columns next
 - [ ] Custom app startup and restoration behaviour (Next)
 - [~] Accessibility, keyboard navigation and scaling (MVP) — arrows/Enter/Backspace, shortcuts for everything so far
 

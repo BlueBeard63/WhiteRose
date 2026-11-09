@@ -11,6 +11,9 @@ import WhiteRose.Files
 QtObject {
     id: session
     property bool owner: false
+    // Hidden files shown, everywhere.
+    property bool hidden: Fs.showsHidden()
+    function setHidden(on) { Fs.setShowsHidden(on); session.hidden = on }
     property var windows: []
     // Closed tabs, newest last: { tab: snapshot, index }.
     property var closed: []

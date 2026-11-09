@@ -50,8 +50,8 @@ FocusScope {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (root.pane.sortBy === modelData.key) root.pane.descending = !root.pane.descending;
-                            else { root.pane.sortBy = modelData.key; root.pane.descending = modelData.key !== "name" }
+                            if (root.pane.sortBy === modelData.key) root.pane.setView({ descending: !root.pane.descending });
+                            else root.pane.setView({ sortBy: modelData.key, descending: modelData.key !== "name" && modelData.key !== "kind" });
                         }
                     }
                 }

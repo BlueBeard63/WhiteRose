@@ -20,7 +20,11 @@ Item {
     property string mode: "grid"           // grid | list | columns
     property string sortBy: "name"
     property bool descending: false
-    property bool hidden: false
+    // Hidden files: one setting for every tab and window.
+    readonly property bool hidden: Session.hidden
+    // Where this folder's view comes from: {own, subfolders, from} (views.rs).
+    property var viewInfo: ({ own: false, subfolders: false, from: "" })
+    property bool applying: false
     property string filter: ""
     readonly property string title: path === Fs.home() ? "Home" : path === "/" ? "/" : path.substring(path.lastIndexOf("/") + 1)
     readonly property var shownEntries: pane.filter === "" ? pane.entries
@@ -32,13 +36,34 @@ Item {
     signal menuAt(var entry, real x, real y)
     // Anything worth keeping changed (Session saves it).
     signal changed()
-    onPathChanged: pane.changed()
-    onModeChanged: pane.changed()
+    // A folder is shown the way it was last time (or as the folder above
+    // it lends, or the default); load() follows.
+    onPathChanged: { pane.applyView(); pane.changed() }
+
+    function applyView() {
+        const v = JSON.parse(Fs.view(pane.path));
+        pane.applying = true;
+        pane.mode = v.mode;
+        pane.sortBy = v.sortBy;
+        pane.descending = v.descending;
+        pane.applying = false;
+        pane.viewInfo = { own: v.own, subfolders: v.subfolders, from: v.from };
+    }
+    // Changed here ({mode, sortBy, descending}, any of them): remembered for this folder.
+    function setView(changes) {
+        pane.applying = true;
+        for (const k in changes) pane[k] = changes[k];
+        pane.applying = false;
+        Fs.setView(pane.path, JSON.stringify({ mode: pane.mode, sortBy: pane.sortBy, descending: pane.descending }));
+        pane.viewInfo = { own: true, subfolders: pane.viewInfo.subfolders, from: "" };
+        pane.load();
+    }
+    // Something about where views come from changed: show it again.
+    function refreshView() { pane.applyView(); pane.load() }
 
     // What a tab is, to save, duplicate, or move to another window.
     function snapshot() {
-        return { path: pane.path, back: pane.back.slice(-50), forward: pane.forward.slice(0, 50),
-                 mode: pane.mode, sortBy: pane.sortBy, descending: pane.descending, hidden: pane.hidden };
+        return { path: pane.path, back: pane.back.slice(-50), forward: pane.forward.slice(0, 50) };
     }
 
     function load() {
@@ -115,10 +140,10 @@ Item {
         for (const e of pane.shownEntries) s[e.path] = true;
         pane.selected = s;
     }
-    onHiddenChanged: { load(); pane.changed() }
-    onSortByChanged: { load(); pane.changed() }
-    onDescendingChanged: { load(); pane.changed() }
-    Component.onCompleted: load()
+    onHiddenChanged: pane.load()
+    // A new view takes the keys (if this tab is the one showing).
+    onModeChanged: if (pane.visible) Qt.callLater(pane.focusView)
+    Component.onCompleted: { pane.applyView(); pane.load() }
 
     // Something changed in the folder: list it again (checked every 1.5 s
     // while the window is in front; a stat call, nothing more).

@@ -318,6 +318,7 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
   - **Trash:** the freedesktop.org layout (`src/trash.rs`), so GNOME and KDE see the same Trash: home Trash for the home drive, the drive's `.Trash/$uid` or `.Trash-$uid` elsewhere.
   - **Clipboard:** files go as `text/uri-list`, `x-special/gnome-copied-files` and plain paths (`cpp/clip.cpp`), so copy and paste work with other file managers both ways.
   - **Default:** `/etc/xdg/whiterose-mimeapps.list` makes Files open folders inside a WhiteRose session only.
+  - **Views** (`src/views.rs`, `$XDG_STATE_HOME/whiterose/files/views.json`): changing the view or sort in a folder remembers it for that folder. A folder can lend its view to everything under it, and a default covers the rest (own → nearest lending folder above → default). The last 1000 folders set are kept; lending folders always are. Showing hidden files is one setting for every window. The file is read fresh on each lookup, so Files windows in other processes agree.
 
 ## Windows
 

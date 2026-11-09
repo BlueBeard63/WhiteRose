@@ -9,6 +9,7 @@ mod ops;
 mod places;
 mod session;
 mod trash;
+mod views;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 

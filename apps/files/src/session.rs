@@ -10,30 +10,14 @@ use serde::{Deserialize, Serialize};
 /// History kept per tab, each way.
 const HISTORY: usize = 50;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "camelCase", default)]
+/// A tab: its folder and history. (How a folder is shown is the folder's
+/// own business: views.rs.)
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
 pub struct Tab {
     pub path: String,
     pub back: Vec<String>,
     pub forward: Vec<String>,
-    pub mode: String,
-    pub sort_by: String,
-    pub descending: bool,
-    pub hidden: bool,
-}
-
-impl Default for Tab {
-    fn default() -> Self {
-        Tab {
-            path: String::new(),
-            back: vec![],
-            forward: vec![],
-            mode: "grid".into(),
-            sort_by: "name".into(),
-            descending: false,
-            hidden: false,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -88,21 +72,10 @@ pub fn clean(s: Session, home: &Path) -> Session {
                     let mut back: Vec<String> = t.back.into_iter().filter(ok).collect();
                     back.drain(..back.len().saturating_sub(HISTORY));
                     let forward = t.forward.into_iter().filter(ok).take(HISTORY).collect();
-                    let mode = match t.mode.as_str() {
-                        "list" | "columns" => t.mode,
-                        _ => "grid".into(),
-                    };
-                    let sort_by = match t.sort_by.as_str() {
-                        "size" | "modified" | "kind" => t.sort_by,
-                        _ => "name".into(),
-                    };
                     Tab {
                         path,
                         back,
                         forward,
-                        mode,
-                        sort_by,
-                        ..t
                     }
                 })
                 .collect();
@@ -155,10 +128,6 @@ mod tests {
                 tabs: vec![Tab {
                     path: a.clone(),
                     back: vec![d.to_string_lossy().into_owned()],
-                    mode: "list".into(),
-                    sort_by: "size".into(),
-                    descending: true,
-                    hidden: true,
                     ..Tab::default()
                 }],
                 current: 0,
@@ -182,9 +151,6 @@ mod tests {
                         path: gone.clone(),
                         back: vec![gone.clone(), kept.clone()],
                         forward: vec![gone, "relative".into()],
-                        mode: "bogus".into(),
-                        sort_by: "bogus".into(),
-                        ..Tab::default()
                     }],
                     current: 7,
                 },
@@ -198,10 +164,6 @@ mod tests {
         assert_eq!(w.tabs[0].path, kept, "the nearest folder still there");
         assert_eq!(w.tabs[0].back, vec![kept]);
         assert!(w.tabs[0].forward.is_empty());
-        assert_eq!(
-            (w.tabs[0].mode.as_str(), w.tabs[0].sort_by.as_str()),
-            ("grid", "name")
-        );
     }
 
     #[test]
@@ -222,7 +184,6 @@ mod tests {
                     path: p.clone(),
                     back: vec![p.clone(); 80],
                     forward: vec![p.clone(); 80],
-                    ..Tab::default()
                 }],
                 current: 0,
             }],

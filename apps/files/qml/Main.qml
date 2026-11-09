@@ -41,10 +41,9 @@ AppWindow {
     // A tab from a snapshot ({path} at least; "" is home), at `at` (the end).
     function newTab(tab, at) {
         const props = {};
-        for (const k of ["path", "back", "forward", "mode", "sortBy", "descending", "hidden"])
+        // (How it's shown is up to the folder: views.rs.)
+        for (const k of ["path", "back", "forward"])
             if (tab && tab[k] !== undefined && tab[k] !== "") props[k] = tab[k];
-        // A plain new tab looks like the one you're in.
-        if (!props.mode && win.current) { props.mode = win.current.mode; props.hidden = win.current.hidden }
         const p = paneComponent.createObject(stack, props);
         const i = at ?? win.panes.length;
         const list = win.panes.slice();
@@ -268,7 +267,7 @@ AppWindow {
             anchors { right: menuButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
             options: [{ label: "Grid", value: "grid" }, { label: "List", value: "list" }, { label: "Columns", value: "columns" }]
-            onPicked: v => { if (win.current) { win.current.mode = v; Qt.callLater(() => win.current.focusView()) } }
+            onPicked: v => { if (win.current) { win.current.setView({ mode: v }); Qt.callLater(() => win.current.focusView()) } }
         }
         IconButton {
             id: menuButton
@@ -281,18 +280,27 @@ AppWindow {
                 items: [
                     { label: "New tab", shortcut: "Ctrl+T", run: () => win.newTab({ path: win.current?.path ?? "" }) },
                     { label: "New window", shortcut: "Ctrl+N", run: () => Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) },
-                    { label: (win.current?.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => { if (win.current) win.current.hidden = !win.current.hidden } },
+                    { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                     { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark this folder", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                     { separator: true },
-                    { label: "Sort by name", run: () => { win.current.sortBy = "name"; win.current.descending = false } },
-                    { label: "Sort by size", run: () => { win.current.sortBy = "size"; win.current.descending = true } },
-                    { label: "Sort by date modified", run: () => { win.current.sortBy = "modified"; win.current.descending = true } },
-                    { label: "Sort by kind", run: () => { win.current.sortBy = "kind"; win.current.descending = false } },
+                    { label: "Sort by name", run: () => win.current.setView({ sortBy: "name", descending: false }) },
+                    { label: "Sort by size", run: () => win.current.setView({ sortBy: "size", descending: true }) },
+                    { label: "Sort by date modified", run: () => win.current.setView({ sortBy: "modified", descending: true }) },
+                    { label: "Sort by kind", run: () => win.current.setView({ sortBy: "kind", descending: false }) },
+                    { separator: true },
+                    { label: (win.current?.viewInfo.subfolders ? "Stop using this view in subfolders" : "Use this view in subfolders"),
+                      run: () => { Fs.setViewForSubfolders(win.current.path, !win.current.viewInfo.subfolders); win.refreshViews() } },
+                    { label: "Use this view everywhere",
+                      run: () => { Fs.setDefaultView(win.current.path, JSON.stringify({ mode: win.current.mode, sortBy: win.current.sortBy, descending: win.current.descending })); win.refreshViews() } },
+                    { label: "Reset this folder's view", enabled: win.current?.viewInfo.own ?? false,
+                      run: () => { Fs.resetView(win.current.path); win.refreshViews() } },
                 ]
             }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.surface1 }
     }
+    // Where views come from changed: every tab in every window shows its folder again.
+    function refreshViews() { for (const w of Session.windows) for (const p of w.panes) p.refreshView() }
     function toggleBookmark() {
         if (!win.current) return;
         const on = !sidebar.places.bookmarks.some(b => b.path === win.current.path);
@@ -318,7 +326,7 @@ AppWindow {
                 { label: "Paste", shortcut: "Ctrl+V", enabled: win.clipFiles.length > 0, run: () => win.paste(win.current.path) },
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
                 { separator: true },
-                { label: (win.current?.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => { win.current.hidden = !win.current.hidden } },
+                { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
@@ -561,10 +569,10 @@ AppWindow {
     Shortcut { sequence: "Alt+Left"; onActivated: win.current?.goBack() }
     Shortcut { sequence: "Alt+Right"; onActivated: win.current?.goForward() }
     Shortcut { sequences: ["Alt+Up", "Backspace"]; enabled: !win.typing; onActivated: win.current?.up() }
-    Shortcut { sequence: "Ctrl+1"; onActivated: { if (win.current) win.current.mode = "grid" } }
-    Shortcut { sequence: "Ctrl+2"; onActivated: { if (win.current) win.current.mode = "list" } }
-    Shortcut { sequence: "Ctrl+3"; onActivated: { if (win.current) win.current.mode = "columns" } }
-    Shortcut { sequence: "Ctrl+H"; onActivated: { if (win.current) win.current.hidden = !win.current.hidden } }
+    Shortcut { sequence: "Ctrl+1"; onActivated: win.current?.setView({ mode: "grid" }) }
+    Shortcut { sequence: "Ctrl+2"; onActivated: win.current?.setView({ mode: "list" }) }
+    Shortcut { sequence: "Ctrl+3"; onActivated: win.current?.setView({ mode: "columns" }) }
+    Shortcut { sequence: "Ctrl+H"; onActivated: Session.setHidden(!Session.hidden) }
     Shortcut { sequence: "Ctrl+A"; enabled: !win.typing; onActivated: win.current?.selectAll() }
     Shortcut { sequence: "Ctrl+D"; onActivated: win.toggleBookmark() }
     Shortcut { sequence: "F5"; onActivated: win.current?.load() }

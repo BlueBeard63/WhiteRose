@@ -57,6 +57,32 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "saveSession"]
         fn save_session(self: &Fs, json: &QString) -> bool;
+
+        /// How `path` is shown: {mode, sortBy, descending, own, subfolders, from}.
+        #[qinvokable]
+        fn view(self: &Fs, path: &QString) -> QString;
+        /// Remembers {mode, sortBy, descending} for this folder.
+        #[qinvokable]
+        #[cxx_name = "setView"]
+        fn set_view(self: &Fs, path: &QString, json: &QString) -> bool;
+        /// This folder lends its view to its subfolders (or stops).
+        #[qinvokable]
+        #[cxx_name = "setViewForSubfolders"]
+        fn set_view_for_subfolders(self: &Fs, path: &QString, on: bool) -> bool;
+        /// This view for every folder without one of its own.
+        #[qinvokable]
+        #[cxx_name = "setDefaultView"]
+        fn set_default_view(self: &Fs, path: &QString, json: &QString) -> bool;
+        #[qinvokable]
+        #[cxx_name = "resetView"]
+        fn reset_view(self: &Fs, path: &QString) -> bool;
+        /// Hidden files shown (everywhere).
+        #[qinvokable]
+        #[cxx_name = "showsHidden"]
+        fn shows_hidden(self: &Fs) -> bool;
+        #[qinvokable]
+        #[cxx_name = "setShowsHidden"]
+        fn set_shows_hidden(self: &Fs, on: bool) -> bool;
     }
 }
 
@@ -66,7 +92,7 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{listing, places, session};
+use crate::{listing, places, session, views};
 
 #[derive(Default)]
 pub struct FsRust;
@@ -246,5 +272,40 @@ impl qobject::Fs {
             Ok(s) => session::save_to(&session::dir(), &s).is_ok(),
             Err(_) => false,
         }
+    }
+
+    pub fn view(&self, path: &QString) -> QString {
+        let found = views::load_from(&views::file()).find(&path.to_string());
+        q(serde_json::to_value(found).unwrap_or_default())
+    }
+
+    pub fn set_view(&self, path: &QString, json: &QString) -> bool {
+        let Ok(v) = serde_json::from_str::<views::View>(&json.to_string()) else {
+            return false;
+        };
+        views::change(|all| all.set(&path.to_string(), v))
+    }
+
+    pub fn set_view_for_subfolders(&self, path: &QString, on: bool) -> bool {
+        views::change(|all| all.set_subfolders(&path.to_string(), on))
+    }
+
+    pub fn set_default_view(&self, path: &QString, json: &QString) -> bool {
+        let Ok(v) = serde_json::from_str::<views::View>(&json.to_string()) else {
+            return false;
+        };
+        views::change(|all| all.set_default(&path.to_string(), v))
+    }
+
+    pub fn reset_view(&self, path: &QString) -> bool {
+        views::change(|all| all.reset(&path.to_string()))
+    }
+
+    pub fn shows_hidden(&self) -> bool {
+        views::load_from(&views::file()).hidden
+    }
+
+    pub fn set_shows_hidden(&self, on: bool) -> bool {
+        views::change(|all| all.hidden = on)
     }
 }
