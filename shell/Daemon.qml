@@ -20,6 +20,8 @@ Singleton {
     // The latest system state ({ brightness, airplane, radios, weather, calendars }).
     property var state: null
 
+    // App setup progress: { step, apps, state: running|done|failed, line, error }.
+    signal appsEvent(var e)
     signal lockRequested()
     signal unlockRequested()
 
@@ -78,6 +80,7 @@ Singleton {
         case "setting": root.apply(msg.key, msg.value); break;
         case "state": root.state = msg; break;
         case "lock": root.lockRequested(); break;
+        case "apps": root.appsEvent(msg); break;
         case "unlock": root.unlockRequested(); break;
         }
     }

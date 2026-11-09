@@ -187,6 +187,15 @@ Rules that keep RAM low:
 
 ---
 
+## Packaging: how it's built (`make package`)
+
+- Each package is built in a container of its distro (`packaging/Dockerfile.ubuntu`, `packaging/Dockerfile.fedora`, `packaging/build.sh`), so it links that distro's own libraries. Output goes to `build/packages/`.
+- QuickShell is built from source, pinned to the revision the shell is written against, and shipped privately as `/usr/lib/whiterose/quickshell`. It uses Qt's private API, so the package requires exactly the Qt it was built with: `qt6-*-private-abi (= x.y.z)` on Ubuntu, `qt6-qtbase = x.y.z` on Fedora. A distro Qt update waits for a rebuilt WhiteRose instead of breaking the shell.
+- Dependencies come from what the binaries link (dpkg-shlibdeps; sonames for rpm), plus what a bare install lacks: Mesa's drivers, fonts, PipeWire with Pulse compatibility, NetworkManager, BlueZ, UPower, AccountsService, polkit and the portals.
+- **Starting it:** the login screen's "WhiteRose" session (`/usr/share/wayland-sessions`). Without a login screen (Ubuntu Server), logging in on tty1 starts it (`/etc/profile.d/whiterose-autostart.sh`; zsh users get the same line in `~/.zprofile`). Other consoles stay text.
+- **Ubuntu Server networking:** the package sets netplan's renderer to NetworkManager (`/etc/netplan/90-whiterose-network-manager.yaml`, from the next boot; removed on purge) so Wi-Fi and the Network page work.
+- **App setup** (Settings > Apps, offered on first login): `daemon/internal/apps`. Each app comes from the distro's packages, the maker's repository (VS Code, Signal on Ubuntu) or a COPR (Ghostty on Fedora), else Flathub. No snaps. The root half runs as `pkexec whiterosed apps-root ID...` (policy `org.whiterose.apps.install`). It only accepts catalogue ids, and every URL and command is fixed in the catalogue. Then, as you: Oh My Zsh with your theme, and your VS Code extensions (`profile/`).
+
 ## Packaging: one file, one command
 
 Goal: no setup scripts and no manual fix-ups.

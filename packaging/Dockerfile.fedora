@@ -1,0 +1,14 @@
+# Build environment for the .rpm (Fedora: the Qt it links against).
+FROM fedora:43
+RUN dnf -y install --setopt=install_weak_deps=False \
+    ca-certificates curl git gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config rpm \
+    qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel qt6-qtdeclarative-private-devel \
+    qt6-qtwayland-devel qt6-qtshadertools-devel qt6-qtsvg-devel spirv-tools \
+    cli11-devel libdrm-devel mesa-libgbm-devel jemalloc-devel pipewire-devel pam-devel \
+    polkit-devel glib2-devel wayland-devel wayland-protocols-devel \
+    libxkbcommon-devel libinput-devel libseat-devel systemd-devel mesa-libEGL-devel mesa-libGLES-devel \
+    && dnf clean all
+ARG GO_VERSION=1.26.8
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+ENV PATH=/root/.cargo/bin:/usr/local/go/bin:$PATH

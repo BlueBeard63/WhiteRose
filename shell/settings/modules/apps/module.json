@@ -1,0 +1,11 @@
+{
+  "id": "apps",
+  "name": "Apps",
+  "description": "Install the apps WhiteRose comes with",
+  "icon": "grid",
+  "category": "system",
+  "order": 6,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["apps", "install", "software", "setup", "ghostty", "vscode", "code", "thunderbird", "bitwarden", "libreoffice", "vlc", "calculator", "zapzap", "discord", "signal", "zsh", "oh my zsh", "git", "github"]
+}

@@ -7,6 +7,9 @@ Item {
     id: root
     property var entry: null
     property string name: ""
+    // An icon-theme name to use without a desktop entry (an app not
+    // installed yet).
+    property string iconName: ""
     property real size: 26
     width: size
     height: size
@@ -14,7 +17,7 @@ Item {
     Image {
         id: img
         anchors.fill: parent
-        source: root.entry ? Quickshell.iconPath(root.entry.icon, true) : ""
+        source: root.entry ? Quickshell.iconPath(root.entry.icon, true) : root.iconName ? Quickshell.iconPath(root.iconName, true) : ""
         sourceSize: Qt.size(root.size * 2, root.size * 2)
         // Theme icons are small and come from QuickShell's icon cache: loading
         // them in place means a rebuilt row (the launcher, every keystroke)

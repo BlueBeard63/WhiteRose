@@ -1,0 +1,17 @@
+# VS Code extensions WhiteRose's app setup installs (one id per line).
+bbenoist.qml
+catppuccin.catppuccin-vsc
+catppuccin.catppuccin-vsc-icons
+darkriszty.markdown-table-prettify
+file-icons.file-icons
+github.vscode-github-actions
+golang.go
+ms-azuretools.vscode-containers
+ms-vscode.makefile-tools
+pmneo.tsimporter
+tamasfe.even-better-toml
+theqtcompany.qt-core
+theqtcompany.qt-qml
+tomoki1207.pdf
+usernamehw.errorlens
+zoellner.openapi-preview

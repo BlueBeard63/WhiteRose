@@ -36,6 +36,18 @@ ShellRoot {
     // Each monitor's number and name, when asked from Settings > Displays.
     IdentifyOverlay {}
 
+    // First login: offer the app setup (Settings > Apps) once.
+    Connections {
+        target: Daemon
+        function onSettingsChanged() {
+            if (firstRun.done || Object.keys(Daemon.settings).length === 0) return;
+            firstRun.done = true;
+            if (!Daemon.setting("apps.setupDone", true)) firstRun.start();
+        }
+    }
+    // A moment after login, so the desktop is up first.
+    Timer { id: firstRun; property bool done: false; interval: 2500; onTriggered: ShellState.openSettings("apps") }
+
     // Password prompts when something needs your permission (polkit).
     PolkitPrompt {}
 

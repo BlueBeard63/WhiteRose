@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=WhiteRose
+Comment=A light Wayland desktop
+Exec=whiterose-session
+TryExec=whiterose-session
+Type=Application
+DesktopNames=WhiteRose

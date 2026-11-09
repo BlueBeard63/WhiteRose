@@ -198,6 +198,10 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		poke()
 	}
 	srv.CalendarsChanged = refreshCalendars
+	setup := &appSetup{
+		broadcast: srv.Broadcast,
+		done:      func() { _ = st.Set("apps.setupDone", json.RawMessage(`true`)) },
+	}
 	srv.Ops = map[string]func(server.Request) (any, error){
 		"battery": func(server.Request) (any, error) {
 			conn, err := dbus.ConnectSystemBus()
@@ -230,6 +234,17 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			}
 			defer conn.Close()
 			return nil, netconf.Update(conn, r.UUID, ch)
+		},
+		// App setup (Settings > Apps, and the first-run prompt).
+		"apps": func(server.Request) (any, error) { return setup.status() },
+		"apps_install": func(r server.Request) (any, error) {
+			var x struct {
+				IDs []string `json:"ids"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, err
+			}
+			return setup.install(x.IDs)
 		},
 		// Accounts (Users page). Each opens its own connection: a change can
 		// wait on a polkit password prompt.

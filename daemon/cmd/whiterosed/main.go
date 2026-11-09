@@ -47,6 +47,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdAirplane(args[1:], stdout, stderr)
 	case "calendar":
 		return cmdCalendar(args[1:], stdout, stderr)
+	case "apps-root":
+		return cmdAppsRoot(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
@@ -68,6 +70,7 @@ commands:
   brightness     set <percent>: change the screen backlight (through logind)
   airplane       on|off: block or unblock every radio
   calendar       list | add NAME URL|FILE [#COLOUR] | remove N | events FROM TO
+  apps-root      ID...: install apps from the setup (as root, through pkexec)
 `)
 }
 

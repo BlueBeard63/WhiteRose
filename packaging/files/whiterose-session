@@ -1,0 +1,29 @@
+#!/bin/sh
+# Starts a WhiteRose session (the login screen's "WhiteRose" entry, or
+# `whiterose-session` from a text console).
+export XDG_CURRENT_DESKTOP=WhiteRose
+export XDG_SESSION_DESKTOP=whiterose
+export XDG_SESSION_TYPE=wayland
+export QT_QPA_PLATFORM=wayland
+export MOZ_ENABLE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT=auto
+# WhiteRose's own QuickShell build (pinned to the Qt it was built with).
+export PATH="/usr/lib/whiterose:$PATH"
+
+# The terminal SUPER+RETURN opens: $TERMINAL, else the first one installed.
+if [ -z "$TERMINAL" ]; then
+    for t in ghostty ptyxis gnome-terminal konsole foot xterm; do
+        if command -v "$t" >/dev/null 2>&1; then
+            case "$t" in ptyxis) TERMINAL="ptyxis --standalone" ;; *) TERMINAL="$t" ;; esac
+            break
+        fi
+    done
+fi
+export TERMINAL
+
+# Apps started by D-Bus and systemd (portals, the file chooser) need to find
+# this session's display.
+exec whiterose-wm --backend drm \
+    --daemon "whiterosed serve" \
+    --shell "qs -p /usr/share/whiterose/shell" \
+    -c "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE"

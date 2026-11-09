@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Settings
+Comment=WhiteRose settings
+Exec=whiterose-settings
+Icon=preferences-system
+Type=Application
+Categories=Settings;
+OnlyShowIn=WhiteRose;
