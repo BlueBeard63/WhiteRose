@@ -18,7 +18,14 @@ pub mod qobject {
         /// executable, mime, icon}], stamp} or {ok: false, error}.
         /// sort: name | size | modified | kind.
         #[qinvokable]
-        fn list(self: &Fs, path: &QString, hidden: bool, sort: &QString, descending: bool, icon_size: i32) -> QString;
+        fn list(
+            self: &Fs,
+            path: &QString,
+            hidden: bool,
+            sort: &QString,
+            descending: bool,
+            icon_size: i32,
+        ) -> QString;
         /// Changes when entries are added, removed or renamed (to re-list).
         #[qinvokable]
         fn stamp(self: &Fs, path: &QString) -> f64;
@@ -62,17 +69,26 @@ fn q(v: Value) -> QString {
 }
 
 fn icon_path(p: Option<std::path::PathBuf>) -> String {
-    p.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+    p.map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 impl qobject::Fs {
-    pub fn list(&self, path: &QString, hidden: bool, sort: &QString, descending: bool, icon_size: i32) -> QString {
+    pub fn list(
+        &self,
+        path: &QString,
+        hidden: bool,
+        sort: &QString,
+        descending: bool,
+        icon_size: i32,
+    ) -> QString {
         let path = path.to_string();
         let ic = icons::shared();
-        let mut entries = match listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string()) {
-            Ok(v) => v,
-            Err(e) => return q(json!({"ok": false, "error": e})),
-        };
+        let mut entries =
+            match listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string()) {
+                Ok(v) => v,
+                Err(e) => return q(json!({"ok": false, "error": e})),
+            };
         let by = match sort.to_string().as_str() {
             "size" => listing::Sort::Size,
             "modified" => listing::Sort::Modified,
@@ -87,7 +103,10 @@ impl qobject::Fs {
                 let icon = icon_path(if e.dir {
                     ic.lookup("folder", size, 1)
                 } else {
-                    ic.mime.icon_names(&e.mime).iter().find_map(|n| ic.lookup(n, size, 1))
+                    ic.mime
+                        .icon_names(&e.mime)
+                        .iter()
+                        .find_map(|n| ic.lookup(n, size, 1))
                 });
                 let mut v = serde_json::to_value(&e).unwrap_or_default();
                 v["icon"] = json!(icon);
@@ -99,7 +118,9 @@ impl qobject::Fs {
 
     fn stamp_of(&self, path: &str) -> f64 {
         // A folder's own modification time changes when its entries do.
-        std::fs::metadata(path).map(|m| m.mtime() as f64 * 1000.0 + m.mtime_nsec() as f64 / 1e6).unwrap_or(0.0)
+        std::fs::metadata(path)
+            .map(|m| m.mtime() as f64 * 1000.0 + m.mtime_nsec() as f64 / 1e6)
+            .unwrap_or(0.0)
     }
 
     pub fn stamp(&self, path: &QString) -> f64 {
@@ -109,13 +130,19 @@ impl qobject::Fs {
     pub fn places(&self) -> QString {
         let ic = icons::shared();
         let with_icon = |p: places::Place| {
-            let file = icon_path(ic.lookup(&p.icon, 20, 1).or_else(|| ic.lookup("folder", 20, 1)));
+            let file = icon_path(
+                ic.lookup(&p.icon, 20, 1)
+                    .or_else(|| ic.lookup("folder", 20, 1)),
+            );
             json!({"name": p.name, "path": p.path, "icon": file})
         };
         let drives: Vec<Value> = places::drives()
             .into_iter()
             .map(|d| {
-                let file = icon_path(ic.lookup(&d.icon, 20, 1).or_else(|| ic.lookup("drive-harddisk", 20, 1)));
+                let file = icon_path(
+                    ic.lookup(&d.icon, 20, 1)
+                        .or_else(|| ic.lookup("drive-harddisk", 20, 1)),
+                );
                 let mut v = serde_json::to_value(&d).unwrap_or_default();
                 v["icon"] = json!(file);
                 v
@@ -133,15 +160,25 @@ impl qobject::Fs {
     }
 
     pub fn crumbs(&self, path: &QString) -> QString {
-        q(serde_json::to_value(places::crumbs(&path.to_string(), &places::home())).unwrap_or_default())
+        q(
+            serde_json::to_value(places::crumbs(&path.to_string(), &places::home()))
+                .unwrap_or_default(),
+        )
     }
 
     pub fn suggest(&self, typed: &QString, hidden: bool) -> QString {
-        q(json!(places::suggest(&typed.to_string(), &places::home(), hidden)))
+        q(json!(places::suggest(
+            &typed.to_string(),
+            &places::home(),
+            hidden
+        )))
     }
 
     pub fn icon(&self, name: &QString, size: i32) -> QString {
-        QString::from(icon_path(icons::shared().lookup(&name.to_string(), size.clamp(8, 512) as u32, 1)).as_str())
+        QString::from(
+            icon_path(icons::shared().lookup(&name.to_string(), size.clamp(8, 512) as u32, 1))
+                .as_str(),
+        )
     }
 
     pub fn home(&self) -> QString {
@@ -157,7 +194,12 @@ impl qobject::Fs {
         };
         let p = Path::new(&p);
         if p.is_absolute() && p.is_dir() {
-            QString::from(p.to_string_lossy().trim_end_matches('/').to_string().as_str())
+            QString::from(
+                p.to_string_lossy()
+                    .trim_end_matches('/')
+                    .to_string()
+                    .as_str(),
+            )
         } else if p == Path::new("/") {
             QString::from("/")
         } else {
@@ -174,7 +216,11 @@ impl qobject::Fs {
                 let p = Path::new(a.strip_prefix("file://").unwrap_or(&a)).to_path_buf();
                 let p = if p.is_absolute() { p } else { cwd.join(p) };
                 // A file: open its folder.
-                if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) }
+                if p.is_dir() {
+                    p
+                } else {
+                    p.parent().map(Path::to_path_buf).unwrap_or(p)
+                }
             })
             .map(|p| p.to_string_lossy().into_owned())
             .collect();

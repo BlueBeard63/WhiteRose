@@ -80,18 +80,33 @@ pub fn sort(entries: &mut [Entry], by: Sort, descending: bool) {
         }
         let o = match by {
             Sort::Name => natural_cmp(&a.name, &b.name),
-            Sort::Size => a.size.cmp(&b.size).then_with(|| natural_cmp(&a.name, &b.name)),
-            Sort::Modified => a.modified.cmp(&b.modified).then_with(|| natural_cmp(&a.name, &b.name)),
-            Sort::Kind => a.mime.cmp(&b.mime).then_with(|| natural_cmp(&a.name, &b.name)),
+            Sort::Size => a
+                .size
+                .cmp(&b.size)
+                .then_with(|| natural_cmp(&a.name, &b.name)),
+            Sort::Modified => a
+                .modified
+                .cmp(&b.modified)
+                .then_with(|| natural_cmp(&a.name, &b.name)),
+            Sort::Kind => a
+                .mime
+                .cmp(&b.mime)
+                .then_with(|| natural_cmp(&a.name, &b.name)),
         };
-        if descending { o.reverse() } else { o }
+        if descending {
+            o.reverse()
+        } else {
+            o
+        }
     });
 }
 
 /// The folder's entries (unsorted). `mime` names a file's type.
 pub fn read(dir: &Path, hidden: bool, mime: impl Fn(&str) -> String) -> Result<Vec<Entry>, String> {
     let rd = fs::read_dir(dir).map_err(|e| match e.kind() {
-        std::io::ErrorKind::PermissionDenied => "You don't have permission to open this folder".to_string(),
+        std::io::ErrorKind::PermissionDenied => {
+            "You don't have permission to open this folder".to_string()
+        }
         std::io::ErrorKind::NotFound => "This folder doesn't exist".to_string(),
         _ => e.to_string(),
     })?;
@@ -109,13 +124,22 @@ pub fn read(dir: &Path, hidden: bool, mime: impl Fn(&str) -> String) -> Result<V
         let Ok(meta) = meta else { continue };
         let dir = meta.is_dir();
         out.push(Entry {
-            mime: if dir { "inode/directory".into() } else { mime(&name) },
+            mime: if dir {
+                "inode/directory".into()
+            } else {
+                mime(&name)
+            },
             name,
             path: path.to_string_lossy().into_owned(),
             dir,
             link,
             size: if dir { 0 } else { meta.size() },
-            modified: meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_millis() as i64).unwrap_or(0),
+            modified: meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
             hidden: is_hidden,
             executable: !dir && meta.permissions().mode() & 0o111 != 0,
         });
@@ -145,15 +169,27 @@ mod tests {
     fn natural_order() {
         let mut v = ["file10", "File2", "file1", "apple", "Banana", "file02b"];
         v.sort_by(|a, b| natural_cmp(a, b));
-        assert_eq!(v, ["apple", "Banana", "file1", "File2", "file02b", "file10"]);
+        assert_eq!(
+            v,
+            ["apple", "Banana", "file1", "File2", "file02b", "file10"]
+        );
     }
 
     #[test]
     fn folders_first_whatever_the_order() {
-        let mut v = vec![e("b.txt", false, 5), e("Zoo", true, 0), e("a.txt", false, 9), e("Alpha", true, 0)];
+        let mut v = vec![
+            e("b.txt", false, 5),
+            e("Zoo", true, 0),
+            e("a.txt", false, 9),
+            e("Alpha", true, 0),
+        ];
         sort(&mut v, Sort::Size, true);
         let names: Vec<_> = v.iter().map(|e| e.name.as_str()).collect();
-        assert_eq!(names, ["Zoo", "Alpha", "a.txt", "b.txt"], "folders first; then largest first");
+        assert_eq!(
+            names,
+            ["Zoo", "Alpha", "a.txt", "b.txt"],
+            "folders first; then largest first"
+        );
         sort(&mut v, Sort::Name, false);
         let names: Vec<_> = v.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, ["Alpha", "Zoo", "a.txt", "b.txt"]);
@@ -169,10 +205,26 @@ mod tests {
         std::os::unix::fs::symlink(d.join("sub"), d.join("link-to-sub")).unwrap();
         let mut v = read(&d, false, |_| "text/plain".into()).unwrap();
         sort(&mut v, Sort::Name, false);
-        let got: Vec<_> = v.iter().map(|e| (e.name.as_str(), e.dir, e.link, e.size)).collect();
-        assert_eq!(got, [("link-to-sub", true, true, 0), ("sub", true, false, 0), ("a.txt", false, false, 5)]);
-        assert_eq!(read(&d, true, |_| String::new()).unwrap().len(), 4, "hidden files when asked");
-        assert!(read(&d.join("missing"), false, |_| String::new()).unwrap_err().contains("doesn't exist"));
+        let got: Vec<_> = v
+            .iter()
+            .map(|e| (e.name.as_str(), e.dir, e.link, e.size))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("link-to-sub", true, true, 0),
+                ("sub", true, false, 0),
+                ("a.txt", false, false, 5)
+            ]
+        );
+        assert_eq!(
+            read(&d, true, |_| String::new()).unwrap().len(),
+            4,
+            "hidden files when asked"
+        );
+        assert!(read(&d.join("missing"), false, |_| String::new())
+            .unwrap_err()
+            .contains("doesn't exist"));
         fs::remove_dir_all(d).unwrap();
     }
 }

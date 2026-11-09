@@ -30,8 +30,11 @@ impl MimeDb {
             if let Ok(t) = fs::read_to_string(mime.join("globs2")) {
                 for line in t.lines().filter(|l| !l.starts_with('#')) {
                     let mut f = line.splitn(4, ':');
-                    let (Some(w), Some(m), Some(p)) = (f.next(), f.next(), f.next()) else { continue };
-                    db.globs.push((w.parse().unwrap_or(50), m.to_string(), p.to_string()));
+                    let (Some(w), Some(m), Some(p)) = (f.next(), f.next(), f.next()) else {
+                        continue;
+                    };
+                    db.globs
+                        .push((w.parse().unwrap_or(50), m.to_string(), p.to_string()));
                 }
             }
             for (file, map) in [("generic-icons", &mut db.generic), ("icons", &mut db.icons)] {
@@ -43,7 +46,8 @@ impl MimeDb {
             }
         }
         // Heavier weight first, then longer (more specific) patterns.
-        db.globs.sort_by(|a, b| b.0.cmp(&a.0).then(b.2.len().cmp(&a.2.len())));
+        db.globs
+            .sort_by(|a, b| b.0.cmp(&a.0).then(b.2.len().cmp(&a.2.len())));
         db
     }
 
@@ -123,15 +127,28 @@ fn parse_theme(roots: Vec<PathBuf>, index: &str) -> Theme {
         if l.starts_with('[') && l.ends_with(']') {
             cur = l[1..l.len() - 1].to_string();
         } else if let Some((k, v)) = l.split_once('=') {
-            sections.entry(cur.clone()).or_default().insert(k.trim().into(), v.trim().into());
+            sections
+                .entry(cur.clone())
+                .or_default()
+                .insert(k.trim().into(), v.trim().into());
         }
     }
     let head = sections.get("Icon Theme").cloned().unwrap_or_default();
     let list = |k: &str| -> Vec<String> {
-        head.get(k).map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default()
+        head.get(k)
+            .map(|v| {
+                v.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
     };
     let mut dirs = Vec::new();
-    for d in list("Directories").into_iter().chain(list("ScaledDirectories")) {
+    for d in list("Directories")
+        .into_iter()
+        .chain(list("ScaledDirectories"))
+    {
         let Some(s) = sections.get(&d) else { continue };
         let num = |k: &str, def: u32| s.get(k).and_then(|v| v.parse().ok()).unwrap_or(def);
         let size = num("Size", 0);
@@ -148,7 +165,11 @@ fn parse_theme(roots: Vec<PathBuf>, index: &str) -> Theme {
             threshold: num("Threshold", 2),
         });
     }
-    Theme { roots, dirs, inherits: list("Inherits") }
+    Theme {
+        roots,
+        dirs,
+        inherits: list("Inherits"),
+    }
 }
 
 impl IconDir {
@@ -166,7 +187,9 @@ impl IconDir {
         let (s, want) = (self.size * self.scale, size * scale);
         match self.kind.as_str() {
             "Scalable" if self.min * self.scale <= want && want <= self.max * self.scale => 0,
-            "Scalable" => (self.min * self.scale).abs_diff(want).min((self.max * self.scale).abs_diff(want)),
+            "Scalable" => (self.min * self.scale)
+                .abs_diff(want)
+                .min((self.max * self.scale).abs_diff(want)),
             _ => s.abs_diff(want),
         }
     }
@@ -196,8 +219,15 @@ impl Icons {
         themes
             .entry(name.to_string())
             .or_insert_with(|| {
-                let roots: Vec<PathBuf> = self.base.iter().map(|b| b.join(name)).filter(|p| p.is_dir()).collect();
-                let index = roots.iter().find_map(|r| fs::read_to_string(r.join("index.theme")).ok())?;
+                let roots: Vec<PathBuf> = self
+                    .base
+                    .iter()
+                    .map(|b| b.join(name))
+                    .filter(|p| p.is_dir())
+                    .collect();
+                let index = roots
+                    .iter()
+                    .find_map(|r| fs::read_to_string(r.join("index.theme")).ok())?;
                 Some(parse_theme(roots, &index))
             })
             .clone()
@@ -275,7 +305,10 @@ impl Icons {
             return self.lookup("folder", size, scale);
         }
         let mime = self.mime.type_of(name).to_string();
-        self.mime.icon_names(&mime).iter().find_map(|n| self.lookup(n, size, scale))
+        self.mime
+            .icon_names(&mime)
+            .iter()
+            .find_map(|n| self.lookup(n, size, scale))
     }
 }
 
@@ -302,7 +335,8 @@ pub fn data_dirs() -> Vec<PathBuf> {
             }
         }
     }
-    let dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let dirs =
+        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
     v.extend(dirs.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
     v
 }
@@ -314,7 +348,12 @@ pub fn current_theme() -> String {
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_matches('\'').to_string())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .trim_matches('\'')
+                .to_string()
+        })
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| "Adwaita".into())
 }
@@ -352,24 +391,43 @@ mod tests {
         mk("icons/Base/index.theme", "[Icon Theme]\nDirectories=scalable/mimetypes,16x16/mimetypes\n[scalable/mimetypes]\nSize=64\nMinSize=8\nMaxSize=512\nType=Scalable\n[16x16/mimetypes]\nSize=16\nType=Fixed\n");
         mk("icons/Base/scalable/mimetypes/text-x-generic.svg", "<svg/>");
         mk("icons/Base/16x16/mimetypes/application-pdf.png", "png");
-        mk("icons/hicolor/index.theme", "[Icon Theme]\nDirectories=48x48/apps\n[48x48/apps]\nSize=48\nType=Threshold\n");
+        mk(
+            "icons/hicolor/index.theme",
+            "[Icon Theme]\nDirectories=48x48/apps\n[48x48/apps]\nSize=48\nType=Threshold\n",
+        );
         mk("icons/hicolor/48x48/apps/firefox.png", "png");
         mk("mime/globs2", "50:application/pdf:*.pdf\n50:text/x-python:*.py\n10:text/plain:*.txt\n55:application/x-compressed-tar:*.tar.gz\n");
         mk("mime/generic-icons", "text/x-python:text-x-script\n");
-        let icons = Icons::new("Mine", vec![root.join("icons")], &[root.clone()]);
+        let icons = Icons::new(
+            "Mine",
+            vec![root.join("icons")],
+            std::slice::from_ref(&root),
+        );
         (root, icons)
     }
 
     #[test]
     fn finds_through_the_inheritance_chain_and_nearest_size() {
         let (root, icons) = fixture();
-        assert_eq!(icons.lookup("folder", 48, 1), Some(root.join("icons/Mine/48x48/places/folder.png")));
+        assert_eq!(
+            icons.lookup("folder", 48, 1),
+            Some(root.join("icons/Mine/48x48/places/folder.png"))
+        );
         // Not in Mine: from Base (scalable fits any size).
-        assert_eq!(icons.lookup("text-x-generic", 32, 1), Some(root.join("icons/Base/scalable/mimetypes/text-x-generic.svg")));
+        assert_eq!(
+            icons.lookup("text-x-generic", 32, 1),
+            Some(root.join("icons/Base/scalable/mimetypes/text-x-generic.svg"))
+        );
         // Only a 16px PDF icon exists: the nearest is used.
-        assert_eq!(icons.lookup("application-pdf", 48, 1), Some(root.join("icons/Base/16x16/mimetypes/application-pdf.png")));
+        assert_eq!(
+            icons.lookup("application-pdf", 48, 1),
+            Some(root.join("icons/Base/16x16/mimetypes/application-pdf.png"))
+        );
         // hicolor is always last.
-        assert_eq!(icons.lookup("firefox", 48, 1), Some(root.join("icons/hicolor/48x48/apps/firefox.png")));
+        assert_eq!(
+            icons.lookup("firefox", 48, 1),
+            Some(root.join("icons/hicolor/48x48/apps/firefox.png"))
+        );
         assert_eq!(icons.lookup("nope", 48, 1), None);
         let _ = fs::remove_dir_all(root);
     }
@@ -378,12 +436,27 @@ mod tests {
     fn file_icons_by_type_with_fallbacks() {
         let (root, icons) = fixture();
         assert_eq!(icons.mime.type_of("a.PDF"), "application/pdf");
-        assert_eq!(icons.mime.type_of("x.tar.gz"), "application/x-compressed-tar");
-        assert_eq!(icons.mime.type_of("mystery.bin"), "application/octet-stream");
-        assert_eq!(icons.for_file("Report.pdf", false, 48, 1), Some(root.join("icons/Base/16x16/mimetypes/application-pdf.png")));
+        assert_eq!(
+            icons.mime.type_of("x.tar.gz"),
+            "application/x-compressed-tar"
+        );
+        assert_eq!(
+            icons.mime.type_of("mystery.bin"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            icons.for_file("Report.pdf", false, 48, 1),
+            Some(root.join("icons/Base/16x16/mimetypes/application-pdf.png"))
+        );
         // text/x-python has no icon here: generic text it is.
-        assert_eq!(icons.for_file("app.py", false, 48, 1), Some(root.join("icons/Base/scalable/mimetypes/text-x-generic.svg")));
-        assert_eq!(icons.for_file("Music", true, 48, 1), Some(root.join("icons/Mine/48x48/places/folder.png")));
+        assert_eq!(
+            icons.for_file("app.py", false, 48, 1),
+            Some(root.join("icons/Base/scalable/mimetypes/text-x-generic.svg"))
+        );
+        assert_eq!(
+            icons.for_file("Music", true, 48, 1),
+            Some(root.join("icons/Mine/48x48/places/folder.png"))
+        );
         let _ = fs::remove_dir_all(root);
     }
 }
