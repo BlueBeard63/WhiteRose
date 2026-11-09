@@ -147,13 +147,27 @@ Item {
         return null;
     }
     readonly property bool pointerInPreview: previewHover.hovered
+
+    // Like macOS: the first card needs a short hover; once one is open, moving
+    // to another app switches immediately, and moving to an app with no
+    // windows closes it.
+    onHoveredTileChanged: {
+        const tile = hoveredTile;
+        if (!tile) return;                       // left the tiles: the hide timer decides
+        ShellState.dockPreviewKey = "";          // a real hover overrides an IPC preview
+        if (previewApp === null) return;         // not showing yet: wait for showPreview
+        if (tile.app.key === previewApp.key) return;
+        previewApp = tile.app.running ? tile.app : null;
+    }
     Timer {
         id: showPreview
         interval: 350
-        running: root.open && root.hoveredTile !== null && root.hoveredTile.app.running
-                 && root.previewApp?.key !== root.hoveredTile?.app.key
+        running: root.open && root.previewApp === null
+                 && root.hoveredTile !== null && root.hoveredTile.app.running
         onTriggered: root.previewApp = root.hoveredTile?.app ?? null
     }
+    // Pointer left both the tiles and the card (the delay bridges the gap
+    // between a tile and its card).
     Timer {
         interval: 250
         running: root.previewApp !== null && root.hoveredTile === null && !root.pointerInPreview
