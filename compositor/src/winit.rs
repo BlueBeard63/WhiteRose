@@ -81,6 +81,7 @@ pub fn init_winit(
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
     let mut night = crate::night_light::Pass::default();
     let mut night_applied = state.night_light;
+    let mut shown_cursor: Option<smithay::input::pointer::CursorIcon> = None;
 
     event_loop.handle().insert_source(winit, move |event, _, state| match event {
         WinitEvent::Resized { size, .. } => {
@@ -98,6 +99,13 @@ pub fn init_winit(
         WinitEvent::Redraw => {
             if let Some(h) = host_inhibit.as_mut() {
                 h.dispatch();
+            }
+            // The host draws the pointer: ask it for the shape apps named.
+            if let smithay::input::pointer::CursorImageStatus::Named(icon) = &state.cursor_status {
+                if shown_cursor != Some(*icon) {
+                    shown_cursor = Some(*icon);
+                    backend.borrow().window().set_cursor(*icon);
+                }
             }
             // Night Light toggled: the whole frame must be redrawn and re-tinted.
             if state.night_light != night_applied {

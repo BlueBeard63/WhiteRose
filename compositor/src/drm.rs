@@ -130,7 +130,10 @@ pub fn init_drm(
     tracing::info!(gpu = %gpu_path.display(), "using GPU");
 
     let libinput = libinput(&session, &seat)?;
-    let (backend, drm_notifier) = open_gpu(session, libinput, node, &gpu_path)?;
+    let cursor = crate::cursor::theme();
+    tracing::info!(theme = cursor.0, size = cursor.1, "cursor");
+    let (backend, drm_notifier) = open_gpu(session, libinput, node, &gpu_path, &cursor)?;
+    state.cursor_theme = Some(cursor);
     let backend: Shared = Rc::new(RefCell::new(backend));
 
     init_dmabuf(&backend, state);
@@ -239,16 +242,15 @@ fn open_gpu(
     libinput: Libinput,
     node: DrmNode,
     path: &Path,
+    cursor: &(String, u32),
 ) -> Result<(Backend, smithay::backend::drm::DrmDeviceNotifier), Box<dyn std::error::Error>> {
-    let fd = session
-        .open(path, OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK)
-        .map_err(|e| {
-            format!(
-                "can't open {}: {e:?}. Another desktop is probably using the screens: \
+    let fd = session.open(path, OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK).map_err(|e| {
+        format!(
+            "can't open {}: {e:?}. Another desktop is probably using the screens: \
                  start WhiteRose from a text console (Ctrl+Alt+F3 and log in), not from inside a desktop",
-                path.display()
-            )
-        })?;
+            path.display()
+        )
+    })?;
     let fd = DrmDeviceFd::new(DeviceFd::from(fd));
     let (drm, notifier) = DrmDevice::new(fd.clone(), true)?;
     let gbm = GbmDevice::new(fd)?;
@@ -273,7 +275,7 @@ fn open_gpu(
         manager,
         scanner: DrmScanner::new(),
         screens: HashMap::new(),
-        cursors: Cursors::from_env(),
+        cursors: Cursors::new(&cursor.0, cursor.1),
         active: true,
     };
     Ok((backend, notifier))

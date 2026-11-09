@@ -457,7 +457,7 @@ impl WhiteRose {
     /// Development only (`WHITEROSE_DEBUG_INPUT=1`): drives the pointer like
     /// a real mouse, for reproducing UI problems without a person clicking:
     /// `{"debug_pointer":{"x":720,"y":60,"button":"press"}}` (button optional:
-    /// "press" or "release"). Returns true if the line was such a request.
+    /// "press" or "release", or "right-press" / "right-release"). Returns true if the line was such a request.
     fn debug_pointer(&mut self, line: &str) -> bool {
         #[derive(Deserialize)]
         struct P {
@@ -478,6 +478,10 @@ impl WhiteRose {
         match p.button.as_deref() {
             Some("press") => self.on_pointer_button(0x110, smithay::backend::input::ButtonState::Pressed, time),
             Some("release") => self.on_pointer_button(0x110, smithay::backend::input::ButtonState::Released, time),
+            Some("right-press") => self.on_pointer_button(0x111, smithay::backend::input::ButtonState::Pressed, time),
+            Some("right-release") => {
+                self.on_pointer_button(0x111, smithay::backend::input::ButtonState::Released, time)
+            }
             _ => {}
         }
         true

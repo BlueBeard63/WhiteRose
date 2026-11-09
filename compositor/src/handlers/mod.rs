@@ -32,8 +32,9 @@ impl SeatHandler for WhiteRose {
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: smithay::input::pointer::CursorImageStatus) {
-        self.cursor_status = image;
-        if self.draws_cursor {
+        // Redraw to show it (nested: to pass the shape on to the host).
+        if self.cursor_status != image {
+            self.cursor_status = image;
             self.schedule_redraw();
         }
     }
@@ -131,3 +132,9 @@ impl smithay::wayland::fractional_scale::FractionalScaleHandler for WhiteRose {
 }
 smithay::delegate_fractional_scale!(WhiteRose);
 smithay::delegate_viewporter!(WhiteRose);
+
+// wp_cursor_shape_v1: apps name the cursor they want ("text", "pointer")
+// and we draw it from our theme, the same size everywhere, instead of each
+// app loading and scaling its own.
+impl smithay::wayland::tablet_manager::TabletSeatHandler for WhiteRose {}
+smithay::delegate_cursor_shape!(WhiteRose);

@@ -118,6 +118,9 @@ pub struct WhiteRose {
     pub cursor_status: smithay::input::pointer::CursorImageStatus,
     /// True when the backend draws the pointer (DRM), so moving it redraws.
     pub draws_cursor: bool,
+    /// The cursor theme and size we draw with (DRM), passed on to apps.
+    pub cursor_theme: Option<(String, u32)>,
+    pub cursor_shape_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
     /// Switches to another console (DRM backend only).
     pub vt_switch: Option<Box<dyn FnMut(i32)>>,
     pub night_light: crate::night_light::NightLight,
@@ -151,6 +154,7 @@ impl WhiteRose {
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Self>(&dh);
+        let cursor_shape_state = smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
         crate::toplevel_export::init(&dh);
 
@@ -246,6 +250,8 @@ impl WhiteRose {
             night_light: Default::default(),
             cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
             draws_cursor: false,
+            cursor_theme: None,
+            cursor_shape_state,
             vt_switch: None,
             session_lock_state,
             fractional_scale_state,
@@ -502,6 +508,10 @@ impl WhiteRose {
     pub fn ipc_env(&self) -> Vec<(&'static str, std::path::PathBuf)> {
         let mut env: Vec<_> = self.ipc.iter().map(|s| ("WHITEROSE_SOCKET", s.path.clone())).collect();
         env.push(("WHITEROSE_DAEMON_SOCKET", self.daemon_socket.clone()));
+        if let Some((theme, size)) = &self.cursor_theme {
+            env.push(("XCURSOR_THEME", theme.into()));
+            env.push(("XCURSOR_SIZE", size.to_string().into()));
+        }
         env
     }
 

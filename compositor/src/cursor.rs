@@ -42,11 +42,37 @@ pub struct Cursors {
     cache: HashMap<(&'static str, u32), Option<Loaded>>,
 }
 
+/// The cursor theme and size: $XCURSOR_THEME / $XCURSOR_SIZE, else the
+/// desktop's (GNOME's interface settings, which Ubuntu and Fedora set),
+/// else the system default at 24 px. Apps started in the session are given
+/// the same, so their own cursors match ours.
+pub fn theme() -> (String, u32) {
+    fn gsetting(key: &str) -> Option<String> {
+        let out = std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", key])
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        let v = String::from_utf8_lossy(&out.stdout).trim().trim_matches('\'').to_string();
+        (out.status.success() && !v.is_empty()).then_some(v)
+    }
+    let theme = std::env::var("XCURSOR_THEME")
+        .ok()
+        .filter(|t| !t.is_empty())
+        .or_else(|| gsetting("cursor-theme"))
+        .unwrap_or_else(|| "default".into());
+    let size = std::env::var("XCURSOR_SIZE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .or_else(|| gsetting("cursor-size").and_then(|s| s.parse().ok()))
+        .filter(|s| (8..=256).contains(s))
+        .unwrap_or(24);
+    (theme, size)
+}
+
 impl Cursors {
-    pub fn from_env() -> Self {
-        let theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".into());
-        let size = std::env::var("XCURSOR_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or(24);
-        Self { theme: xcursor::CursorTheme::load(&theme), size, cache: HashMap::new() }
+    pub fn new(theme: &str, size: u32) -> Self {
+        Self { theme: xcursor::CursorTheme::load(theme), size, cache: HashMap::new() }
     }
 
     fn named(&mut self, icon: CursorIcon, scale: u32) -> Option<Loaded> {

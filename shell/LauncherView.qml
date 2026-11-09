@@ -235,14 +235,14 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 52; height: 52; radius: 15
                                 color: cell.sel ? Theme.surface2 : Theme.surface1
-                                AppIcon { anchors.centerIn: parent; size: 30; entry: cell.modelData.entry; name: cell.modelData.name }
+                                AppIcon { anchors.centerIn: parent; size: 30; entry: cell.modelData?.entry ?? null; name: cell.modelData?.name ?? "" }
                             }
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: cell.width - 8
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
-                                text: cell.modelData.name
+                                text: cell.modelData?.name ?? ""
                                 color: Theme.text
                                 font { family: Theme.font; pointSize: Theme.pt(11.5); weight: Font.Medium }
                             }
