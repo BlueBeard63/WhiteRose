@@ -7,4 +7,7 @@ ShellRoot {
         model: Quickshell.screens
         delegate: Bar {}
     }
+
+    // Screenshot toast, on the primary screen.
+    ScreenshotToast { screen: Quickshell.screens[0] ?? null }
 }

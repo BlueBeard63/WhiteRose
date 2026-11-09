@@ -20,11 +20,17 @@ Singleton {
 
     // A shortcut the shell should handle, e.g. "screenshot_region", "app_launcher".
     signal action(string name)
+    // A screenshot was saved (already on the clipboard as image/png).
+    signal screenshotSaved(string path, int width, int height)
+    signal screenshotFailed(string error)
 
     function workspace(n) { send({ cmd: "workspace", n: n }) }
     function moveToWorkspace(n) { send({ cmd: "move_to_workspace", n: n }) }
     function spawn(command) { send({ cmd: "spawn", command: command }) }
     function closeWindow() { send({ cmd: "close_window" }) }
+    function screenshot() { send({ cmd: "screenshot" }) }
+    // The compositor only deletes files it saved itself.
+    function deleteScreenshot(path) { send({ cmd: "delete_screenshot", path: path }) }
 
     function send(obj) {
         if (!socket.connected) return;
@@ -47,6 +53,12 @@ Singleton {
             break;
         case "action":
             root.action(msg.name);
+            break;
+        case "screenshot":
+            root.screenshotSaved(msg.path, msg.width, msg.height);
+            break;
+        case "screenshot_failed":
+            root.screenshotFailed(msg.error);
             break;
         }
     }
