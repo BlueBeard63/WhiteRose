@@ -421,14 +421,35 @@ mod tests {
     #[test]
     fn grouping_and_columns() {
         let mut v = Views::default();
-        v.set("/a", View { group: "modified".into(), sort_by: "created".into(), ..View::default() });
+        v.set(
+            "/a",
+            View {
+                group: "modified".into(),
+                sort_by: "created".into(),
+                ..View::default()
+            },
+        );
         let f = v.find("/a").view;
-        assert_eq!((f.group.as_str(), f.sort_by.as_str()), ("modified", "created"));
-        v.set("/b", View { group: "colour".into(), ..View::default() });
+        assert_eq!(
+            (f.group.as_str(), f.sort_by.as_str()),
+            ("modified", "created")
+        );
+        v.set(
+            "/b",
+            View {
+                group: "colour".into(),
+                ..View::default()
+            },
+        );
         assert_eq!(v.find("/b").view.group, "", "unknown grouping: none");
         assert_eq!(v.folders_at, "first");
         assert_eq!(
-            columns_checked(vec!["kind".into(), "nope".into(), "size".into(), "kind".into()]),
+            columns_checked(vec![
+                "kind".into(),
+                "nope".into(),
+                "size".into(),
+                "kind".into()
+            ]),
             vec!["kind".to_string(), "size".to_string()]
         );
     }

@@ -568,7 +568,9 @@ impl qobject::Fs {
 
     pub fn arrangement(&self) -> QString {
         let v = views::load_from(&views::file());
-        q(json!({"foldersAt": v.folders_at, "columns": views::columns_checked(v.columns), "widths": v.widths}))
+        q(
+            json!({"foldersAt": v.folders_at, "columns": views::columns_checked(v.columns), "widths": v.widths}),
+        )
     }
 
     pub fn set_folders_at(&self, at: &QString) -> bool {

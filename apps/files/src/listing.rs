@@ -313,11 +313,24 @@ mod tests {
     #[test]
     fn folders_first_mixed_or_last() {
         let e = |n: &str, dir: bool| Entry {
-            name: n.into(), path: n.into(), dir, link: false, size: 0, modified: 0, created: 0,
-            hidden: false, executable: false, mime: String::new(),
+            name: n.into(),
+            path: n.into(),
+            dir,
+            link: false,
+            size: 0,
+            modified: 0,
+            created: 0,
+            hidden: false,
+            executable: false,
+            mime: String::new(),
         };
         let names = |v: &[Entry]| v.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
-        let mut v = vec![e("b.txt", false), e("Zed", true), e("a.txt", false), e("Apps", true)];
+        let mut v = vec![
+            e("b.txt", false),
+            e("Zed", true),
+            e("a.txt", false),
+            e("Apps", true),
+        ];
         sort_with(&mut v, Sort::Name, false, Folders::First);
         assert_eq!(names(&v), ["Apps", "Zed", "a.txt", "b.txt"]);
         sort_with(&mut v, Sort::Name, false, Folders::Mixed);
