@@ -57,15 +57,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let terminal = std::env::var("TERMINAL").unwrap_or_else(|_| "ptyxis --standalone".into());
-    let bindings = match main_mod.as_str() {
-        "super" => Bindings::defaults(&terminal),
-        "ctrl-alt" => Bindings::defaults(&terminal).remap_logo(Mods { ctrl: true, alt: true, ..Mods::NONE }),
+    let logo_remap = match main_mod.as_str() {
+        "super" => None,
+        "ctrl-alt" => Some(Mods { ctrl: true, alt: true, ..Mods::NONE }),
         other => return Err(format!("--mod must be super or ctrl-alt, not {other:?}").into()),
     };
+    let bindings = Bindings::defaults(&terminal);
 
     let mut event_loop: EventLoop<'static, WhiteRose> = EventLoop::try_new()?;
     let display: Display<WhiteRose> = Display::new()?;
     let mut state = WhiteRose::new(&mut event_loop, display, bindings);
+    // Shortcuts and keyboard layout: defaults and the system's layout now;
+    // the user's settings arrive from whiterosed.
+    state.keyboard.terminal = terminal;
+    state.keyboard.logo_remap = logo_remap;
+    state.apply_shortcuts();
+    state.apply_keyboard();
 
     let nested = match backend.as_str() {
         "auto" => std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some(),

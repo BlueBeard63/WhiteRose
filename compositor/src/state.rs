@@ -118,6 +118,10 @@ pub struct WhiteRose {
     pub cursor_status: smithay::input::pointer::CursorImageStatus,
     /// True when the backend draws the pointer (DRM), so moving it redraws.
     pub draws_cursor: bool,
+    /// Layouts, key repeat and the shortcut settings (see keyboard.rs).
+    pub keyboard: crate::keyboard::KeyboardSettings,
+    /// The IPC client (Settings) recording a shortcut: shortcuts are off.
+    pub shortcuts_paused: Option<u64>,
     /// The cursor theme and size we draw with (DRM), passed on to apps.
     pub cursor_theme: Option<(String, u32)>,
     pub cursor_shape_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
@@ -251,6 +255,13 @@ impl WhiteRose {
             cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
             draws_cursor: false,
             cursor_theme: None,
+            keyboard: crate::keyboard::KeyboardSettings {
+                repeat_delay: 300,
+                repeat_rate: 30,
+                terminal: "ptyxis --standalone".into(),
+                ..Default::default()
+            },
+            shortcuts_paused: None,
             cursor_shape_state,
             vt_switch: None,
             session_lock_state,
@@ -535,6 +546,7 @@ impl WhiteRose {
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
             Action::Quit => self.loop_signal.stop(),
+            Action::NextLayout => self.next_layout(),
             Action::SwitchVt(vt) => {
                 if let Some(switch) = self.vt_switch.as_mut() {
                     switch(vt);

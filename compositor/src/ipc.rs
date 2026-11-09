@@ -86,6 +86,16 @@ pub enum Event {
         capabilities: crate::outputs::Capabilities,
         trial_until: Option<u64>,
     },
+    /// Every shortcut and its keys (Keyboard & Shortcuts page).
+    Shortcuts {
+        shortcuts: Vec<crate::keyboard::ShortcutView>,
+    },
+    /// The keyboard layouts in use (the system's if none are set), with
+    /// their names, and which one is active.
+    Keyboard {
+        layouts: Vec<crate::keyboard::LayoutView>,
+        active: usize,
+    },
 }
 
 impl Event {
@@ -168,6 +178,11 @@ pub enum Request {
     DeleteScreenshot {
         path: String,
     },
+    /// Settings is recording a new shortcut: keys reach it instead of
+    /// triggering shortcuts, until it says so or disconnects.
+    PauseShortcuts {
+        on: bool,
+    },
 }
 
 fn neutral() -> u32 {
@@ -203,6 +218,7 @@ impl Request {
             }
             Request::Quit => Action::Quit,
             Request::IdentifyOutputs => Action::IdentifyOutputs,
+            Request::PauseShortcuts { .. } => unreachable!("handled per client in ipc_request"),
         }
     }
 }
@@ -214,6 +230,7 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
         Action::QuickSettings => "quick_settings",
         Action::Lock => "lock",
         Action::IdentifyOutputs => "identify_outputs",
+        Action::Media(name) => name,
         Action::Notifications => "notifications",
         Action::ScreenshotRegion => "screenshot_region",
         _ => return None,
@@ -270,6 +287,8 @@ pub struct Server {
     last_lock: Option<Event>,
     last_island: Option<Event>,
     last_outputs: Option<Event>,
+    last_shortcuts: Option<Event>,
+    last_keyboard: Option<Event>,
 }
 
 impl Server {
@@ -307,6 +326,8 @@ impl Server {
             last_lock: None,
             last_island: None,
             last_outputs: None,
+            last_shortcuts: None,
+            last_keyboard: None,
         })
     }
 
@@ -343,6 +364,8 @@ impl Server {
             Event::Lock { .. } => &mut self.last_lock,
             Event::Island { .. } => &mut self.last_island,
             Event::Outputs { .. } => &mut self.last_outputs,
+            Event::Shortcuts { .. } => &mut self.last_shortcuts,
+            Event::Keyboard { .. } => &mut self.last_keyboard,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
                 self.broadcast(&event);
                 return;
@@ -375,6 +398,8 @@ impl WhiteRose {
             self.island_event(),
             self.outputs_event(),
             Event::Lock { locked: self.is_locked() },
+            self.shortcuts_event(),
+            self.keyboard_event(),
         ];
         let Some(server) = self.ipc.as_mut() else { return };
         let (Ok(()), Ok(reader)) = (stream.set_nonblocking(true), stream.try_clone()) else { return };
@@ -389,7 +414,9 @@ impl WhiteRose {
         }
         server.clients.push(client);
         // Everyone connected now has this state; don't send it again unless it changes.
-        let [ws, focus, windows, island, outputs, lock] = snapshot;
+        let [ws, focus, windows, island, outputs, lock, shortcuts, keyboard] = snapshot;
+        server.last_keyboard = Some(keyboard);
+        server.last_shortcuts = Some(shortcuts);
         server.last_outputs = Some(outputs);
         server.last_lock = Some(lock);
         server.last_island = Some(island);
@@ -438,13 +465,21 @@ impl WhiteRose {
             server.remove(id);
             tracing::info!(id, "shell disconnected");
         }
+        // Settings closed (or crashed) while recording a shortcut.
+        if self.shortcuts_paused == Some(id) {
+            self.shortcuts_paused = None;
+        }
     }
 
     fn ipc_request(&mut self, id: u64, line: &str) {
-        if self.debug_pointer(line) {
+        if self.debug_pointer(line) || self.debug_key(line) {
             return;
         }
         match Request::parse(line) {
+            Ok(Request::PauseShortcuts { on }) => {
+                self.shortcuts_paused = if on { Some(id) } else { self.shortcuts_paused.filter(|&p| p != id) };
+                tracing::debug!(id, on, "shortcuts paused");
+            }
             Ok(req) => {
                 // Requests never come with modifiers held down.
                 self.shortcut_mods = crate::keybind::Mods::NONE;
@@ -484,6 +519,32 @@ impl WhiteRose {
             }
             _ => {}
         }
+        true
+    }
+
+    /// Development only, like debug_pointer: `{"debug_key":{"code":133,"down":true}}`
+    /// presses or releases a key (xkb keycode, evdev + 8) as the keyboard would.
+    fn debug_key(&mut self, line: &str) -> bool {
+        #[derive(Deserialize)]
+        struct K {
+            code: u32,
+            down: bool,
+        }
+        #[derive(Deserialize)]
+        struct Req {
+            debug_key: K,
+        }
+        if !line.contains("\"debug_key\"") || std::env::var_os("WHITEROSE_DEBUG_INPUT").is_none() {
+            return false;
+        }
+        let Ok(Req { debug_key: k }) = serde_json::from_str(line) else { return false };
+        let time = (std::time::Instant::now() - self.start_time).as_millis() as u32;
+        let state = if k.down {
+            smithay::backend::input::KeyState::Pressed
+        } else {
+            smithay::backend::input::KeyState::Released
+        };
+        self.on_key(smithay::input::keyboard::Keycode::new(k.code), state, time);
         true
     }
 

@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
 const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
+const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "newId", "parseLayouts", "searchLayouts"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -410,6 +411,74 @@ test("differs notices changes and only changes", () => {
     assert.ok(!D.differs(a, b));
     b[0].scale = 2;
     assert.ok(D.differs(a, b));
+});
+
+// ---- Keys (Keyboard & Shortcuts) -------------------------------------------
+const views = [
+    { id: "launcher", keys: ["SUPER"], defaults: ["SUPER"] },
+    { id: "fullscreen", keys: ["SUPER+F"], defaults: ["SUPER+F"] },
+    { id: "close-window", keys: ["SUPER+Q"], defaults: ["SUPER+Q"] },
+    { id: "workspace", keys: ["SUPER+1-9"], defaults: ["SUPER+1-9"] },
+    { id: "custom-files", keys: ["SUPER+E"], defaults: [], command: "nautilus" },
+];
+
+test("keys: names by position and by function", () => {
+    assert.equal(K.keyName(0x46, 41), "F", "letters by position");
+    assert.equal(K.keyName(0x21, 10), "1", "SHIFT+1 is still 1");
+    assert.equal(K.keyName(0x01000031, 0), "F2");
+    assert.equal(K.keyName(0x01000072, 0), "XF86AudioRaiseVolume");
+    assert.equal(K.keyName(0x01000004, 36), "RETURN");
+    assert.equal(K.keyName(0x12345, 999), "", "unknown keys can't be shortcuts");
+    assert.ok(K.isModifier(0x01000053) && K.isModifier(0x01000020) && !K.isModifier(0x46));
+});
+
+test("keys: combos are written one way", () => {
+    assert.equal(K.combo({ logo: true, shift: true }, "S"), "SUPER+SHIFT+S");
+    assert.equal(K.combo({ logo: true }, ""), "SUPER");
+    assert.equal(K.normalize("shift+super+s"), "SUPER+SHIFT+S");
+    assert.equal(K.normalize("ctrl+alt+BackSpace"), "CTRL+ALT+BACKSPACE");
+    assert.equal(K.normalize("logo"), "SUPER");
+    assert.deepEqual(K.expand("SUPER+1-9").length, 9);
+    assert.equal(K.expand("SUPER+1-9")[2], "SUPER+3");
+    assert.equal(K.forRange("SUPER+SHIFT+4"), "SUPER+SHIFT+1-9");
+    assert.equal(K.forRange("SUPER+W"), null);
+    assert.deepEqual(K.caps("SUPER+1-9"), ["SUPER", "1–9"]);
+    assert.deepEqual(K.caps("XF86AudioRaiseVolume"), ["VOL +"]);
+    assert.equal(K.spoken("SUPER+SPACE"), "SUPER + SPACE");
+});
+
+test("keys: conflicts, including inside 1-9", () => {
+    assert.equal(K.conflict(views, "super+f", "close-window").id, "fullscreen");
+    assert.equal(K.conflict(views, "SUPER+F", "fullscreen"), null, "not with itself");
+    assert.equal(K.conflict(views, "SUPER+3", "fullscreen").id, "workspace");
+    assert.equal(K.conflict(views, "SUPER+SHIFT+F", "x"), null);
+});
+
+test("keys: assigning replaces, takes over, and drops back to defaults", () => {
+    const st = { shortcuts: views, overrides: {}, custom: [{ id: "custom-files", name: "Files", command: "nautilus", keys: ["SUPER+E"] }] };
+    // SUPER+E for fullscreen: taken from the custom shortcut.
+    let r = K.assign(st, "fullscreen", "SUPER+E", false);
+    assert.deepEqual(r.overrides, { fullscreen: ["SUPER+E"] });
+    assert.deepEqual(r.custom[0].keys, []);
+    // Close window gets SUPER+F (taken from fullscreen's default).
+    r = K.assign(st, "close-window", "SUPER+F", true);
+    assert.deepEqual(r.overrides, { fullscreen: [], "close-window": ["SUPER+Q", "SUPER+F"] });
+    // Setting a shortcut back to its default removes the override.
+    const st2 = Object.assign({}, st, { overrides: { "close-window": ["ALT+F4"] }, shortcuts: views.map(v => v.id === "close-window" ? Object.assign({}, v, { keys: ["ALT+F4"] }) : v) });
+    assert.deepEqual(K.assign(st2, "close-window", "SUPER+Q", false).overrides, {});
+    // A plain number key taken by the workspaces leaves the other eight.
+    r = K.assign(st, "fullscreen", "SUPER+3", false);
+    assert.deepEqual(r.overrides.workspace, [], "the range can't lose one key, so it's turned off");
+});
+
+test("keys: new ids and the XKB layout list", () => {
+    assert.equal(K.newId("Open Files!", []), "custom-open-files");
+    assert.equal(K.newId("Open Files", [{ id: "custom-open-files" }]), "custom-open-files-2");
+    const db = K.parseLayouts("! model\n  pc105           Generic 105-key PC\n\n! layout\n  gb              English (UK)\n  es              Spanish\n\n! variant\n  extd            gb: English (UK, extended, Windows)\n  nodeadkeys      es: Spanish (no dead keys)\n\n! option\n  grp             Switching\n");
+    assert.deepEqual(db.layouts.map(l => l.layout), ["gb", "es"]);
+    assert.deepEqual(db.variants[1], { layout: "es", variant: "nodeadkeys", name: "Spanish (no dead keys)" });
+    assert.deepEqual(K.searchLayouts(db, "spanish").map(l => l.variant), ["", "nodeadkeys"]);
+    assert.equal(K.searchLayouts(db, "").length, 2, "browsing shows plain layouts");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

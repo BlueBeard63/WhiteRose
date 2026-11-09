@@ -22,6 +22,9 @@ ShellRoot {
 
     LockScreen {}
 
+    // Volume, brightness and media keys.
+    MediaKeys {}
+
     // Each monitor's number and name, when asked from Settings > Displays.
     IdentifyOverlay {}
 

@@ -246,6 +246,18 @@ Figma frames: `Settings - Displays` and `Settings - Displays (dragging)`.
 - Identify shows each monitor's number and name on it for 3 s (`shell/IdentifyOverlay.qml`).
 - The logic (snapping, overlap, building the setting) is `settings/modules/displays/Displays.js`, tested by `shell/tests/run.mjs`.
 
+## Keyboard and shortcuts
+
+Figma frame: `Settings - Keyboard & Shortcuts`.
+
+- **Every shortcut is an action with a stable id** (`compositor/src/keybind.rs`, `CATALOG`: `close-window`, `workspace`, `volume-up`, ...), a name, a group and default keys. The table is the defaults plus the user's changes, rebuilt the moment a setting changes.
+- **Settings:** `shortcuts.keys` holds only changes (id → keys; an empty list turns one off); `shortcuts.custom` holds your own `{id, name, command, keys}`. Keys are strings: `SUPER+SHIFT+S`, `PRTSC`, `XF86AudioRaiseVolume`, and `SUPER+1-9` for the nine workspace shortcuts.
+- **Keys match by position:** shortcuts use the key's Latin symbol, so they keep working on other layouts. Settings records them the same way (by scan code), so what you press is what's saved.
+- **Recording:** Settings sends `pause_shortcuts` so keys reach it instead of triggering shortcuts. Closing Settings (or a crash) un-pauses them. Ctrl+Alt+Fn still works. A combo another shortcut uses shows a warning; Enter takes it over.
+- **Layouts:** `keyboard.layouts` (first is the default; UK English, `gb`, out of the box); an empty list means the system's (`/etc/default/keyboard` on Ubuntu, `/etc/X11/xorg.conf.d/00-keyboard.conf` on Fedora), and UK English if the system doesn't say. SUPER+SPACE switches. The compositor sends the layouts' XKB names and the active one in the `keyboard` event. The page lists layouts from XKB's `evdev.lst`.
+- **Repeat:** `keyboard.repeatDelay` (150–1000 ms) and `keyboard.repeatRate` (5–80 /s).
+- **Media keys** (volume, mic, brightness, play/next/previous) are shortcuts too, so they can be remapped. The shell carries them out (`shell/MediaKeys.qml`: PipeWire, `whiterosed brightness`, MPRIS). On a console session nothing else would handle them.
+
 ## Real hardware (DRM backend)
 
 `whiterose-wm --backend drm` (the default when not inside another desktop), or `make run-tty` from a console login.
@@ -413,7 +425,7 @@ The calendar panel (`shell/CalendarPanel.qml`) opens from the clock. It shows th
 
 All user settings live in one SQLite database, `~/.local/share/whiterose/settings.db`. Both the folder and the file are readable only by the user. It's owned by `whiterosed serve`, which the compositor starts and restarts (`--daemon`), one per session, on `$WHITEROSE_DAEMON_SOCKET`.
 
-- **Keys and values:** each setting is a key holding a JSON value (`dock.pinned`, `launcher.*`, `quick.*`, `weather.*`, `calendar.sources`, `displays`).
+- **Keys and values:** each setting is a key holding a JSON value (`dock.pinned`, `launcher.*`, `quick.*`, `weather.*`, `calendar.sources`, `displays`, `keyboard.*`, `shortcuts.*`).
   - Known keys have a default and a type check (`daemon/internal/store/keys.go`).
   - Settings modules keep theirs under `module.<name>.`.
   - Bad values are refused with a reason.
@@ -444,7 +456,8 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Dock | `dock.pinned`: order, remove, add from installed apps. |
 | Notifications | Do Not Disturb, popup duration, per-app mute (the shell records which apps notify). |
 | Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
+| Keyboard & Shortcuts | Compositor `shortcuts` and `keyboard` events; `keyboard.*` and `shortcuts.*` settings. |
 | Displays | Compositor `outputs` event; Apply writes the `displays.test` trial, Keep writes `displays`. |
 | Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
 
-- **Pages not built yet** don't appear in the sidebar: Keyboard & Shortcuts, Appearance, Top Bar, Updates, Users, Privacy. They wait on their backends: shortcuts read from the settings database, theming, the update system.
+- **Pages not built yet** don't appear in the sidebar: Appearance, Top Bar, Updates, Users, Privacy. They wait on their backends: theming, the update system.

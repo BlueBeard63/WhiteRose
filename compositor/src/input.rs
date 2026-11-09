@@ -141,7 +141,8 @@ impl WhiteRose {
                 }
 
                 // Locked: every key goes to the lock screen, no shortcuts.
-                if state.is_locked() {
+                // Settings recording a new shortcut: it gets the keys.
+                if state.is_locked() || state.shortcuts_paused.is_some() {
                     return FilterResult::Forward;
                 }
                 // While a switcher is open it owns the keyboard.

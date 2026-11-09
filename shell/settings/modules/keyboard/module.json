@@ -1,0 +1,11 @@
+{
+  "id": "keyboard",
+  "name": "Keyboard & Shortcuts",
+  "description": "Layouts, key repeat and every shortcut",
+  "icon": "keyboard",
+  "category": "desktop",
+  "order": 13,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["keyboard", "shortcut", "shortcuts", "hotkey", "keybinding", "bind", "layout", "language", "input", "repeat", "delay", "rate", "super", "media", "volume keys"]
+}

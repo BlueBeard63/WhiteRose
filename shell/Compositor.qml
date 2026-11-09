@@ -41,6 +41,12 @@ Singleton {
     // While a layout is being tried: when it reverts (ms since the epoch), else 0.
     property real trialUntil: 0
 
+    // Every shortcut: { id, name, group, keys: ["SUPER+Q"], defaults, command? }.
+    property var shortcuts: []
+    // Keyboard layouts in use ({ layout, variant, name }) and the active one.
+    property var keyboardLayouts: []
+    property int activeLayout: 0
+
     function windowById(id) { return root.windows.find(w => w.id === id) ?? null }
 
     // The QuickShell Toplevel (for live previews) behind a compositor window id.
@@ -75,6 +81,9 @@ Singleton {
     function quit() { send({ cmd: "quit" }) }
     // Shows each monitor's number and name on it (Displays page).
     function identifyOutputs() { send({ cmd: "identify_outputs" }) }
+    // While Settings records a new shortcut, keys reach it instead of
+    // triggering shortcuts (undone if Settings closes).
+    function pauseShortcuts(on) { send({ cmd: "pause_shortcuts", on: on }) }
     function clipboardList() { send({ cmd: "clipboard_list" }) }
     function clipboardPaste(id) { send({ cmd: "clipboard_paste", id: id }) }
     // Makes the named copy of an image entry that a drag hands out.
@@ -118,6 +127,13 @@ Singleton {
             root.outputs = msg.outputs;
             root.outputCaps = msg.capabilities;
             root.trialUntil = msg.trial_until ?? 0;
+            break;
+        case "shortcuts":
+            root.shortcuts = msg.shortcuts;
+            break;
+        case "keyboard":
+            root.keyboardLayouts = msg.layouts;
+            root.activeLayout = msg.active;
             break;
         case "island":
             root.islandCovered = msg.covered;

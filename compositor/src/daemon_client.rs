@@ -1,6 +1,7 @@
 //! The compositor's connection to whiterosed (this session's settings
 //! daemon): it follows the display settings ("displays", and a layout being
-//! tried out, "displays.test") and applies changes live. Reconnects if the
+//! tried out, "displays.test") and the keyboard and shortcut settings
+//! (keyboard.rs), and applies changes live. Reconnects if the
 //! daemon restarts; works without one (built-in defaults).
 
 use std::{
@@ -109,22 +110,36 @@ impl WhiteRose {
     }
 
     fn daemon_message(&mut self, v: &Value) {
-        let mut changed = false;
+        let (mut displays, mut keyboard, mut shortcuts) = (false, false, false);
+        let mut take = |state: &mut WhiteRose, key: &str, value: &Value| {
+            displays |= state.set_display_setting(key, value);
+            let (k, s) = state.keyboard_setting(key, value);
+            keyboard |= k;
+            shortcuts |= s;
+        };
         match v.get("event").and_then(Value::as_str) {
             Some("settings") => {
-                let vals = &v["values"];
-                changed |= self.set_display_setting("displays", &vals["displays"]);
-                changed |= self.set_display_setting("displays.test", &vals["displays.test"]);
+                if let Some(vals) = v["values"].as_object() {
+                    for (key, value) in vals {
+                        take(self, key, value);
+                    }
+                }
             }
             Some("setting") => {
                 if let Some(key) = v["key"].as_str() {
-                    changed |= self.set_display_setting(key, &v["value"]);
+                    take(self, key, &v["value"]);
                 }
             }
             _ => {}
         }
-        if changed {
+        if displays {
             self.apply_displays();
+        }
+        if keyboard {
+            self.apply_keyboard();
+        }
+        if shortcuts {
+            self.apply_shortcuts();
         }
     }
 

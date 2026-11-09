@@ -162,6 +162,106 @@ var Known = map[string]Key{
 		Default: json.RawMessage(`{"monitor":[],"profile":[]}`),
 		Check:   checkDisplays,
 	},
+	// Keyboard layouts, first is the default: UK English to start with.
+	// An empty list means the system's (/etc/default/keyboard or the X11
+	// keyboard config).
+	"keyboard.layouts": {Default: json.RawMessage(`[{"layout":"gb"}]`), Check: into(func(v []KeyboardLayout) error {
+		if len(v) > 8 {
+			return errors.New("at most 8 layouts")
+		}
+		for _, l := range v {
+			if !xkbName.MatchString(l.Layout) || (l.Variant != "" && !xkbName.MatchString(l.Variant)) {
+				return fmt.Errorf("invalid layout %q (%q)", l.Layout, l.Variant)
+			}
+		}
+		return nil
+	})},
+	"keyboard.repeatDelay": {Default: json.RawMessage(`300`), Check: into(func(v int) error {
+		if v < 150 || v > 1000 {
+			return errors.New("must be 150-1000 ms")
+		}
+		return nil
+	})},
+	"keyboard.repeatRate": {Default: json.RawMessage(`30`), Check: into(func(v int) error {
+		if v < 5 || v > 80 {
+			return errors.New("must be 5-80 per second")
+		}
+		return nil
+	})},
+	// Shortcuts changed from their defaults: action id -> key combos
+	// ("SUPER+SHIFT+S"); an empty list turns the shortcut off.
+	"shortcuts.keys": {Default: json.RawMessage(`{}`), Check: into(func(v map[string][]string) error {
+		if len(v) > 200 {
+			return errors.New("too many shortcuts")
+		}
+		for id, combos := range v {
+			if !shortcutID.MatchString(id) {
+				return fmt.Errorf("invalid shortcut id %q", id)
+			}
+			if err := checkCombos(combos); err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+		}
+		return nil
+	})},
+	// Shortcuts you added: run a command.
+	"shortcuts.custom": {Default: json.RawMessage(`[]`), Check: into(func(v []CustomShortcut) error {
+		if len(v) > 100 {
+			return errors.New("at most 100 custom shortcuts")
+		}
+		seen := map[string]bool{}
+		for _, c := range v {
+			switch {
+			case !shortcutID.MatchString(c.ID) || !strings.HasPrefix(c.ID, "custom-"):
+				return fmt.Errorf("invalid id %q (want custom-...)", c.ID)
+			case seen[c.ID]:
+				return fmt.Errorf("id %q used twice", c.ID)
+			case strings.TrimSpace(c.Name) == "" || len(c.Name) > 100:
+				return fmt.Errorf("%s: name must be 1-100 characters", c.ID)
+			case strings.TrimSpace(c.Command) == "" || len(c.Command) > 2000:
+				return fmt.Errorf("%s: command must be 1-2000 characters", c.ID)
+			}
+			seen[c.ID] = true
+			if err := checkCombos(c.Keys); err != nil {
+				return fmt.Errorf("%s: %w", c.ID, err)
+			}
+		}
+		return nil
+	})},
+}
+
+// KeyboardLayout is an XKB layout and optional variant ("gb", "extd").
+type KeyboardLayout struct {
+	Layout  string `json:"layout"`
+	Variant string `json:"variant,omitempty"`
+}
+
+// CustomShortcut runs Command when one of Keys is pressed.
+type CustomShortcut struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Keys    []string `json:"keys"`
+}
+
+var (
+	xkbName    = regexp.MustCompile(`^[A-Za-z0-9_()-]{1,40}$`)
+	shortcutID = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
+	// "SUPER+SHIFT+S", "PRTSC", "SUPER+1-9": modifiers and one key. The
+	// compositor checks key names against XKB.
+	comboRe = regexp.MustCompile(`^([A-Za-z]+\+){0,4}[A-Za-z0-9_-]{1,40}$`)
+)
+
+func checkCombos(combos []string) error {
+	if len(combos) > 4 {
+		return errors.New("at most 4 key combinations")
+	}
+	for _, c := range combos {
+		if !comboRe.MatchString(c) {
+			return fmt.Errorf("invalid key combination %q", c)
+		}
+	}
+	return nil
 }
 
 // checkDisplays validates a display layout like the daemon's config does.

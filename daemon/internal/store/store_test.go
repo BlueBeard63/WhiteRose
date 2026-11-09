@@ -86,6 +86,11 @@ func TestValidation(t *testing.T) {
 		"launcher.calculations":        `[{"expr":"1+1","result":"2","extra":true}]`,
 		"displays":                     `{"monitor":[{"id":"not-an-id"}],"profile":[]}`,
 		"displays.test":                `{"config":{"monitor":[],"profile":[]}}`,
+		"keyboard.layouts":             `[{"layout":"gb; rm -rf"}]`,
+		"keyboard.repeatDelay":         `20`,
+		"keyboard.repeatRate":          `500`,
+		"shortcuts.keys":               `{"close-window":["SUPER++Q"]}`,
+		"shortcuts.custom":             `[{"id":"files","name":"Files","command":"nautilus","keys":["SUPER+E"]}]`,
 		"nope.unknown":                 `1`,
 		"Bad Key":                      `1`,
 		"module.x":                     `{not json`,
@@ -101,6 +106,10 @@ func TestValidation(t *testing.T) {
 		"module.wallpaper.path": `"/home/me/bg.png"`,
 		"launcher.calculations": `[{"expr":"1+1","result":"2"}]`,
 		"displays":              `{"monitor":[],"profile":[]}`,
+		"keyboard.layouts":      `[{"layout":"gb"},{"layout":"es","variant":"nodeadkeys"}]`,
+		"keyboard.repeatDelay":  `250`,
+		"shortcuts.keys":        `{"close-window":["SUPER+Q","ALT+F4"],"lock":[],"workspace":["SUPER+1-9"]}`,
+		"shortcuts.custom":      `[{"id":"custom-files","name":"Open Files","command":"nautilus","keys":["SUPER+E"]}]`,
 		"displays.test":         `{"config":{"monitor":[{"id":"builtin","scale":1.5}],"profile":[]},"until":1794240000000}`,
 	}
 	for k, v := range good {

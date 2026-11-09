@@ -69,6 +69,11 @@ pub enum Action {
     Shell(ShellRequest),
     /// Ctrl+Alt+Fn: switch to console n (real hardware only).
     SwitchVt(i32),
+    /// The next keyboard layout (SUPER+SPACE).
+    NextLayout,
+    /// Volume, brightness and media keys, done by the shell; the name is
+    /// its wire name (e.g. "volume_up").
+    Media(&'static str),
     Quit,
 }
 
@@ -83,6 +88,7 @@ impl Action {
                 | Action::IdentifyOutputs
                 | Action::Notifications
                 | Action::ScreenshotRegion
+                | Action::Media(_)
         )
     }
 }
@@ -195,6 +201,103 @@ pub fn is_logo_key(sym: Keysym) -> bool {
     matches!(sym.raw(), keysyms::KEY_Super_L | keysyms::KEY_Super_R)
 }
 
+/// "SUPER+1-9" is nine combos (1 to 9); anything else is one.
+pub fn expand(s: &str) -> Result<Vec<Combo>, ParseError> {
+    match s.rsplit_once('+') {
+        Some((mods, "1-9")) => (1..=9).map(|d| parse_combo(&format!("{mods}+{d}"))).collect(),
+        None if s == "1-9" => Err(ParseError::UnknownKey(s.into())),
+        _ => parse_combo(s).map(|c| vec![c]),
+    }
+}
+
+/// A shortcut you added: runs `command`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CustomShortcut {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub keys: Vec<String>,
+}
+
+/// One built-in shortcut: a stable id (the settings key), what it's called
+/// and grouped under on the Keyboard & Shortcuts page, and its default keys.
+#[derive(Debug, Clone, Copy)]
+pub struct Def {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub group: &'static str,
+    pub defaults: &'static [&'static str],
+    /// Bound to "MODS+1-9": workspace n for key n.
+    pub range: bool,
+}
+
+impl Def {
+    fn action(&self, terminal: &str, n: u8) -> Action {
+        match self.id {
+            "launcher" => Action::AppLauncher,
+            "app-switcher" => Action::AppSwitcher,
+            "window-switcher" => Action::WindowSwitcher,
+            "quick-settings" => Action::QuickSettings,
+            "notifications" => Action::Notifications,
+            "lock" => Action::Lock,
+            "screenshot-region" => Action::ScreenshotRegion,
+            "screenshot-screen" => Action::ScreenshotScreen,
+            "terminal" => Action::Spawn(terminal.to_string()),
+            "switch-layout" => Action::NextLayout,
+            "log-out" => Action::Quit,
+            "close-window" => Action::CloseWindow,
+            "fullscreen" => Action::ToggleFullscreen,
+            "workspace" => Action::Workspace(n),
+            "move-to-workspace" => Action::MoveToWorkspace(n),
+            "volume-up" => Action::Media("volume_up"),
+            "volume-down" => Action::Media("volume_down"),
+            "volume-mute" => Action::Media("volume_mute"),
+            "mic-mute" => Action::Media("mic_mute"),
+            "brightness-up" => Action::Media("brightness_up"),
+            "brightness-down" => Action::Media("brightness_down"),
+            "play-pause" => Action::Media("media_play_pause"),
+            "next-track" => Action::Media("media_next"),
+            "previous-track" => Action::Media("media_previous"),
+            other => unreachable!("catalog id {other} has no action"),
+        }
+    }
+}
+
+const fn def(id: &'static str, name: &'static str, group: &'static str, defaults: &'static [&'static str]) -> Def {
+    Def { id, name, group, defaults, range: false }
+}
+
+/// Every built-in shortcut, in the order the settings page lists them.
+pub const CATALOG: &[Def] = &[
+    def("launcher", "App launcher", "Shell", &["SUPER"]),
+    def("app-switcher", "Application switcher", "Windows", &["ALT+TAB"]),
+    def("window-switcher", "Window switcher", "Windows", &["SUPER+ALT+TAB"]),
+    def("quick-settings", "Quick settings", "Shell", &["SUPER+S"]),
+    def("notifications", "Notifications", "Shell", &["SUPER+N"]),
+    def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
+    def("close-window", "Close window", "Windows", &["SUPER+Q"]),
+    Def { range: true, ..def("workspace", "Switch to workspace 1–9", "Workspaces", &["SUPER+1-9"]) },
+    Def {
+        range: true, ..def("move-to-workspace", "Move window to workspace 1–9", "Workspaces", &["SUPER+SHIFT+1-9"])
+    },
+    def("screenshot-region", "Screenshot region", "Shell", &["SUPER+SHIFT+S"]),
+    def("screenshot-screen", "Screenshot screen", "Shell", &["PRTSC"]),
+    def("terminal", "Open terminal", "Shell", &["SUPER+RETURN"]),
+    def("lock", "Lock screen", "Shell", &["SUPER+L"]),
+    def("switch-layout", "Next keyboard layout", "Shell", &["SUPER+SPACE"]),
+    def("log-out", "Log out", "Shell", &["CTRL+ALT+BACKSPACE"]),
+    def("volume-up", "Volume up", "Media", &["XF86AudioRaiseVolume"]),
+    def("volume-down", "Volume down", "Media", &["XF86AudioLowerVolume"]),
+    def("volume-mute", "Mute", "Media", &["XF86AudioMute"]),
+    def("mic-mute", "Mute microphone", "Media", &["XF86AudioMicMute"]),
+    def("brightness-up", "Brightness up", "Media", &["XF86MonBrightnessUp"]),
+    def("brightness-down", "Brightness down", "Media", &["XF86MonBrightnessDown"]),
+    def("play-pause", "Play / pause", "Media", &["XF86AudioPlay"]),
+    def("next-track", "Next track", "Media", &["XF86AudioNext"]),
+    def("previous-track", "Previous track", "Media", &["XF86AudioPrev"]),
+];
+
 /// The shortcut table.
 #[derive(Debug, Clone)]
 pub struct Bindings {
@@ -208,33 +311,51 @@ impl Bindings {
 
     /// WhiteRose's default shortcuts (see the Keyboard & Shortcuts design).
     pub fn defaults(terminal: &str) -> Self {
-        let mut v: Vec<(&str, Action)> = vec![
-            ("SUPER", Action::AppLauncher),
-            ("ALT+TAB", Action::AppSwitcher),
-            ("SUPER+ALT+TAB", Action::WindowSwitcher),
-            ("SUPER+S", Action::QuickSettings),
-            ("SUPER+L", Action::Lock),
-            ("SUPER+N", Action::Notifications),
-            ("SUPER+SHIFT+S", Action::ScreenshotRegion),
-            ("PRTSC", Action::ScreenshotScreen),
-            ("SUPER+Q", Action::CloseWindow),
-            ("SUPER+F", Action::ToggleFullscreen),
-            ("SUPER+RETURN", Action::Spawn(terminal.to_string())),
-            ("CTRL+ALT+BACKSPACE", Action::Quit),
-        ];
-        let digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-        let ws: Vec<(String, Action)> = digits
-            .iter()
-            .enumerate()
-            .flat_map(|(i, d)| {
-                let n = i as u8 + 1;
-                [(format!("SUPER+{d}"), Action::Workspace(n)), (format!("SUPER+SHIFT+{d}"), Action::MoveToWorkspace(n))]
-            })
-            .collect();
-        let mut entries: Vec<(Combo, Action)> =
-            v.drain(..).map(|(s, a)| (parse_combo(s).expect("default binding parses"), a)).collect();
-        entries.extend(ws.into_iter().map(|(s, a)| (parse_combo(&s).expect("default binding parses"), a)));
-        Bindings { entries }
+        Bindings::build(terminal, &Default::default(), &[]).0
+    }
+
+    /// The shortcut table from the catalog's defaults, the user's changes
+    /// (`overrides`: id -> combos; an empty list turns one off) and their
+    /// own shortcuts. Combos that don't parse are skipped and reported.
+    pub fn build(
+        terminal: &str,
+        overrides: &std::collections::HashMap<String, Vec<String>>,
+        custom: &[CustomShortcut],
+    ) -> (Self, Vec<String>) {
+        let mut entries = Vec::new();
+        let mut errors = Vec::new();
+        for def in CATALOG {
+            let combos: Vec<String> = match overrides.get(def.id) {
+                Some(c) => c.clone(),
+                None => def.defaults.iter().map(|s| s.to_string()).collect(),
+            };
+            for c in combos {
+                match expand(&c) {
+                    Ok(list) if def.range => {
+                        if list.len() != 9 {
+                            errors.push(format!("{}: {c:?} needs the 1-9 key", def.id));
+                            continue;
+                        }
+                        for (n, combo) in list.into_iter().enumerate() {
+                            entries.push((combo, def.action(terminal, n as u8 + 1)));
+                        }
+                    }
+                    Ok(list) if list.len() == 1 => entries.push((list[0], def.action(terminal, 0))),
+                    Ok(_) => errors.push(format!("{}: {c:?} can't use 1-9", def.id)),
+                    Err(e) => errors.push(format!("{}: {c:?}: {e}", def.id)),
+                }
+            }
+        }
+        for c in custom {
+            for k in &c.keys {
+                match expand(k) {
+                    Ok(list) if list.len() == 1 => entries.push((list[0], Action::Spawn(c.command.clone()))),
+                    Ok(_) => errors.push(format!("{}: {k:?} can't use 1-9", c.id)),
+                    Err(e) => errors.push(format!("{}: {k:?}: {e}", c.id)),
+                }
+            }
+        }
+        (Bindings { entries }, errors)
     }
 
     /// Replaces SUPER with other modifiers in every binding. Used when running
@@ -391,6 +512,64 @@ mod tests {
         assert_eq!(b.lookup(ALT, sym(keysyms::KEY_Tab)), Some(&Action::AppSwitcher));
         assert_eq!(b.lookup(Mods::NONE, sym(keysyms::KEY_Print)), Some(&Action::ScreenshotScreen));
         assert_eq!(b.logo_tap(), Some(&Action::AppLauncher));
+    }
+
+    #[test]
+    fn overrides_replace_defaults_and_empty_turns_off() {
+        let mut o = std::collections::HashMap::new();
+        o.insert("close-window".to_string(), vec!["ALT+F4".to_string(), "SUPER+W".to_string()]);
+        o.insert("lock".to_string(), vec![]);
+        o.insert("workspace".to_string(), vec!["CTRL+1-9".to_string()]);
+        let custom = [CustomShortcut {
+            id: "custom-files".into(),
+            name: "Files".into(),
+            command: "nautilus".into(),
+            keys: vec!["SUPER+E".into()],
+        }];
+        let (b, errors) = Bindings::build("foot", &o, &custom);
+        assert_eq!(errors, Vec::<String>::new());
+        assert_eq!(b.lookup(ALT, sym(keysyms::KEY_F4)), Some(&Action::CloseWindow));
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_w)), Some(&Action::CloseWindow));
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_q)), None, "the default is replaced");
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_l)), None, "turned off");
+        let ctrl = Mods { ctrl: true, ..Mods::NONE };
+        assert_eq!(b.lookup(ctrl, sym(keysyms::KEY_7)), Some(&Action::Workspace(7)));
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_7)), None);
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_e)), Some(&Action::Spawn("nautilus".into())));
+    }
+
+    #[test]
+    fn bad_overrides_are_reported_not_fatal() {
+        let mut o = std::collections::HashMap::new();
+        o.insert("close-window".to_string(), vec!["SUPER+1-9".to_string(), "HYPER+Q".to_string()]);
+        o.insert("workspace".to_string(), vec!["SUPER+W".to_string()]);
+        let (b, errors) = Bindings::build("foot", &o, &[]);
+        assert_eq!(errors.len(), 3, "{errors:?}");
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_s)), Some(&Action::QuickSettings), "the rest still work");
+    }
+
+    #[test]
+    fn media_keys_need_no_modifier() {
+        let b = Bindings::defaults("foot");
+        assert_eq!(b.lookup(Mods::NONE, sym(keysyms::KEY_XF86AudioRaiseVolume)), Some(&Action::Media("volume_up")));
+        assert_eq!(
+            b.lookup(Mods::NONE, sym(keysyms::KEY_XF86MonBrightnessDown)),
+            Some(&Action::Media("brightness_down"))
+        );
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_space)), Some(&Action::NextLayout));
+        assert!(Action::Media("volume_up").is_shell());
+    }
+
+    #[test]
+    fn every_catalog_entry_has_an_action_and_unique_id() {
+        let mut ids = std::collections::HashSet::new();
+        for d in CATALOG {
+            assert!(ids.insert(d.id), "{} twice", d.id);
+            let _ = d.action("foot", 1);
+            for c in d.defaults {
+                assert!(expand(c).is_ok(), "{} default {c} doesn't parse", d.id);
+            }
+        }
     }
 
     #[test]
