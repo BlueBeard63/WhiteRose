@@ -68,6 +68,10 @@ pub struct WhiteRose {
     /// Paths this compositor saved; the only files the shell may ask it to delete.
     pub saved_screenshots: Vec<std::path::PathBuf>,
     next_window_id: u64,
+    /// The open switcher and the modifiers that keep it open (released = commit).
+    pub switcher: Option<(crate::switcher::Switcher, crate::keybind::Mods)>,
+    /// Modifiers of the shortcut that triggered the current action.
+    pub shortcut_mods: crate::keybind::Mods,
     pub fitted_to: Option<(smithay::utils::Rectangle<i32, Logical>, smithay::utils::Rectangle<i32, Logical>)>,
 
     pub bindings: Bindings,
@@ -150,6 +154,8 @@ impl WhiteRose {
             fullscreen: None,
             fitted_to: None,
             next_window_id: 1,
+            switcher: None,
+            shortcut_mods: crate::keybind::Mods::NONE,
             screenshot_pending: false,
             screenshot_tx,
             saved_screenshots: Vec::new(),
@@ -375,6 +381,13 @@ impl WhiteRose {
 
     /// Forgets a closed window everywhere.
     pub fn forget_window(&mut self, w: &Window) {
+        let id = self.window_id(w);
+        if let Some((s, _)) = self.switcher.as_mut() {
+            if !s.remove_window(id) {
+                self.switcher = None;
+            }
+            self.switcher_sync();
+        }
         self.forget_window_state(w);
         self.workspaces.remove(w);
         self.hidden_at.retain(|(h, _)| h != w);
@@ -409,7 +422,13 @@ impl WhiteRose {
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
             Action::Quit => self.loop_signal.stop(),
             Action::ScreenshotScreen => self.request_screenshot(),
+            Action::AppSwitcher => self.open_switcher(crate::switcher::Mode::Apps),
+            Action::WindowSwitcher => self.open_switcher(crate::switcher::Mode::Windows),
             Action::FocusWindow(id) => {
+                // Clicking a card in the switcher ends it.
+                if self.switcher.take().is_some() {
+                    self.switcher_sync();
+                }
                 let target = self.workspaces.mru().iter().find(|w| self.window_id(w) == id).cloned();
                 match target {
                     Some(w) => self.activate_window(&w),
@@ -455,4 +474,50 @@ pub struct ClientState {
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+}
+
+impl WhiteRose {
+    fn switcher_mru(&self) -> Vec<(u64, String)> {
+        self.workspaces
+            .mru()
+            .iter()
+            .map(|w| (self.window_id(w), crate::ipc::toplevel_ids(w).0.unwrap_or_default()))
+            .collect()
+    }
+
+    pub fn open_switcher(&mut self, mode: crate::switcher::Mode) {
+        if self.switcher.is_some() {
+            return;
+        }
+        // Held modifiers keep it open; Shift only changes direction.
+        let held = crate::keybind::Mods { shift: false, ..self.shortcut_mods };
+        if let Some(s) = crate::switcher::Switcher::open(mode, &self.switcher_mru()) {
+            self.switcher = Some((s, held));
+            self.switcher_sync();
+        }
+    }
+
+    /// Focuses the selected window and closes the switcher.
+    pub fn commit_switcher(&mut self) {
+        let Some((s, _)) = self.switcher.take() else { return };
+        self.switcher_sync();
+        if let Some(id) = s.target() {
+            if let Some(w) = self.workspaces.mru().iter().find(|w| self.window_id(w) == id).cloned() {
+                self.activate_window(&w);
+            }
+        }
+    }
+
+    pub fn cancel_switcher(&mut self) {
+        if self.switcher.take().is_some() {
+            self.switcher_sync();
+        }
+    }
+
+    pub fn switcher_sync(&mut self) {
+        let event = crate::ipc::Event::Switcher { state: self.switcher.as_ref().map(|(s, _)| s.clone()) };
+        if let Some(ipc) = self.ipc.as_mut() {
+            ipc.update(event);
+        }
+    }
 }

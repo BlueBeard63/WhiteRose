@@ -3,6 +3,7 @@
 
 pub mod foreign_toplevel;
 pub mod grabs;
+mod host_inhibit;
 mod handlers;
 pub mod input;
 pub mod ipc;
@@ -11,6 +12,7 @@ pub mod protocols;
 pub mod render;
 pub mod screenshot;
 pub mod state;
+pub mod switcher;
 pub mod toplevel_export;
 pub mod window_state;
 pub mod winit;

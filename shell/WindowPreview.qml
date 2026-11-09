@@ -11,12 +11,15 @@ Item {
     required property var toplevel
     property real maxWidth: 220
     property real maxHeight: 138
+    // Outlined as the current choice (switcher selection).
+    property bool highlighted: false
+    property bool showTitle: true
     signal activated()
 
     readonly property bool hovered: mouse.containsMouse || closeMouse.containsMouse
 
     width: frame.width
-    height: frame.height + 6 + title.height
+    height: frame.height + (showTitle ? 6 + title.height : 0)
 
     ClippingRectangle {
         id: frame
@@ -27,7 +30,10 @@ Item {
         height: src.height > 0 ? Math.round(src.height * k) : root.maxHeight * 0.62
         radius: 10
         color: Theme.surface1
-        border { width: root.toplevel?.activated ? 1.5 : 1; color: mouse.containsMouse ? Theme.pearl : Theme.surface2 }
+        border {
+            width: root.highlighted ? 2 : root.toplevel?.activated ? 1.5 : 1
+            color: root.highlighted || mouse.containsMouse ? Theme.pearl : Theme.surface2
+        }
 
         ScreencopyView {
             id: view
@@ -78,6 +84,7 @@ Item {
 
     Text {
         id: title
+        visible: root.showTitle
         anchors { top: frame.bottom; topMargin: 6; horizontalCenter: frame.horizontalCenter }
         width: frame.width
         horizontalAlignment: Text.AlignHCenter

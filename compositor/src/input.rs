@@ -86,7 +86,8 @@ impl WhiteRose {
         }
     }
 
-    fn on_key(&mut self, keycode: smithay::input::keyboard::Keycode, key_state: KeyState, time: u32) {
+    /// One key event from any backend (also driven directly by tests).
+    pub fn on_key(&mut self, keycode: smithay::input::keyboard::Keycode, key_state: KeyState, time: u32) {
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
 
@@ -96,6 +97,11 @@ impl WhiteRose {
                 // shortcuts keep working on non-Latin layouts.
                 let sym = handle.raw_latin_sym_or_raw_current_sym().unwrap_or_else(|| handle.modified_sym());
                 let pressed = key_state == KeyState::Pressed;
+
+                // While a switcher is open it owns the keyboard.
+                if state.switcher.is_some() {
+                    return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
+                }
 
                 // SUPER on its own opens the launcher, on release, and only if no
                 // other key was pressed while it was held.
@@ -113,6 +119,7 @@ impl WhiteRose {
                 if pressed {
                     state.logo_tap_pending = false;
                     if let Some(action) = state.bindings.lookup(Mods::from(mods), sym).cloned() {
+                        state.shortcut_mods = Mods::from(mods);
                         state.swallowed.push(keycode);
                         return FilterResult::Intercept(Some(action));
                     }
@@ -128,5 +135,75 @@ impl WhiteRose {
             tracing::debug!(?action, "shortcut");
             self.run_action(action);
         }
+    }
+}
+
+impl WhiteRose {
+    /// Keys while ALT+TAB / SUPER+ALT+TAB is open. Releasing the modifiers
+    /// that opened it focuses the selection.
+    fn switcher_key(
+        &mut self,
+        sym: smithay::input::keyboard::Keysym,
+        pressed: bool,
+        mods: Mods,
+        keycode: smithay::input::keyboard::Keycode,
+    ) -> smithay::input::keyboard::FilterResult<Option<Action>> {
+        use smithay::input::keyboard::{keysyms as k, FilterResult};
+        let Some((_, held)) = self.switcher.as_ref() else { return FilterResult::Forward };
+        let held = *held;
+        let raw = sym.raw();
+
+        if !pressed {
+            // Keep the swallowed-release bookkeeping straight.
+            if let Some(i) = self.swallowed.iter().position(|c| *c == keycode) {
+                self.swallowed.swap_remove(i);
+            }
+            let still_held = (!held.logo || mods.logo) && (!held.alt || mods.alt) && (!held.ctrl || mods.ctrl);
+            if !still_held {
+                self.commit_switcher();
+            }
+            // Modifier releases reach clients so their modifier state stays right.
+            return FilterResult::Forward;
+        }
+
+        let is_modifier = matches!(
+            raw,
+            k::KEY_Alt_L
+                | k::KEY_Alt_R
+                | k::KEY_Super_L
+                | k::KEY_Super_R
+                | k::KEY_Control_L
+                | k::KEY_Control_R
+                | k::KEY_Shift_L
+                | k::KEY_Shift_R
+                | k::KEY_Meta_L
+                | k::KEY_Meta_R
+        );
+        if is_modifier {
+            return FilterResult::Forward;
+        }
+
+        let Some((s, _)) = self.switcher.as_mut() else { return FilterResult::Forward };
+        match raw {
+            k::KEY_Tab | k::KEY_ISO_Left_Tab if mods.shift => s.prev(),
+            k::KEY_Tab | k::KEY_ISO_Left_Tab | k::KEY_Right | k::KEY_Down => s.next(),
+            k::KEY_Left | k::KEY_Up => s.prev(),
+            k::KEY_grave if s.mode == crate::switcher::Mode::Apps => s.next_window(),
+            k::KEY_q => {
+                let targets = s.close_targets();
+                for w in self.workspaces.mru().iter().filter(|w| targets.contains(&self.window_id(w))) {
+                    if let Some(t) = w.toplevel() {
+                        t.send_close();
+                    }
+                }
+            }
+            k::KEY_Escape => self.cancel_switcher(),
+            k::KEY_Return | k::KEY_KP_Enter => self.commit_switcher(),
+            _ => {}
+        }
+        self.switcher_sync();
+        // No key typed while switching reaches the focused app.
+        self.swallowed.push(keycode);
+        FilterResult::Intercept(None)
     }
 }

@@ -45,6 +45,9 @@ pub fn init_winit(
 
     init_dmabuf(&backend, state);
 
+    // Let SUPER, ALT+TAB and PrtSc reach us instead of the host desktop.
+    let mut host_inhibit = crate::host_inhibit::HostInhibit::request(backend.borrow().window());
+
     // Redraw requests from anywhere in the compositor arrive through this ping.
     let (ping, ping_source) = make_ping()?;
     let ping_backend = backend.clone();
@@ -65,6 +68,9 @@ pub fn init_winit(
         }
         WinitEvent::Input(event) => state.process_input_event(event),
         WinitEvent::Redraw => {
+            if let Some(h) = host_inhibit.as_mut() {
+                h.dispatch();
+            }
             render(&mut backend.borrow_mut(), &output, &mut damage_tracker, state);
         }
         WinitEvent::CloseRequested => state.loop_signal.stop(),

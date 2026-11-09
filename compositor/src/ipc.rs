@@ -45,6 +45,10 @@ pub enum Event {
     Windows {
         windows: Vec<WindowInfo>,
     },
+    /// ALT+TAB / SUPER+ALT+TAB state; `state` is null when closed.
+    Switcher {
+        state: Option<crate::switcher::Switcher>,
+    },
     /// A screenshot was saved (and put on the clipboard as image/png).
     Screenshot {
         path: String,
@@ -90,6 +94,11 @@ pub enum Request {
         command: String,
     },
     CloseWindow,
+    /// Open a switcher without held modifiers (mouse, dock, scripts): it
+    /// stays open until Enter, Esc or a click.
+    Switcher {
+        mode: crate::switcher::Mode,
+    },
     FocusWindow {
         id: u64,
     },
@@ -116,6 +125,8 @@ impl Request {
             Request::Spawn { command } => Action::Spawn(command),
             Request::CloseWindow => Action::CloseWindow,
             Request::Screenshot => Action::ScreenshotScreen,
+            Request::Switcher { mode: crate::switcher::Mode::Apps } => Action::AppSwitcher,
+            Request::Switcher { mode: crate::switcher::Mode::Windows } => Action::WindowSwitcher,
             Request::FocusWindow { id } => Action::FocusWindow(id),
             Request::FocusApp { app_id } => Action::FocusApp(app_id),
             Request::DeleteScreenshot { path } => Action::DeleteScreenshot(path),
@@ -127,8 +138,6 @@ impl Request {
 pub fn action_name(action: &Action) -> Option<&'static str> {
     Some(match action {
         Action::AppLauncher => "app_launcher",
-        Action::AppSwitcher => "app_switcher",
-        Action::WindowSwitcher => "window_switcher",
         Action::QuickSettings => "quick_settings",
         Action::Notifications => "notifications",
         Action::ScreenshotRegion => "screenshot_region",
@@ -180,6 +189,7 @@ pub struct Server {
     last_workspaces: Option<Event>,
     last_focus: Option<Event>,
     last_windows: Option<Event>,
+    last_switcher: Option<Event>,
 }
 
 impl Server {
@@ -211,6 +221,7 @@ impl Server {
             last_workspaces: None,
             last_focus: None,
             last_windows: None,
+            last_switcher: None,
         })
     }
 
@@ -241,6 +252,7 @@ impl Server {
             Event::Workspaces { .. } => &mut self.last_workspaces,
             Event::Focus { .. } => &mut self.last_focus,
             Event::Windows { .. } => &mut self.last_windows,
+            Event::Switcher { .. } => &mut self.last_switcher,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
                 self.broadcast(&event);
                 return;
@@ -330,7 +342,11 @@ impl WhiteRose {
 
     fn ipc_request(&mut self, id: u64, line: &str) {
         match Request::parse(line) {
-            Ok(req) => self.run_action(req.into_action()),
+            Ok(req) => {
+                // Requests never come with modifiers held down.
+                self.shortcut_mods = crate::keybind::Mods::NONE;
+                self.run_action(req.into_action())
+            }
             Err(e) => tracing::warn!(id, e, "ignoring ipc request"),
         }
     }
@@ -442,6 +458,10 @@ mod tests {
         assert_eq!(Request::parse(r#"{"cmd":"close_window"}"#), Ok(Request::CloseWindow));
         assert_eq!(Request::parse(r#"{"cmd":"screenshot"}"#), Ok(Request::Screenshot));
         assert_eq!(
+            Request::parse(r#"{"cmd":"switcher","mode":"windows"}"#),
+            Ok(Request::Switcher { mode: crate::switcher::Mode::Windows })
+        );
+        assert_eq!(
             Request::parse(r#"{"cmd":"delete_screenshot","path":"/p.png"}"#),
             Ok(Request::DeleteScreenshot { path: "/p.png".into() })
         );
@@ -470,14 +490,7 @@ mod tests {
 
     #[test]
     fn every_shell_action_has_a_wire_name_and_others_do_not() {
-        let shell = [
-            Action::AppLauncher,
-            Action::AppSwitcher,
-            Action::WindowSwitcher,
-            Action::QuickSettings,
-            Action::Notifications,
-            Action::ScreenshotRegion,
-        ];
+        let shell = [Action::AppLauncher, Action::QuickSettings, Action::Notifications, Action::ScreenshotRegion];
         for a in &shell {
             assert!(a.is_shell());
             assert!(action_name(a).is_some(), "{a:?} has no wire name");

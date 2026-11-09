@@ -173,3 +173,29 @@ fn exclusive_focus_is_granted_once_not_stolen_back() {
         },
     );
 }
+
+#[test]
+fn unmapping_after_destroying_a_layer_surface_does_not_kill_the_client() {
+    // QtWayland (QuickShell) hides a panel by destroying the layer surface and
+    // then committing the wl_surface with no buffer. Smithay 0.7.0 validated
+    // that commit against reset state and killed the client with "width 0
+    // requested without setting left and right anchors" (patched in vendor/).
+    let mut h = Headless::new(true);
+    h.run(
+        |conn| {
+            let mut c = Client::connect(&conn);
+            let (surface, layer) = c.open_bar();
+            c.attach_buffer(&surface, W, BAR as i32);
+            layer.destroy();
+            surface.attach(None, 0, 0);
+            surface.commit();
+            // A protocol error would make this roundtrip fail.
+            c.queue.roundtrip(&mut c.app).map(|_| ()).map_err(|e| e.to_string())
+        },
+        |state, result| {
+            assert_eq!(result, Ok(()), "client was disconnected");
+            let output = state.space.outputs().next().unwrap().clone();
+            assert_eq!(smithay::desktop::layer_map_for_output(&output).layers().count(), 0, "panel is gone");
+        },
+    );
+}

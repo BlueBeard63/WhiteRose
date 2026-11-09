@@ -231,7 +231,7 @@ Item {
         Text {
             id: tipText
             anchors.centerIn: parent
-            text: tip.hovered ? (tip.hovered.app.entry?.name ?? tip.hovered.app.appId) + (tip.hovered.app.pinned ? "" : "  ·  right-click to pin") : ""
+            text: tip.hovered ? (tip.hovered.app.entry?.name ?? tip.hovered.app.appId) : ""
             color: Theme.text
             font { family: Theme.font; pointSize: Theme.pt(11.5); weight: Font.Medium }
         }

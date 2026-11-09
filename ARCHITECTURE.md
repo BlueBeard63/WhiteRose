@@ -288,3 +288,13 @@ Figma frames: `Settings - Updates` and `Recovery - Update Failed`.
 ### 5. Reboots
 
 WhiteRose updates never need a reboot: restarting the session (or the next login) applies them. Kernel and firmware updates remain the distro's job.
+
+---
+
+## Vendored Smithay
+
+`compositor/vendor/smithay` is Smithay 0.7.0 plus one fix (`compositor/vendor/smithay-layer-unmap-after-destroy.patch`), used through `[patch.crates-io]`.
+
+- **The bug:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell.
+- **The test:** `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client` fails without the patch.
+- **Removing it:** drop the vendored copy once upstream ships the fix.

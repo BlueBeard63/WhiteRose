@@ -1,0 +1,17 @@
+--- a/src/wayland/shell/wlr_layer/handlers.rs	2026-11-09 11:57:13.142434004 +0000
++++ b/src/wayland/shell/wlr_layer/handlers.rs	2026-11-09 11:57:13.170817210 +0000
+@@ -131,6 +131,14 @@
+                                 .lock()
+                                 .unwrap();
+ 
++                            // WhiteRose patch: a client may unmap the wl_surface (attach
++                            // null + commit) after destroying its layer surface. Destroy
++                            // resets the pending state to defaults (size 0, no anchors),
++                            // so validating it here would kill a well-behaved client.
++                            if !guard.surface.is_alive() {
++                                return;
++                            }
++
+                             let mut cached_guard = states.cached_state.get::<LayerSurfaceCachedState>();
+                             let pending = cached_guard.pending();
+ 

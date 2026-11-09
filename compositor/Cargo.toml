@@ -18,11 +18,15 @@ path = "src/main.rs"
 bitflags = "2"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 png = "0.17"
+raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-wayland-backend = "0.3"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+# Nested mode only: ask the host desktop to pass its shortcuts through to us.
+wayland-client = "0.31.10"
+wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 wayland-scanner = "0.31"
 
 [dependencies.smithay]
@@ -31,11 +35,16 @@ default-features = false
 features = ["backend_winit", "backend_drm", "wayland_frontend", "desktop"]
 
 [dev-dependencies]
-wayland-client = "0.31.10"
-wayland-protocols = { version = "0.32", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
 [profile.release]
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# Smithay 0.7.0 with one fix (vendor/smithay-layer-unmap-after-destroy.patch):
+# a layer-shell client that destroys its layer surface and then unmaps the
+# wl_surface was killed with a bogus "width 0" protocol error. Drop this once
+# upstream Smithay includes the fix.
+[patch.crates-io]
+smithay = { path = "vendor/smithay" }

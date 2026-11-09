@@ -65,15 +65,7 @@ pub enum Action {
 impl Action {
     /// True for actions the shell UI implements rather than the compositor.
     pub fn is_shell(&self) -> bool {
-        matches!(
-            self,
-            Action::AppLauncher
-                | Action::AppSwitcher
-                | Action::WindowSwitcher
-                | Action::QuickSettings
-                | Action::Notifications
-                | Action::ScreenshotRegion
-        )
+        matches!(self, Action::AppLauncher | Action::QuickSettings | Action::Notifications | Action::ScreenshotRegion)
     }
 }
 
@@ -381,6 +373,7 @@ mod tests {
         assert!(Action::ScreenshotRegion.is_shell());
         assert!(Action::AppLauncher.is_shell());
         assert!(!Action::CloseWindow.is_shell());
+        assert!(!Action::AppSwitcher.is_shell(), "the compositor runs the switchers; the shell only draws them");
         assert!(!Action::ScreenshotScreen.is_shell(), "PrtSc is captured by the compositor itself");
         assert!(!Action::Workspace(1).is_shell());
     }

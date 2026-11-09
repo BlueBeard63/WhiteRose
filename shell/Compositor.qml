@@ -4,6 +4,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 
 Singleton {
     id: root
@@ -20,6 +21,22 @@ Singleton {
     // Every window, most recently used first:
     // { id, app_id, title, workspace (1-based), focused }.
     property var windows: []
+    // ALT+TAB / SUPER+ALT+TAB, run by the compositor: null when closed, else
+    // { mode: "apps"|"windows", items: [{ app_id, windows: [id] }], selected, sub }.
+    property var switcher: null
+
+    function windowById(id) { return root.windows.find(w => w.id === id) ?? null }
+
+    // The QuickShell Toplevel (for live previews) behind a compositor window id.
+    // Handles arrive in creation order, so the k-th window of an app (by id)
+    // is the k-th toplevel with that app id.
+    function toplevelFor(id) {
+        const win = windowById(id);
+        if (!win) return null;
+        const appId = win.app_id ?? "";
+        const k = root.windows.filter(w => (w.app_id ?? "") === appId).map(w => w.id).sort((a, b) => a - b).indexOf(id);
+        return ToplevelManager.toplevels.values.filter(t => t.appId === appId)[k] ?? null;
+    }
 
     // A shortcut the shell should handle, e.g. "screenshot_region", "app_launcher".
     signal action(string name)
@@ -59,6 +76,9 @@ Singleton {
             break;
         case "windows":
             root.windows = msg.windows;
+            break;
+        case "switcher":
+            root.switcher = msg.state;
             break;
         case "action":
             root.action(msg.name);

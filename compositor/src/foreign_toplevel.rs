@@ -165,14 +165,17 @@ impl GlobalDispatch<ZwlrForeignToplevelManagerV1, ()> for WhiteRose {
         data_init: &mut DataInit<'_, Self>,
     ) {
         let manager = data_init.init(resource, ());
-        // Announce existing windows to the new manager.
+        // Announce existing windows to the new manager in creation (id) order,
+        // the same order later windows arrive in, so a client's list of
+        // handles lines up with window ids.
         let focused = state.focused_window();
-        let windows: Vec<(u64, ToplevelInfo)> = state
+        let mut windows: Vec<(u64, ToplevelInfo)> = state
             .workspaces
             .mru()
             .iter()
             .map(|w| (state.window_id(w), state.toplevel_info(w, focused.as_ref())))
             .collect();
+        windows.sort_by_key(|(id, _)| *id);
         for (id, info) in windows {
             if let Some(h) = state.new_handle(&manager, id) {
                 send_info(&h, None, &info);

@@ -8,6 +8,9 @@ ShellRoot {
         delegate: Bar {}
     }
 
+    // ALT+TAB / SUPER+ALT+TAB, on the primary screen.
+    Switcher { screen: Quickshell.screens[0] ?? null }
+
     // Screenshot toast, on the primary screen.
     ScreenshotToast { screen: Quickshell.screens[0] ?? null }
 }

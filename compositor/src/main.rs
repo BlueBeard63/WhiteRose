@@ -5,8 +5,9 @@
 //!
 //!   whiterose-wm [--mod super|ctrl-alt] [--shell COMMAND] [-c COMMAND]
 //!
-//! --mod  What stands in for SUPER. Defaults to ctrl-alt when nested, because
-//!        the host desktop usually keeps SUPER for itself.
+//! --mod  What stands in for SUPER. Defaults to super: the nested window asks
+//!        the host desktop to pass its shortcuts through. Use ctrl-alt if the
+//!        host can't (X11, or the permission was denied).
 //! --shell  Start the shell (bar and panels), e.g. "qs -p shell".
 //! -c       Run COMMAND inside the compositor at startup.
 
@@ -24,7 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let mut main_mod = "ctrl-alt".to_string();
+    // The nested window asks the host to pass its shortcuts through, so the
+    // real SUPER bindings work there too; ctrl-alt remains as a fallback.
+    let mut main_mod = "super".to_string();
     let mut startup: Option<String> = None;
     let mut shell: Option<String> = None;
     let mut args = std::env::args().skip(1);
