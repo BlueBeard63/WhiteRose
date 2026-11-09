@@ -11,7 +11,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::places::percent_encode;
+use serde::Serialize;
+
+use crate::places::{percent_decode, percent_encode};
 
 /// The home Trash ($XDG_DATA_HOME/Trash).
 pub fn home_trash() -> PathBuf {
@@ -153,6 +155,178 @@ pub fn put_with(p: &Path, home_trash: &Path) -> Result<PathBuf, String> {
     Err("the Trash is full of things with this name".into())
 }
 
+/// Something in a Trash.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Trashed {
+    /// Where it is now (in the Trash's `files`).
+    pub path: PathBuf,
+    /// Where it came from.
+    pub origin: PathBuf,
+    /// When it was trashed, unix ms (local time, as the spec has it).
+    pub deleted: i64,
+}
+
+/// Every Trash there is: the home one, and those on mounted drives.
+pub fn all_trashes() -> Vec<PathBuf> {
+    let mut v = vec![home_trash()];
+    for d in crate::places::drives() {
+        let top = Path::new(&d.path);
+        for t in [
+            top.join(".Trash").join(uid().to_string()),
+            top.join(format!(".Trash-{}", uid())),
+        ] {
+            if t.join("files").is_dir() && !v.contains(&t) {
+                v.push(t);
+            }
+        }
+    }
+    v
+}
+
+/// The drive top a Trash's `Path=` lines are relative to (None: absolute).
+fn top_of(trash: &Path) -> Option<PathBuf> {
+    let name = trash.file_name()?.to_string_lossy();
+    if name.starts_with(".Trash-") {
+        return trash.parent().map(Path::to_path_buf);
+    }
+    let parent = trash.parent()?;
+    if parent.file_name()? == ".Trash" {
+        return parent.parent().map(Path::to_path_buf);
+    }
+    None
+}
+
+/// "YYYY-MM-DDThh:mm:ss" (local) as unix ms.
+fn parse_date(s: &str) -> Option<i64> {
+    let n = |r: std::ops::Range<usize>| s.get(r)?.parse::<i32>().ok();
+    // SAFETY: mktime reads a filled-in tm.
+    unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        tm.tm_year = n(0..4)? - 1900;
+        tm.tm_mon = n(5..7)? - 1;
+        tm.tm_mday = n(8..10)?;
+        tm.tm_hour = n(11..13)?;
+        tm.tm_min = n(14..16)?;
+        tm.tm_sec = n(17..19)?;
+        tm.tm_isdst = -1;
+        let t = libc::mktime(&mut tm);
+        (t != -1).then_some(t as i64 * 1000)
+    }
+}
+
+/// (original path, deleted ms) from a .trashinfo's text.
+fn parse_info(text: &str, top: Option<&Path>) -> Option<(PathBuf, i64)> {
+    if text.lines().next()?.trim() != "[Trash Info]" {
+        return None;
+    }
+    let mut path = None;
+    let mut date = 0;
+    for l in text.lines() {
+        if let Some(p) = l.strip_prefix("Path=") {
+            let p = PathBuf::from(percent_decode(p.trim()));
+            path = Some(match top {
+                Some(t) if p.is_relative() => t.join(p),
+                _ => p,
+            });
+        } else if let Some(d) = l.strip_prefix("DeletionDate=") {
+            date = parse_date(d.trim()).unwrap_or(0);
+        }
+    }
+    path.filter(|p| p.is_absolute()).map(|p| (p, date))
+}
+
+/// What's in one Trash (items whose .trashinfo is missing or broken are left out).
+pub fn list_in(trash: &Path) -> Vec<Trashed> {
+    let top = top_of(trash);
+    let Ok(rd) = fs::read_dir(trash.join("info")) else {
+        return vec![];
+    };
+    let mut out = vec![];
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let Some(stem) = name.strip_suffix(".trashinfo") else {
+            continue;
+        };
+        let file = trash.join("files").join(stem);
+        if fs::symlink_metadata(&file).is_err() {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(e.path()) else {
+            continue;
+        };
+        if let Some((origin, deleted)) = parse_info(&text, top.as_deref()) {
+            out.push(Trashed {
+                path: file,
+                origin,
+                deleted,
+            });
+        }
+    }
+    out
+}
+
+pub fn list() -> Vec<Trashed> {
+    all_trashes().iter().flat_map(|t| list_in(t)).collect()
+}
+
+/// The Trash `p` is in the `files` of, if it's a trashed item (not
+/// something inside a trashed folder).
+fn trash_of(p: &Path) -> Option<PathBuf> {
+    let files = p.parent()?;
+    (files.file_name()? == "files").then(|| files.parent().map(Path::to_path_buf))?
+}
+
+/// A trashed item's .trashinfo.
+pub fn info_of(p: &Path) -> Option<PathBuf> {
+    let t = trash_of(p)?;
+    let info = t
+        .join("info")
+        .join(format!("{}.trashinfo", p.file_name()?.to_string_lossy()));
+    info.is_file().then_some(info)
+}
+
+/// Whether `p` is in a Trash (an item, or inside a trashed folder), and
+/// the item's path from its Trash: ["photos", "2024"] for .../files/photos/2024.
+pub fn inside(p: &Path) -> Option<(PathBuf, Vec<String>)> {
+    for t in all_trashes() {
+        if let Ok(rest) = p.strip_prefix(t.join("files")) {
+            let parts: Vec<String> = rest
+                .iter()
+                .map(|c| c.to_string_lossy().into_owned())
+                .collect();
+            if !parts.is_empty() {
+                return Some((t, parts));
+            }
+        }
+    }
+    None
+}
+
+/// Puts a trashed item back where it came from (renamed if something's
+/// there now; the folder made again if it's gone). Returns where it went.
+pub fn restore(p: &Path) -> Result<PathBuf, String> {
+    let info = info_of(p).ok_or("this isn't something in the Trash")?;
+    let text = fs::read_to_string(&info).map_err(|e| e.to_string())?;
+    let trash = trash_of(p).ok_or("not in a Trash")?;
+    let (origin, _) =
+        parse_info(&text, top_of(&trash).as_deref()).ok_or("its Trash record is broken")?;
+    let dir = origin.parent().ok_or("it came from nowhere")?;
+    fs::create_dir_all(dir).map_err(|e| format!("can't make {}: {e}", dir.display()))?;
+    let name = origin
+        .file_name()
+        .ok_or("no name")?
+        .to_string_lossy()
+        .into_owned();
+    let target = if fs::symlink_metadata(&origin).is_ok() {
+        crate::ops::free_name(dir, &name)
+    } else {
+        origin.clone()
+    };
+    fs::rename(p, &target).map_err(|e| e.to_string())?;
+    let _ = fs::remove_file(info);
+    Ok(target)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +380,70 @@ mod tests {
             !d.join("Trash/info").exists()
                 || fs::read_dir(d.join("Trash/info")).unwrap().count() == 0
         );
+    }
+
+    #[test]
+    fn listed_and_restored() {
+        let d = scratch("restore");
+        let trash = d.join("Trash");
+        fs::create_dir_all(d.join("work")).unwrap();
+        fs::write(d.join("work/a.txt"), "a").unwrap();
+        let went = put_with(&d.join("work/a.txt"), &trash).unwrap();
+        let items = list_in(&trash);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].path, went);
+        assert_eq!(items[0].origin, d.join("work/a.txt"));
+        let age = (now_ms() - items[0].deleted).abs();
+        assert!(age < 5_000, "deleted just now ({age} ms off)");
+
+        // Its folder's gone, and something's taken its name: both handled.
+        fs::remove_dir(d.join("work")).unwrap();
+        let back = restore(&went).unwrap();
+        assert_eq!(back, d.join("work/a.txt"));
+        assert_eq!(fs::read_to_string(&back).unwrap(), "a");
+        assert!(list_in(&trash).is_empty(), "its .trashinfo went too");
+
+        let went = put_with(&back, &trash).unwrap();
+        fs::write(&back, "new").unwrap();
+        assert_eq!(restore(&went).unwrap(), d.join("work/a (2).txt"));
+    }
+
+    #[test]
+    fn relative_paths_and_broken_records() {
+        let top = Path::new("/media/usb");
+        assert_eq!(
+            parse_info(
+                "[Trash Info]\nPath=photos/a%20b.jpg\nDeletionDate=2026-11-09T10:00:00\n",
+                Some(top)
+            )
+            .map(|x| x.0),
+            Some(PathBuf::from("/media/usb/photos/a b.jpg"))
+        );
+        assert_eq!(parse_info("nonsense", None), None);
+        assert_eq!(
+            parse_info("[Trash Info]\nPath=relative\n", None),
+            None,
+            "relative without a drive top"
+        );
+        assert_eq!(
+            top_of(Path::new("/media/usb/.Trash-1000")),
+            Some(PathBuf::from("/media/usb"))
+        );
+        assert_eq!(
+            top_of(Path::new("/media/usb/.Trash/1000")),
+            Some(PathBuf::from("/media/usb"))
+        );
+        assert_eq!(top_of(Path::new("/home/me/.local/share/Trash")), None);
+        assert!(
+            restore(Path::new("/etc/hostname")).is_err(),
+            "only things in a Trash"
+        );
+    }
+
+    fn now_ms() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
     }
 }

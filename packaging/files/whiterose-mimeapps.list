@@ -2,3 +2,4 @@
 # folders open in WhiteRose Files. Your own ~/.config/mimeapps.list wins.
 [Default Applications]
 inode/directory=whiterose-files.desktop
+x-scheme-handler/trash=whiterose-files.desktop

@@ -26,6 +26,8 @@ pub enum Kind {
     Move,
     Trash,
     Delete,
+    /// Deleting things in the Trash for good (their Trash records too).
+    Purge,
 }
 
 impl Kind {
@@ -35,6 +37,7 @@ impl Kind {
             "move" => Kind::Move,
             "trash" => Kind::Trash,
             "delete" => Kind::Delete,
+            "purge" | "empty" => Kind::Purge,
             _ => return None,
         })
     }
@@ -552,11 +555,19 @@ pub fn run<R: Report>(
                 run.prog.bytes_done += b;
                 run.prog.items_done += i;
             }
-            Kind::Delete => {
+            Kind::Delete | Kind::Purge => {
                 run.tell(src);
+                let info = (kind == Kind::Purge)
+                    .then(|| crate::trash::info_of(src))
+                    .flatten();
                 if !delete(&mut run, src) {
                     run.out.cancelled = true;
                     break;
+                }
+                if let Some(i) = info {
+                    if fs::symlink_metadata(src).is_err() {
+                        let _ = fs::remove_file(i);
+                    }
                 }
             }
         }

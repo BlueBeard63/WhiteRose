@@ -21,7 +21,7 @@ const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
-const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength"]);
+const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
@@ -614,6 +614,18 @@ test("files: time left and the part of a name renaming selects", () => {
     assert.equal(F.stemLength("backup.tar.gz", false), 6);
     assert.equal(F.stemLength(".bashrc", false), 7);
     assert.equal(F.stemLength("my.folder", true), 9);
+});
+test("files: properties formatting and permission bits", () => {
+    assert.equal(F.fullDate(new Date(2026, 10, 9, 20, 43).getTime()), "9 Nov 2026, 20:43");
+    assert.equal(F.fullDate(0), "");
+    assert.equal(F.exactSize(1), "1 byte");
+    assert.equal(F.exactSize(6600), "6.6 kB (6,600 bytes)");
+    assert.equal(F.hasBit(0o640, 0, 1), true, "owner write");
+    assert.equal(F.hasBit(0o640, 1, 1), false, "group write");
+    assert.equal(F.hasBit(0o640, 1, 0), true, "group read");
+    assert.equal(F.withBit(0o644, 0, 2, true), 0o744, "owner run on");
+    assert.equal(F.withBit(0o755, 2, 2, false), 0o754, "others run off");
+    assert.equal(F.withBit(0o4755, 0, 2, false), 0o4655, "other bits kept");
 });
 test("files: moving tabs", () => {
     assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 0, 2), ["b", "c", "a", "d"]);

@@ -47,6 +47,18 @@ pub mod qobject {
         /// A typed location made absolute (~ expanded), "" if it isn't a folder.
         #[qinvokable]
         fn resolve(self: &Fs, typed: &QString) -> QString;
+        /// The folder above `path` ("trash:" from a trashed folder, "" at the top).
+        #[qinvokable]
+        fn up(self: &Fs, path: &QString) -> QString;
+        /// Everything about one file or folder, for Properties: {name, path,
+        /// dir, link, target, mime, kind icon, size, modified, accessed,
+        /// created, mode, owner, group, mine, origin, deleted}.
+        #[qinvokable]
+        fn info(self: &Fs, path: &QString) -> QString;
+        /// Changes permissions (mode bits); "" or what went wrong.
+        #[qinvokable]
+        #[cxx_name = "setMode"]
+        fn set_mode(self: &Fs, path: &QString, mode: i32) -> QString;
         /// Folders named on the command line, as JSON.
         #[qinvokable]
         fn arguments(self: &Fs) -> QString;
@@ -86,13 +98,19 @@ pub mod qobject {
     }
 }
 
-use std::{os::unix::fs::MetadataExt, path::Path};
+use std::{
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+};
 
 use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{listing, places, session, views};
+use crate::{listing, places, session, trash, views};
+
+/// The Trash, as a place to go.
+const TRASH: &str = "trash:";
 
 #[derive(Default)]
 pub struct FsRust;
@@ -117,11 +135,48 @@ impl qobject::Fs {
     ) -> QString {
         let path = path.to_string();
         let ic = icons::shared();
-        let mut entries =
-            match listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string()) {
-                Ok(v) => v,
-                Err(e) => return q(json!({"ok": false, "error": e})),
-            };
+        // The Trash ("trash:"): everything in every Trash, named and typed as
+        // it was, dated when it was trashed, with where it came from.
+        let mut origins = std::collections::HashMap::new();
+        let read = if path == TRASH {
+            Ok(trash::list()
+                .into_iter()
+                .filter_map(|t| {
+                    let m = std::fs::symlink_metadata(&t.path).ok()?;
+                    let name = t.origin.file_name()?.to_string_lossy().into_owned();
+                    let p = t.path.to_string_lossy().into_owned();
+                    let dir = m.is_dir();
+                    origins.insert(
+                        p.clone(),
+                        t.origin
+                            .parent()
+                            .map(|d| d.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                    );
+                    Some(listing::Entry {
+                        mime: if dir {
+                            "inode/directory".into()
+                        } else {
+                            ic.mime.type_of(&name).to_string()
+                        },
+                        hidden: false,
+                        executable: false,
+                        size: if dir { 0 } else { m.len() },
+                        modified: t.deleted,
+                        link: m.file_type().is_symlink(),
+                        dir,
+                        path: p,
+                        name,
+                    })
+                })
+                .collect())
+        } else {
+            listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string())
+        };
+        let mut entries = match read {
+            Ok(v) => v,
+            Err(e) => return q(json!({"ok": false, "error": e})),
+        };
         let by = match sort.to_string().as_str() {
             "size" => listing::Sort::Size,
             "modified" => listing::Sort::Modified,
@@ -143,6 +198,9 @@ impl qobject::Fs {
                 });
                 let mut v = serde_json::to_value(&e).unwrap_or_default();
                 v["icon"] = json!(icon);
+                if let Some(o) = origins.get(&e.path) {
+                    v["origin"] = json!(o);
+                }
                 v
             })
             .collect();
@@ -150,6 +208,13 @@ impl qobject::Fs {
     }
 
     fn stamp_of(&self, path: &str) -> f64 {
+        if path == TRASH {
+            // Something trashed, restored or deleted changes an info folder.
+            return trash::all_trashes()
+                .iter()
+                .map(|t| self.stamp_of(&t.join("info").to_string_lossy()))
+                .sum();
+        }
         // A folder's own modification time changes when its entries do.
         std::fs::metadata(path)
             .map(|m| m.mtime() as f64 * 1000.0 + m.mtime_nsec() as f64 / 1e6)
@@ -182,7 +247,15 @@ impl qobject::Fs {
             })
             .collect();
         q(json!({
-            "folders": places::folders().into_iter().map(with_icon).collect::<Vec<_>>(),
+            "folders": places::folders()
+                .into_iter()
+                .chain(std::iter::once(places::Place {
+                    name: "Trash".into(),
+                    path: TRASH.into(),
+                    icon: if trash::list().is_empty() { "user-trash" } else { "user-trash-full" }.into(),
+                }))
+                .map(with_icon)
+                .collect::<Vec<_>>(),
             "bookmarks": places::bookmarks().into_iter().map(with_icon).collect::<Vec<_>>(),
             "drives": drives,
         }))
@@ -193,6 +266,35 @@ impl qobject::Fs {
     }
 
     pub fn crumbs(&self, path: &QString) -> QString {
+        let path = path.to_string();
+        let trash_crumb = json!({"name": "Trash", "path": TRASH});
+        if path == TRASH {
+            return q(json!([trash_crumb]));
+        }
+        // In a trashed folder: Trash > it > ...
+        if let Some((t, parts)) = trash::inside(Path::new(&path)) {
+            let mut acc = t.join("files");
+            let mut v = vec![trash_crumb];
+            for part in parts {
+                acc = acc.join(&part);
+                let name = if v.len() == 1 {
+                    trash::list_in(&t)
+                        .into_iter()
+                        .find(|x| x.path == acc)
+                        .and_then(|x| {
+                            x.origin
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                        })
+                        .unwrap_or(part)
+                } else {
+                    part
+                };
+                v.push(json!({"name": name, "path": acc}));
+            }
+            return q(json!(v));
+        }
+        let path = QString::from(path.as_str());
         q(
             serde_json::to_value(places::crumbs(&path.to_string(), &places::home()))
                 .unwrap_or_default(),
@@ -221,6 +323,9 @@ impl qobject::Fs {
     pub fn resolve(&self, typed: &QString) -> QString {
         let t = typed.to_string();
         let t = t.trim().trim_start_matches("file://");
+        if t.trim_end_matches('/') == TRASH {
+            return QString::from(TRASH);
+        }
         let p = match t.strip_prefix('~') {
             Some(rest) => format!("{}{rest}", places::home().to_string_lossy()),
             None => t.to_string(),
@@ -246,6 +351,9 @@ impl qobject::Fs {
             .skip(1)
             .filter(|a| !a.starts_with('-'))
             .map(|a| {
+                if a.starts_with(TRASH) {
+                    return PathBuf::from(TRASH);
+                }
                 let p = Path::new(a.strip_prefix("file://").unwrap_or(&a)).to_path_buf();
                 let p = if p.is_absolute() { p } else { cwd.join(p) };
                 // A file: open its folder.
@@ -307,5 +415,119 @@ impl qobject::Fs {
 
     pub fn set_shows_hidden(&self, on: bool) -> bool {
         views::change(|all| all.hidden = on)
+    }
+
+    pub fn up(&self, path: &QString) -> QString {
+        let path = path.to_string();
+        if path == TRASH || path == "/" {
+            return QString::from("");
+        }
+        let p = Path::new(&path);
+        if let Some((_, parts)) = trash::inside(p) {
+            if parts.len() == 1 {
+                return QString::from(TRASH);
+            }
+        }
+        let up = p
+            .parent()
+            .map(|u| u.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        QString::from(if up.is_empty() { "/" } else { up.as_str() })
+    }
+
+    pub fn info(&self, path: &QString) -> QString {
+        let p = PathBuf::from(path.to_string());
+        let Ok(lm) = std::fs::symlink_metadata(&p) else {
+            return q(json!({"ok": false, "error": "it's not there any more"}));
+        };
+        let link = lm.file_type().is_symlink();
+        let m = std::fs::metadata(&p).unwrap_or(lm.clone());
+        let ms = |t: std::io::Result<std::time::SystemTime>| {
+            t.ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0)
+        };
+        let ic = icons::shared();
+        // A trashed item: its own name, and where it came from.
+        let trashed = trash::list().into_iter().find(|t| t.path == p);
+        let name = trashed
+            .as_ref()
+            .and_then(|t| t.origin.file_name())
+            .or(p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "/".into());
+        let dir = m.is_dir();
+        let mime = if dir {
+            "inode/directory".to_string()
+        } else {
+            ic.mime.type_of(&name).to_string()
+        };
+        let icon = icon_path(if dir {
+            ic.lookup("folder", 64, 1)
+        } else {
+            ic.mime
+                .icon_names(&mime)
+                .iter()
+                .find_map(|n| ic.lookup(n, 64, 1))
+        });
+        // SAFETY: getuid can't fail.
+        let me = unsafe { libc::getuid() };
+        q(json!({
+            "ok": true,
+            "name": name,
+            "path": p,
+            "location": p.parent(),
+            "dir": dir,
+            "link": link,
+            "target": if link { std::fs::read_link(&p).ok() } else { None },
+            "mime": mime,
+            "icon": icon,
+            "size": if dir { 0 } else { m.len() },
+            "modified": ms(lm.modified()),
+            "accessed": ms(lm.accessed()),
+            "created": ms(lm.created()),
+            "mode": lm.mode() & 0o7777,
+            "owner": user_name(lm.uid()),
+            "group": group_name(lm.gid()),
+            "mine": lm.uid() == me,
+            "origin": trashed.as_ref().map(|t| t.origin.clone()),
+            "deleted": trashed.map(|t| t.deleted),
+        }))
+    }
+
+    pub fn set_mode(&self, path: &QString, mode: i32) -> QString {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = (mode as u32) & 0o7777;
+        match std::fs::set_permissions(path.to_string(), std::fs::Permissions::from_mode(mode)) {
+            Ok(()) => QString::from(""),
+            Err(e) => QString::from(e.to_string().as_str()),
+        }
+    }
+}
+
+fn user_name(uid: u32) -> String {
+    // SAFETY: getpwuid's result is read straight away, on this thread.
+    unsafe {
+        let pw = libc::getpwuid(uid);
+        if pw.is_null() {
+            return uid.to_string();
+        }
+        std::ffi::CStr::from_ptr((*pw).pw_name)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn group_name(gid: u32) -> String {
+    // SAFETY: as above.
+    unsafe {
+        let gr = libc::getgrgid(gid);
+        if gr.is_null() {
+            return gid.to_string();
+        }
+        std::ffi::CStr::from_ptr((*gr).gr_name)
+            .to_string_lossy()
+            .into_owned()
     }
 }

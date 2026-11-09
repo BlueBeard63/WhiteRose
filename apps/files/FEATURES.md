@@ -43,8 +43,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Batch rename with regex, numbering, case and preview (Next)
 - [ ] Create folder from selected files (Next)
 - [ ] File shelf / staging area for collecting items (Next)
-- [~] Recycle Bin/Trash integration and restore (MVP) — moving to the Trash (freedesktop layout); Trash view and restore next
-- [ ] File and folder properties, permissions and attributes (MVP)
+- [x] Recycle Bin/Trash integration and restore (MVP) — every Trash (home and drives) in one view: where from, when; restore (folder remade, renamed if taken), delete for good, empty
+- [x] File and folder properties, permissions and attributes (MVP) — kind, location, size (folders counted live), dates, owner and group, read / change / run for you, group and everyone
 - [ ] Copy file paths, quoted paths and shortcuts (Next)
 - [ ] Custom file tags with colours and multiple labels (Next)
 - [ ] File hashing with MD5, SHA-1 and SHA-256 (Next)

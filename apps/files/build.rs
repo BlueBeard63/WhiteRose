@@ -12,6 +12,7 @@ fn main() {
             "qml/ListMode.qml",
             "qml/ColumnsMode.qml",
             "qml/Transfers.qml",
+            "qml/Properties.qml",
         ]
         .map(QmlFile::from),
     );

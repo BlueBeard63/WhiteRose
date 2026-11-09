@@ -78,3 +78,27 @@ function stemLength(name, dir) {
     const dot = name.lastIndexOf(".");
     return dot > 0 ? dot : name.length;
 }
+
+// "9 Nov 2026, 20:43" (Properties).
+function fullDate(ms) {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
+    return d.getDate() + " " + m + " " + d.getFullYear() + ", "
+        + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+// "6.6 kB (6,600 bytes)"; small sizes just in bytes.
+function exactSize(bytes) {
+    if (bytes < 1000) return bytes + (bytes === 1 ? " byte" : " bytes");
+    // (Qt's JS has no locale grouping; done by hand.)
+    return size(bytes) + " (" + String(bytes).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + " bytes)";
+}
+
+// Permission bits: `who` 0 owner, 1 group, 2 others; `what` 0 read, 1 write, 2 run.
+function hasBit(mode, who, what) { return (mode & (0o400 >> (who * 3 + what))) !== 0 }
+function withBit(mode, who, what, on) {
+    const bit = 0o400 >> (who * 3 + what);
+    return on ? (mode | bit) : (mode & ~bit);
+}
+

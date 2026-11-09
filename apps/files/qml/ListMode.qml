@@ -11,7 +11,8 @@ FocusScope {
     required property var pane
     readonly property real sizeW: 90
     readonly property real dateW: 150
-    readonly property real kindW: 110
+    // In the Trash the last column is where things came from.
+    readonly property real kindW: root.pane.inTrash ? 220 : 110
     readonly property real now: Date.now()
 
     // ---- headings -------------------------------------------------------------
@@ -26,8 +27,8 @@ FocusScope {
                 model: [
                     { key: "name", label: "Name", w: head.width - 32 - root.sizeW - root.dateW - root.kindW },
                     { key: "size", label: "Size", w: root.sizeW },
-                    { key: "modified", label: "Modified", w: root.dateW },
-                    { key: "kind", label: "Kind", w: root.kindW },
+                    { key: "modified", label: root.pane.inTrash ? "Deleted" : "Modified", w: root.dateW },
+                    { key: root.pane.inTrash ? "" : "kind", label: root.pane.inTrash ? "From" : "Kind", w: root.kindW },
                 ]
                 delegate: Item {
                     required property var modelData
@@ -51,7 +52,7 @@ FocusScope {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (root.pane.sortBy === modelData.key) root.pane.setView({ descending: !root.pane.descending });
-                            else root.pane.setView({ sortBy: modelData.key, descending: modelData.key !== "name" && modelData.key !== "kind" });
+                            else if (modelData.key !== "") root.pane.setView({ sortBy: modelData.key, descending: modelData.key !== "name" && modelData.key !== "kind" });
                         }
                     }
                 }
@@ -122,7 +123,7 @@ FocusScope {
                 }
                 Text { width: root.sizeW; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.dir ? "—" : F.size(row.modelData.size); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
                 Text { width: root.dateW; anchors.verticalCenter: parent.verticalCenter; text: F.date(row.modelData.modified, root.now); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
-                Text { width: root.kindW; anchors.verticalCenter: parent.verticalCenter; text: F.kind(row.modelData.mime); elide: Text.ElideRight; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
+                Text { width: root.kindW; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.origin !== undefined ? row.modelData.origin.replace(Fs.home(), "~") : F.kind(row.modelData.mime); elide: root.pane.inTrash ? Text.ElideMiddle : Text.ElideRight; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
             }
             MouseArea {
                 id: rowArea

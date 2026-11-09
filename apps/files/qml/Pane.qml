@@ -26,7 +26,11 @@ Item {
     property var viewInfo: ({ own: false, subfolders: false, from: "" })
     property bool applying: false
     property string filter: ""
-    readonly property string title: path === Fs.home() ? "Home" : path === "/" ? "/" : path.substring(path.lastIndexOf("/") + 1)
+    // The Trash itself ("trash:"): restore and delete for good instead of
+    // the usual file actions.
+    readonly property bool inTrash: path === "trash:"
+    readonly property string title: path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash"
+        : JSON.parse(Fs.crumbs(path)).slice(-1)[0]?.name ?? path.substring(path.lastIndexOf("/") + 1)
     readonly property var shownEntries: pane.filter === "" ? pane.entries
         : pane.entries.filter(e => e.name.toLowerCase().includes(pane.filter.toLowerCase()))
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
@@ -111,9 +115,8 @@ Item {
         pane.go(p, true);
     }
     function up() {
-        if (pane.path === "/") return;
-        const i = pane.path.lastIndexOf("/");
-        pane.go(i <= 0 ? "/" : pane.path.substring(0, i));
+        const u = Fs.up(pane.path);
+        if (u !== "") pane.go(u);
     }
     function activate(entry) {
         if (!entry) return;

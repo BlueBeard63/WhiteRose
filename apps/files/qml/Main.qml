@@ -251,16 +251,25 @@ AppWindow {
             spacing: 2
             IconButton { width: 32; height: 32; icon: "chevL"; fill: "transparent"; opacity: (win.current?.back.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goBack() }
             IconButton { width: 32; height: 32; icon: "chevR"; fill: "transparent"; opacity: (win.current?.forward.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goForward() }
-            IconButton { width: 32; height: 32; icon: "chevUp"; fill: "transparent"; opacity: win.current?.path !== "/" ? 1 : 0.35; onClicked: win.current?.up() }
+            IconButton { width: 32; height: 32; icon: "chevUp"; fill: "transparent"; opacity: Fs.up(win.current?.path ?? "/") !== "" ? 1 : 0.35; onClicked: win.current?.up() }
         }
         AddressBar {
             id: address
-            anchors { left: arrows.right; leftMargin: 8; right: views.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            anchors { left: arrows.right; leftMargin: 8; right: emptyTrash.visible ? emptyTrash.left : views.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
             path: win.current?.path ?? "/"
             hidden: win.current?.hidden ?? false
             onGo: p => { win.current?.go(p); win.current?.focusView() }
             onDone: win.current?.focusView()
             z: 5
+        }
+        Button {
+            id: emptyTrash
+            visible: win.current?.inTrash ?? false
+            anchors { right: views.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            text: "Empty Trash"
+            kind: "danger"
+            enabled: (win.current?.entries.length ?? 0) > 0
+            onClicked: if (enabled) win.askEmpty()
         }
         Segmented {
             id: views
@@ -319,7 +328,16 @@ AppWindow {
             property var entry: null
             readonly property var sel: win.current?.selection ?? []
             readonly property bool many: sel.length > 1
-            items: !itemMenu.entry ? [
+            readonly property bool trashed: win.current?.inTrash ?? false
+            items: itemMenu.trashed ? (!itemMenu.entry ? [
+                { label: "Empty Trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
+                { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
+            ] : [
+                { label: "Restore", run: () => win.restore(itemMenu.sel.map(e => e.path)) },
+                { label: "Delete permanently…", shortcut: "Delete", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path), "purge") },
+                { separator: true },
+                { label: "Properties", shortcut: "Alt+Enter", enabled: !itemMenu.many, run: () => win.properties() },
+            ]) : !itemMenu.entry ? [
                 { label: "New folder", shortcut: "Ctrl+Shift+N", run: () => win.askName("folder") },
                 { label: "New file", run: () => win.askName("file") },
                 { separator: true },
@@ -327,6 +345,7 @@ AppWindow {
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
                 { separator: true },
                 { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
+                { label: "Properties", run: () => props.show([win.current.path]) },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
@@ -339,6 +358,8 @@ AppWindow {
                 { label: "Rename…", shortcut: "F2", enabled: !itemMenu.many, run: () => win.askName("rename") },
                 { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
                 { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
+                { separator: true },
+                { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
             ]
         }
 
@@ -360,6 +381,7 @@ AppWindow {
         Text {
             anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
             text: {
+                if (win.notice !== "") return win.notice;
                 const p = win.current;
                 if (!p) return "";
                 const n = p.shownEntries.length, sel = p.selection;
@@ -368,7 +390,7 @@ AppWindow {
                 const bytes = sel.filter(e => !e.dir).reduce((a, e) => a + e.size, 0);
                 return items + " · " + sel.length + " selected" + (bytes > 0 ? " (" + F.size(bytes) + ")" : "");
             }
-            color: Theme.muted
+            color: win.notice !== "" ? Theme.rose : Theme.muted
             font { family: Theme.font; pointSize: Theme.pt(11) }
         }
     }
@@ -379,7 +401,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible
+    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible || props.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -413,13 +435,38 @@ AppWindow {
     }
     function trash() {
         const sel = win.current?.selection ?? [];
-        win.run("trash", sel.map(e => e.path));
+        // In the Trash, Delete means for good.
+        if (win.current?.inTrash) win.askDelete(sel.map(e => e.path), "purge");
+        else win.run("trash", sel.map(e => e.path));
     }
-    function askDelete(paths) {
+    // kind: "delete" (anywhere), "purge" (things in the Trash), "empty" (all of it).
+    function askDelete(paths, kind) {
         if (paths.length === 0) return;
         confirm.paths = paths;
+        confirm.kind = kind ?? "delete";
+        // Shown by their own names (a trashed one's name in the Trash can differ).
+        confirm.names = paths.map(p => (win.current?.entries.find(e => e.path === p)?.name) ?? p.substring(p.lastIndexOf("/") + 1));
         confirm.open();
     }
+    function askEmpty() { win.askDelete((win.current?.entries ?? []).map(e => e.path), "empty") }
+    function restore(paths) {
+        const r = JSON.parse(Ops.restore(JSON.stringify(paths)));
+        win.current?.load();
+        if (r.failed.length > 0) {
+            const name = r.failed[0][0].substring(r.failed[0][0].lastIndexOf("/") + 1);
+            win.notice = "Couldn't restore “" + name + "”: " + r.failed[0][1];
+        }
+    }
+    function properties() {
+        const sel = win.current?.selection ?? [];
+        // (The Trash itself has none.)
+        if (sel.length === 0 && win.current?.inTrash) return;
+        props.show(sel.length > 0 ? sel.map(e => e.path) : [win.current.path]);
+    }
+    // A line for the status bar, for a few seconds.
+    property string notice: ""
+    Timer { running: win.notice !== ""; interval: 6000; onTriggered: win.notice = "" }
+    Properties { id: props; onClosed: win.current?.focusView() }
     // "rename", "folder" or "file".
     function askName(what) {
         const p = win.current;
@@ -484,7 +531,7 @@ AppWindow {
                 id: nameField
                 width: 320
                 error: nameDialog.error !== ""
-                onAccepted: win.nameChosen()
+                onAccepted: Qt.callLater(win.nameChosen)
                 onTextChanged: nameDialog.error = ""
                 Keys.onEscapePressed: nameDialog.close()
             }
@@ -511,6 +558,8 @@ AppWindow {
     Popup {
         id: confirm
         property var paths: []
+        property var names: []
+        property string kind: "delete"
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: 380
@@ -524,8 +573,8 @@ AppWindow {
             spacing: 12
             Text {
                 width: 340
-                text: confirm.paths.length === 1
-                    ? "Delete “" + confirm.paths[0].substring(confirm.paths[0].lastIndexOf("/") + 1) + "” permanently?"
+                text: confirm.kind === "empty" ? "Empty the Trash?"
+                    : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” permanently?"
                     : "Delete " + confirm.paths.length + " items permanently?"
                 wrapMode: Text.Wrap
                 color: Theme.text
@@ -533,7 +582,9 @@ AppWindow {
             }
             Text {
                 width: 340
-                text: "They won't go to the Trash, so they can't be brought back."
+                text: confirm.kind === "delete" ? "They won't go to the Trash, so they can't be brought back."
+                    : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") is deleted for good."
+                    : "They can't be brought back after this."
                 wrapMode: Text.Wrap
                 color: Theme.muted
                 font { family: Theme.font; pointSize: Theme.pt(12) }
@@ -544,11 +595,12 @@ AppWindow {
                 Button { text: "Cancel"; kind: "ghost"; onClicked: confirm.close() }
                 Button {
                     id: deleteButton
-                    text: "Delete"
+                    text: confirm.kind === "empty" ? "Empty Trash" : "Delete"
                     kind: "danger"
-                    Keys.onReturnPressed: clicked()
+                    // After the key is handled: closing in the middle of it crashes Qt.
+                    Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
                     Keys.onEscapePressed: confirm.close()
-                    onClicked: { win.run("delete", confirm.paths); confirm.close() }
+                    onClicked: { win.run(confirm.kind, confirm.paths); confirm.close() }
                 }
             }
         }
@@ -578,9 +630,10 @@ AppWindow {
     Shortcut { sequence: "F5"; onActivated: win.current?.load() }
     Shortcut { sequence: "Ctrl+C"; enabled: !win.typing; onActivated: win.toClipboard(false) }
     Shortcut { sequence: "Ctrl+X"; enabled: !win.typing; onActivated: win.toClipboard(true) }
-    Shortcut { sequence: "Ctrl+V"; enabled: !win.typing; onActivated: { if (win.current) win.paste(win.current.path) } }
+    Shortcut { sequence: "Ctrl+V"; enabled: !win.typing && !(win.current?.inTrash ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
     Shortcut { sequence: "Delete"; enabled: !win.typing; onActivated: win.trash() }
-    Shortcut { sequence: "Shift+Del"; enabled: !win.typing; onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path)) }
-    Shortcut { sequence: "F2"; enabled: !win.typing; onActivated: win.askName("rename") }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: !win.typing; onActivated: win.askName("folder") }
+    Shortcut { sequence: "Shift+Del"; enabled: !win.typing; onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
+    Shortcut { sequence: "F2"; enabled: !win.typing && !(win.current?.inTrash ?? false); onActivated: win.askName("rename") }
+    Shortcut { sequences: ["Alt+Return", "Alt+Enter"]; enabled: !win.typing; onActivated: win.properties() }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: !win.typing && !(win.current?.inTrash ?? false); onActivated: win.askName("folder") }
 }

@@ -336,7 +336,8 @@ AppWindow {
             id: lineField
             implicitWidth: 220
             placeholder: "Go to line"
-            onAccepted: { const n = parseInt(text); lineJump.close(); if (!isNaN(n)) win.current?.goToLine(n) }
+            // Closed once Enter is handled (closing during it can crash Qt).
+            onAccepted: { const n = parseInt(text); Qt.callLater(() => { lineJump.close(); if (!isNaN(n)) win.current?.goToLine(n) }) }
         }
     }
 

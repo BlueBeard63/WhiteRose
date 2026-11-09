@@ -59,6 +59,21 @@ pub mod qobject {
         #[qinvokable]
         fn clipboard(self: &Ops) -> QString;
 
+        /// Puts things in the Trash back where they came from:
+        /// {done: [path], failed: [[path, why]]}.
+        #[qinvokable]
+        fn restore(self: &Ops, paths: &QString) -> QString;
+        /// Counts what's in these, folders all the way down, in the
+        /// background; `measured` comes as it goes and at the end. Returns its id.
+        #[qinvokable]
+        fn measure(self: Pin<&mut Ops>, paths: &QString) -> i32;
+        #[qinvokable]
+        #[cxx_name = "stopMeasuring"]
+        fn stop_measuring(self: &Ops, id: i32);
+        /// {bytes, files, folders, done}
+        #[qsignal]
+        fn measured(self: Pin<&mut Ops>, id: i32, result: QString);
+
         /// A job finished: {kind, done: [path], failed: [[path, why]], cancelled}.
         #[qsignal]
         fn finished(self: Pin<&mut Ops>, id: i32, result: QString);
@@ -126,6 +141,8 @@ pub struct OpsRust {
     /// Held by the copy or move that's running.
     transfers: Arc<Mutex<()>>,
     next: i32,
+    /// Counts going on, each with its stop flag.
+    measuring: Arc<Mutex<std::collections::HashMap<i32, Arc<std::sync::atomic::AtomicBool>>>>,
 }
 
 fn q(v: Value) -> QString {
@@ -138,6 +155,7 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Move => "move",
         Kind::Trash => "trash",
         Kind::Delete => "delete",
+        Kind::Purge => "purge",
     }
 }
 
@@ -159,6 +177,7 @@ fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Move => format!("Moving {what} to {to}"),
         Kind::Trash => format!("Moving {what} to the Trash"),
         Kind::Delete => format!("Deleting {what}"),
+        Kind::Purge => format!("Deleting {what} for good"),
     }
 }
 
@@ -255,7 +274,8 @@ impl qobject::Ops {
         sources: &QString,
         dest: &QString,
     ) -> i32 {
-        let Some(kind) = Kind::parse(&kind.to_string()) else {
+        let kind_text = kind.to_string();
+        let Some(kind) = Kind::parse(&kind_text) else {
             return -1;
         };
         let sources: Vec<PathBuf> = serde_json::from_str::<Vec<String>>(&sources.to_string())
@@ -275,7 +295,11 @@ impl qobject::Ops {
         self.list.lock().unwrap().push(Job {
             id,
             kind: kind_name(kind),
-            label: label(kind, &sources, dest.as_deref()),
+            label: if kind_text == "empty" {
+                "Emptying the Trash".into()
+            } else {
+                label(kind, &sources, dest.as_deref())
+            },
             state: if queued { "waiting" } else { "running" },
             progress: Progress::default(),
             rate: 0.0,
@@ -373,6 +397,85 @@ impl qobject::Ops {
         match ops::create(Path::new(&dir.to_string()), &name.to_string(), file) {
             Ok(p) => q(json!({"ok": true, "path": p})),
             Err(e) => q(json!({"ok": false, "error": e})),
+        }
+    }
+
+    pub fn restore(&self, paths: &QString) -> QString {
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let (mut done, mut failed) = (vec![], vec![]);
+        for p in paths {
+            match crate::trash::restore(Path::new(&p)) {
+                Ok(to) => done.push(to.to_string_lossy().into_owned()),
+                Err(e) => failed.push((p, e)),
+            }
+        }
+        q(json!({"done": done, "failed": failed}))
+    }
+
+    pub fn measure(mut self: Pin<&mut Self>, paths: &QString) -> i32 {
+        let paths: Vec<PathBuf> = serde_json::from_str::<Vec<String>>(&paths.to_string())
+            .unwrap_or_default()
+            .into_iter()
+            .map(PathBuf::from)
+            .collect();
+        self.as_mut().rust_mut().next += 1;
+        let id = self.next;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.measuring.lock().unwrap().insert(id, stop.clone());
+        let measuring = self.measuring.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let (mut bytes, mut files, mut folders) = (0u64, 0u64, 0u64);
+            let mut last = Instant::now();
+            let send = |bytes: u64, files: u64, folders: u64, done: bool| {
+                let r = json!({"bytes": bytes, "files": files, "folders": folders, "done": done})
+                    .to_string();
+                let _ = thread
+                    .queue(move |mut obj| obj.as_mut().measured(id, QString::from(r.as_str())));
+            };
+            // What's inside the folders asked about (not the folders themselves).
+            let mut stack: Vec<PathBuf> = vec![];
+            for p in &paths {
+                match std::fs::symlink_metadata(p) {
+                    Ok(m) if m.is_dir() => stack.push(p.clone()),
+                    Ok(m) => {
+                        bytes += m.len();
+                        files += 1;
+                    }
+                    Err(_) => {}
+                }
+            }
+            while let Some(dir) = stack.pop() {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let Ok(rd) = std::fs::read_dir(&dir) else {
+                    continue;
+                };
+                for e in rd.flatten() {
+                    let Ok(m) = e.metadata() else { continue };
+                    if m.is_dir() {
+                        folders += 1;
+                        stack.push(e.path());
+                    } else {
+                        bytes += m.len();
+                        files += 1;
+                    }
+                }
+                if last.elapsed() >= Duration::from_millis(150) {
+                    last = Instant::now();
+                    send(bytes, files, folders, false);
+                }
+            }
+            send(bytes, files, folders, true);
+            measuring.lock().unwrap().remove(&id);
+        });
+        id
+    }
+
+    pub fn stop_measuring(&self, id: i32) {
+        if let Some(f) = self.measuring.lock().unwrap().get(&id) {
+            f.store(true, Ordering::Relaxed);
         }
     }
 
