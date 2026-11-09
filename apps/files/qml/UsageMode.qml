@@ -22,15 +22,20 @@ FocusScope {
     readonly property var blocks: Layout.treemap(root.weighed, 0, 0, map.width, map.height)
     property string hover: ""
 
-    // A colour per kind of thing.
-    function shade(e) {
-        if (e.dir) return Theme.tint(0.55);
+    // A soft colour per kind of thing (folders: the desktop's accent), of
+    // about the same lightness, mixed into the window's background so blocks
+    // sit quietly; `t` is how much of the colour shows.
+    function hue(e) {
+        if (e.dir) return Theme.rose;
         const m = String(e.mime);
-        const c = m.startsWith("image/") ? "#986EE2" : m.startsWith("video/") ? "#E5534B" : m.startsWith("audio/") ? "#F0883E"
-            : /pdf|document|text\/plain|markdown|spreadsheet|presentation/.test(m) ? "#539BF5"
-            : /zip|tar|7z|rar|compress|xz|gzip|zstd/.test(m) ? "#E3B341"
-            : /^text\/|json|javascript|x-shellscript|toml|yaml/.test(m) ? "#57AB5A" : "#8B949E";
-        return Qt.rgba(Qt.color(c).r, Qt.color(c).g, Qt.color(c).b, 0.55);
+        return Qt.color(m.startsWith("image/") ? "#A78BDA" : m.startsWith("video/") ? "#62BDBD" : m.startsWith("audio/") ? "#E3A869"
+            : /pdf|document|text\/plain|markdown|spreadsheet|presentation/.test(m) ? "#7FA7E0"
+            : /zip|tar|7z|rar|compress|xz|gzip|zstd/.test(m) ? "#D9C27A"
+            : /^text\/|json|javascript|x-shellscript|toml|yaml/.test(m) ? "#7DC1A1" : "#9AA3AD");
+    }
+    function mix(c, t) {
+        const b = Theme.bg;
+        return Qt.rgba(c.r * t + b.r * (1 - t), c.g * t + b.g * (1 - t), c.b * t + b.b * (1 - t), 1);
     }
 
     Keys.onReturnPressed: root.pane.activate(root.pane.shownEntries[root.pane.current])
@@ -57,20 +62,26 @@ FocusScope {
                 x: modelData.x + 1; y: modelData.y + 1
                 width: Math.max(0, modelData.w - 2); height: Math.max(0, modelData.h - 2)
                 radius: Math.min(8, width / 4, height / 4)
-                color: root.shade(e)
-                border { width: on || drop.over ? 2 : 0; color: Theme.text }
-                opacity: blockArea.containsMouse ? 1 : 0.88
+                readonly property color hue: root.hue(e)
+                color: root.mix(hue, blockArea.containsMouse || drop.over ? 0.42 : 0.28)
+                border { width: on ? 2 : 1; color: on ? Theme.rose : root.mix(hue, 0.6) }
+                Behavior on color { ColorAnimation { duration: 100 } }
                 clip: true
                 Column {
                     visible: block.width > 64 && block.height > 34
                     x: 8; y: 6
                     width: block.width - 16
-                    Text {
+                    Row {
                         width: parent.width
+                        spacing: 5
+                        Icon { visible: block.e.dir; name: "folder"; size: 12; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                        width: parent.width - (block.e.dir ? 17 : 0)
                         text: block.e.name
                         elide: Text.ElideMiddle
                         color: Theme.text
                         font { family: Theme.font; pointSize: Theme.pt(11.5); weight: Font.Medium }
+                        }
                     }
                     Text {
                         visible: block.height > 52
