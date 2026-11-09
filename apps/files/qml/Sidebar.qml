@@ -105,6 +105,8 @@ Rectangle {
                 }
             }
             Heading { text: "Drives" }
+            // Every drive at once, how full.
+            PlaceRow { name: "Storage"; path: "drives:"; icon: Fs.icon("drive-multidisk", 20) || Fs.icon("drive-harddisk", 20) }
             Repeater {
                 model: side.places.drives
                 delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon; total: modelData.total; free: modelData.free }

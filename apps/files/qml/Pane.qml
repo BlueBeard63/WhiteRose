@@ -29,6 +29,13 @@ FocusScope {
     // The Trash itself ("trash:"): restore and delete for good instead of
     // the usual file actions.
     readonly property bool inTrash: path === "trash:"
+    // The Storage page ("drives:"): every drive, how full.
+    readonly property bool inDrives: path === "drives:"
+    // Not a real folder: nothing can be made, pasted or dropped here.
+    readonly property bool special: inTrash || inDrives
+    // Folder sizes as they're worked out ({path: {bytes, items}}).
+    property var sizes: ({})
+    property var sizesSoon: ({})
     readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash"
         : JSON.parse(Fs.crumbs(path)).slice(-1)[0]?.name ?? path.substring(path.lastIndexOf("/") + 1)
     // Searching (Search.qml asks, its hits replace the listing): {text,
@@ -56,7 +63,7 @@ FocusScope {
     signal changed()
     // A folder is shown the way it was last time (or as the folder above
     // it lends, or the default); load() follows.
-    onPathChanged: { pane.applyView(); pane.changed() }
+    onPathChanged: { pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
     function applyView() {
         const v = JSON.parse(Fs.view(pane.path));
@@ -125,6 +132,13 @@ FocusScope {
     function load() {
         // Searching: the same search again (things may have changed).
         if (pane.searching) { pane.find({}); return }
+        if (pane.inDrives) {
+            const text = Fs.storage();
+            pane.error = "";
+            pane.stamp = text.length;
+            pane.entries = JSON.parse(text).map(d => Object.assign(d, { dir: true, mime: "inode/directory", size: 0, modified: 0, hidden: false, link: false }));
+            return;
+        }
         const r = JSON.parse(Fs.list(pane.path, pane.hidden, pane.sortBy, pane.descending, 48));
         if (!r.ok) { pane.error = r.error; pane.entries = []; return }
         pane.error = "";
@@ -211,7 +225,11 @@ FocusScope {
         interval: 1500
         repeat: true
         running: pane.visible && Qt.application.state === Qt.ApplicationActive
-        onTriggered: if (!pane.searching && Fs.stamp(pane.path) !== pane.stamp) pane.load()
+        onTriggered: {
+            if (pane.searching) return;
+            // Drives come and go (and fill up): looked at again each time.
+            if (pane.inDrives || Fs.stamp(pane.path) !== pane.stamp) pane.load();
+        }
     }
 
     // Dropped on the folder's empty space: into this folder. (Behind the
@@ -219,7 +237,7 @@ FocusScope {
     FolderDrop {
         id: paneDrop
         anchors.fill: parent
-        dest: pane.path
+        dest: pane.inDrives ? "" : pane.path
         onFilesDropped: (p, d) => pane.dropped(p, d)
     }
     Rectangle {
@@ -237,12 +255,35 @@ FocusScope {
         anchors.fill: parent
         focus: true
         // Search results come as a list (where each is matters).
-        sourceComponent: pane.mode === "list" || pane.searching ? listView : pane.mode === "columns" ? columnsView : gridView
+        sourceComponent: pane.inDrives ? drivesView
+            : pane.mode === "list" || pane.searching ? listView : pane.mode === "columns" ? columnsView : gridView
     }
     // (Inside the views `pane` names their own property, hence view.parent.)
     Component { id: gridView; GridMode { pane: view.parent } }
     Component { id: listView; ListMode { pane: view.parent } }
     Component { id: columnsView; ColumnsMode { pane: view.parent } }
+    Component { id: drivesView; DrivesMode { pane: view.parent } }
+
+    // Folder sizes for the list's Size column, worked out in the background
+    // (not for / : that would be the whole system).
+    readonly property bool wantsSizes: pane.mode === "list" && !pane.special && !pane.searching && pane.path !== "/"
+    onEntriesChanged: pane.askSizes()
+    onWantsSizesChanged: pane.askSizes()
+    function askSizes() {
+        if (!pane.wantsSizes || !pane.visible) return;
+        Ops.sizeFolders(JSON.stringify(pane.entries.filter(e => e.dir && !e.link).map(e => e.path)));
+    }
+    onVisibleChanged: if (pane.visible) pane.askSizes()
+    Connections {
+        target: Ops
+        function onFolderSized(path, bytes, items) {
+            if (!pane.wantsSizes || !path.startsWith(pane.path + "/")) return;
+            pane.sizesSoon[path] = { bytes: bytes, items: items };
+            sizesTimer.restart();
+        }
+    }
+    // Shown a few at a time (not a redraw per folder).
+    Timer { id: sizesTimer; interval: 120; onTriggered: pane.sizes = Object.assign({}, pane.sizesSoon) }
     function focusView() { view.forceActiveFocus(); if (view.item) view.item.forceActiveFocus() }
 
     // Typing filters the folder by name (Backspace takes letters off, Esc

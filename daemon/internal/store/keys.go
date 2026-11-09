@@ -210,6 +210,12 @@ var Known = map[string]Key{
 	})},
 	// The first-run app setup has been offered and run (or skipped).
 	"apps.setupDone": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// The terminal and code editor "Open in…" uses: a command name ("" picks
+	// the first installed one).
+	"apps.terminal": {Default: json.RawMessage(`""`), Check: into(commandName)},
+	"apps.editor":   {Default: json.RawMessage(`""`), Check: into(commandName)},
+	// WhiteRose Files' shortcuts changed from their defaults: {"new-tab": "Ctrl+T", …}.
+	"files.keys": {Default: json.RawMessage(`{}`), Check: into(appKeys)},
 	// Privacy: lock after this many idle minutes (0: never), screens off
 	// after this many (0: never), lock before sleeping, and what's remembered.
 	"privacy.lockAfter":        {Default: json.RawMessage(`5`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
@@ -297,6 +303,40 @@ type CustomShortcut struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
 	Keys    []string `json:"keys"`
+}
+
+// An app's own shortcuts: short ids to Qt key sequences ("Ctrl+Shift+T", "F5").
+func appKeys(m map[string]string) error {
+	if len(m) > 100 {
+		return errors.New("too many")
+	}
+	for id, k := range m {
+		if len(id) == 0 || len(id) > 40 || len(k) == 0 || len(k) > 40 {
+			return fmt.Errorf("%q: bad shortcut", id)
+		}
+		for _, c := range id + k {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '+') {
+				return fmt.Errorf("%q: bad shortcut", id)
+			}
+		}
+	}
+	return nil
+}
+
+// A program's name on $PATH (no path, no arguments), or "".
+func commandName(s string) error {
+	if len(s) > 64 {
+		return errors.New("too long")
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.') {
+			return errors.New("must be a program's name")
+		}
+	}
+	if strings.HasPrefix(s, ".") || strings.HasPrefix(s, "-") {
+		return errors.New("must be a program's name")
+	}
+	return nil
 }
 
 func oneOf(allowed ...string) func(string) error {

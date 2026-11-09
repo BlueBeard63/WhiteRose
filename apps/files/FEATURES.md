@@ -63,12 +63,12 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Inspector with editable metadata and default app (Next)
 
 ## 5. Storage & cleanup
-- [ ] Live folder size calculation (MVP)
+- [x] Live folder size calculation (MVP) — list view's Size column fills in folder sizes in the background (idle priority, kept a minute)
 - [ ] Recursive size calculation with background caching (Next)
 - [ ] Disk usage treemap visualisation (Next)
 - [ ] Largest files browser (Next)
 - [ ] Duplicate file finder (Next)
-- [~] Disk capacity and free-space dashboard (MVP) — usage bars on sidebar drives
+- [x] Disk capacity and free-space dashboard (MVP) — Storage page (sidebar › Drives): every drive, how full, free of total
 - [ ] Safe deletion/cleanup with confirmation and recovery (Next)
 - [ ] Project build-cache and dependency cleanup (Advanced)
 
@@ -77,7 +77,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Per-folder background images (Next)
 - [ ] Custom toolbar buttons and layouts (Next)
 - [ ] Customisable right-click context menus (Next)
-- [ ] Fully remappable keyboard shortcuts (MVP)
+- [x] Fully remappable keyboard shortcuts (MVP) — ☰ › Keyboard shortcuts…: every shortcut, press new keys, clashes refused, reset
 - [~] Custom view columns and sorting preferences (Next) — view and sort remembered per folder, lent to subfolders, or the default for everywhere; choosing columns next
 - [ ] Custom app startup and restoration behaviour (Next)
 - [~] Accessibility, keyboard navigation and scaling (MVP) — arrows/Enter/Backspace, shortcuts for everything so far
@@ -89,8 +89,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Git branch switching and repository operations (Advanced)
 - [ ] Project type recognition / script discovery (Advanced)
 - [ ] Run project scripts from an inspector (Advanced)
-- [ ] Open folders in terminal (MVP)
-- [ ] Open current folder or repo in preferred code editor (MVP)
+- [x] Open folders in terminal (MVP) — F4 or right-click; terminal chosen in Settings › Apps
+- [x] Open current folder or repo in preferred code editor (MVP) — and text files; "Open repository in …" from inside a git repo
 - [ ] Built-in terminal integration (Next)
 - [ ] Docker/Podman container file browsing (Advanced)
 - [ ] Container lifecycle operations and Compose management (Advanced)

@@ -101,6 +101,9 @@ func TestValidation(t *testing.T) {
 		"bar.seconds":                  `"yes"`,
 		"privacy.lockAfter":            `7`,
 		"privacy.screenOffAfter":       `-1`,
+		"apps.terminal":                `"ghostty --title x"`,
+		"apps.editor":                  `"/usr/bin/code"`,
+		"files.keys":                   `{"new-tab":"Ctrl+T; rm"}`,
 		"nope.unknown":                 `1`,
 		"Bad Key":                      `1`,
 		"module.x":                     `{not json`,
@@ -126,6 +129,9 @@ func TestValidation(t *testing.T) {
 		"shortcuts.keys":          `{"close-window":["SUPER+Q","ALT+F4"],"lock":[],"workspace":["SUPER+1-9"]}`,
 		"shortcuts.custom":        `[{"id":"custom-files","name":"Open Files","command":"nautilus","keys":["SUPER+E"]}]`,
 		"displays.test":           `{"config":{"monitor":[{"id":"builtin","scale":1.5}],"profile":[]},"until":1794240000000}`,
+		"apps.terminal":           `"ghostty"`,
+		"apps.editor":             `""`,
+		"files.keys":              `{"new-tab":"Ctrl+Shift+Y","copy-other":"F7"}`,
 	}
 	for k, v := range good {
 		if err := s.Set(k, json.RawMessage(v)); err != nil {

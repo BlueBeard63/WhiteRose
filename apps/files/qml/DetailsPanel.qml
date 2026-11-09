@@ -82,7 +82,7 @@ Rectangle {
                 visible: root.entry === null
                 width: parent.width
                 spacing: 10
-                Icon { name: root.sel.length > 1 ? "copy" : root.pane?.searching ? "search" : "folder"; size: 40; color: Theme.muted }
+                Icon { name: root.sel.length > 1 ? "copy" : root.pane?.searching ? "search" : root.pane?.inDrives ? "gauge" : root.pane?.inTrash ? "trash" : "folder"; size: 40; color: Theme.muted }
                 Text {
                     width: parent.width
                     text: root.sel.length > 1 ? root.sel.length + " items" : root.pane?.title ?? ""

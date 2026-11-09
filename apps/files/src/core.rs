@@ -83,6 +83,30 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "tabTaken"]
         fn tab_taken(self: &Fs, id: &QString) -> bool;
+        /// The mounted drives for the Storage page: [{name, path, icon,
+        /// total, free, removable}], icons at 64 px.
+        #[qinvokable]
+        fn storage(self: &Fs) -> QString;
+        /// Installed terminals / code editors: [{id, name}].
+        #[qinvokable]
+        fn terminals(self: &Fs) -> QString;
+        #[qinvokable]
+        fn editors(self: &Fs) -> QString;
+        /// The editor that `chosen` (a setting, "" for any) comes to: {id, name} or null.
+        #[qinvokable]
+        fn editor(self: &Fs, chosen: &QString) -> QString;
+        /// Opens `dir` in the chosen terminal (or the first installed); "" or what went wrong.
+        #[qinvokable]
+        #[cxx_name = "openTerminal"]
+        fn open_terminal(self: &Fs, dir: &QString, chosen: &QString) -> QString;
+        /// Opens `path` (a folder or file) in the chosen code editor.
+        #[qinvokable]
+        #[cxx_name = "openEditor"]
+        fn open_editor(self: &Fs, path: &QString, chosen: &QString) -> QString;
+        /// The git repository `path` is in ("" if none).
+        #[qinvokable]
+        #[cxx_name = "gitRoot"]
+        fn git_root(self: &Fs, path: &QString) -> QString;
         /// Folders named on the command line, as JSON.
         #[qinvokable]
         fn arguments(self: &Fs) -> QString;
@@ -147,10 +171,12 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{listing, places, session, trash, views};
+use crate::{launch, listing, places, session, trash, views};
 
 /// The Trash, as a place to go.
 const TRASH: &str = "trash:";
+/// Every drive, how full (the Storage page).
+const DRIVES: &str = "drives:";
 
 #[derive(Default)]
 pub struct FsRust;
@@ -307,6 +333,9 @@ impl qobject::Fs {
 
     pub fn crumbs(&self, path: &QString) -> QString {
         let path = path.to_string();
+        if path == DRIVES {
+            return q(json!([{"name": "Storage", "path": DRIVES}]));
+        }
         let trash_crumb = json!({"name": "Trash", "path": TRASH});
         if path == TRASH {
             return q(json!([trash_crumb]));
@@ -380,6 +409,9 @@ impl qobject::Fs {
         if t.trim_end_matches('/') == TRASH {
             return QString::from(TRASH);
         }
+        if t.trim_end_matches('/') == DRIVES {
+            return QString::from(DRIVES);
+        }
         let p = match t.strip_prefix('~') {
             Some(rest) => format!("{}{rest}", places::home().to_string_lossy()),
             None => t.to_string(),
@@ -407,6 +439,9 @@ impl qobject::Fs {
             .map(|a| {
                 if a.starts_with(TRASH) {
                     return PathBuf::from(TRASH);
+                }
+                if a.starts_with(DRIVES) {
+                    return PathBuf::from(DRIVES);
                 }
                 let p = Path::new(a.strip_prefix("file://").unwrap_or(&a)).to_path_buf();
                 let p = if p.is_absolute() { p } else { cwd.join(p) };
@@ -495,7 +530,7 @@ impl qobject::Fs {
 
     pub fn up(&self, path: &QString) -> QString {
         let path = path.to_string();
-        if path == TRASH || path == "/" {
+        if path == TRASH || path == DRIVES || path == "/" {
             return QString::from("");
         }
         let p = Path::new(&path);
@@ -600,6 +635,78 @@ impl qobject::Fs {
 
     pub fn tab_taken(&self, id: &QString) -> bool {
         taken_file(&id.to_string()).is_some_and(|p| std::fs::remove_file(p).is_ok())
+    }
+
+    pub fn storage(&self) -> QString {
+        let ic = icons::shared();
+        let v: Vec<Value> = places::drives()
+            .into_iter()
+            .map(|d| {
+                let icon = icon_path(
+                    ic.lookup(&d.icon, 64, 1)
+                        .or_else(|| ic.lookup("drive-harddisk", 64, 1)),
+                );
+                let mut v = serde_json::to_value(&d).unwrap_or_default();
+                v["icon"] = json!(icon);
+                v
+            })
+            .collect();
+        q(json!(v))
+    }
+
+    pub fn terminals(&self) -> QString {
+        q(json!(launch::available(
+            launch::TERMINALS,
+            launch::installed
+        )))
+    }
+
+    pub fn editors(&self) -> QString {
+        q(json!(launch::available(launch::EDITORS, launch::installed)))
+    }
+
+    pub fn editor(&self, chosen: &QString) -> QString {
+        q(json!(launch::pick(
+            launch::EDITORS,
+            &chosen.to_string(),
+            launch::installed
+        )))
+    }
+
+    pub fn open_terminal(&self, dir: &QString, chosen: &QString) -> QString {
+        let dir = dir.to_string();
+        let Some(t) = launch::pick(launch::TERMINALS, &chosen.to_string(), launch::installed)
+        else {
+            return QString::from("no terminal is installed");
+        };
+        let r = launch::spawn(t.id, &launch::terminal_args(t.id, &dir), &dir);
+        QString::from(r.err().unwrap_or_default().as_str())
+    }
+
+    pub fn open_editor(&self, path: &QString, chosen: &QString) -> QString {
+        let path = path.to_string();
+        let Some(e) = launch::pick(launch::EDITORS, &chosen.to_string(), launch::installed) else {
+            return QString::from("no code editor is installed");
+        };
+        let dir = if Path::new(&path).is_dir() {
+            path.clone()
+        } else {
+            Path::new(&path)
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        };
+        let r = launch::spawn(e.id, &[path], &dir);
+        QString::from(r.err().unwrap_or_default().as_str())
+    }
+
+    pub fn git_root(&self, path: &QString) -> QString {
+        let p = launch::git_root(Path::new(&path.to_string()));
+        QString::from(
+            p.map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .as_str(),
+        )
     }
 }
 

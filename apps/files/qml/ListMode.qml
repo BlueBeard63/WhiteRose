@@ -125,7 +125,7 @@ FocusScope {
                         font { family: Theme.font; pointSize: Theme.pt(12.5) }
                     }
                 }
-                Text { width: root.sizeW; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.dir ? "—" : F.size(row.modelData.size); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
+                Text { width: root.sizeW; anchors.verticalCenter: parent.verticalCenter; text: !row.modelData.dir ? F.size(row.modelData.size) : root.pane.sizes[row.modelData.path] ? F.size(root.pane.sizes[row.modelData.path].bytes) : root.pane.wantsSizes && !row.modelData.link ? "…" : "—"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
                 Text { visible: root.dateW > 0; width: root.dateW; anchors.verticalCenter: parent.verticalCenter; text: F.date(row.modelData.modified, root.now); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
                 Text { visible: root.kindW > 0; width: root.kindW; anchors.verticalCenter: parent.verticalCenter; text: (row.modelData.origin ?? row.modelData.folder) !== undefined ? String(row.modelData.origin ?? row.modelData.folder).replace(Fs.home(), "~") : F.kind(row.modelData.mime); elide: root.located ? Text.ElideMiddle : Text.ElideRight; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
             }

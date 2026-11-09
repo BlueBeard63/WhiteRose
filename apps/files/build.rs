@@ -19,6 +19,8 @@ fn main() {
             "qml/Preview.qml",
             "qml/DetailsPanel.qml",
             "qml/QuickLook.qml",
+            "qml/DrivesMode.qml",
+            "qml/KeysDialog.qml",
         ]
         .map(QmlFile::from),
     );

@@ -79,6 +79,16 @@ pub mod qobject {
         #[qsignal]
         fn measured(self: Pin<&mut Ops>, id: i32, result: QString);
 
+        /// Sizes these folders (all the way down), one after another in the
+        /// background; `folderSized` for each. Asking again drops what's
+        /// still waiting; sizes from the last minute come straight back.
+        #[qinvokable]
+        #[cxx_name = "sizeFolders"]
+        fn size_folders(self: Pin<&mut Ops>, paths: &QString);
+        #[qsignal]
+        #[cxx_name = "folderSized"]
+        fn folder_sized(self: Pin<&mut Ops>, path: QString, bytes: f64, items: f64);
+
         /// A job finished: {kind, done: [path], failed: [[path, why]], cancelled}.
         #[qsignal]
         fn finished(self: Pin<&mut Ops>, id: i32, result: QString);
@@ -148,6 +158,46 @@ pub struct OpsRust {
     next: i32,
     /// Counts going on, each with its stop flag.
     measuring: Arc<Mutex<std::collections::HashMap<i32, Arc<std::sync::atomic::AtomicBool>>>>,
+    sizer: Arc<Mutex<Sizer>>,
+}
+
+/// Folder sizes: what's waiting, what's known (and when), whether a thread
+/// is working, and a number that changes when the waiting list does.
+#[derive(Default)]
+struct Sizer {
+    waiting: std::collections::VecDeque<String>,
+    known: std::collections::HashMap<String, (u64, u64, Instant)>,
+    working: bool,
+    round: u64,
+}
+
+/// Sizes kept this long.
+const SIZE_FRESH: Duration = Duration::from_secs(60);
+
+/// Bytes and items under `dir`, or None if `still` says stop.
+fn folder_size(dir: &Path, still: &dyn Fn() -> bool) -> Option<(u64, u64)> {
+    let (mut bytes, mut items) = (0u64, 0u64);
+    let mut stack = vec![dir.to_path_buf()];
+    let mut n = 0u32;
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            n += 1;
+            if n.is_multiple_of(512) && !still() {
+                return None;
+            }
+            let Ok(m) = e.metadata() else { continue };
+            items += 1;
+            if m.is_dir() {
+                stack.push(e.path());
+            } else {
+                bytes += m.len();
+            }
+        }
+    }
+    Some((bytes, items))
 }
 
 fn q(v: Value) -> QString {
@@ -478,6 +528,63 @@ impl qobject::Ops {
         id
     }
 
+    pub fn size_folders(self: Pin<&mut Self>, paths: &QString) {
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let mut fresh = vec![];
+        let start = {
+            let mut s = self.sizer.lock().unwrap();
+            s.round += 1;
+            s.waiting.clear();
+            for p in paths {
+                match s.known.get(&p) {
+                    Some(&(b, i, at)) if at.elapsed() < SIZE_FRESH => fresh.push((p, b, i)),
+                    _ => s.waiting.push_back(p),
+                }
+            }
+            let start = !s.working && !s.waiting.is_empty();
+            s.working |= start;
+            start
+        };
+        let mut this = self;
+        for (p, b, i) in fresh {
+            this.as_mut()
+                .folder_sized(QString::from(p.as_str()), b as f64, i as f64);
+        }
+        if !start {
+            return;
+        }
+        let sizer = this.sizer.clone();
+        let thread = this.qt_thread();
+        std::thread::spawn(move || {
+            crate::finder::background();
+            loop {
+                let (next, round) = {
+                    let mut s = sizer.lock().unwrap();
+                    match s.waiting.pop_front() {
+                        Some(p) => (p, s.round),
+                        None => {
+                            s.working = false;
+                            return;
+                        }
+                    }
+                };
+                let still = || sizer.lock().map(|s| s.round == round).unwrap_or(false);
+                let Some((b, i)) = folder_size(Path::new(&next), &still) else {
+                    continue;
+                };
+                sizer
+                    .lock()
+                    .unwrap()
+                    .known
+                    .insert(next.clone(), (b, i, Instant::now()));
+                let _ = thread.queue(move |mut obj| {
+                    obj.as_mut()
+                        .folder_sized(QString::from(next.as_str()), b as f64, i as f64)
+                });
+            }
+        });
+    }
+
     pub fn stop_measuring(&self, id: i32) {
         if let Some(f) = self.measuring.lock().unwrap().get(&id) {
             f.store(true, Ordering::Relaxed);
@@ -531,5 +638,24 @@ mod tests {
             "Moving 2 items to the Trash"
         );
         assert_eq!(label(Kind::Delete, &a, None), "Deleting “notes.txt”");
+    }
+
+    #[test]
+    fn folder_sizes() {
+        let d = std::env::temp_dir().join(format!("wr-sizes-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("a/b")).unwrap();
+        std::fs::write(d.join("a/one"), "12345").unwrap();
+        std::fs::write(d.join("a/b/two"), "123").unwrap();
+        assert_eq!(
+            folder_size(&d.join("a"), &|| true),
+            Some((8, 3)),
+            "two files and a folder"
+        );
+        assert_eq!(folder_size(&d.join("missing"), &|| true), Some((0, 0)));
+        // Told to stop: no answer (checked every 512 entries).
+        for i in 0..600 {
+            std::fs::write(d.join(format!("a/f{i}")), "").unwrap();
+        }
+        assert_eq!(folder_size(&d.join("a"), &|| false), None);
     }
 }

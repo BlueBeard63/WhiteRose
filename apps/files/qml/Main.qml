@@ -12,7 +12,8 @@
 // Backspace up, Ctrl+1 / 2 / 3 grid, list, columns, Ctrl+H hidden files,
 // Ctrl+A all, Ctrl+D bookmark this folder. Typing filters the folder;
 // Ctrl+F searches (this folder and below, home, or everywhere). Space looks
-// closer at the selection, Alt+P shows details beside the folder.
+// closer at the selection, Alt+P shows details beside the folder, F4 opens
+// a terminal here.
 import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
@@ -424,6 +425,7 @@ AppWindow {
                     { label: "New window", shortcut: "Ctrl+N", run: () => Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) },
                     { label: win.tab?.split ? "Close split" : "Split", shortcut: "F3", run: () => win.tab.setSplit(!win.tab.split) },
                     { label: (Session.details ? "Hide" : "Show") + " details", shortcut: "Alt+P", run: () => Session.setDetails(!Session.details) },
+                    { label: "Keyboard shortcuts…", run: () => keysDialog.open() },
                     ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
                     { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                     { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark this folder", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
@@ -515,6 +517,33 @@ AppWindow {
             for (const t of win.tabs) for (const p of t.panes) if (p.searching && p.search.scope !== "here") p.find({});
         }
     }
+    // ---- open in a terminal / the code editor -------------------------------------------------
+    function choice(key) { try { return JSON.parse(Desktop.setting(key)) ?? "" } catch (e) { return "" } }
+    property var editorApp: JSON.parse(Fs.editor(win.choice("apps.editor")))
+    function openTerminal(dir) {
+        const err = Fs.openTerminal(dir, win.choice("apps.terminal"));
+        if (err) win.notice = "Couldn't open a terminal: " + err;
+    }
+    function openEditor(path) {
+        const err = Fs.openEditor(path, win.choice("apps.editor"));
+        if (err) win.notice = "Couldn't open the editor: " + err;
+    }
+    // "Open in terminal" / "Open in VS Code" (and the repository it's in) for
+    // a folder (`entry` null: the one you're in) or a text file.
+    function openInItems(entry) {
+        const p = win.current;
+        if (!p || p.inTrash || (p.searching && !entry)) return [];
+        const dir = entry ? (entry.dir ? entry.path : "") : p.inDrives ? "" : p.path;
+        const textish = entry && !entry.dir && ["Text", "Markdown", "JSON", "Script"].includes(F.kind(entry.mime));
+        const ed = win.editorApp;
+        const out = [];
+        if (dir) out.push({ label: "Open in terminal", shortcut: entry ? "" : "F4", run: () => win.openTerminal(dir) });
+        if (ed && (dir || textish)) out.push({ label: "Open in " + ed.name, run: () => win.openEditor(entry ? entry.path : dir) });
+        const root = dir ? Fs.gitRoot(dir) : "";
+        if (ed && root && root !== dir) out.push({ label: "Open repository in " + ed.name, run: () => win.openEditor(root) });
+        return out;
+    }
+
     // A search result, in its folder.
     function showInFolder(entry) {
         const p = win.current;
@@ -585,7 +614,14 @@ AppWindow {
             readonly property var sel: win.current?.selection ?? []
             readonly property bool many: sel.length > 1
             readonly property bool trashed: win.current?.inTrash ?? false
-            items: itemMenu.trashed ? (!itemMenu.entry ? [
+            readonly property var openIn: win.openInItems(itemMenu.entry)
+            items: win.current?.inDrives ? (!itemMenu.entry ? [] : [
+                { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
+                { label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) },
+                ...itemMenu.openIn,
+                { separator: true },
+                { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
+            ]) : itemMenu.trashed ? (!itemMenu.entry ? [
                 { label: "Empty Trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
             ] : [
@@ -599,6 +635,7 @@ AppWindow {
                 { separator: true },
                 { label: "Paste", shortcut: "Ctrl+V", enabled: win.clipFiles.length > 0, run: () => win.paste(win.current.path) },
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
+                ...(itemMenu.openIn.length > 0 ? [{ separator: true }].concat(itemMenu.openIn) : []),
                 { separator: true },
                 { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                 { label: "Properties", run: () => props.show([win.current.path]) },
@@ -607,6 +644,7 @@ AppWindow {
                 { label: "Quick look", shortcut: "Space", enabled: !itemMenu.many, run: () => win.quickLook() },
                 ...(win.current?.searching ? [{ label: "Show in folder", run: () => win.showInFolder(itemMenu.entry) }] : []),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
+                ...(itemMenu.many ? [] : itemMenu.openIn),
                 { separator: true },
                 { label: "Cut", shortcut: "Ctrl+X", run: () => win.toClipboard(true) },
                 { label: "Copy", shortcut: "Ctrl+C", run: () => win.toClipboard(false) },
@@ -667,7 +705,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
+    readonly property bool typing: keysDialog.visible || address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -677,6 +715,8 @@ AppWindow {
     function showMenu(entry, x, y) {
         win.readClipboard();
         itemMenu.entry = entry;
+        // (The Storage page's empty space has nothing to offer.)
+        if (!entry && win.current?.inDrives) return;
         Qt.callLater(() => itemMenu.openAt(Math.min(x, stack.width - itemMenu.width - 8), Math.min(y, stack.height - itemMenu.height - 8)));
     }
     function run(kind, paths, dest) {
@@ -701,10 +741,12 @@ AppWindow {
     function toOther(kind) {
         const sel = win.current?.selection ?? [];
         const other = win.tab?.other;
-        if (sel.length === 0 || !other || other.inTrash) return;
+        if (sel.length === 0 || !other || other.special || win.current.inDrives) return;
         win.run(kind, sel.map(e => e.path), other.path);
     }
     function toClipboard(cut) {
+        // (Drives aren't files to copy or move.)
+        if (win.current?.inDrives) return;
         const sel = win.current?.selection ?? [];
         if (sel.length > 0) Ops.setClipboard(JSON.stringify(sel.map(e => e.path)), cut);
     }
@@ -718,6 +760,7 @@ AppWindow {
     function trash() {
         const sel = win.current?.selection ?? [];
         // In the Trash, Delete means for good.
+        if (win.current?.inDrives) return;
         if (win.current?.inTrash) win.askDelete(sel.map(e => e.path), "purge");
         else win.run("trash", sel.map(e => e.path));
     }
@@ -742,7 +785,7 @@ AppWindow {
     function properties() {
         const sel = win.current?.selection ?? [];
         // (The Trash itself has none.)
-        if (sel.length === 0 && win.current?.inTrash) return;
+        if (sel.length === 0 && win.current?.special) return;
         props.show(sel.length > 0 ? sel.map(e => e.path) : [win.current.path]);
     }
     // A line for the status bar, for a few seconds.
@@ -889,45 +932,99 @@ AppWindow {
     }
 
     // ---- keys -------------------------------------------------------------------------------
-    Shortcut { sequence: "Ctrl+T"; onActivated: win.newTab({ path: win.current?.path ?? "" }) }
-    Shortcut { sequence: "Ctrl+Shift+T"; onActivated: win.reopenTab() }
-    Shortcut { sequence: "Ctrl+PgDown"; onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }
-    Shortcut { sequence: "Ctrl+PgUp"; onActivated: win.show((win.currentIndex - 1 + win.tabs.length) % win.tabs.length) }
-    Shortcut { sequence: "Ctrl+Shift+PgDown"; onActivated: { if (win.currentIndex < win.tabs.length - 1) win.moveTab(win.currentIndex, win.currentIndex + 1) } }
-    Shortcut { sequence: "Ctrl+Shift+PgUp"; onActivated: { if (win.currentIndex > 0) win.moveTab(win.currentIndex, win.currentIndex - 1) } }
-    Shortcut { sequence: "Ctrl+N"; onActivated: Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) }
-    Shortcut { sequence: "Ctrl+W"; onActivated: win.closeTab(win.currentIndex) }
-    Shortcut { sequence: "Ctrl+Tab"; onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }
-    Shortcut { sequence: "Ctrl+Shift+Tab"; onActivated: win.show((win.currentIndex - 1 + win.tabs.length) % win.tabs.length) }
-    Shortcut { sequence: "Ctrl+L"; onActivated: address.edit() }
-    Shortcut { sequence: "Alt+Left"; onActivated: win.current?.goBack() }
-    Shortcut { sequence: "Alt+Right"; onActivated: win.current?.goForward() }
+    // Every shortcut, with its default; files.keys ({id: "Ctrl+…"}, set in
+    // the Keyboard shortcuts dialog) changes any of them.
+    readonly property var keyList: [
+        { id: "new-tab", label: "New tab", keys: "Ctrl+T" },
+        { id: "reopen-tab", label: "Reopen closed tab", keys: "Ctrl+Shift+T" },
+        { id: "next-tab", label: "Next tab", keys: "Ctrl+PgDown" },
+        { id: "previous-tab", label: "Previous tab", keys: "Ctrl+PgUp" },
+        { id: "move-tab-right", label: "Move tab right", keys: "Ctrl+Shift+PgDown" },
+        { id: "move-tab-left", label: "Move tab left", keys: "Ctrl+Shift+PgUp" },
+        { id: "new-window", label: "New window", keys: "Ctrl+N" },
+        { id: "close-tab", label: "Close tab", keys: "Ctrl+W" },
+        { id: "next-tab-2", label: "Next tab (also)", keys: "Ctrl+Tab" },
+        { id: "previous-tab-2", label: "Previous tab (also)", keys: "Ctrl+Shift+Tab" },
+        { id: "type-path", label: "Type a location", keys: "Ctrl+L" },
+        { id: "back", label: "Back", keys: "Alt+Left" },
+        { id: "forward", label: "Forward", keys: "Alt+Right" },
+        { id: "up", label: "Up a folder", keys: "Alt+Up" },
+        { id: "up-2", label: "Up a folder (also)", keys: "Backspace" },
+        { id: "search", label: "Search", keys: "Ctrl+F" },
+        { id: "quick-look", label: "Quick look", keys: "Space" },
+        { id: "details", label: "Details panel", keys: "Alt+P" },
+        { id: "terminal", label: "Open terminal here", keys: "F4" },
+        { id: "grid", label: "Grid view", keys: "Ctrl+1" },
+        { id: "list", label: "List view", keys: "Ctrl+2" },
+        { id: "columns", label: "Columns view", keys: "Ctrl+3" },
+        { id: "hidden", label: "Show hidden files", keys: "Ctrl+H" },
+        { id: "select-all", label: "Select all", keys: "Ctrl+A" },
+        { id: "bookmark", label: "Bookmark this folder", keys: "Ctrl+D" },
+        { id: "copy-other", label: "Copy to other side (or reload)", keys: "F5" },
+        { id: "move-other", label: "Move to other side", keys: "F6" },
+        { id: "split", label: "Split", keys: "F3" },
+        { id: "other-side", label: "Other side", keys: "Tab" },
+        { id: "reload", label: "Reload", keys: "Ctrl+R" },
+        { id: "copy", label: "Copy", keys: "Ctrl+C" },
+        { id: "cut", label: "Cut", keys: "Ctrl+X" },
+        { id: "paste", label: "Paste", keys: "Ctrl+V" },
+        { id: "trash", label: "Move to Trash", keys: "Delete" },
+        { id: "delete", label: "Delete permanently", keys: "Shift+Del" },
+        { id: "rename", label: "Rename", keys: "F2" },
+        { id: "new-folder", label: "New folder", keys: "Ctrl+Shift+N" },
+        { id: "properties", label: "Properties", keys: "Alt+Return" },
+    ]
+    property var keyOverrides: win.readKeys()
+    function readKeys() { try { return JSON.parse(Desktop.setting("files.keys")) ?? {} } catch (e) { return {} } }
+    function keys(id, fallback) { return win.keyOverrides[id] ?? fallback }
+    Connections {
+        target: Desktop
+        function onSettingChanged(key) {
+            if (key === "files.keys") win.keyOverrides = win.readKeys();
+            if (key === "apps.editor") win.editorApp = JSON.parse(Fs.editor(win.choice("apps.editor")));
+        }
+    }
+    KeysDialog { id: keysDialog; list: win.keyList; overrides: win.keyOverrides; onClosed: win.current?.focusView() }
+    Shortcut { sequence: win.keys("new-tab", "Ctrl+T"); onActivated: win.newTab({ path: win.current?.path ?? "" }) }
+    Shortcut { sequence: win.keys("reopen-tab", "Ctrl+Shift+T"); onActivated: win.reopenTab() }
+    Shortcut { sequence: win.keys("next-tab", "Ctrl+PgDown"); onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }
+    Shortcut { sequence: win.keys("previous-tab", "Ctrl+PgUp"); onActivated: win.show((win.currentIndex - 1 + win.tabs.length) % win.tabs.length) }
+    Shortcut { sequence: win.keys("move-tab-right", "Ctrl+Shift+PgDown"); onActivated: { if (win.currentIndex < win.tabs.length - 1) win.moveTab(win.currentIndex, win.currentIndex + 1) } }
+    Shortcut { sequence: win.keys("move-tab-left", "Ctrl+Shift+PgUp"); onActivated: { if (win.currentIndex > 0) win.moveTab(win.currentIndex, win.currentIndex - 1) } }
+    Shortcut { sequence: win.keys("new-window", "Ctrl+N"); onActivated: Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) }
+    Shortcut { sequence: win.keys("close-tab", "Ctrl+W"); onActivated: win.closeTab(win.currentIndex) }
+    Shortcut { sequence: win.keys("next-tab-2", "Ctrl+Tab"); onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }
+    Shortcut { sequence: win.keys("previous-tab-2", "Ctrl+Shift+Tab"); onActivated: win.show((win.currentIndex - 1 + win.tabs.length) % win.tabs.length) }
+    Shortcut { sequence: win.keys("type-path", "Ctrl+L"); onActivated: address.edit() }
+    Shortcut { sequence: win.keys("back", "Alt+Left"); onActivated: win.current?.goBack() }
+    Shortcut { sequence: win.keys("forward", "Alt+Right"); onActivated: win.current?.goForward() }
     // (Backspace is the type-to-filter's while it has letters.)
-    Shortcut { sequence: "Alt+Up"; enabled: !win.typing; onActivated: win.current?.up() }
-    Shortcut { sequence: "Backspace"; enabled: !win.typing && (win.current?.filter ?? "") === "" && !(win.current?.searching ?? false); onActivated: win.current?.up() }
-    Shortcut { sequence: "Ctrl+F"; onActivated: win.openSearch(win.current?.filter ?? "") }
+    Shortcut { sequence: win.keys("up", "Alt+Up"); enabled: !win.typing; onActivated: win.current?.up() }
+    Shortcut { sequence: win.keys("up-2", "Backspace"); enabled: !win.typing && (win.current?.filter ?? "") === "" && !(win.current?.searching ?? false); onActivated: win.current?.up() }
+    Shortcut { sequence: win.keys("search", "Ctrl+F"); onActivated: win.openSearch(win.current?.filter ?? "") }
     // (Space is the type-to-filter's once it has letters.)
-    Shortcut { sequence: "Space"; enabled: !win.typing && (win.current?.filter ?? "") === ""; onActivated: win.quickLook() }
-    Shortcut { sequence: "Alt+P"; onActivated: Session.setDetails(!Session.details) }
-    Shortcut { sequence: "Ctrl+1"; onActivated: win.current?.setView({ mode: "grid" }) }
-    Shortcut { sequence: "Ctrl+2"; onActivated: win.current?.setView({ mode: "list" }) }
-    Shortcut { sequence: "Ctrl+3"; onActivated: win.current?.setView({ mode: "columns" }) }
-    Shortcut { sequence: "Ctrl+H"; onActivated: Session.setHidden(!Session.hidden) }
-    Shortcut { sequence: "Ctrl+A"; enabled: !win.typing; onActivated: win.current?.selectAll() }
-    Shortcut { sequence: "Ctrl+D"; onActivated: win.toggleBookmark() }
+    Shortcut { sequence: win.keys("quick-look", "Space"); enabled: !win.typing && (win.current?.filter ?? "") === ""; onActivated: win.quickLook() }
+    Shortcut { sequence: win.keys("details", "Alt+P"); onActivated: Session.setDetails(!Session.details) }
+    Shortcut { sequence: win.keys("terminal", "F4"); enabled: !win.typing && !!win.current && !win.current.special; onActivated: win.openTerminal(win.current.path) }
+    Shortcut { sequence: win.keys("grid", "Ctrl+1"); onActivated: win.current?.setView({ mode: "grid" }) }
+    Shortcut { sequence: win.keys("list", "Ctrl+2"); onActivated: win.current?.setView({ mode: "list" }) }
+    Shortcut { sequence: win.keys("columns", "Ctrl+3"); onActivated: win.current?.setView({ mode: "columns" }) }
+    Shortcut { sequence: win.keys("hidden", "Ctrl+H"); onActivated: Session.setHidden(!Session.hidden) }
+    Shortcut { sequence: win.keys("select-all", "Ctrl+A"); enabled: !win.typing; onActivated: win.current?.selectAll() }
+    Shortcut { sequence: win.keys("bookmark", "Ctrl+D"); onActivated: win.toggleBookmark() }
     // F5 / F6 copy / move to the other side of a split tab (reload when there's none).
-    Shortcut { sequence: "F5"; enabled: !win.typing; onActivated: { if (win.tab?.other) win.toOther("copy"); else win.current?.load() } }
-    Shortcut { sequence: "F6"; enabled: !win.typing && !!win.tab?.other; onActivated: win.toOther("move") }
-    Shortcut { sequence: "F3"; enabled: !win.typing; onActivated: win.tab?.setSplit(!win.tab.split) }
+    Shortcut { sequence: win.keys("copy-other", "F5"); enabled: !win.typing; onActivated: { if (win.tab?.other) win.toOther("copy"); else win.current?.load() } }
+    Shortcut { sequence: win.keys("move-other", "F6"); enabled: !win.typing && !!win.tab?.other; onActivated: win.toOther("move") }
+    Shortcut { sequence: win.keys("split", "F3"); enabled: !win.typing; onActivated: win.tab?.setSplit(!win.tab.split) }
     // Tab: the other side.
-    Shortcut { sequence: "Tab"; enabled: !win.typing && !!win.tab?.other; onActivated: { win.tab.active = 1 - win.tab.active; win.tab.focusView() } }
-    Shortcut { sequence: "Ctrl+R"; onActivated: win.current?.load() }
-    Shortcut { sequence: "Ctrl+C"; enabled: !win.typing; onActivated: win.toClipboard(false) }
-    Shortcut { sequence: "Ctrl+X"; enabled: !win.typing; onActivated: win.toClipboard(true) }
-    Shortcut { sequence: "Ctrl+V"; enabled: !win.typing && !(win.current?.inTrash ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
-    Shortcut { sequence: "Delete"; enabled: !win.typing; onActivated: win.trash() }
-    Shortcut { sequence: "Shift+Del"; enabled: !win.typing; onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
-    Shortcut { sequence: "F2"; enabled: !win.typing && !(win.current?.inTrash ?? false); onActivated: win.askName("rename") }
-    Shortcut { sequences: ["Alt+Return", "Alt+Enter"]; enabled: !win.typing; onActivated: win.properties() }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: !win.typing && !(win.current?.inTrash ?? false); onActivated: win.askName("folder") }
+    Shortcut { sequence: win.keys("other-side", "Tab"); enabled: !win.typing && !!win.tab?.other; onActivated: { win.tab.active = 1 - win.tab.active; win.tab.focusView() } }
+    Shortcut { sequence: win.keys("reload", "Ctrl+R"); onActivated: win.current?.load() }
+    Shortcut { sequence: win.keys("copy", "Ctrl+C"); enabled: !win.typing; onActivated: win.toClipboard(false) }
+    Shortcut { sequence: win.keys("cut", "Ctrl+X"); enabled: !win.typing; onActivated: win.toClipboard(true) }
+    Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
+    Shortcut { sequence: win.keys("trash", "Delete"); enabled: !win.typing; onActivated: win.trash() }
+    Shortcut { sequence: win.keys("delete", "Shift+Del"); enabled: !win.typing && !(win.current?.inDrives ?? false); onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
+    Shortcut { sequence: win.keys("rename", "F2"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: win.askName("rename") }
+    Shortcut { sequences: [win.keys("properties", "Alt+Return"), "Alt+Enter"]; enabled: !win.typing; onActivated: win.properties() }
+    Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: win.askName("folder") }
 }

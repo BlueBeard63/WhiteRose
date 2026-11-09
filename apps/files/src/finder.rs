@@ -95,7 +95,7 @@ fn roots() -> Vec<PathBuf> {
 }
 
 /// Lowest CPU and disk priority for this thread.
-fn background() {
+pub fn background() {
     // SAFETY: plain syscalls on this thread's own id.
     unsafe {
         let tid = libc::syscall(libc::SYS_gettid) as libc::id_t;
