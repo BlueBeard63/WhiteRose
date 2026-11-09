@@ -10,8 +10,11 @@ GridView {
     required property var pane
     model: pane.shownEntries
     currentIndex: pane.current
-    cellWidth: Math.max(108, width / Math.max(1, Math.floor(width / 116)))
-    cellHeight: 112
+    // Item size (Ctrl+= / Ctrl+-).
+    readonly property real k: Session.zoom
+    readonly property real inner: width - leftMargin - rightMargin
+    cellWidth: inner / Math.max(1, Math.floor(inner / (116 * k)))
+    cellHeight: 112 * k
     clip: true
     focus: true
     boundsBehavior: Flickable.StopAtBounds
@@ -61,8 +64,8 @@ GridView {
         Image {
             visible: !cell.modelData.look
             id: icon
-            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: cell.thumb ? 0 : 12 }
-            width: cell.thumb ? 60 : 48; height: width
+            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: (cell.thumb ? 0 : 12) * grid.k }
+            width: (cell.thumb ? 60 : 48) * grid.k; height: width
             sourceSize: Qt.size(width * 2, height * 2)
             fillMode: Image.PreserveAspectFit
             source: cell.thumb ? "file://" + cell.modelData.path : cell.modelData.icon ? "file://" + cell.modelData.icon : ""
@@ -94,7 +97,7 @@ GridView {
             maximumLineCount: 2
             elide: Text.ElideMiddle
             color: cell.modelData.hidden ? Theme.muted : Theme.text
-            font { family: Theme.font; pointSize: Theme.pt(12) }
+            font { family: Theme.font; pointSize: Theme.pt(12 * Math.sqrt(grid.k)) }
         }
         // Dragged: the selection goes (pressing an unselected item selects it first).
         DragSource { id: carry; paths: pane.selection.map(e => e.path); icon: cell.modelData.icon ?? ""; }

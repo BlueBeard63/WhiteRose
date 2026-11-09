@@ -41,13 +41,23 @@ Item {
         || ((root.kind === "video" || root.kind === "audio" || root.kind === "pdf") && special.status !== Loader.Ready)
 
     // ---- pictures ------------------------------------------------------------------------
+    // Its own size ("W × H"): small pictures are shown at most twice it,
+    // not stretched to a blur.
+    readonly property var natural: {
+        const m = /^(\d+) × (\d+)$/.exec(root.kind === "image" ? Fs.imageSize(root.path) : "");
+        return m ? Qt.size(+m[1], +m[2]) : Qt.size(0, 0);
+    }
+    readonly property real fit: root.natural.width > 0
+        ? Math.min(2, root.width / root.natural.width, root.height / root.natural.height) : 1
     Image {
         id: picture
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: root.natural.width > 0 ? root.natural.width * root.fit : root.width
+        height: root.natural.height > 0 ? root.natural.height * root.fit : root.height
         visible: root.kind === "image" && status === Image.Ready
         source: root.kind === "image" ? "file://" + root.path : ""
         // Decoded at the size it's shown, not the file's (memory).
-        sourceSize: Qt.size(Math.max(64, root.width) * Screen.devicePixelRatio, Math.max(64, root.height) * Screen.devicePixelRatio)
+        sourceSize: Qt.size(Math.max(16, width) * Screen.devicePixelRatio, Math.max(16, height) * Screen.devicePixelRatio)
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         autoTransform: true

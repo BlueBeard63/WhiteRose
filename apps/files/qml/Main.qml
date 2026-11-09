@@ -403,7 +403,9 @@ AppWindow {
             id: views
             anchors { right: searchButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
-            options: [{ label: "Grid", value: "grid" }, { label: "List", value: "list" }, { label: "Columns", value: "columns" }]
+            options: [{ icon: "grid", label: "Grid (Ctrl+1)", value: "grid" }, { icon: "viewList", label: "List (Ctrl+2)", value: "list" },
+                      { icon: "viewColumns", label: "Columns (Ctrl+3)", value: "columns" }, { icon: "viewGallery", label: "Gallery (Ctrl+4)", value: "gallery" },
+                      { icon: "viewCards", label: "Cards (Ctrl+5)", value: "cards" }, { icon: "viewUsage", label: "Disk usage (Ctrl+6)", value: "usage" }]
             onPicked: v => { if (win.current) { win.current.setView({ mode: v }); Qt.callLater(() => win.current.focusView()) } }
         }
         IconButton {
@@ -429,6 +431,10 @@ AppWindow {
                     ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
                     { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                     { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark this folder", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
+                    { separator: true },
+                    { label: "Pick views to suit each folder", checked: Session.adaptive, run: () => { Session.setAdaptive(!Session.adaptive); win.refreshViews() } },
+                    { label: "Bigger items", shortcut: "Ctrl+=", run: () => Session.setZoom(Session.zoom + 0.1) },
+                    { label: "Smaller items", shortcut: "Ctrl+-", run: () => Session.setZoom(Session.zoom - 0.1) },
                     { separator: true },
                     { label: "Sort by name", run: () => win.current.setView({ sortBy: "name", descending: false }) },
                     { label: "Sort by size", run: () => win.current.setView({ sortBy: "size", descending: true }) },
@@ -959,6 +965,12 @@ AppWindow {
         { id: "grid", label: "Grid view", keys: "Ctrl+1" },
         { id: "list", label: "List view", keys: "Ctrl+2" },
         { id: "columns", label: "Columns view", keys: "Ctrl+3" },
+        { id: "gallery", label: "Gallery view", keys: "Ctrl+4" },
+        { id: "cards", label: "Cards view", keys: "Ctrl+5" },
+        { id: "usage", label: "Disk usage view", keys: "Ctrl+6" },
+        { id: "bigger", label: "Bigger items", keys: "Ctrl+=" },
+        { id: "smaller", label: "Smaller items", keys: "Ctrl+-" },
+        { id: "normal-size", label: "Normal size items", keys: "Ctrl+0" },
         { id: "hidden", label: "Show hidden files", keys: "Ctrl+H" },
         { id: "select-all", label: "Select all", keys: "Ctrl+A" },
         { id: "bookmark", label: "Bookmark this folder", keys: "Ctrl+D" },
@@ -1018,6 +1030,12 @@ AppWindow {
     Shortcut { sequence: win.keys("grid", "Ctrl+1"); onActivated: win.current?.setView({ mode: "grid" }) }
     Shortcut { sequence: win.keys("list", "Ctrl+2"); onActivated: win.current?.setView({ mode: "list" }) }
     Shortcut { sequence: win.keys("columns", "Ctrl+3"); onActivated: win.current?.setView({ mode: "columns" }) }
+    Shortcut { sequence: win.keys("gallery", "Ctrl+4"); onActivated: win.current?.setView({ mode: "gallery" }) }
+    Shortcut { sequence: win.keys("cards", "Ctrl+5"); onActivated: win.current?.setView({ mode: "cards" }) }
+    Shortcut { sequence: win.keys("usage", "Ctrl+6"); onActivated: win.current?.setView({ mode: "usage" }) }
+    Shortcut { sequences: [win.keys("bigger", "Ctrl+="), "Ctrl++"]; onActivated: Session.setZoom(Session.zoom + 0.1) }
+    Shortcut { sequence: win.keys("smaller", "Ctrl+-"); onActivated: Session.setZoom(Session.zoom - 0.1) }
+    Shortcut { sequence: win.keys("normal-size", "Ctrl+0"); onActivated: Session.setZoom(1) }
     Shortcut { sequence: win.keys("hidden", "Ctrl+H"); onActivated: Session.setHidden(!Session.hidden) }
     Shortcut { sequence: win.keys("select-all", "Ctrl+A"); enabled: !win.typing; onActivated: win.current?.selectAll() }
     Shortcut { sequence: win.keys("bookmark", "Ctrl+D"); onActivated: win.toggleBookmark() }

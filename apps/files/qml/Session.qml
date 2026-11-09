@@ -17,6 +17,11 @@ QtObject {
     // Qt's multimedia / PDF modules found missing (previews show icons).
     property bool noMedia: false
     property bool noPdf: false
+    // Views to suit a folder's contents, and how big things are drawn.
+    property bool adaptive: Fs.adaptive()
+    function setAdaptive(on) { Fs.setAdaptive(on); session.adaptive = on }
+    property real zoom: Fs.zoom()
+    function setZoom(z) { session.zoom = Fs.setZoom(Math.round(z * 100) / 100) }
     // The details panel, everywhere.
     property bool details: Fs.showsDetails()
     function setDetails(on) { Fs.setShowsDetails(on); session.details = on }

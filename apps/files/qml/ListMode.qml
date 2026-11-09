@@ -100,7 +100,7 @@ FocusScope {
             required property var modelData
             required property int index
             readonly property bool on: !!root.pane.selected[modelData.path]
-            x: 8; width: list.width - 16; height: 32
+            x: 8; width: list.width - 16; height: 32 * Session.zoom
             radius: 8
             color: on || drop.over ? Theme.tint(0.22) : rowArea.containsMouse ? Theme.surface1 : "transparent"
             border { width: drop.over || (index === list.currentIndex && list.activeFocus) ? 1 : 0; color: Theme.tint(0.6) }
@@ -112,7 +112,7 @@ FocusScope {
                         visible: !row.modelData.look
                         id: ic
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 20; height: 20
+                        width: 20 * Session.zoom; height: 20 * Session.zoom
                         sourceSize: Qt.size(40, 40)
                         source: row.modelData.icon ? "file://" + row.modelData.icon : ""
                         asynchronous: true
@@ -130,7 +130,7 @@ FocusScope {
                         text: row.modelData.name + (row.modelData.link ? "  →" : "")
                         elide: Text.ElideMiddle
                         color: row.modelData.hidden ? Theme.muted : Theme.text
-                        font { family: Theme.font; pointSize: Theme.pt(12.5) }
+                        font { family: Theme.font; pointSize: Theme.pt(12.5 * Math.sqrt(Session.zoom)) }
                     }
                 }
                 Text { width: root.sizeW; anchors.verticalCenter: parent.verticalCenter; text: !row.modelData.dir ? F.size(row.modelData.size) : root.pane.sizes[row.modelData.path] ? F.size(root.pane.sizes[row.modelData.path].bytes) : root.pane.wantsSizes && !row.modelData.link ? "…" : "—"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }

@@ -10,9 +10,10 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Copy/move files between panes using shortcuts or drag and drop (MVP) — F5 / F6, the right-click menu, or dragging
 - [ ] Compare folders and one-way/two-way/mirror sync (Advanced)
 - [x] Icon/grid, details/list and column views (MVP)
-- [ ] Gallery view with thumbnail filmstrip (Next)
-- [ ] Disk usage view as a file browsing mode (Advanced)
-- [ ] Adjustable item density and icon/text sizing (Next)
+- [x] Gallery view (Next) — one item as large as it fits, arrows on hover, "3 of 9" (no filmstrip, by choice)
+- [x] Disk usage view as a file browsing mode (Advanced) — a treemap of the folder, sized as folders are measured
+- [x] Adjustable item density and icon/text sizing (Next) — Ctrl+= / Ctrl+- / Ctrl+0
+- [x] Cards view and adaptive views (added) — cards with kind, size and date; folders without a view of their own get one to suit them
 - [x] Breadcrumb address bar with path suggestions (MVP) — "… > Folder" when long; click "…" for the full path to copy
 - [x] Navigation history, back, forward and parent directory (MVP)
 - [~] Customisable sidebar with pinned folders and drives (MVP) — places, GTK bookmarks (add/remove), mounted drives; no reordering yet

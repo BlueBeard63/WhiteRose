@@ -5,6 +5,7 @@ import QtQuick
 import WhiteRose.Kit
 import WhiteRose.Files
 import "Format.js" as F
+import "Layout.js" as Layout
 
 FocusScope {
     id: pane
@@ -73,6 +74,16 @@ FocusScope {
         pane.descending = v.descending;
         pane.applying = false;
         pane.viewInfo = { own: v.own, subfolders: v.subfolders, from: v.from };
+        pane.picked = false;
+    }
+    // The view was picked to suit what's in the folder (Layout.adaptive),
+    // not set: nothing's remembered until it's changed by hand.
+    property bool picked: false
+    function adapt() {
+        if (!Session.adaptive || pane.viewInfo.own || pane.viewInfo.from !== "" || pane.special || pane.searching) return;
+        const m = Layout.adaptive(pane.entries, JSON.parse(Fs.view(pane.path)).mode);
+        if (m !== pane.mode) { pane.applying = true; pane.mode = m; pane.applying = false }
+        pane.picked = true;
     }
     // Changed here ({mode, sortBy, descending}, any of them): remembered for this folder.
     function setView(changes) {
@@ -149,6 +160,7 @@ FocusScope {
         for (const e of r.entries) if (pane.selected[e.path]) still[e.path] = true;
         pane.selected = still;
         pane.current = Math.min(pane.current, Math.max(0, r.entries.length - 1));
+        pane.adapt();
     }
     function go(p, keepForward) {
         pane.activated();
@@ -256,17 +268,21 @@ FocusScope {
         focus: true
         // Search results come as a list (where each is matters).
         sourceComponent: pane.inDrives ? drivesView
-            : pane.mode === "list" || pane.searching ? listView : pane.mode === "columns" ? columnsView : gridView
+            : pane.mode === "list" || pane.searching ? listView
+            : ({ columns: columnsView, gallery: galleryView, cards: cardsView, usage: usageView })[pane.mode] ?? gridView
     }
     // (Inside the views `pane` names their own property, hence view.parent.)
     Component { id: gridView; GridMode { pane: view.parent } }
     Component { id: listView; ListMode { pane: view.parent } }
     Component { id: columnsView; ColumnsMode { pane: view.parent } }
     Component { id: drivesView; DrivesMode { pane: view.parent } }
+    Component { id: galleryView; GalleryMode { pane: view.parent } }
+    Component { id: cardsView; CardsMode { pane: view.parent } }
+    Component { id: usageView; UsageMode { pane: view.parent } }
 
     // Folder sizes for the list's Size column, worked out in the background
     // (not for / : that would be the whole system).
-    readonly property bool wantsSizes: pane.mode === "list" && !pane.special && !pane.searching && pane.path !== "/"
+    readonly property bool wantsSizes: ["list", "usage", "cards"].includes(pane.mode) && !pane.special && !pane.searching && pane.path !== "/"
     onEntriesChanged: pane.askSizes()
     onWantsSizesChanged: pane.askSizes()
     function askSizes() {

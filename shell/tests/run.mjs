@@ -23,6 +23,7 @@ const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "wi
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
+const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
@@ -643,6 +644,33 @@ test("files: what's dragged and what a drop does", () => {
     assert.deepEqual(Drops.plan(a, "trash:", false, false, false), { kind: "trash", paths: a });
     assert.equal(Drops.accepts(["/home/me/photos"], "/home/me/photos"), false);
     assert.equal(Drops.accepts([], "/x"), false);
+});
+test("files: a view to suit the folder", () => {
+    const f = (name, mime) => ({ name, mime, dir: false });
+    const photos = ["a", "b", "c", "d"].map(n => f(n + ".jpg", "image/jpeg")).concat([f("notes.txt", "text/plain")]);
+    assert.equal(Lay.adaptive(photos, "grid"), "gallery");
+    assert.equal(Lay.adaptive(photos.slice(0, 2), "grid"), "grid", "too few to say");
+    assert.equal(Lay.adaptive([{ name: ".git", dir: true, mime: "inode/directory" }, f("x.png", "image/png")], "grid"), "list", "a repository");
+    assert.equal(Lay.adaptive([f("Cargo.toml", "application/toml")], "cards"), "list");
+    assert.equal(Lay.adaptive([f("a.pdf", "application/pdf"), f("b.odt", "x")], "cards"), "cards", "else what it was");
+});
+test("files: disk usage map", () => {
+    const items = [{ value: 6 }, { value: 6 }, { value: 4 }, { value: 3 }, { value: 2 }, { value: 2 }, { value: 1 }, { value: 0 }];
+    const r = Lay.treemap(items, 0, 0, 600, 400);
+    assert.equal(r.length, 7, "nothing for empty ones");
+    const area = r.reduce((a, b) => a + b.w * b.h, 0);
+    assert.ok(Math.abs(area - 240000) < 1, "fills the space");
+    for (const b of r) {
+        assert.ok(b.x >= -1e-6 && b.y >= -1e-6 && b.x + b.w <= 600 + 1e-6 && b.y + b.h <= 400 + 1e-6, "inside");
+        assert.ok(Math.abs(b.w * b.h - b.item.value * 10000) < 1, "area for size");
+    }
+    // No overlaps.
+    for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) {
+        const a = r[i], b = r[j];
+        const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+        assert.ok(ox <= 1e-6 || oy <= 1e-6, "overlap " + i + " " + j);
+    }
+    assert.deepEqual(Lay.treemap([], 0, 0, 10, 10), []);
 });
 test("files: moving tabs", () => {
     assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 0, 2), ["b", "c", "a", "d"]);

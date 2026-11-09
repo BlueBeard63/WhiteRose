@@ -1,5 +1,5 @@
 // A dropdown menu in the desktop's style: `items` is [{ label, shortcut?,
-// danger?, enabled?, separator?, run }]. Open it with openAt(x, y) (in its
+// danger?, enabled?, checked? (a tick: on/off items), separator?, run }]. Open it with openAt(x, y) (in its
 // parent's coordinates) or open().
 import QtQuick
 import QtQuick.Controls
@@ -23,7 +23,7 @@ Popup {
             model: menu.items
             delegate: Item {
                 required property var modelData
-                readonly property real need: labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24)
+                readonly property real need: labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0)
                 width: menu.width - 12
                 height: modelData.separator ? 9 : 30
                 Rectangle { visible: !!modelData.separator; anchors.centerIn: parent; width: parent.width - 8; height: 1; color: Theme.surface2 }
@@ -35,9 +35,16 @@ Popup {
                     Row {
                         id: row
                         anchors { left: parent.left; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                        Item {
+                            id: tick
+                            visible: modelData.checked !== undefined
+                            width: 20; height: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            Icon { visible: modelData.checked === true; name: "check"; size: 13; color: Theme.rose; anchors.verticalCenter: parent.verticalCenter }
+                        }
                         Text {
                             id: labelText
-                            width: parent.width - keys.width
+                            width: parent.width - keys.width - (tick.visible ? tick.width : 0)
                             text: modelData.label ?? ""
                             color: modelData.enabled === false ? Theme.faint : modelData.danger ? Theme.rose : Theme.text
                             font { family: Theme.font; pointSize: Theme.pt(12.5) }

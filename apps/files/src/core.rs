@@ -158,6 +158,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "imageSize"]
         fn image_dimensions(self: &Fs, path: &QString) -> QString;
+        /// Views picked to suit a folder's contents (when it has none of its own).
+        #[qinvokable]
+        fn adaptive(self: &Fs) -> bool;
+        #[qinvokable]
+        #[cxx_name = "setAdaptive"]
+        fn set_adaptive(self: &Fs, on: bool) -> bool;
+        /// How big items are drawn (0.75–1.6).
+        #[qinvokable]
+        fn zoom(self: &Fs) -> f64;
+        #[qinvokable]
+        #[cxx_name = "setZoom"]
+        fn set_zoom(self: &Fs, zoom: f64) -> f64;
         /// The details panel shown (everywhere).
         #[qinvokable]
         #[cxx_name = "showsDetails"]
@@ -516,6 +528,24 @@ impl qobject::Fs {
 
     pub fn image_dimensions(&self, path: &QString) -> QString {
         QString::from(qobject::image_size(&path.to_string()).as_str())
+    }
+
+    pub fn adaptive(&self) -> bool {
+        views::load_from(&views::file()).adaptive
+    }
+
+    pub fn set_adaptive(&self, on: bool) -> bool {
+        views::change(|all| all.adaptive = on)
+    }
+
+    pub fn zoom(&self) -> f64 {
+        views::zoom_checked(views::load_from(&views::file()).zoom)
+    }
+
+    pub fn set_zoom(&self, zoom: f64) -> f64 {
+        let z = views::zoom_checked(zoom);
+        views::change(|all| all.zoom = z);
+        z
     }
 
     pub fn shows_details(&self) -> bool {

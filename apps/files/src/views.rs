@@ -39,7 +39,7 @@ impl View {
     fn checked(self) -> View {
         View {
             mode: match self.mode.as_str() {
-                "list" | "columns" => self.mode,
+                "list" | "columns" | "gallery" | "cards" | "usage" => self.mode,
                 _ => "grid".into(),
             },
             sort_by: match self.sort_by.as_str() {
@@ -62,15 +62,43 @@ pub struct Folder {
     pub stamp: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Views {
     pub default: View,
     pub hidden: bool,
     /// The details panel shown (everywhere).
     pub details: bool,
+    /// A folder with no view of its own (and none lent) gets one to suit
+    /// what's in it: photos a gallery, and so on.
+    pub adaptive: bool,
+    /// How big items are drawn (0.75–1.6).
+    pub zoom: f64,
     pub folders: BTreeMap<String, Folder>,
     next: u64,
+}
+
+impl Default for Views {
+    fn default() -> Self {
+        Views {
+            default: View::default(),
+            hidden: false,
+            details: false,
+            adaptive: true,
+            zoom: 1.0,
+            folders: BTreeMap::new(),
+            next: 0,
+        }
+    }
+}
+
+/// Zoom kept to what's drawable.
+pub fn zoom_checked(z: f64) -> f64 {
+    if z.is_finite() {
+        z.clamp(0.75, 1.6)
+    } else {
+        1.0
+    }
 }
 
 /// The view a folder gets, and where it comes from.
@@ -339,5 +367,22 @@ mod tests {
         v.set("/a", view("columns"));
         save_to(&f, &v).unwrap();
         assert_eq!(load_from(&f), v);
+    }
+
+    #[test]
+    fn new_views_and_settings() {
+        let mut v = Views::default();
+        assert!(v.adaptive, "adaptive unless turned off");
+        for m in ["gallery", "cards", "usage"] {
+            v.set("/a", view(m));
+            assert_eq!(v.find("/a").view.mode, m);
+        }
+        assert_eq!(zoom_checked(9.0), 1.6);
+        assert_eq!(zoom_checked(f64::NAN), 1.0);
+        let old: Views = serde_json::from_str(r#"{"hidden":true}"#).unwrap();
+        assert!(
+            old.adaptive && old.zoom == 1.0,
+            "older files get the defaults"
+        );
     }
 }
