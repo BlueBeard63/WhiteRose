@@ -40,8 +40,10 @@ impl CompositorHandler for WhiteRose {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(window) = self.space.elements().find(|w| w.toplevel().unwrap().wl_surface() == &root) {
+            // Includes windows hidden on other workspaces, so their previews update too.
+            if let Some(window) = self.window_for_surface(&root) {
                 window.on_commit();
+                self.mark_export_dirty(&window);
             }
         };
 

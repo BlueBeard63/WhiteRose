@@ -88,6 +88,12 @@ pub fn send_frame_callbacks(output: &Output, state: &mut WhiteRose) {
             window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));
         }
     }
+    // Windows being previewed keep drawing even if hidden on another workspace.
+    for window in state.exporting_windows() {
+        if state.space.element_location(&window).is_none() {
+            window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));
+        }
+    }
     {
         let mut layers = layer_map_for_output(output);
         for layer in layers.layers() {

@@ -13,7 +13,9 @@ PanelWindow {
     anchors { top: true; left: true; right: true }
     // Tall enough for the open dock while it is open or animating, so the
     // window never resizes mid-animation; otherwise just bar + idle island.
-    implicitHeight: Theme.barHeight + (dock.expanded ? dock.openHeight + 30 : dock.height)
+    implicitHeight: Theme.barHeight + (dock.expanded
+        ? dock.openHeight + 30 + (dock.previewing ? dock.previewHeight + 16 : 0)
+        : dock.height)
     exclusiveZone: Theme.barHeight
     color: "transparent"
 
@@ -26,6 +28,7 @@ PanelWindow {
     mask: Region {
         item: bar
         Region { item: dock }
+        Region { item: dock.previewCard }
     }
 
     Rectangle {

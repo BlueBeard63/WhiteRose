@@ -3,6 +3,7 @@
 // of the bar instead of appearing on top of it.
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 
 Item {
     id: root
@@ -11,6 +12,24 @@ Item {
     // the bar keeps its window tall for that long so it never resizes mid-animation.
     readonly property bool expanded: open || morph.running
     readonly property real openHeight: 87
+
+    // ---- hover previews --------------------------------------------------
+    // The running app whose windows are being previewed (after a short hover).
+    property var previewApp: null
+    readonly property bool previewing: open && previewApp !== null && previewWindows.length > 0
+    readonly property real previewHeight: previewCard.implicitHeight
+    readonly property alias previewCard: previewCard
+    readonly property var previewWindows: previewApp
+        ? ToplevelManager.toplevels.values.filter(t => entryIdFor(t.appId) === previewApp.key)
+        : []
+    onOpenChanged: if (!open) { previewApp = null; ShellState.dockPreviewKey = "" }
+    Connections {
+        target: ShellState
+        function onDockPreviewKeyChanged() {
+            const key = ShellState.dockPreviewKey;
+            if (key) root.previewApp = root.apps.find(a => a.key === key && a.running) ?? null;
+        }
+    }
 
     function toggle() { ShellState.dockOpen = !ShellState.dockOpen }
     function close() { ShellState.dockOpen = false }
@@ -118,6 +137,66 @@ Item {
         }
     }
 
+    // Hover intent: show previews after ~350ms on a running app, keep them
+    // while the pointer is on the tile or the card, hide shortly after it leaves.
+    readonly property var hoveredTile: {
+        for (let i = 0; i < row.children.length; i++) {
+            const c = row.children[i];
+            if (c.hovered) return c;
+        }
+        return null;
+    }
+    readonly property bool pointerInPreview: previewHover.hovered
+    Timer {
+        id: showPreview
+        interval: 350
+        running: root.open && root.hoveredTile !== null && root.hoveredTile.app.running
+                 && root.previewApp?.key !== root.hoveredTile?.app.key
+        onTriggered: root.previewApp = root.hoveredTile?.app ?? null
+    }
+    Timer {
+        interval: 250
+        running: root.previewApp !== null && root.hoveredTile === null && !root.pointerInPreview
+                 && ShellState.dockPreviewKey === ""
+        onTriggered: root.previewApp = null
+    }
+
+    Rectangle {
+        id: previewCard
+        visible: root.previewing
+        readonly property var tile: {
+            for (let i = 0; i < row.children.length; i++) {
+                const c = row.children[i];
+                if (c.app && root.previewApp && c.app.key === root.previewApp.key) return c;
+            }
+            return null;
+        }
+        // Centred under its tile, kept inside the dock window.
+        x: tile ? Math.max(-root.x + 8, row.x + tile.x + tile.width / 2 - width / 2) : 0
+        y: shape.height + 8
+        implicitWidth: previews.implicitWidth + 24
+        implicitHeight: previews.implicitHeight + 24
+        width: implicitWidth
+        height: implicitHeight
+        radius: 18
+        color: Theme.bg
+        HoverHandler { id: previewHover }
+
+        Row {
+            id: previews
+            anchors.centerIn: parent
+            spacing: 12
+            Repeater {
+                model: root.previewWindows
+                delegate: WindowPreview {
+                    required property var modelData
+                    toplevel: modelData
+                    onActivated: { modelData.activate(); root.close(); }
+                }
+            }
+        }
+    }
+
     // App name under the dock while hovering a tile.
     Rectangle {
         id: tip
@@ -128,7 +207,7 @@ Item {
             }
             return null;
         }
-        visible: root.open && hovered !== null
+        visible: root.open && hovered !== null && !root.previewing
         x: hovered ? row.x + hovered.x + hovered.width / 2 - width / 2 : 0
         y: shape.height + 6
         width: tipText.implicitWidth + 16

@@ -393,6 +393,7 @@ impl WhiteRose {
             server.update(focus);
             server.update(windows);
         }
+        self.foreign_toplevel_refresh();
     }
 }
 

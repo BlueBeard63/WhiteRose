@@ -91,6 +91,10 @@ pub struct WhiteRose {
     pub data_device_state: DataDeviceState,
     pub layer_shell_state: WlrLayerShellState,
     pub dmabuf_state: DmabufState,
+    pub foreign_toplevels: crate::foreign_toplevel::ForeignToplevelState,
+    /// Window copies requested by clients (live previews), filled after frames.
+    pub pending_exports: Vec<crate::toplevel_export::PendingCopy>,
+    pub export_timer_armed: bool,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 }
@@ -106,6 +110,8 @@ impl WhiteRose {
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
+        let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
+        crate::toplevel_export::init(&dh);
 
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "seat0");
         // TODO: track keyboard/pointer hotplug once the libinput backend exists.
@@ -162,6 +168,9 @@ impl WhiteRose {
             layer_shell_state,
             // The global is created by the backend, which knows the GPU formats.
             dmabuf_state: DmabufState::new(),
+            foreign_toplevels,
+            pending_exports: Vec::new(),
+            export_timer_armed: false,
             popups: PopupManager::default(),
             seat,
         }

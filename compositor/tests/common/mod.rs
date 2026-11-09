@@ -117,6 +117,107 @@ pub struct App {
     pub toplevel_configured: bool,
     /// Every xdg_toplevel configure: (width, height, states).
     pub toplevel_configures: Vec<(i32, i32, Vec<u32>)>,
+    /// wlr foreign-toplevel handles and what the compositor told us about each.
+    pub handles: Vec<(ZwlrForeignToplevelHandleV1, HandleInfo)>,
+    /// hyprland toplevel-export frame events, e.g. "buffer 400x300 stride 1600", "buffer_done", "failed".
+    pub export_events: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct HandleInfo {
+    pub title: String,
+    pub app_id: String,
+    pub states: Vec<u32>,
+    pub done: bool,
+    pub closed: bool,
+}
+
+/// Client bindings for hyprland-toplevel-export-v1 (generated from the same XML).
+pub mod export {
+    use wayland_client;
+    use wayland_client::protocol::*;
+    use wayland_protocols_wlr::foreign_toplevel::v1::client::*;
+    pub mod __interfaces {
+        use wayland_client::backend as wayland_backend;
+        use wayland_client::protocol::__interfaces::*;
+        use wayland_protocols_wlr::foreign_toplevel::v1::client::__interfaces::*;
+        wayland_scanner::generate_interfaces!("protocols/hyprland-toplevel-export-v1.xml");
+    }
+    use self::__interfaces::*;
+    wayland_scanner::generate_client_code!("protocols/hyprland-toplevel-export-v1.xml");
+}
+pub use export::{hyprland_toplevel_export_frame_v1, hyprland_toplevel_export_manager_v1};
+pub use wayland_protocols_wlr::foreign_toplevel::v1::client::{
+    zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
+    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
+};
+
+impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &ZwlrForeignToplevelManagerV1,
+        event: zwlr_foreign_toplevel_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } = event {
+            app.handles.push((toplevel, HandleInfo::default()));
+        }
+    }
+    wayland_client::event_created_child!(App, ZwlrForeignToplevelManagerV1, [
+        zwlr_foreign_toplevel_manager_v1::EVT_TOPLEVEL_OPCODE => (ZwlrForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        handle: &ZwlrForeignToplevelHandleV1,
+        event: zwlr_foreign_toplevel_handle_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwlr_foreign_toplevel_handle_v1::Event;
+        let Some((_, info)) = app.handles.iter_mut().find(|(h, _)| h == handle) else { return };
+        match event {
+            Event::Title { title } => info.title = title,
+            Event::AppId { app_id } => info.app_id = app_id,
+            Event::State { state } => {
+                info.states = state.as_chunks::<4>().0.iter().map(|c| u32::from_ne_bytes(*c)).collect()
+            }
+            Event::Done => info.done = true,
+            Event::Closed => info.closed = true,
+            _ => {}
+        }
+    }
+}
+
+delegate_noop!(App: ignore hyprland_toplevel_export_manager_v1::HyprlandToplevelExportManagerV1);
+delegate_noop!(App: ignore wayland_client::protocol::wl_seat::WlSeat);
+
+impl Dispatch<hyprland_toplevel_export_frame_v1::HyprlandToplevelExportFrameV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &hyprland_toplevel_export_frame_v1::HyprlandToplevelExportFrameV1,
+        event: hyprland_toplevel_export_frame_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use hyprland_toplevel_export_frame_v1::Event;
+        app.export_events.push(match event {
+            Event::Buffer { format, width, height, stride } => {
+                format!("buffer {width}x{height} stride {stride} format {:?}", format)
+            }
+            Event::BufferDone => "buffer_done".into(),
+            Event::Ready { .. } => "ready".into(),
+            Event::Failed => "failed".into(),
+            Event::Flags { .. } => "flags".into(),
+            _ => "other".into(),
+        });
+    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
@@ -287,21 +388,29 @@ pub const ACTIVATED: u32 = 4;
 impl Client {
     /// Gives a surface real pixels (a w x h shared-memory buffer) and commits,
     /// so it has an input region and can be hit-tested like a real app.
-    pub fn attach_buffer(&mut self, surface: &WlSurface, w: i32, h: i32) {
+    /// A w x h Argb8888 shared-memory buffer (read-write, as wl_shm requires).
+    pub fn shm_buffer(&mut self, w: i32, h: i32) -> WlBuffer {
         use std::os::fd::AsFd;
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let qh = self.queue.handle();
         let stride = w * 4;
         let size = stride * h;
-        let path = std::env::temp_dir().join(format!("whiterose-shm-{}-{:p}", std::process::id(), surface));
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("whiterose-shm-{}-{n}", std::process::id()));
         let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         file.set_len(size as u64).unwrap();
         let pool = self.shm.create_pool(file.as_fd(), size, &qh, ());
         let buffer = pool.create_buffer(0, w, h, stride, wl_shm::Format::Argb8888, &qh, ());
+        pool.destroy();
+        buffer
+    }
+
+    pub fn attach_buffer(&mut self, surface: &WlSurface, w: i32, h: i32) {
+        let buffer = self.shm_buffer(w, h);
         surface.attach(Some(&buffer), 0, 0);
         surface.damage_buffer(0, 0, w, h);
         surface.commit();
-        pool.destroy();
         self.queue.roundtrip(&mut self.app).unwrap();
     }
 }

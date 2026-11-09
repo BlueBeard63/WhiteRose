@@ -151,5 +151,8 @@ fn render(
         screenshot::capture_and_save(backend.renderer(), output, state);
     }
 
+    // Live window previews (dock hover, switcher).
+    crate::toplevel_export::process(backend.renderer(), output, state);
+
     render::send_frame_callbacks(output, state);
 }
