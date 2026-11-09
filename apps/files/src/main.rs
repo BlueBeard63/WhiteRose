@@ -5,6 +5,7 @@ extern crate whiterose_kit;
 mod core;
 mod listing;
 mod places;
+mod session;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 

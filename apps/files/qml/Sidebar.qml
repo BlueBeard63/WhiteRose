@@ -93,7 +93,7 @@ Rectangle {
                 delegate: PlaceRow {
                     required property var modelData
                     name: modelData.name; path: modelData.path; icon: modelData.icon
-                    onSecondary: bookmarkMenu.popup()
+                    onSecondary: bookmarkMenu.openAt(24, height - 2)
                     Menu {
                         id: bookmarkMenu
                         items: [{ label: "Remove bookmark", run: () => { Fs.setBookmark(modelData.path, false); side.refresh() } }]

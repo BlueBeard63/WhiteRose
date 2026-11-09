@@ -4,8 +4,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 `[x]` done, `[~]` started (see the note).
 
 ## 1. Navigation & file browsing
-- [~] Tabbed browsing (MVP) — new/close/switch/middle-click close; tabs start from the command line
-- [ ] Reorder, duplicate, tear off and restore tabs (MVP)
+- [x] Tabbed browsing (MVP)
+- [x] Reorder, duplicate, tear off and restore tabs (MVP) — drag or Ctrl+Shift+PgUp/PgDn; tab menu; drag down out of the bar; Ctrl+Shift+T, and every window's tabs come back next launch
 - [ ] Dual-pane browsing, horizontal and vertical (MVP)
 - [ ] Copy/move files between panes using shortcuts or drag and drop (MVP)
 - [ ] Compare folders and one-way/two-way/mirror sync (Advanced)

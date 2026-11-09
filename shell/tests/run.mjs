@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Files Format.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Files Format.js and Tabs.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "p
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click"]);
+const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -601,6 +602,31 @@ test("files: selection by click, ctrl and shift", () => {
     assert.deepEqual(Object.keys(s.selected), ["/b", "/d"], "ctrl: toggle one");
     s = F.click(e, s.selected, s.anchor, 0, false, false);
     assert.deepEqual(Object.keys(s.selected), ["/a"], "plain: just that one");
+});
+
+test("files: moving tabs", () => {
+    assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 0, 2), ["b", "c", "a", "d"]);
+    assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 3, 0), ["d", "a", "b", "c"]);
+    assert.deepEqual(Tabs.move(["a", "b"], 0, 9), ["b", "a"], "past the end: last");
+    const list = ["a", "b"];
+    Tabs.move(list, 0, 1);
+    assert.deepEqual(list, ["a", "b"], "the original stays as it was");
+});
+test("files: where a dragged tab lands", () => {
+    const geo = [[0, 100], [104, 100], [208, 100]];       // left, width
+    assert.equal(Tabs.slot(geo, 0, 140), 0, "not yet past the neighbour's middle");
+    assert.equal(Tabs.slot(geo, 0, 160), 1);
+    assert.equal(Tabs.slot(geo, 0, 290), 2, "past two middles");
+    assert.equal(Tabs.slot(geo, 2, 120), 1);
+    assert.equal(Tabs.slot(geo, 2, 10), 0);
+    assert.equal(Tabs.slot(geo, 1, 150), 1, "over itself: stays");
+});
+test("files: the tab shown after a close", () => {
+    assert.equal(Tabs.afterClose(1, 0, 0), -1, "the last one: none");
+    assert.equal(Tabs.afterClose(4, 1, 1), 1, "the shown one: its right neighbour takes its place");
+    assert.equal(Tabs.afterClose(4, 3, 3), 2, "the shown last one: the one before");
+    assert.equal(Tabs.afterClose(4, 0, 2), 1, "one before the shown: shown shifts left");
+    assert.equal(Tabs.afterClose(4, 3, 1), 1, "one after: shown stays");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

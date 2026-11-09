@@ -50,6 +50,13 @@ pub mod qobject {
         /// Folders named on the command line, as JSON.
         #[qinvokable]
         fn arguments(self: &Fs) -> QString;
+        /// The windows and tabs saved last time, cleaned up ({windows: []} if none).
+        #[qinvokable]
+        #[cxx_name = "loadSession"]
+        fn load_session(self: &Fs) -> QString;
+        #[qinvokable]
+        #[cxx_name = "saveSession"]
+        fn save_session(self: &Fs, json: &QString) -> bool;
     }
 }
 
@@ -59,7 +66,7 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{listing, places};
+use crate::{listing, places, session};
 
 #[derive(Default)]
 pub struct FsRust;
@@ -225,5 +232,19 @@ impl qobject::Fs {
             .map(|p| p.to_string_lossy().into_owned())
             .collect();
         q(json!(dirs))
+    }
+
+    pub fn load_session(&self) -> QString {
+        q(
+            serde_json::to_value(session::load_from(&session::dir(), &places::home()))
+                .unwrap_or_default(),
+        )
+    }
+
+    pub fn save_session(&self, json: &QString) -> bool {
+        match serde_json::from_str::<session::Session>(&json.to_string()) {
+            Ok(s) => session::save_to(&session::dir(), &s).is_ok(),
+            Err(_) => false,
+        }
     }
 }

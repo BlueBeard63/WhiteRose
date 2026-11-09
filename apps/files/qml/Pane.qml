@@ -28,6 +28,16 @@ Item {
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
 
     signal openFile(var entry)
+    // Anything worth keeping changed (Session saves it).
+    signal changed()
+    onPathChanged: pane.changed()
+    onModeChanged: pane.changed()
+
+    // What a tab is, to save, duplicate, or move to another window.
+    function snapshot() {
+        return { path: pane.path, back: pane.back.slice(-50), forward: pane.forward.slice(0, 50),
+                 mode: pane.mode, sortBy: pane.sortBy, descending: pane.descending, hidden: pane.hidden };
+    }
 
     function load() {
         const r = JSON.parse(Fs.list(pane.path, pane.hidden, pane.sortBy, pane.descending, 48));
@@ -94,9 +104,9 @@ Item {
         for (const e of pane.shownEntries) s[e.path] = true;
         pane.selected = s;
     }
-    onHiddenChanged: load()
-    onSortByChanged: load()
-    onDescendingChanged: load()
+    onHiddenChanged: { load(); pane.changed() }
+    onSortByChanged: { load(); pane.changed() }
+    onDescendingChanged: { load(); pane.changed() }
     Component.onCompleted: load()
 
     // Something changed in the folder: list it again (checked every 1.5 s

@@ -70,7 +70,7 @@ GridView {
             anchors { top: icon.bottom; topMargin: 6; left: parent.left; right: parent.right; leftMargin: 8; rightMargin: 8 }
             horizontalAlignment: Text.AlignHCenter
             text: cell.modelData.name
-            wrapMode: Text.WrapAnywhere
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             maximumLineCount: 2
             elide: Text.ElideMiddle
             color: cell.modelData.hidden ? Theme.muted : Theme.text

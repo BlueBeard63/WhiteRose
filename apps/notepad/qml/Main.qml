@@ -121,7 +121,7 @@ AppWindow {
             anchors.verticalCenter: parent.verticalCenter
             width: 30; height: 30; icon: "menu"; iconSize: 15
             fill: "transparent"
-            onClicked: mainMenu.popup(0, height + 4)
+            onClicked: mainMenu.openAt(0, height + 4)
             Menu {
                 id: mainMenu
                 items: [
