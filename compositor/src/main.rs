@@ -65,6 +65,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         state.spawn(&cmd);
     }
 
-    event_loop.run(None, &mut state, |_| {})?;
+    event_loop.run(None, &mut state, |state| state.after_dispatch())?;
     Ok(())
 }

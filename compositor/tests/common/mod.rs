@@ -90,6 +90,12 @@ impl Headless {
         Headless { event_loop, state, output }
     }
 
+    /// One event-loop iteration, exactly as the real loop runs it.
+    pub fn dispatch(&mut self) {
+        self.event_loop.dispatch(Some(Duration::from_millis(2)), &mut self.state).unwrap();
+        self.state.after_dispatch();
+    }
+
     /// Runs `client` on a thread against this compositor. The client sends its
     /// findings, then stays connected until the server side has inspected state.
     pub fn run<T: Send + 'static>(
@@ -112,7 +118,7 @@ impl Headless {
             }
             assert!(Instant::now() < deadline, "client did not finish");
             assert!(!thread.is_finished(), "client thread died");
-            self.event_loop.dispatch(Some(Duration::from_millis(5)), &mut self.state).unwrap();
+            self.dispatch();
         };
         inspect(&mut self.state, result);
         release_tx.send(()).unwrap();

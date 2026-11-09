@@ -103,6 +103,7 @@ fn shell_ipc_round_trip() {
     while !client.is_finished() {
         assert!(Instant::now() < deadline, "ipc test timed out");
         event_loop.dispatch(Some(Duration::from_millis(5)), &mut state).unwrap();
+        state.after_dispatch();
         if !action_sent && want_action_rx.try_recv().is_ok() {
             state.run_action(Action::ScreenshotRegion);
             action_sent = true;
@@ -114,6 +115,7 @@ fn shell_ipc_round_trip() {
     // 4. Disconnects are noticed and cleaned up.
     for _ in 0..20 {
         event_loop.dispatch(Some(Duration::from_millis(5)), &mut state).unwrap();
+        state.after_dispatch();
         if state.ipc.as_ref().unwrap().client_count() == 0 {
             break;
         }
@@ -185,6 +187,7 @@ fn screenshot_without_a_renderer_reports_failure_to_the_shell() {
     while !client.is_finished() {
         assert!(Instant::now() < deadline);
         event_loop.dispatch(Some(Duration::from_millis(5)), &mut state).unwrap();
+        state.after_dispatch();
     }
     let event = client.join().unwrap();
     assert_eq!(event["event"], "screenshot_failed");

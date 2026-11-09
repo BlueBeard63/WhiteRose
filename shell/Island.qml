@@ -57,10 +57,11 @@ Item {
         Behavior on earHeight { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
         Behavior on bottomLeftRadius { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
     }
-    // Content waits until the outline has settled into its new shape (any
-    // dimension may change, not just the width).
+    // Content waits until the outline has (almost) settled into its new shape:
+    // at 200 of the 280 ms the OutCubic morph is ~98% done, so the fade-in
+    // overlaps its tail instead of starting after it.
     readonly property bool morphing: settle.running
-    Timer { id: settle; interval: 280 }
+    Timer { id: settle; interval: 200 }
     onTargetWidthChanged: settle.restart()
     onTargetHeightChanged: settle.restart()
 
@@ -93,7 +94,7 @@ Item {
         active: selected || opacity > 0
         opacity: selected && !root.morphing ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 130 } }
+        Behavior on opacity { NumberAnimation { duration: 110 } }
     }
     // ---- keyboard ------------------------------------------------------------
     // Esc closes; losing focus (clicking a window or the desktop) closes.

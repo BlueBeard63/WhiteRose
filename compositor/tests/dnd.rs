@@ -265,11 +265,11 @@ fn panel_drags_a_file_into_a_window() {
                 }
                 Cmd::HasIcon => (if wm.state.dnd_icon.is_some() { 1.0 } else { 0.0 }, 0.0),
             };
-            let _ = wm.state.display_handle.flush_clients();
             reply_tx.send(reply).unwrap();
         }
-        wm.event_loop.dispatch(Some(Duration::from_millis(2)), &mut wm.state).unwrap();
-        let _ = wm.state.display_handle.flush_clients();
+        // Pointer input comes from the test, not a client request: it only
+        // reaches the client if the loop flushes after every iteration.
+        wm.dispatch();
     }
     let (has_icon, mimes, got, icon_after) = client.join().unwrap();
 
@@ -277,4 +277,61 @@ fn panel_drags_a_file_into_a_window() {
     assert_eq!(mimes, ["text/uri-list", "text/plain"], "the window is offered what the panel dragged");
     assert_eq!(got, URIS, "the window received the file list");
     assert!(!icon_after, "the icon goes away after the drop");
+}
+
+/// Regression: input that doesn't come from a client request (the host's
+/// mouse, libinput) must reach an idle client at once. It used to sit in the
+/// send buffer until some client happened to send a request, so clicks on the
+/// island registered seconds late.
+#[test]
+fn input_reaches_an_idle_client_without_it_asking() {
+    let mut wm = Headless::new(true);
+    let socket = runtime_dir().join(&wm.state.socket_name);
+    let (ready_tx, ready_rx) = mpsc::channel::<()>();
+    let client = std::thread::spawn(move || {
+        let conn = Connection::from_socket(std::os::unix::net::UnixStream::connect(socket).unwrap()).unwrap();
+        let mut c = Client::connect(&conn);
+        let qh = c.queue.handle();
+        let panel = c.compositor.create_surface(&qh, ());
+        let layer = c.layer_shell.get_layer_surface(
+            &panel,
+            None,
+            zwlr_layer_shell_v1::Layer::Top,
+            "whiterose-bar".into(),
+            &qh,
+            (),
+        );
+        layer.set_size(400, 100);
+        layer.set_anchor(zwlr_layer_surface_v1::Anchor::Top);
+        panel.commit();
+        c.until(|a| a.layer_configure.is_some());
+        c.attach_buffer(&panel, 400, 100);
+        let (globals, mut q) = wayland_client::globals::registry_queue_init::<Dnd>(&conn).unwrap();
+        let dh = q.handle();
+        let seat: WlSeat = globals.bind(&dh, 1..=7, ()).unwrap();
+        let _pointer = seat.get_pointer(&dh, ());
+        let mut d = Dnd::default();
+        q.roundtrip(&mut d).unwrap();
+        // From here on the client only listens, like a shell waiting for a click.
+        ready_tx.send(()).unwrap();
+        while d.pointer_on.is_none() {
+            q.blocking_dispatch(&mut d).unwrap();
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while ready_rx.try_recv().is_err() {
+        assert!(Instant::now() < deadline, "client set up");
+        wm.dispatch();
+    }
+    // Let anything the setup caused settle, then move the pointer onto the panel.
+    for _ in 0..5 {
+        wm.dispatch();
+    }
+    wm.state.on_pointer_motion((640.0, 50.0).into(), 1);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !client.is_finished() {
+        assert!(Instant::now() < deadline, "the pointer enter never reached the idle client");
+        wm.dispatch();
+    }
+    client.join().unwrap();
 }

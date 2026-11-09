@@ -62,6 +62,7 @@ fn advertises_core_globals() {
     while !client.is_finished() {
         assert!(std::time::Instant::now() < deadline, "client never finished its roundtrip");
         event_loop.dispatch(Some(Duration::from_millis(10)), &mut state).unwrap();
+        state.after_dispatch();
     }
     let interfaces = client.join().unwrap();
 

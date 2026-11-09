@@ -73,7 +73,6 @@ Item {
                     fillMode: Image.PreserveAspectCrop
                     sourceSize: Qt.size(root.cellW * 2, root.cellH * 2)
                     asynchronous: true
-                    cache: false
                 }
                 MouseArea {
                     id: cellMouse

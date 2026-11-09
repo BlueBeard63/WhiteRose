@@ -235,6 +235,15 @@ impl WhiteRose {
         socket_name
     }
 
+    /// Runs after every event-loop iteration. Sends clients everything queued
+    /// for them, whatever produced it: host or libinput input, IPC, timers,
+    /// frame callbacks after a redraw. Without this, events not caused by a
+    /// client request wait until some client happens to send one, so clicks
+    /// and animation frames arrive late or seemingly at random.
+    pub fn after_dispatch(&mut self) {
+        let _ = self.display_handle.flush_clients();
+    }
+
     /// Asks the backend for a frame. Called whenever something visible changes;
     /// an idle desktop draws nothing.
     pub fn schedule_redraw(&self) {

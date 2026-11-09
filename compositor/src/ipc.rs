@@ -384,6 +384,9 @@ impl WhiteRose {
     }
 
     fn ipc_request(&mut self, id: u64, line: &str) {
+        if self.debug_pointer(line) {
+            return;
+        }
         match Request::parse(line) {
             Ok(req) => {
                 // Requests never come with modifiers held down.
@@ -392,6 +395,35 @@ impl WhiteRose {
             }
             Err(e) => tracing::warn!(id, e, "ignoring ipc request"),
         }
+    }
+
+    /// Development only (`WHITEROSE_DEBUG_INPUT=1`): drives the pointer like
+    /// a real mouse, for reproducing UI problems without a person clicking:
+    /// `{"debug_pointer":{"x":720,"y":60,"button":"press"}}` (button optional:
+    /// "press" or "release"). Returns true if the line was such a request.
+    fn debug_pointer(&mut self, line: &str) -> bool {
+        #[derive(Deserialize)]
+        struct P {
+            x: f64,
+            y: f64,
+            button: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Req {
+            debug_pointer: P,
+        }
+        if !line.contains("\"debug_pointer\"") || std::env::var_os("WHITEROSE_DEBUG_INPUT").is_none() {
+            return false;
+        }
+        let Ok(Req { debug_pointer: p }) = serde_json::from_str(line) else { return false };
+        let time = (std::time::Instant::now() - self.start_time).as_millis() as u32;
+        self.on_pointer_motion((p.x, p.y).into(), time);
+        match p.button.as_deref() {
+            Some("press") => self.on_pointer_button(0x110, smithay::backend::input::ButtonState::Pressed, time),
+            Some("release") => self.on_pointer_button(0x110, smithay::backend::input::ButtonState::Released, time),
+            _ => {}
+        }
+        true
     }
 
     pub fn workspaces_event(&self) -> Event {
