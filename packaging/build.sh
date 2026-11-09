@@ -16,7 +16,7 @@ rm -rf "$work/src" "$stage"
 mkdir -p "$work" "$stage" /out
 
 # A clean copy of the source (never build in the mounted tree).
-tar -C /src --exclude=./compositor/target --exclude=./build --exclude=./.git -cf - . | (mkdir -p "$work/src" && tar -C "$work/src" -xf -)
+tar -C /src --exclude=./compositor/target --exclude=./apps/target --exclude=./build --exclude=./.git -cf - . | (mkdir -p "$work/src" && tar -C "$work/src" -xf -)
 cd "$work/src"
 
 # ---- QuickShell, pinned, against this distro's Qt ----------------------------
@@ -44,6 +44,10 @@ install -Dm755 "$work/target/release/whiterose-wm" "$stage/usr/bin/whiterose-wm"
 install -Dm755 "$work/whiterosed" "$stage/usr/bin/whiterosed"
 install -Dm755 "$work/apps-target/release/whiterose-notepad" "$stage/usr/bin/whiterose-notepad"
 install -Dm644 packaging/files/whiterose-notepad.desktop "$stage/usr/share/applications/whiterose-notepad.desktop"
+install -Dm755 "$work/apps-target/release/whiterose-files" "$stage/usr/bin/whiterose-files"
+install -Dm644 packaging/files/whiterose-files.desktop "$stage/usr/share/applications/whiterose-files.desktop"
+# Folders open in Files, in a WhiteRose session only.
+install -Dm644 packaging/files/whiterose-mimeapps.list "$stage/etc/xdg/whiterose-mimeapps.list"
 install -Dm755 "$qs_bin" "$stage/usr/lib/whiterose/quickshell"
 ln -s quickshell "$stage/usr/lib/whiterose/qs"
 install -Dm755 packaging/files/whiterose-session "$stage/usr/bin/whiterose-session"
@@ -62,7 +66,7 @@ install -Dm644 profile/custom.zsh-theme "$stage/usr/share/whiterose/profile/cust
 install -Dm644 profile/vscode-extensions.txt "$stage/usr/share/whiterose/profile/vscode-extensions.txt"
 
 # ---- dependencies: what the binaries link, plus what the shell uses ------------
-bins="$stage/usr/bin/whiterose-wm $stage/usr/lib/whiterose/quickshell $stage/usr/bin/whiterose-notepad"
+bins="$stage/usr/bin/whiterose-wm $stage/usr/lib/whiterose/quickshell $stage/usr/bin/whiterose-notepad $stage/usr/bin/whiterose-files"
 case "$FORMAT" in
 deb)
     # dpkg-shlibdeps maps each linked library to its package.

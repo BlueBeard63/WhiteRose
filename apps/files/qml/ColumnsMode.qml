@@ -86,7 +86,17 @@ FocusScope {
                         id: rowArea
                         anchors.fill: parent
                         hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                         onClicked: m => {
+                            if (m.button === Qt.RightButton) {
+                                // An earlier column's item: its folder becomes the open one first.
+                                const p = mapToItem(root.pane, m.x, m.y), path = row.modelData.path, pane = root.pane;
+                                if (!col.last) pane.go(root.chain[col.index].path);
+                                const i = pane.shownEntries.findIndex(e => e.path === path);
+                                if (i >= 0 && !pane.selected[path]) pane.clickAt(i, false, false);
+                                pane.menuAt(i >= 0 ? pane.shownEntries[i] : null, p.x, p.y);
+                                return;
+                            }
                             if (row.modelData.dir) root.pane.go(row.modelData.path);
                             else if (col.last) root.pane.clickAt(row.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
                             else root.pane.go(root.chain[col.index].path);

@@ -58,3 +58,23 @@ function click(entries, selected, anchor, i, ctrl, shift) {
     out[path] = true;
     return { selected: out, anchor: i };
 }
+
+// Time left at this rate: "5 s left", "3 min left", "1 h 20 min left".
+function eta(bytesLeft, rate) {
+    if (!(rate > 0) || bytesLeft <= 0) return "";
+    const s = Math.ceil(bytesLeft / rate);
+    if (s < 60) return s + " s left";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + " min left";
+    return Math.floor(m / 60) + " h " + (m % 60) + " min left";
+}
+
+// The stem of a file name: what renaming selects ("notes" of "notes.txt";
+// all of a folder's or a dotfile's name).
+function stemLength(name, dir) {
+    if (dir) return name.length;
+    const tar = name.indexOf(".tar.");
+    if (tar > 0) return tar;
+    const dot = name.lastIndexOf(".");
+    return dot > 0 ? dot : name.length;
+}

@@ -28,6 +28,8 @@ Item {
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
 
     signal openFile(var entry)
+    // Right-click: on `entry` (null: the folder itself), at x, y in the pane.
+    signal menuAt(var entry, real x, real y)
     // Anything worth keeping changed (Session saves it).
     signal changed()
     onPathChanged: pane.changed()
@@ -98,6 +100,15 @@ Item {
         pane.selected = r.selected;
         pane.anchor = r.anchor;
         pane.current = i;
+    }
+    // Selects these (after a paste, a rename, a new folder), once listed.
+    function selectPaths(paths) {
+        pane.load();
+        const s = {};
+        let first = -1;
+        pane.shownEntries.forEach((e, i) => { if (paths.includes(e.path)) { s[e.path] = true; if (first < 0) first = i } });
+        pane.selected = s;
+        if (first >= 0) { pane.current = first; pane.anchor = first }
     }
     function selectAll() {
         const s = {};

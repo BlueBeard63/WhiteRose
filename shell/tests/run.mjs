@@ -21,7 +21,7 @@ const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
-const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click"]);
+const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength"]);
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
@@ -604,6 +604,17 @@ test("files: selection by click, ctrl and shift", () => {
     assert.deepEqual(Object.keys(s.selected), ["/a"], "plain: just that one");
 });
 
+test("files: time left and the part of a name renaming selects", () => {
+    assert.equal(F.eta(0, 100), "");
+    assert.equal(F.eta(500, 0), "", "no rate yet: nothing");
+    assert.equal(F.eta(4500, 1000), "5 s left");
+    assert.equal(F.eta(180_000, 1000), "3 min left");
+    assert.equal(F.eta(4_800_000, 1000), "1 h 20 min left");
+    assert.equal(F.stemLength("notes.txt", false), 5);
+    assert.equal(F.stemLength("backup.tar.gz", false), 6);
+    assert.equal(F.stemLength(".bashrc", false), 7);
+    assert.equal(F.stemLength("my.folder", true), 9);
+});
 test("files: moving tabs", () => {
     assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 0, 2), ["b", "c", "a", "d"]);
     assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 3, 0), ["d", "a", "b", "c"]);

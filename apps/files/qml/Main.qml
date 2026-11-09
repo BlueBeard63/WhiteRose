@@ -34,6 +34,7 @@ AppWindow {
             anchors.fill: parent
             visible: false
             onOpenFile: entry => Qt.openUrlExternally("file://" + entry.path)
+            onMenuAt: (entry, x, y) => win.showMenu(entry, x, y)
             onChanged: Session.changed()
         }
     }
@@ -303,6 +304,42 @@ AppWindow {
     Item {
         id: stack
         anchors { left: sidebar.right; right: parent.right; top: nav.bottom; bottom: status.top }
+
+        // Right-click on files (`entry` set) or on the folder's empty space.
+        Menu {
+            id: itemMenu
+            property var entry: null
+            readonly property var sel: win.current?.selection ?? []
+            readonly property bool many: sel.length > 1
+            items: !itemMenu.entry ? [
+                { label: "New folder", shortcut: "Ctrl+Shift+N", run: () => win.askName("folder") },
+                { label: "New file", run: () => win.askName("file") },
+                { separator: true },
+                { label: "Paste", shortcut: "Ctrl+V", enabled: win.clipFiles.length > 0, run: () => win.paste(win.current.path) },
+                { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
+                { separator: true },
+                { label: (win.current?.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => { win.current.hidden = !win.current.hidden } },
+            ] : [
+                { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
+                ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
+                { separator: true },
+                { label: "Cut", shortcut: "Ctrl+X", run: () => win.toClipboard(true) },
+                { label: "Copy", shortcut: "Ctrl+C", run: () => win.toClipboard(false) },
+                ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Paste into folder", enabled: win.clipFiles.length > 0, run: () => win.paste(itemMenu.entry.path) }] : []),
+                { label: "Duplicate", run: () => win.run("copy", itemMenu.sel.map(e => e.path), win.current.path) },
+                { separator: true },
+                { label: "Rename…", shortcut: "F2", enabled: !itemMenu.many, run: () => win.askName("rename") },
+                { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
+                { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
+            ]
+        }
+
+        Transfers {
+            id: transfers
+            anchors { right: parent.right; bottom: parent.bottom; margins: 14 }
+            z: 20
+            onDeleteInstead: paths => win.askDelete(paths)
+        }
     }
 
     // ---- status bar ------------------------------------------------------------------------
@@ -328,6 +365,187 @@ AppWindow {
         }
     }
 
+    // ---- file operations ---------------------------------------------------------------------
+    // Files on the clipboard (checked when a menu opens or Paste is pressed).
+    property var clipFiles: []
+    property bool clipCut: false
+    // Jobs started here, and the tab that wants their results selected.
+    property var waiting: ({})
+    readonly property bool typing: address.editing || nameDialog.visible || confirm.visible
+
+    function readClipboard() {
+        const c = JSON.parse(Ops.clipboard());
+        win.clipFiles = c.paths;
+        win.clipCut = c.cut;
+    }
+    function showMenu(entry, x, y) {
+        win.readClipboard();
+        itemMenu.entry = entry;
+        Qt.callLater(() => itemMenu.openAt(Math.min(x, stack.width - itemMenu.width - 8), Math.min(y, stack.height - itemMenu.height - 8)));
+    }
+    function run(kind, paths, dest) {
+        if (paths.length === 0) return;
+        const id = Ops.start(kind, JSON.stringify(paths), dest ?? "");
+        if (id >= 0 && dest && win.current && dest === win.current.path) {
+            const w = Object.assign({}, win.waiting);
+            w[id] = win.current;
+            win.waiting = w;
+        }
+    }
+    function toClipboard(cut) {
+        const sel = win.current?.selection ?? [];
+        if (sel.length > 0) Ops.setClipboard(JSON.stringify(sel.map(e => e.path)), cut);
+    }
+    function paste(dest) {
+        win.readClipboard();
+        if (win.clipFiles.length === 0) return;
+        win.run(win.clipCut ? "move" : "copy", win.clipFiles, dest);
+        // Cut and pasted: they've moved, so the clipboard is done with them.
+        if (win.clipCut) Ops.setClipboard("[]", false);
+    }
+    function trash() {
+        const sel = win.current?.selection ?? [];
+        win.run("trash", sel.map(e => e.path));
+    }
+    function askDelete(paths) {
+        if (paths.length === 0) return;
+        confirm.paths = paths;
+        confirm.open();
+    }
+    // "rename", "folder" or "file".
+    function askName(what) {
+        const p = win.current;
+        if (!p) return;
+        const e = what === "rename" ? p.selection[0] : null;
+        if (what === "rename" && !e) return;
+        nameDialog.what = what;
+        nameDialog.entry = e;
+        nameDialog.error = "";
+        nameField.text = e ? e.name : what === "folder" ? "New folder" : "New file";
+        nameDialog.open();
+    }
+    function nameChosen() {
+        const p = win.current, name = nameField.text;
+        const r = JSON.parse(nameDialog.what === "rename" ? Ops.rename(nameDialog.entry.path, name)
+                                                          : Ops.create(p.path, name, nameDialog.what === "file"));
+        if (!r.ok) { nameDialog.error = r.error; return }
+        nameDialog.close();
+        p.selectPaths([r.path]);
+        p.focusView();
+    }
+    Connections {
+        target: Ops
+        function onFinished(id, result) {
+            const pane = win.waiting[id];
+            if (!pane) return;
+            const w = Object.assign({}, win.waiting);
+            delete w[id];
+            win.waiting = w;
+            const r = JSON.parse(result);
+            if (win.panes.includes(pane)) pane.selectPaths(r.done);
+        }
+    }
+
+    // Name for a rename, a new folder or a new file.
+    Popup {
+        id: nameDialog
+        property string what: "rename"
+        property var entry: null
+        property string error: ""
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 360
+        modal: true
+        padding: 20
+        background: Rectangle { color: Theme.surface1; radius: 16; border { width: 1; color: Theme.surface2 } }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.35) }
+        onOpened: {
+            nameField.focusField();
+            const name = nameField.text;
+            nameField.select(0, nameDialog.what === "rename" ? F.stemLength(name, nameDialog.entry.dir) : name.length);
+        }
+        onClosed: win.current?.focusView()
+        contentItem: Column {
+            spacing: 12
+            Text {
+                text: nameDialog.what === "rename" ? "Rename" : nameDialog.what === "folder" ? "New folder" : "New file"
+                color: Theme.text
+                font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
+            }
+            Field {
+                id: nameField
+                width: 320
+                error: nameDialog.error !== ""
+                onAccepted: win.nameChosen()
+                onTextChanged: nameDialog.error = ""
+                Keys.onEscapePressed: nameDialog.close()
+            }
+            Text {
+                visible: nameDialog.error !== ""
+                text: nameDialog.error
+                color: Theme.rose
+                font { family: Theme.font; pointSize: Theme.pt(11.5) }
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Button { text: "Cancel"; kind: "ghost"; onClicked: nameDialog.close() }
+                Button {
+                    text: nameDialog.what === "rename" ? "Rename" : "Create"
+                    kind: "primary"
+                    onClicked: win.nameChosen()
+                }
+            }
+        }
+    }
+
+    // Deleting for good.
+    Popup {
+        id: confirm
+        property var paths: []
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 380
+        modal: true
+        padding: 20
+        background: Rectangle { color: Theme.surface1; radius: 16; border { width: 1; color: Theme.surface2 } }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.35) }
+        onOpened: deleteButton.forceActiveFocus()
+        onClosed: win.current?.focusView()
+        contentItem: Column {
+            spacing: 12
+            Text {
+                width: 340
+                text: confirm.paths.length === 1
+                    ? "Delete “" + confirm.paths[0].substring(confirm.paths[0].lastIndexOf("/") + 1) + "” permanently?"
+                    : "Delete " + confirm.paths.length + " items permanently?"
+                wrapMode: Text.Wrap
+                color: Theme.text
+                font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
+            }
+            Text {
+                width: 340
+                text: "They won't go to the Trash, so they can't be brought back."
+                wrapMode: Text.Wrap
+                color: Theme.muted
+                font { family: Theme.font; pointSize: Theme.pt(12) }
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Button { text: "Cancel"; kind: "ghost"; onClicked: confirm.close() }
+                Button {
+                    id: deleteButton
+                    text: "Delete"
+                    kind: "danger"
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEscapePressed: confirm.close()
+                    onClicked: { win.run("delete", confirm.paths); confirm.close() }
+                }
+            }
+        }
+    }
+
     // ---- keys -------------------------------------------------------------------------------
     Shortcut { sequence: "Ctrl+T"; onActivated: win.newTab({ path: win.current?.path ?? "" }) }
     Shortcut { sequence: "Ctrl+Shift+T"; onActivated: win.reopenTab() }
@@ -342,12 +560,19 @@ AppWindow {
     Shortcut { sequence: "Ctrl+L"; onActivated: address.edit() }
     Shortcut { sequence: "Alt+Left"; onActivated: win.current?.goBack() }
     Shortcut { sequence: "Alt+Right"; onActivated: win.current?.goForward() }
-    Shortcut { sequences: ["Alt+Up", "Backspace"]; enabled: !address.editing; onActivated: win.current?.up() }
+    Shortcut { sequences: ["Alt+Up", "Backspace"]; enabled: !win.typing; onActivated: win.current?.up() }
     Shortcut { sequence: "Ctrl+1"; onActivated: { if (win.current) win.current.mode = "grid" } }
     Shortcut { sequence: "Ctrl+2"; onActivated: { if (win.current) win.current.mode = "list" } }
     Shortcut { sequence: "Ctrl+3"; onActivated: { if (win.current) win.current.mode = "columns" } }
     Shortcut { sequence: "Ctrl+H"; onActivated: { if (win.current) win.current.hidden = !win.current.hidden } }
-    Shortcut { sequence: "Ctrl+A"; enabled: !address.editing; onActivated: win.current?.selectAll() }
+    Shortcut { sequence: "Ctrl+A"; enabled: !win.typing; onActivated: win.current?.selectAll() }
     Shortcut { sequence: "Ctrl+D"; onActivated: win.toggleBookmark() }
     Shortcut { sequence: "F5"; onActivated: win.current?.load() }
+    Shortcut { sequence: "Ctrl+C"; enabled: !win.typing; onActivated: win.toClipboard(false) }
+    Shortcut { sequence: "Ctrl+X"; enabled: !win.typing; onActivated: win.toClipboard(true) }
+    Shortcut { sequence: "Ctrl+V"; enabled: !win.typing; onActivated: { if (win.current) win.paste(win.current.path) } }
+    Shortcut { sequence: "Delete"; enabled: !win.typing; onActivated: win.trash() }
+    Shortcut { sequence: "Shift+Del"; enabled: !win.typing; onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path)) }
+    Shortcut { sequence: "F2"; enabled: !win.typing; onActivated: win.askName("rename") }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: !win.typing; onActivated: win.askName("folder") }
 }

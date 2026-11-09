@@ -34,7 +34,12 @@ GridView {
     MouseArea {
         anchors.fill: parent
         z: -1
-        onClicked: { pane.selected = {}; grid.forceActiveFocus() }
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: m => {
+            pane.selected = {};
+            grid.forceActiveFocus();
+            if (m.button === Qt.RightButton) { const p = mapToItem(pane, m.x, m.y); pane.menuAt(null, p.x, p.y) }
+        }
     }
 
     delegate: Item {
@@ -80,7 +85,18 @@ GridView {
             id: area
             anchors.fill: parent
             hoverEnabled: true
-            onClicked: m => { pane.clickAt(cell.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier); grid.forceActiveFocus() }
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: m => {
+                grid.forceActiveFocus();
+                if (m.button === Qt.RightButton) {
+                    // Right-click on something not selected: just that.
+                    if (!cell.on) pane.clickAt(cell.index, false, false);
+                    const p = mapToItem(pane, m.x, m.y);
+                    pane.menuAt(cell.modelData, p.x, p.y);
+                    return;
+                }
+                pane.clickAt(cell.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
+            }
             onDoubleClicked: pane.activate(cell.modelData)
         }
     }

@@ -31,19 +31,19 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Recently modified files collection (Next)
 
 ## 3. File operations & organisation
-- [ ] Create, copy, cut, paste, move, rename and delete (MVP)
-- [~] Multi-selection, drag and drop, clipboard integration (MVP) — click / Ctrl / Shift / Ctrl+A selection
-- [ ] Background transfer queue with progress (MVP)
-- [ ] Pause, resume and cancel transfers (Next)
-- [ ] Side-by-side conflict resolution (Next)
+- [x] Create, copy, cut, paste, move, rename and delete (MVP)
+- [~] Multi-selection, drag and drop, clipboard integration (MVP) — selection and the clipboard (works with other file managers both ways); drag and drop next
+- [x] Background transfer queue with progress (MVP)
+- [x] Pause, resume and cancel transfers (Next)
+- [x] Side-by-side conflict resolution (Next) — size and date of both, replace / keep both / skip, same for the rest
 - [ ] Text diffs when resolving overwrites (Advanced)
-- [ ] Merge directories intelligently (Next)
+- [~] Merge directories intelligently (Next) — folder onto folder merges, asking about each clash inside
 - [ ] Optional checksum verification of copies (Next)
 - [ ] Persistent undo/redo operation history (Advanced)
 - [ ] Batch rename with regex, numbering, case and preview (Next)
 - [ ] Create folder from selected files (Next)
 - [ ] File shelf / staging area for collecting items (Next)
-- [ ] Recycle Bin/Trash integration and restore (MVP)
+- [~] Recycle Bin/Trash integration and restore (MVP) — moving to the Trash (freedesktop layout); Trash view and restore next
 - [ ] File and folder properties, permissions and attributes (MVP)
 - [ ] Copy file paths, quoted paths and shortcuts (Next)
 - [ ] Custom file tags with colours and multiple labels (Next)

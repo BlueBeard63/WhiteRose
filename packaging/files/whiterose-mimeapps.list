@@ -1,0 +1,4 @@
+# Defaults inside a WhiteRose session (XDG_CURRENT_DESKTOP=WhiteRose):
+# folders open in WhiteRose Files. Your own ~/.config/mimeapps.list wins.
+[Default Applications]
+inode/directory=whiterose-files.desktop

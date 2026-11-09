@@ -378,8 +378,9 @@ mod tests {
     }
 
     /// A tiny theme tree and mime database, built in a temp dir.
-    fn fixture() -> (PathBuf, Icons) {
-        let root = std::env::temp_dir().join(format!("wr-icons-{}", std::process::id()));
+    /// A theme tree of its own per test (tests run in parallel).
+    fn fixture(test: &str) -> (PathBuf, Icons) {
+        let root = std::env::temp_dir().join(format!("wr-icons-{test}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let mk = |p: &str, body: &str| {
             let f = root.join(p);
@@ -408,7 +409,7 @@ mod tests {
 
     #[test]
     fn finds_through_the_inheritance_chain_and_nearest_size() {
-        let (root, icons) = fixture();
+        let (root, icons) = fixture("finds_through_the_inheritance_chain_and_nearest_size");
         assert_eq!(
             icons.lookup("folder", 48, 1),
             Some(root.join("icons/Mine/48x48/places/folder.png"))
@@ -434,7 +435,7 @@ mod tests {
 
     #[test]
     fn file_icons_by_type_with_fallbacks() {
-        let (root, icons) = fixture();
+        let (root, icons) = fixture("file_icons_by_type_with_fallbacks");
         assert_eq!(icons.mime.type_of("a.PDF"), "application/pdf");
         assert_eq!(
             icons.mime.type_of("x.tar.gz"),

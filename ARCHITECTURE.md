@@ -311,6 +311,13 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
   - **Saving:** a new file is written and renamed over the old, keeping permissions and line endings. Binary, non-UTF-8 and >20 MiB files are refused.
   - **Changes on disk:** a file changed underneath you reloads if you haven't edited it, else asks.
   - **Session:** the open files come back next time (`$XDG_DATA_HOME/whiterose/notepad`).
+- **Files** (`apps/files`, `whiterose-files [FOLDER…]`; the feature checklist is `apps/files/FEATURES.md`):
+  - **Browsing:** tabs, breadcrumbs (`… > Folder` when long; click for the path as text), grid, list and columns, sidebar places, bookmarks (GTK's file, shared with other file managers) and drives.
+  - **Tabs and windows:** drag to reorder, down out of the bar for a window of its own; duplicate; reopen closed. Started without folders, Files owns the session (`$XDG_STATE_HOME/whiterose/files/session.json`) and every window's tabs come back; started on a folder, it leaves the session alone.
+  - **File operations** (`src/ops.rs`, run by the `Ops` singleton in `src/jobs.rs`): copy, move, trash, delete on a thread per job, copies and moves one at a time. Copies write `.name.wrpart` and rename it into place, keeping modes and times. A clash pauses the job and asks (replace or merge, keep both, skip, or the same for the rest). Moves rename when they can, else copy then remove the original only if everything copied.
+  - **Trash:** the freedesktop.org layout (`src/trash.rs`), so GNOME and KDE see the same Trash: home Trash for the home drive, the drive's `.Trash/$uid` or `.Trash-$uid` elsewhere.
+  - **Clipboard:** files go as `text/uri-list`, `x-special/gnome-copied-files` and plain paths (`cpp/clip.cpp`), so copy and paste work with other file managers both ways.
+  - **Default:** `/etc/xdg/whiterose-mimeapps.list` makes Files open folders inside a WhiteRose session only.
 
 ## Windows
 

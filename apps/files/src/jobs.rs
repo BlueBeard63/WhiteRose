@@ -1,0 +1,423 @@
+//! `Ops` (QML singleton): file operations for QML. Copy, move, trash and
+//! delete run as jobs on their own threads; copies and moves wait their turn
+//! (one at a time is quicker on one disk), trash and delete go straight
+//! away. `jobs` (JSON) is what the transfer panel shows; a job waiting on a
+//! clash has `conflict` set until `answer` is called.
+
+#[cxx_qt::bridge]
+pub mod qobject {
+    unsafe extern "C++" {
+        include!("cxx-qt-lib/qstring.h");
+        type QString = cxx_qt_lib::QString;
+    }
+
+    unsafe extern "C++" {
+        include!("whiterose-files/cpp/clip.h");
+        #[cxx_name = "setClipboardFiles"]
+        fn set_clipboard_files(uris: &str, cut: bool);
+        #[cxx_name = "clipboardFiles"]
+        fn clipboard_files() -> String;
+    }
+
+    extern "RustQt" {
+        #[qobject]
+        #[qml_element]
+        #[qml_singleton]
+        /// [{id, kind, label, state, bytesDone, bytesTotal, itemsDone,
+        /// itemsTotal, current, rate, conflict, failed, cancelled}]
+        /// state: waiting | running | paused | conflict | done
+        #[qproperty(QString, jobs)]
+        type Ops = super::OpsRust;
+
+        /// kind: copy | move | trash | delete; sources: JSON [path]; dest: a
+        /// folder (copy, move). Returns the job's id.
+        #[qinvokable]
+        fn start(self: Pin<&mut Ops>, kind: &QString, sources: &QString, dest: &QString) -> i32;
+        #[qinvokable]
+        fn cancel(self: &Ops, id: i32);
+        #[qinvokable]
+        fn pause(self: &Ops, id: i32, on: bool);
+        /// choice: replace | keep | skip; `all`: the same for later clashes.
+        #[qinvokable]
+        fn answer(self: &Ops, id: i32, choice: &QString, all: bool);
+        /// Takes a finished job off the list.
+        #[qinvokable]
+        fn dismiss(self: Pin<&mut Ops>, id: i32);
+
+        /// {ok, path} or {ok: false, error}.
+        #[qinvokable]
+        fn rename(self: &Ops, path: &QString, name: &QString) -> QString;
+        /// A new folder (or empty file) in `dir`: {ok, path} or {ok: false, error}.
+        #[qinvokable]
+        fn create(self: &Ops, dir: &QString, name: &QString, file: bool) -> QString;
+
+        /// Puts files on the clipboard (other file managers paste them too).
+        #[qinvokable]
+        #[cxx_name = "setClipboard"]
+        fn set_clipboard(self: &Ops, paths: &QString, cut: bool);
+        /// {cut, paths} from the clipboard (paths empty if it holds no files).
+        #[qinvokable]
+        fn clipboard(self: &Ops) -> QString;
+
+        /// A job finished: {kind, done: [path], failed: [[path, why]], cancelled}.
+        #[qsignal]
+        fn finished(self: Pin<&mut Ops>, id: i32, result: QString);
+    }
+
+    impl cxx_qt::Threading for Ops {}
+}
+
+use std::{
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::{
+        atomic::Ordering,
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
+    time::{Duration, Instant},
+};
+
+use cxx_qt::{CxxQtType, Threading};
+use cxx_qt_lib::QString;
+use serde::Serialize;
+use serde_json::{json, Value};
+
+use crate::ops::{self, Choice, Control, Kind, Progress, Report};
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct Conflict {
+    src: String,
+    dst: String,
+    src_size: u64,
+    dst_size: u64,
+    src_modified: f64,
+    dst_modified: f64,
+    folders: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Job {
+    id: i32,
+    kind: &'static str,
+    label: String,
+    state: &'static str,
+    #[serde(flatten)]
+    progress: Progress,
+    /// Bytes a second, since it started.
+    rate: f64,
+    conflict: Option<Conflict>,
+    failed: Vec<(String, String)>,
+    cancelled: bool,
+    #[serde(skip)]
+    control: Arc<Control>,
+    #[serde(skip)]
+    answers: Option<Sender<(Choice, bool)>>,
+    #[serde(skip)]
+    started: Option<Instant>,
+}
+
+#[derive(Default)]
+pub struct OpsRust {
+    jobs: QString,
+    list: Arc<Mutex<Vec<Job>>>,
+    /// Held by the copy or move that's running.
+    transfers: Arc<Mutex<()>>,
+    next: i32,
+}
+
+fn q(v: Value) -> QString {
+    QString::from(v.to_string().as_str())
+}
+
+fn kind_name(k: Kind) -> &'static str {
+    match k {
+        Kind::Copy => "copy",
+        Kind::Move => "move",
+        Kind::Trash => "trash",
+        Kind::Delete => "delete",
+    }
+}
+
+fn shown_name(p: &Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| p.to_string_lossy().into_owned())
+}
+
+/// "Copying notes.txt to Documents", "Moving 3 items to the Trash".
+fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
+    let what = match sources {
+        [one] => format!("“{}”", shown_name(one)),
+        many => format!("{} items", many.len()),
+    };
+    let to = dest.map(shown_name).unwrap_or_default();
+    match kind {
+        Kind::Copy => format!("Copying {what} to {to}"),
+        Kind::Move => format!("Moving {what} to {to}"),
+        Kind::Trash => format!("Moving {what} to the Trash"),
+        Kind::Delete => format!("Deleting {what}"),
+    }
+}
+
+fn modified(m: &std::fs::Metadata) -> f64 {
+    use std::os::unix::fs::MetadataExt;
+    m.mtime() as f64 * 1000.0
+}
+
+/// The worker's side: updates its job and shows it (at most ~10 times a second).
+struct Worker {
+    id: i32,
+    list: Arc<Mutex<Vec<Job>>>,
+    thread: cxx_qt::CxxQtThread<qobject::Ops>,
+    last: Instant,
+}
+
+impl Worker {
+    fn update(&self, f: impl FnOnce(&mut Job)) {
+        let mut l = self.list.lock().unwrap();
+        if let Some(j) = l.iter_mut().find(|j| j.id == self.id) {
+            f(j);
+        }
+    }
+    fn publish(&mut self) {
+        self.last = Instant::now();
+        let _ = self.thread.queue(|mut obj| obj.as_mut().publish());
+    }
+}
+
+impl Report for Worker {
+    fn progress(&mut self, p: &Progress) {
+        self.update(|j| {
+            j.progress = p.clone();
+            if let Some(t) = j.started {
+                let secs = t.elapsed().as_secs_f64();
+                if secs > 0.3 {
+                    j.rate = p.bytes_done as f64 / secs;
+                }
+            }
+            j.state = if j.control.pause.load(Ordering::Relaxed) {
+                "paused"
+            } else {
+                "running"
+            };
+        });
+        if self.last.elapsed() >= Duration::from_millis(100) {
+            self.publish();
+        }
+    }
+
+    fn conflict(&mut self, src: &Path, dst: &Path) -> (Choice, bool) {
+        let (tx, rx) = channel();
+        let a = std::fs::symlink_metadata(src).ok();
+        let b = std::fs::symlink_metadata(dst).ok();
+        let c = Conflict {
+            src: src.to_string_lossy().into_owned(),
+            dst: dst.to_string_lossy().into_owned(),
+            src_size: a.as_ref().map(|m| m.len()).unwrap_or(0),
+            dst_size: b.as_ref().map(|m| m.len()).unwrap_or(0),
+            src_modified: a.as_ref().map(modified).unwrap_or(0.0),
+            dst_modified: b.as_ref().map(modified).unwrap_or(0.0),
+            folders: a.map(|m| m.is_dir()).unwrap_or(false)
+                && b.map(|m| m.is_dir()).unwrap_or(false),
+        };
+        self.update(|j| {
+            j.state = "conflict";
+            j.conflict = Some(c);
+            j.answers = Some(tx);
+        });
+        self.publish();
+        let got = rx.recv().unwrap_or((Choice::Skip, true));
+        self.update(|j| {
+            j.state = "running";
+            j.conflict = None;
+            j.answers = None;
+        });
+        self.publish();
+        got
+    }
+}
+
+impl qobject::Ops {
+    fn publish(self: Pin<&mut Self>) {
+        let text = {
+            let l = self.list.lock().unwrap();
+            serde_json::to_string(&*l).unwrap_or_else(|_| "[]".into())
+        };
+        self.set_jobs(QString::from(text.as_str()));
+    }
+
+    pub fn start(
+        mut self: Pin<&mut Self>,
+        kind: &QString,
+        sources: &QString,
+        dest: &QString,
+    ) -> i32 {
+        let Some(kind) = Kind::parse(&kind.to_string()) else {
+            return -1;
+        };
+        let sources: Vec<PathBuf> = serde_json::from_str::<Vec<String>>(&sources.to_string())
+            .unwrap_or_default()
+            .into_iter()
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .collect();
+        if sources.is_empty() {
+            return -1;
+        }
+        let dest = Some(PathBuf::from(dest.to_string())).filter(|d| d.is_absolute());
+        self.as_mut().rust_mut().next += 1;
+        let id = self.next;
+        let control = Arc::new(Control::default());
+        let queued = matches!(kind, Kind::Copy | Kind::Move);
+        self.list.lock().unwrap().push(Job {
+            id,
+            kind: kind_name(kind),
+            label: label(kind, &sources, dest.as_deref()),
+            state: if queued { "waiting" } else { "running" },
+            progress: Progress::default(),
+            rate: 0.0,
+            conflict: None,
+            failed: vec![],
+            cancelled: false,
+            control: control.clone(),
+            answers: None,
+            started: None,
+        });
+        self.as_mut().publish();
+
+        let list = self.list.clone();
+        let transfers = self.transfers.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let _turn = queued.then(|| transfers.lock().unwrap_or_else(|e| e.into_inner()));
+            let mut w = Worker {
+                id,
+                list,
+                thread,
+                last: Instant::now(),
+            };
+            w.update(|j| {
+                j.started = Some(Instant::now());
+                j.state = "running";
+            });
+            w.publish();
+            let out = ops::run(kind, &sources, dest.as_deref(), &control, &mut w);
+            w.update(|j| {
+                j.state = "done";
+                j.failed = out.failed.clone();
+                j.cancelled = out.cancelled;
+            });
+            let result = json!({
+                "kind": kind_name(kind),
+                "done": out.done,
+                "failed": out.failed,
+                "cancelled": out.cancelled,
+            })
+            .to_string();
+            let _ = w.thread.queue(move |mut obj| {
+                obj.as_mut().publish();
+                obj.as_mut().finished(id, QString::from(result.as_str()));
+            });
+        });
+        id
+    }
+
+    fn with_job(&self, id: i32, f: impl FnOnce(&mut Job)) {
+        if let Some(j) = self.list.lock().unwrap().iter_mut().find(|j| j.id == id) {
+            f(j);
+        }
+    }
+
+    pub fn cancel(&self, id: i32) {
+        self.with_job(id, |j| {
+            j.control.cancel.store(true, Ordering::Relaxed);
+            // Waiting on a clash: that's an answer too.
+            if let Some(tx) = j.answers.take() {
+                let _ = tx.send((Choice::Skip, true));
+            }
+        });
+    }
+
+    pub fn pause(&self, id: i32, on: bool) {
+        self.with_job(id, |j| j.control.pause.store(on, Ordering::Relaxed));
+    }
+
+    pub fn answer(&self, id: i32, choice: &QString, all: bool) {
+        let choice = Choice::parse(&choice.to_string());
+        self.with_job(id, |j| {
+            if let Some(tx) = j.answers.take() {
+                let _ = tx.send((choice, all));
+            }
+        });
+    }
+
+    pub fn dismiss(mut self: Pin<&mut Self>, id: i32) {
+        self.list
+            .lock()
+            .unwrap()
+            .retain(|j| j.id != id || j.state != "done");
+        self.as_mut().publish();
+    }
+
+    pub fn rename(&self, path: &QString, name: &QString) -> QString {
+        match ops::rename(Path::new(&path.to_string()), &name.to_string()) {
+            Ok(p) => q(json!({"ok": true, "path": p})),
+            Err(e) => q(json!({"ok": false, "error": e})),
+        }
+    }
+
+    pub fn create(&self, dir: &QString, name: &QString, file: bool) -> QString {
+        match ops::create(Path::new(&dir.to_string()), &name.to_string(), file) {
+            Ok(p) => q(json!({"ok": true, "path": p})),
+            Err(e) => q(json!({"ok": false, "error": e})),
+        }
+    }
+
+    pub fn set_clipboard(&self, paths: &QString, cut: bool) {
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let uris: Vec<String> = paths
+            .iter()
+            .map(|p| format!("file://{}", crate::places::percent_encode(p)))
+            .collect();
+        qobject::set_clipboard_files(&uris.join("\n"), cut);
+    }
+
+    pub fn clipboard(&self) -> QString {
+        let text = qobject::clipboard_files();
+        let mut lines = text.lines();
+        let cut = lines.next() == Some("cut");
+        let paths: Vec<String> = lines
+            .filter_map(|l| l.strip_prefix("file://"))
+            .map(crate::places::percent_decode)
+            .filter(|p| p.starts_with('/'))
+            .collect();
+        q(json!({"cut": cut, "paths": paths}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn labels() {
+        let a = [PathBuf::from("/x/notes.txt")];
+        let many = [PathBuf::from("/x/a"), PathBuf::from("/x/b")];
+        assert_eq!(
+            label(Kind::Copy, &a, Some(Path::new("/home/me/Documents"))),
+            "Copying “notes.txt” to Documents"
+        );
+        assert_eq!(
+            label(Kind::Move, &many, Some(Path::new("/tmp"))),
+            "Moving 2 items to tmp"
+        );
+        assert_eq!(
+            label(Kind::Trash, &many, None),
+            "Moving 2 items to the Trash"
+        );
+        assert_eq!(label(Kind::Delete, &a, None), "Deleting “notes.txt”");
+    }
+}

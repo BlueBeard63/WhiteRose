@@ -79,7 +79,16 @@ FocusScope {
             if (e.key === Qt.Key_Up || e.key === Qt.Key_Down)
                 Qt.callLater(() => root.pane.clickAt(list.currentIndex, false, (e.modifiers & Qt.ShiftModifier) !== 0));
         }
-        MouseArea { anchors.fill: parent; z: -1; onClicked: { root.pane.selected = {}; list.forceActiveFocus() } }
+        MouseArea {
+            anchors.fill: parent
+            z: -1
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: m => {
+                root.pane.selected = {};
+                list.forceActiveFocus();
+                if (m.button === Qt.RightButton) { const p = mapToItem(root.pane, m.x, m.y); root.pane.menuAt(null, p.x, p.y) }
+            }
+        }
 
         delegate: Rectangle {
             id: row
@@ -119,7 +128,17 @@ FocusScope {
                 id: rowArea
                 anchors.fill: parent
                 hoverEnabled: true
-                onClicked: m => { root.pane.clickAt(row.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier); list.forceActiveFocus() }
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: m => {
+                    list.forceActiveFocus();
+                    if (m.button === Qt.RightButton) {
+                        if (!row.on) root.pane.clickAt(row.index, false, false);
+                        const p = mapToItem(root.pane, m.x, m.y);
+                        root.pane.menuAt(row.modelData, p.x, p.y);
+                        return;
+                    }
+                    root.pane.clickAt(row.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
+                }
                 onDoubleClicked: root.pane.activate(row.modelData)
             }
         }

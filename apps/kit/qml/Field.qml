@@ -13,6 +13,7 @@ Rectangle {
     signal accepted()
     function focusField() { input.forceActiveFocus() }
     function selectAll() { input.selectAll() }
+    function select(from, to) { input.select(from, to) }
     implicitWidth: 260
     implicitHeight: 36
     width: implicitWidth; height: implicitHeight
