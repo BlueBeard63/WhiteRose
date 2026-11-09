@@ -1,0 +1,4 @@
+/build/
+/daemon/coverage.out
+/daemon/coverage.html
+/compositor/target/

@@ -1,0 +1,39 @@
+[package]
+name = "whiterose-wm"
+version = "0.1.0"
+edition = "2021"
+description = "WhiteRose Wayland compositor"
+license = "MIT"
+publish = false
+
+[lib]
+name = "whiterose_wm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "whiterose-wm"
+path = "src/main.rs"
+
+[dependencies]
+bitflags = "2"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+png = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dependencies.smithay]
+version = "0.7.0"
+default-features = false
+features = ["backend_winit", "backend_drm", "wayland_frontend", "desktop"]
+
+[dev-dependencies]
+wayland-client = "0.31.10"
+wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

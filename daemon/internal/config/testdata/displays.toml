@@ -1,0 +1,52 @@
+# Example ~/.config/whiterose/displays.toml
+
+[[monitor]]
+id    = "builtin"
+label = "Laptop"
+scale = 1.6
+
+[[monitor]]
+id        = "edid:3f9a1c2b7e44"
+label     = "Desk left"
+mode      = "2560x1440@165"
+scale     = 1.25
+vrr       = "auto"
+
+[[monitor]]
+id        = "edid:91c04d7a22f0"
+label     = "Desk right"
+mode      = "2560x1440"
+scale     = 1.25
+transform = "normal"
+
+[[profile]]
+name = "desk"
+
+  [[profile.output]]
+  id       = "builtin"
+  position = [0, 152]
+
+  [[profile.output]]
+  id       = "edid:3f9a1c2b7e44"
+  position = [1600, 0]
+
+  [[profile.output]]
+  id       = "edid:91c04d7a22f0"
+  position = [3648, 0]
+
+[[profile]]
+name = "desk, lid closed"
+
+  [[profile.output]]
+  id       = "builtin"
+  disabled = true
+
+  [[profile.output]]
+  id       = "edid:3f9a1c2b7e44"
+  position = [0, 0]
+
+[[profile]]
+name = "laptop"
+
+  [[profile.output]]
+  id = "builtin"
