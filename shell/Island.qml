@@ -72,13 +72,14 @@ Item {
         Behavior on earHeight { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
         Behavior on bottomLeftRadius { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
     }
-    // Content waits until the outline has (almost) settled into its new shape:
-    // at 200 of the 280 ms the OutCubic morph is ~98% done, so the fade-in
-    // overlaps its tail instead of starting after it.
+    // A new view waits until the outline has (almost) settled into its new
+    // shape: at 200 of the 280 ms the OutCubic morph is ~98% done, so the
+    // fade-in overlaps its tail. A view that only changes size (launcher
+    // results while typing) stays visible, clipped to the outline as it
+    // catches up, instead of blinking on every keystroke.
     readonly property bool morphing: settle.running
     Timer { id: settle; interval: 200 }
-    onTargetWidthChanged: settle.restart()
-    onTargetHeightChanged: settle.restart()
+    onViewChanged: settle.restart()
 
     // Idle: the grip; clicking the island opens the dock.
     Rectangle {
@@ -124,7 +125,7 @@ Item {
     component View: Loader {
         required property string name
         readonly property bool selected: root.view === name
-        x: (root.width - width) / 2
+        x: (parent.width - width) / 2
         y: 0
         active: selected || opacity > 0
         opacity: selected && !root.morphing ? 1 : 0
@@ -141,12 +142,20 @@ Item {
         Keys.onEscapePressed: ShellState.close()
 
         // Views live inside the scope, so a focused child (the launcher's
-        // search field) still counts as the island having focus.
-        View { id: dockLoader; name: "dock"; sourceComponent: DockView {} }
-        View { id: clipLoader; name: "clipboard"; sourceComponent: ClipboardView {} }
-        View { id: shotsLoader; name: "screenshots"; sourceComponent: ScreenshotsView {} }
-        View { id: launcherLoader; name: "launcher"; sourceComponent: LauncherView {} }
-        View { id: switcherLoader; name: "switcher"; sourceComponent: SwitcherView {} }
+        // search field) still counts as the island having focus. They're
+        // clipped to the outline, except the dock, whose window previews hang
+        // below the island.
+        Item {
+            x: shape.bodyX
+            width: shape.bodyWidth
+            height: root.view === "dock" ? root.height + 400 : shape.bodyHeight
+            clip: root.view !== "dock"
+            View { id: dockLoader; name: "dock"; sourceComponent: DockView {} }
+            View { id: clipLoader; name: "clipboard"; sourceComponent: ClipboardView {} }
+            View { id: shotsLoader; name: "screenshots"; sourceComponent: ScreenshotsView {} }
+            View { id: launcherLoader; name: "launcher"; sourceComponent: LauncherView {} }
+            View { id: switcherLoader; name: "switcher"; sourceComponent: SwitcherView {} }
+        }
 
         onActiveFocusChanged: {
             if (activeFocus) focusSeen = true;

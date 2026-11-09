@@ -98,3 +98,105 @@ function matchFiles(query, files, limit) {
 function tildify(path, home) {
     return home && path.indexOf(home) === 0 ? "~" + path.slice(home.length) : path;
 }
+
+// Programs on $PATH whose name starts with the query (or has a part after a
+// "-" or "." that does), best first. A match in the middle ("ht" in
+// "ethtool") is noise among thousands of programs. `commands` is the list of
+// executable names.
+function matchCommands(query, commands, limit) {
+    var q = query.trim().split(/\s+/)[0];
+    if (!q) return [];
+    var out = [];
+    for (var i = 0; i < commands.length; i++) {
+        var s = score(q, commands[i]);
+        if (s >= 80) out.push({ cmd: commands[i], score: s - commands[i].length * 0.01 });
+    }
+    out.sort(function (a, b) { return b.score - a.score || (a.cmd < b.cmd ? -1 : 1); });
+    return out.slice(0, limit || 6).map(function (r) { return r.cmd; });
+}
+
+// Newest first, no repeats, at most `max`.
+function pushHistory(list, entry, max, same) {
+    same = same || function (a, b) { return a === b; };
+    var out = [entry];
+    for (var i = 0; i < (list || []).length && out.length < max; i++)
+        if (!same(list[i], entry)) out.push(list[i]);
+    return out;
+}
+
+// argv that runs `cmd` in `terminal` and leaves a shell open afterwards, so
+// the output stays readable. Terminals disagree on how to take a command.
+function terminalCommand(terminal, cmd) {
+    var parts = (terminal || "ptyxis").trim().split(/\s+/);
+    var name = parts[0].split("/").pop();
+    var script = ["sh", "-c", cmd + '; exec "${SHELL:-sh}"'];
+    var sep = {
+        "ptyxis": ["--"], "gnome-terminal": ["--"], "kgx": ["--"], "gnome-console": ["--"],
+        "alacritty": ["-e"], "konsole": ["-e"], "xterm": ["-e"], "terminator": ["-x"],
+        "wezterm": ["start", "--"], "foot": [], "kitty": [], "ghostty": ["-e"],
+    }[name];
+    if (sep === undefined) sep = ["-e"];
+    if (name === "ptyxis" && parts.indexOf("--standalone") < 0) parts.push("--standalone");
+    return parts.concat(sep, script);
+}
+
+// Everything the launcher lists, in display order, for the current query and
+// category chip. Items: { kind: "app" | "file" | "calc" | "cmd", ... };
+// `grid` is how many leading items are shown as the app grid.
+//
+// s = { query, category, apps, usage, pinned, files, commands, history,
+//       calcHistory, calc (the query's result or null) }
+function results(s) {
+    var q = (s.query || "").trim();
+    var cat = s.category || "all";
+    var apps = function (list) { return list.map(function (a) { return { kind: "app", app: a }; }); };
+    var files = function (list) { return list.map(function (f) { return { kind: "file", file: f }; }); };
+    var cmds = function (cmd) {
+        return [{ kind: "cmd", cmd: cmd, terminal: false }, { kind: "cmd", cmd: cmd, terminal: true }];
+    };
+
+    // ">" at the start means a command, whichever chip is on.
+    if (q.charAt(0) === ">") { cat = "commands"; q = q.replace(/^>\s*/, ""); }
+
+    if (q === "") {
+        switch (cat) {
+        case "apps": {
+            var all = s.apps.slice().sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+            return { items: apps(all), grid: all.length };
+        }
+        case "files": return { items: files(s.files.slice(0, 8)), grid: 0 };
+        case "commands":
+            return { items: (s.history || []).slice(0, 8).map(function (c) { return { kind: "cmd", cmd: c, terminal: false, recent: true }; }), grid: 0 };
+        case "calculator":
+            return { items: (s.calcHistory || []).slice(0, 6).map(function (c) { return { kind: "calc", expr: c.expr, result: c.result }; }), grid: 0 };
+        }
+        var grid = frequent(s.apps, s.usage || {}, s.pinned, 12);
+        return { items: apps(grid).concat(files(s.files.slice(0, 3))), grid: grid.length };
+    }
+
+    var out = [];
+    if (cat === "commands") {
+        out = cmds(q);
+        var first = q.split(/\s+/)[0];
+        // Programs, only while typing the program name (not its arguments).
+        if (q.indexOf(" ") < 0)
+            matchCommands(q, s.commands || [], 6).forEach(function (c) { if (c !== first) out.push({ kind: "cmd", cmd: c, terminal: false }); });
+        (s.history || []).forEach(function (h) {
+            var listed = out.some(function (o) { return o.cmd === h; });
+            if (!listed && h.toLowerCase().indexOf(q.toLowerCase()) >= 0 && out.length < 10)
+                out.push({ kind: "cmd", cmd: h, terminal: false, recent: true });
+        });
+        return { items: out, grid: 0 };
+    }
+    if (s.calc !== null && s.calc !== undefined && (cat === "all" || cat === "calculator"))
+        out.push({ kind: "calc", expr: q, result: s.calc });
+    if (cat === "calculator") return { items: out, grid: 0 };
+    if (cat === "all" || cat === "apps")
+        rankApps(q, s.apps, s.usage, cat === "apps" ? 10 : 5).forEach(function (r) { out.push({ kind: "app", app: r.app }); });
+    if (cat === "all" || cat === "files")
+        matchFiles(q, s.files, cat === "files" ? 10 : 3).forEach(function (r) { out.push({ kind: "file", file: r.file }); });
+    // In All, a program whose name matches exactly can be run directly.
+    if (cat === "all" && (s.commands || []).indexOf(q.split(/\s+/)[0]) >= 0)
+        out.push({ kind: "cmd", cmd: q, terminal: false });
+    return { items: out, grid: 0 };
+}

@@ -11,7 +11,7 @@ function load(file, names) {
     return new Function(`${src}\nreturn { ${names.join(", ")} };`)();
 }
 const Calc = load("Calc.js", ["evaluate"]);
-const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify"]);
+const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName"]);
@@ -264,6 +264,55 @@ test("day labels and times", () => {
     assert.equal(Cal.timeRange({ start: iso(8, 22), end: iso(9, 2), all_day: false }, day), "until 02:00");
     assert.equal(Cal.timeRange({ start: iso(9, 0), end: iso(10, 0), all_day: true }, day), "All day");
 });
+
+// ---- Launcher results per chip ------------------------------------------------
+{
+    const app = (id, name, extra = {}) => ({ id, name, genericName: "", keywords: [], comment: "", ...extra });
+    const apps = [app("firefox", "Firefox"), app("ptyxis", "Terminal", { genericName: "Terminal" }), app("files", "Files"), app("calc", "Calculator")];
+    const files = [{ name: "notes.md", path: "/h/notes.md", dir: "/h" }, { name: "terminal-tips.txt", path: "/h/t.txt", dir: "/h" }];
+    const commands = ["htop", "htpasswd", "firefox", "fish", "ls", "lsblk", "ethtool", "gp-display-html"];
+    const base = { apps, files, commands, usage: { firefox: 3 }, pinned: ["files"], history: ["sudo apt update", "htop"], calcHistory: [{ expr: "2+2", result: "4" }] };
+    const kinds = r => r.items.map(i => i.kind + ":" + (i.app?.id ?? i.file?.name ?? (i.cmd !== undefined ? i.cmd + (i.terminal ? "@term" : "") : i.result)));
+    test("each chip has its own empty state", () => {
+        const all = Search.results({ ...base, query: "", category: "all" });
+        assert.deepEqual(kinds(all), ["app:files", "app:firefox", "file:notes.md", "file:terminal-tips.txt"]);
+        assert.equal(all.grid, 2, "pinned then used apps form the grid");
+        const a = Search.results({ ...base, query: "", category: "apps" });
+        assert.deepEqual(kinds(a), ["app:calc", "app:files", "app:firefox", "app:ptyxis"], "every app, A-Z");
+        assert.equal(a.grid, 4);
+        assert.deepEqual(kinds(Search.results({ ...base, query: "", category: "files" })), ["file:notes.md", "file:terminal-tips.txt"]);
+        assert.deepEqual(kinds(Search.results({ ...base, query: "", category: "commands" })), ["cmd:sudo apt update", "cmd:htop"], "recent commands");
+        assert.deepEqual(kinds(Search.results({ ...base, query: "", category: "calculator" })), ["calc:4"]);
+    });
+    test("commands chip lists programs and offers a terminal", () => {
+        const r = Search.results({ ...base, query: "ht", category: "commands" });
+        // Run as typed (in the background or a terminal), then the programs
+        // that match; a recent command already listed isn't repeated.
+        assert.deepEqual(kinds(r), ["cmd:ht", "cmd:ht@term", "cmd:htop", "cmd:htpasswd", "cmd:gp-display-html"]);
+        assert.deepEqual(kinds(Search.results({ ...base, query: "apt", category: "commands" })).slice(2), ["cmd:sudo apt update"], "recent commands match anywhere");
+        const args = Search.results({ ...base, query: "ls -la", category: "commands" });
+        assert.deepEqual(kinds(args), ["cmd:ls -la", "cmd:ls -la@term"], "no program list once arguments are typed");
+        assert.deepEqual(Search.matchCommands("ht", ["ethtool", "htop", "gp-display-html", "pod2html"], 6), ["htop", "gp-display-html"], "prefixes only, not the middle of a name");
+        const gt = Search.results({ ...base, query: "> htop", category: "all" });
+        assert.deepEqual(kinds(gt).slice(0, 2), ["cmd:htop", "cmd:htop@term"], "> works from any chip");
+    });
+    test("other chips filter while typing", () => {
+        assert.deepEqual(kinds(Search.results({ ...base, query: "term", category: "apps" })), ["app:ptyxis"]);
+        assert.deepEqual(kinds(Search.results({ ...base, query: "term", category: "files" })), ["file:terminal-tips.txt"]);
+        assert.deepEqual(kinds(Search.results({ ...base, query: "2*3", category: "calculator", calc: "6" })), ["calc:6"]);
+        assert.deepEqual(kinds(Search.results({ ...base, query: "fire", category: "all" })), ["app:firefox"]);
+        assert.deepEqual(kinds(Search.results({ ...base, query: "htop", category: "all" })), ["cmd:htop"], "a known program can be run from All");
+    });
+    test("history and terminals", () => {
+        assert.deepEqual(Search.pushHistory(["a", "b", "c"], "b", 3), ["b", "a", "c"]);
+        assert.deepEqual(Search.pushHistory(["a", "b", "c"], "d", 3), ["d", "a", "b"]);
+        assert.deepEqual(Search.terminalCommand("ptyxis", "htop"), ["ptyxis", "--standalone", "--", "sh", "-c", 'htop; exec "${SHELL:-sh}"']);
+        assert.deepEqual(Search.terminalCommand("ptyxis --standalone", "x").slice(0, 3), ["ptyxis", "--standalone", "--"]);
+        assert.deepEqual(Search.terminalCommand("foot", "x").slice(0, 2), ["foot", "sh"]);
+        assert.deepEqual(Search.terminalCommand("/usr/bin/alacritty", "x").slice(0, 2), ["/usr/bin/alacritty", "-e"]);
+        assert.deepEqual(Search.terminalCommand("weird-term", "x").slice(0, 2), ["weird-term", "-e"]);
+    });
+}
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -16,12 +16,15 @@ Item {
         anchors.fill: parent
         source: root.entry ? Quickshell.iconPath(root.entry.icon, true) : ""
         sourceSize: Qt.size(root.size * 2, root.size * 2)
-        asynchronous: true
+        // Theme icons are small and come from QuickShell's icon cache: loading
+        // them in place means a rebuilt row (the launcher, every keystroke)
+        // shows its icon at once instead of flashing the letter first.
+        asynchronous: false
         visible: status === Image.Ready
     }
     Text {
         anchors.centerIn: parent
-        visible: img.status !== Image.Ready
+        visible: img.status === Image.Error || img.source == ""
         text: (root.name || "?").charAt(0).toUpperCase()
         color: Theme.text
         font { family: Theme.font; pointSize: Theme.pt(root.size * 0.55); weight: Font.DemiBold }

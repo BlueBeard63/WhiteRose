@@ -1,6 +1,9 @@
 // Island view: the app launcher (Figma: App Launcher - SUPER). Tap SUPER or
 // the dock's launcher tile. Type to search apps, recent files, a calculator,
-// or run a command with ">". Arrows move, Enter opens, Esc closes.
+// or run a command with ">". The chips (Tab cycles them) narrow it to one
+// kind: Apps lists every app, Files your recent files, Commands the programs
+// on $PATH and your recent commands, Calculator your recent sums. Arrows move,
+// Enter opens, Esc closes.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -49,39 +52,42 @@ Item {
     }
 
     readonly property bool browsing: query.trim() === ""
-    readonly property var gridApps: Search.frequent(apps, LauncherConfig.launches, DockConfig.pinned, 12)
+    onCategoryChanged: { selected = 0; if (category === "commands") LauncherConfig.scanCommands() }
+    onQueryChanged: if (query.trim().startsWith(">")) LauncherConfig.scanCommands()
 
-    // Every selectable item, in display order.
-    readonly property var items: {
-        const q = query.trim();
-        if (q === "") {
-            const grid = gridApps.map(a => ({ kind: "app", app: a }));
-            return grid.concat(recentFiles.slice(0, 3).map(f => ({ kind: "file", file: f })));
-        }
-        if (q.startsWith(">") || category === "commands") {
-            const cmd = q.replace(/^>\s*/, "");
-            return cmd ? [{ kind: "cmd", cmd }] : [];
-        }
-        const out = [];
-        const calc = Calc.evaluate(q);
-        if (calc !== null && (category === "all" || category === "calculator")) out.push({ kind: "calc", expr: q, result: calc });
-        if (category === "calculator") return out;
-        if (category === "all" || category === "apps")
-            for (const r of Search.rankApps(q, apps, LauncherConfig.launches, 5)) out.push({ kind: "app", app: r.app });
-        if (category === "all" || category === "files")
-            for (const r of Search.matchFiles(q, recentFiles, 3)) out.push({ kind: "file", file: r.file });
-        return out;
-    }
+    readonly property var results: Search.results({
+        query: query,
+        category: category,
+        apps: apps,
+        usage: LauncherConfig.launches,
+        pinned: DockConfig.pinned,
+        files: recentFiles,
+        commands: LauncherConfig.commands,
+        history: LauncherConfig.history,
+        calcHistory: LauncherConfig.calcHistory,
+        calc: Calc.evaluate(query.trim()),
+    })
+    // Every selectable item, in display order; the first `gridCount` are the grid.
+    readonly property var items: results.items
+    readonly property int gridCount: results.grid
+    readonly property var gridApps: items.slice(0, gridCount).map(i => i.app)
     onItemsChanged: selected = Math.min(selected, Math.max(0, items.length - 1))
-    readonly property int gridCount: browsing ? gridApps.length : 0
 
     function activate(item) {
         if (!item) return;
         switch (item.kind) {
         case "app": item.app.entry.execute(); LauncherConfig.record(item.app.id); break;
         case "file": Quickshell.execDetached(["xdg-open", item.file.path]); break;
-        case "calc": Quickshell.clipboardText = item.result; break;
-        case "cmd": Quickshell.execDetached(["sh", "-c", item.cmd]); break;
+        case "calc":
+            Quickshell.clipboardText = item.result;
+            LauncherConfig.recordCalculation(item.expr, item.result);
+            break;
+        case "cmd":
+            Quickshell.execDetached(item.terminal
+                ? Search.terminalCommand(Quickshell.env("TERMINAL") || "ptyxis", item.cmd)
+                : ["sh", "-c", item.cmd]);
+            LauncherConfig.recordCommand(item.cmd);
+            break;
         }
         close();
     }
@@ -91,14 +97,14 @@ Item {
         const n = items.length;
         if (!n) return;
         let i = selected;
-        if (browsing && i < gridCount) {
+        if (i < gridCount) {
             if (dx) i = Math.max(0, Math.min(gridCount - 1, i + dx));
             if (dy > 0) i = i + 6 < gridCount ? i + 6 : (gridCount < n ? gridCount : i);
             if (dy < 0) i = Math.max(i % 6 === i ? i : i - 6, 0);
         } else {
             const d = dy || dx;
             i += d;
-            if (browsing && i < gridCount) i = Math.max(0, gridCount - 1);
+            if (i < gridCount) i = Math.max(0, gridCount - 1);
         }
         selected = Math.max(0, Math.min(n - 1, i));
     }
@@ -146,8 +152,8 @@ Item {
                         Keys.onEnterPressed: root.activate(root.items[root.selected])
                         Keys.onUpPressed: root.move(0, -1)
                         Keys.onDownPressed: root.move(0, 1)
-                        Keys.onLeftPressed: event => { if (root.browsing) root.move(-1, 0); else event.accepted = false; }
-                        Keys.onRightPressed: event => { if (root.browsing) root.move(1, 0); else event.accepted = false; }
+                        Keys.onLeftPressed: event => { if (root.gridCount > 0) root.move(-1, 0); else event.accepted = false; }
+                        Keys.onRightPressed: event => { if (root.gridCount > 0) root.move(1, 0); else event.accepted = false; }
                         Keys.onTabPressed: {
                             const cats = ["all", "apps", "files", "commands", "calculator"];
                             root.category = cats[(cats.indexOf(root.category) + 1) % cats.length];
@@ -190,49 +196,65 @@ Item {
             }
         }
 
-        // Browsing: most-used apps as a grid.
-        Grid {
-            visible: root.browsing && root.gridCount > 0
-            columns: 6
-            columnSpacing: 8
-            rowSpacing: 4
-            Repeater {
-                model: root.browsing ? root.gridApps : []
-                delegate: Rectangle {
-                    id: cell
-                    required property var modelData
-                    required property int index
-                    readonly property bool sel: root.selected === index
-                    width: (content.width - 5 * 8) / 6
-                    height: 94
-                    radius: 16
-                    color: sel || cellMouse.containsMouse ? Theme.surface1 : "transparent"
-                    Column {
-                        anchors.centerIn: parent
-                        spacing: 8
-                        Rectangle {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 52; height: 52; radius: 15
-                            color: cell.sel ? Theme.surface2 : Theme.surface1
-                            AppIcon { anchors.centerIn: parent; size: 30; entry: cell.modelData.entry; name: cell.modelData.name }
+        // Apps as a grid: the most used (All), or every app (Apps, scrolls).
+        Flickable {
+            id: gridScroll
+            visible: root.gridCount > 0
+            width: parent.width
+            height: Math.min(appGrid.height, 3 * 98)
+            contentHeight: appGrid.height
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            // Keep the keyboard selection in view.
+            readonly property int selRow: Math.floor(root.selected / 6)
+            onSelRowChanged: if (root.selected < root.gridCount) {
+                const top = selRow * 98, bottom = top + 98;
+                if (top < contentY) contentY = top;
+                else if (bottom > contentY + height) contentY = bottom - height;
+            }
+            Grid {
+                id: appGrid
+                columns: 6
+                columnSpacing: 8
+                rowSpacing: 4
+                Repeater {
+                    model: root.gridApps
+                    delegate: Rectangle {
+                        id: cell
+                        required property var modelData
+                        required property int index
+                        readonly property bool sel: root.selected === index
+                        width: (content.width - 5 * 8) / 6
+                        height: 94
+                        radius: 16
+                        color: sel || cellMouse.containsMouse ? Theme.surface1 : "transparent"
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 52; height: 52; radius: 15
+                                color: cell.sel ? Theme.surface2 : Theme.surface1
+                                AppIcon { anchors.centerIn: parent; size: 30; entry: cell.modelData.entry; name: cell.modelData.name }
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: cell.width - 8
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                text: cell.modelData.name
+                                color: Theme.text
+                                font { family: Theme.font; pointSize: Theme.pt(11.5); weight: Font.Medium }
+                            }
                         }
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: cell.width - 8
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                            text: cell.modelData.name
-                            color: Theme.text
-                            font { family: Theme.font; pointSize: Theme.pt(11.5); weight: Font.Medium }
+                        MouseArea {
+                            id: cellMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onEntered: root.selected = cell.index
+                            onClicked: root.activate({ kind: "app", app: cell.modelData })
                         }
-                    }
-                    MouseArea {
-                        id: cellMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: root.selected = cell.index
-                        onClicked: root.activate({ kind: "app", app: cell.modelData })
                     }
                 }
             }
@@ -274,7 +296,8 @@ Item {
                                 visible: row.it.kind !== "app"
                                 size: 15
                                 color: Theme.pearl
-                                name: ({ file: "file", calc: "calculator", cmd: "terminal" })[row.it.kind] ?? ""
+                                name: row.it.kind === "cmd" ? (row.it.terminal ? "terminal" : row.it.recent ? "restart" : "zap")
+                                    : ({ file: "file", calc: "calculator" })[row.it.kind] ?? ""
                             }
                         }
                         Column {
@@ -304,7 +327,7 @@ Item {
                                     app: row.it.app?.genericName || row.it.app?.comment || "",
                                     file: Search.tildify(row.it.file?.dir ?? "", root.home),
                                     calc: row.it.expr,
-                                    cmd: "Run in a shell"
+                                    cmd: row.it.terminal ? "Run in terminal" : row.it.recent ? "Recent command" : "Run"
                                 })[row.it.kind] ?? ""
                                 color: Theme.muted
                                 font { family: row.it.kind === "file" || row.it.kind === "calc" ? Theme.mono : Theme.font; pointSize: Theme.pt(11) }
@@ -325,8 +348,8 @@ Item {
 
         // Nothing matched.
         Text {
-            visible: !root.browsing && root.items.length === 0
-            text: "No results"
+            visible: root.items.length === 0 && (!root.browsing || root.category !== "all")
+            text: root.browsing ? "Nothing here yet" : "No results"
             color: Theme.faint
             font { family: Theme.font; pointSize: Theme.pt(13) }
         }
