@@ -35,7 +35,15 @@ QtObject {
         if (c.status !== Component.Ready) { console.warn(c.errorString()); return null }
         return c.createObject(null, { initial: w });
     }
-    function add(win) { session.windows = session.windows.concat([win]) }
+    // This process, and a number per window: a tab dragged between windows
+    // says where it came from.
+    readonly property string token: Math.random().toString(36).slice(2) + Date.now().toString(36)
+    property int lastUid: 0
+    function add(win) {
+        session.lastUid += 1;
+        win.uid = session.lastUid;
+        session.windows = session.windows.concat([win]);
+    }
     // A window is closing: the last one is saved as it goes; another one's
     // tabs go with it (the session is the windows still open).
     function remove(win) {

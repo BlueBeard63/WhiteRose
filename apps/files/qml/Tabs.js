@@ -31,5 +31,21 @@ function afterClose(count, closed, current) {
     return Math.min(closed, count - 2);
 }
 
-// Dragged this far below the tab bar, a tab leaves for its own window.
+// Dragged this far below the tab bar, a tab leaves the bar: a drag other
+// windows' bars can take, or (dropped anywhere else) a window of its own.
 const tearOff = 48;
+
+// Where a tab dropped at `x` goes, given every tab's [left, width]: before
+// the first tab whose middle is past x.
+function insertAt(tabs, x) {
+    for (let i = 0; i < tabs.length; i++) if (x < tabs[i][0] + tabs[i][1] / 2) return i;
+    return tabs.length;
+}
+
+// The drag's payload, and back.
+const mime = "application/x-whiterose-tab";
+// `id`: letters and digits, for the window that takes it to say so (Fs.takeTab).
+function pack(token, win, index, tab, id) { return JSON.stringify({ token: token, win: win, index: index, tab: tab, id: id }) }
+function unpack(text) {
+    try { const d = JSON.parse(text); return d && d.tab && typeof d.tab === "object" ? d : null } catch (e) { return null }
+}

@@ -10,14 +10,20 @@ use serde::{Deserialize, Serialize};
 /// History kept per tab, each way.
 const HISTORY: usize = 50;
 
-/// A tab: its folder and history. (How a folder is shown is the folder's
-/// own business: views.rs.)
+/// A tab: its folder and history, and when it's split, the other side's
+/// (and which way, and which side was in use). How a folder is shown is the
+/// folder's own business: views.rs.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
 pub struct Tab {
     pub path: String,
     pub back: Vec<String>,
     pub forward: Vec<String>,
+    pub second: Option<Box<Tab>>,
+    /// One above the other rather than side by side.
+    pub vertical: bool,
+    /// 0 or 1: the side in use.
+    pub active: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -55,7 +61,6 @@ fn nearest(p: &str) -> String {
 
 /// What's left of `s` that can still be opened.
 pub fn clean(s: Session, home: &Path) -> Session {
-    let ok = |p: &String| p.starts_with('/') && Path::new(p).is_dir();
     let windows = s
         .windows
         .into_iter()
@@ -63,21 +68,7 @@ pub fn clean(s: Session, home: &Path) -> Session {
             let tabs: Vec<Tab> = w
                 .tabs
                 .into_iter()
-                .map(|t| {
-                    let path = if t.path.starts_with('/') {
-                        nearest(&t.path)
-                    } else {
-                        home.to_string_lossy().into_owned()
-                    };
-                    let mut back: Vec<String> = t.back.into_iter().filter(ok).collect();
-                    back.drain(..back.len().saturating_sub(HISTORY));
-                    let forward = t.forward.into_iter().filter(ok).take(HISTORY).collect();
-                    Tab {
-                        path,
-                        back,
-                        forward,
-                    }
-                })
+                .map(|t| clean_tab(t, home, true))
                 .collect();
             if tabs.is_empty() {
                 return None;
@@ -87,6 +78,44 @@ pub fn clean(s: Session, home: &Path) -> Session {
         })
         .collect();
     Session { windows }
+}
+
+fn clean_tab(t: Tab, home: &Path, outer: bool) -> Tab {
+    let ok = |p: &String| p.starts_with('/') && Path::new(p).is_dir();
+    let path = if t.path == "trash:" {
+        t.path
+    } else if t.path.starts_with('/') {
+        nearest(&t.path)
+    } else {
+        home.to_string_lossy().into_owned()
+    };
+    let mut back: Vec<String> = t
+        .back
+        .into_iter()
+        .filter(|p| ok(p) || p == "trash:")
+        .collect();
+    back.drain(..back.len().saturating_sub(HISTORY));
+    let forward = t
+        .forward
+        .into_iter()
+        .filter(|p| ok(p) || p == "trash:")
+        .take(HISTORY)
+        .collect();
+    // Only a tab splits, once; its other side is a plain one.
+    let second = if outer {
+        t.second.map(|b| Box::new(clean_tab(*b, home, false)))
+    } else {
+        None
+    };
+    let active = if second.is_some() { t.active.min(1) } else { 0 };
+    Tab {
+        path,
+        back,
+        forward,
+        vertical: t.vertical && second.is_some(),
+        active,
+        second,
+    }
 }
 
 pub fn load_from(dir: &Path, home: &Path) -> Session {
@@ -151,6 +180,7 @@ mod tests {
                         path: gone.clone(),
                         back: vec![gone.clone(), kept.clone()],
                         forward: vec![gone, "relative".into()],
+                        ..Tab::default()
                     }],
                     current: 7,
                 },
@@ -184,6 +214,7 @@ mod tests {
                     path: p.clone(),
                     back: vec![p.clone(); 80],
                     forward: vec![p.clone(); 80],
+                    ..Tab::default()
                 }],
                 current: 0,
             }],
@@ -191,5 +222,51 @@ mod tests {
         let c = clean(s, &d);
         assert_eq!(c.windows[0].tabs[0].back.len(), HISTORY);
         assert_eq!(c.windows[0].tabs[0].forward.len(), HISTORY);
+    }
+
+    #[test]
+    fn split_tabs() {
+        let d = scratch("split");
+        let p = d.to_string_lossy().into_owned();
+        let gone = d.join("gone").to_string_lossy().into_owned();
+        let inner = Tab {
+            path: gone,
+            second: Some(Box::new(Tab::default())),
+            active: 1,
+            ..Tab::default()
+        };
+        let s = Session {
+            windows: vec![Window {
+                tabs: vec![
+                    Tab {
+                        path: p.clone(),
+                        second: Some(Box::new(inner)),
+                        vertical: true,
+                        active: 5,
+                        ..Tab::default()
+                    },
+                    Tab {
+                        path: "trash:".into(),
+                        vertical: true,
+                        active: 1,
+                        ..Tab::default()
+                    },
+                ],
+                current: 0,
+            }],
+        };
+        let c = clean(s, &d);
+        let t = &c.windows[0].tabs[0];
+        let second = t.second.as_ref().unwrap();
+        assert_eq!(second.path, p, "the other side's folder is checked too");
+        assert!(second.second.is_none(), "a side doesn't split again");
+        assert_eq!((t.vertical, t.active), (true, 1));
+        let plain = &c.windows[0].tabs[1];
+        assert_eq!(plain.path, "trash:", "the Trash stays the Trash");
+        assert_eq!(
+            (plain.vertical, plain.active),
+            (false, 0),
+            "unsplit: no side to be in"
+        );
     }
 }

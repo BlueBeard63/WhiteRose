@@ -23,7 +23,7 @@ const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "wi
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
-const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff"]);
+const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -660,6 +660,17 @@ test("files: where a dragged tab lands", () => {
     assert.equal(Tabs.slot(geo, 2, 120), 1);
     assert.equal(Tabs.slot(geo, 2, 10), 0);
     assert.equal(Tabs.slot(geo, 1, 150), 1, "over itself: stays");
+});
+test("files: where a tab from another window lands, and what it carries", () => {
+    const geo = [[0, 100], [104, 100], [208, 100]];
+    assert.equal(Tabs.insertAt(geo, 10), 0);
+    assert.equal(Tabs.insertAt(geo, 60), 1, "past the first one's middle");
+    assert.equal(Tabs.insertAt(geo, 290), 3, "past the last: at the end");
+    assert.equal(Tabs.insertAt([], 50), 0);
+    const d = Tabs.unpack(Tabs.pack("abc", 2, 1, { path: "/x", second: { path: "/y" } }, "abc2x1"));
+    assert.deepEqual(d, { token: "abc", win: 2, index: 1, tab: { path: "/x", second: { path: "/y" } }, id: "abc2x1" });
+    assert.equal(Tabs.unpack("not json"), null);
+    assert.equal(Tabs.unpack('{"tab": 5}'), null, "no tab in it");
 });
 test("files: the tab shown after a close", () => {
     assert.equal(Tabs.afterClose(1, 0, 0), -1, "the last one: none");

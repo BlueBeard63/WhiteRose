@@ -1,13 +1,16 @@
 // WhiteRose Files: tabs, the sidebar, the address bar, and the current
-// folder as a grid, a list or columns.
+// folder as a grid, a list or columns, or two folders in a split tab.
 //
-// Tabs: drag one sideways to reorder it, down out of the bar to give it a
-// window of its own; right-click for duplicate / move to new window / close
-// others. Ctrl+T new, Ctrl+W close, Ctrl+Shift+T reopen closed,
-// Ctrl+Tab / Ctrl+PgUp / Ctrl+PgDn switch, Ctrl+Shift+PgUp / PgDn move.
+// Tabs: drag one sideways to reorder it; out of the bar it's a drag any
+// Files window's title bar takes (another process's too), or dropped
+// anywhere else, a window of its own. Right-click for duplicate / move to
+// new window / close others. Ctrl+T new, Ctrl+W close, Ctrl+Shift+T reopen
+// closed, Ctrl+Tab / Ctrl+PgUp / Ctrl+PgDn switch, Ctrl+Shift+PgUp / PgDn move.
+// Split: F3 on and off, Tab the other side, F5 / F6 copy / move the
+// selection there (F5 or Ctrl+R reload when not split).
 // Ctrl+L type a path, Alt+Left / Alt+Right back and forward, Alt+Up or
 // Backspace up, Ctrl+1 / 2 / 3 grid, list, columns, Ctrl+H hidden files,
-// Ctrl+A all, Ctrl+D bookmark this folder, F5 reload.
+// Ctrl+A all, Ctrl+D bookmark this folder.
 import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
@@ -25,13 +28,18 @@ AppWindow {
     // {tabs: [snapshot], current} for a window made by Session.open();
     // the first window asks Session.start().
     property var initial: null
-    property var panes: []
+    // The tabs (TabView: a folder, or two when split).
+    property var tabs: []
     property int currentIndex: 0
-    readonly property var current: panes[currentIndex] ?? null
+    // Set by Session.add (tabs dragged between windows say which they left).
+    property int uid: 0
+    readonly property var tab: win.tabs[win.currentIndex] ?? null
+    // The folder in use: the tab's, or the side in use of a split one.
+    readonly property var current: win.tab?.current ?? null
 
     Component {
-        id: paneComponent
-        Pane {
+        id: tabComponent
+        TabView {
             anchors.fill: parent
             visible: false
             onOpenFile: entry => Qt.openUrlExternally("file://" + entry.path)
@@ -40,68 +48,65 @@ AppWindow {
             onChanged: Session.changed()
         }
     }
-    // A tab from a snapshot ({path} at least; "" is home), at `at` (the end).
-    function newTab(tab, at) {
-        const props = {};
-        // (How it's shown is up to the folder: views.rs.)
-        for (const k of ["path", "back", "forward"])
-            if (tab && tab[k] !== undefined && tab[k] !== "") props[k] = tab[k];
-        const p = paneComponent.createObject(stack, props);
-        const i = at ?? win.panes.length;
-        const list = win.panes.slice();
+    // A tab from a snapshot ({path} at least, "" for home; split ones have
+    // `second`), at `at` (the end). How a folder is shown is up to it (views.rs).
+    function newTab(snap, at) {
+        const p = tabComponent.createObject(stack, { initial: snap ?? {} });
+        const i = at ?? win.tabs.length;
+        const list = win.tabs.slice();
         list.splice(i, 0, p);
-        win.panes = list;
+        win.tabs = list;
         win.show(i);
         Session.changed();
     }
     function show(i) {
-        if (i < 0 || i >= win.panes.length) return;
+        if (i < 0 || i >= win.tabs.length) return;
         win.currentIndex = i;
-        win.panes.forEach((p, k) => p.visible = k === i);
-        win.panes[i].focusView();
+        win.tabs.forEach((p, k) => p.visible = k === i);
+        win.tabs[i].focusView();
     }
     // Takes tab i out (destroyed unless `keep`); the window closes with its last tab.
     function takeTab(i, keep) {
-        if (win.panes.length <= 1) { win.close(); return }
-        const p = win.panes[i];
-        const next = Tabs.afterClose(win.panes.length, i, win.currentIndex);
-        win.panes = win.panes.filter((_, k) => k !== i);
+        if (win.tabs.length <= 1) { win.close(); return }
+        const p = win.tabs[i];
+        const next = Tabs.afterClose(win.tabs.length, i, win.currentIndex);
+        win.tabs = win.tabs.filter((_, k) => k !== i);
         if (!keep) p.destroy();
         win.show(next);
         Session.changed();
     }
     function closeTab(i) {
-        if (win.panes.length > 1) Session.forget(win.panes[i].snapshot(), i);
+        if (win.tabs.length > 1) Session.forget(win.tabs[i].snapshot(), i);
         win.takeTab(i, false);
     }
     function closeOthers(i) {
-        const keep = win.panes[i];
-        for (let k = win.panes.length - 1; k >= 0; k--) if (win.panes[k] !== keep) win.closeTab(k);
+        const keep = win.tabs[i];
+        for (let k = win.tabs.length - 1; k >= 0; k--) if (win.tabs[k] !== keep) win.closeTab(k);
     }
     function reopenTab() {
         const r = Session.reopen();
-        if (r) win.newTab(r.tab, Math.min(r.index, win.panes.length));
+        if (r) win.newTab(r.tab, Math.min(r.index, win.tabs.length));
     }
     function moveTab(from, to) {
-        const cur = win.current;
-        win.panes = Tabs.move(win.panes, from, to);
-        win.currentIndex = win.panes.indexOf(cur);
+        const cur = win.tab;
+        win.tabs = Tabs.move(win.tabs, from, to);
+        win.currentIndex = win.tabs.indexOf(cur);
         Session.changed();
     }
-    function duplicateTab(i) { win.newTab(win.panes[i].snapshot(), i + 1) }
+    function duplicateTab(i) { win.newTab(win.tabs[i].snapshot(), i + 1) }
     function tearOff(i) {
-        if (win.panes.length <= 1) return;
-        const snap = win.panes[i].snapshot();
+        if (win.tabs.length <= 1) return;
+        const snap = win.tabs[i].snapshot();
         win.takeTab(i, false);
         Session.open({ tabs: [snap], current: 0 });
     }
-    function snapshot() { return { tabs: win.panes.map(p => p.snapshot()), current: win.currentIndex } }
+    function snapshot() { return { tabs: win.tabs.map(p => p.snapshot()), current: win.currentIndex } }
 
     Component.onCompleted: {
         Session.add(win);
         const w = win.initial ?? Session.start();
         for (const t of w.tabs) win.newTab(t);
-        win.show(Math.min(w.current ?? 0, win.panes.length - 1));
+        win.show(Math.min(w.current ?? 0, win.tabs.length - 1));
     }
     onClosing: {
         Session.remove(win);
@@ -122,25 +127,112 @@ AppWindow {
             property int dragging: -1
             property bool away: false
             property real grabX: 0
+            // Where a tab dragged from any window would land (-1: none over).
+            property int landing: -1
+            function geometry() {
+                const geo = [];
+                for (let k = 0; k < tabRepeater.count; k++) { const it = tabRepeater.itemAt(k); geo.push([it.x, it.width]) }
+                return geo;
+            }
+
+            // A tab out of the bar is a real drag: another window's bar
+            // (this process or another) takes it; dropped anywhere else, it
+            // gets a window of its own.
+            Item {
+                id: tabCarry
+                property int index: -1
+                // It came back to this bar (placed already).
+                property bool home: false
+                property string id: ""
+                width: 1; height: 1
+                Drag.dragType: Drag.Automatic
+                Drag.supportedActions: Qt.MoveAction | Qt.CopyAction
+                Drag.proposedAction: Qt.MoveAction
+                Drag.onDragFinished: action => {
+                    const k = tabCarry.index, home = tabCarry.home, taken = Fs.tabTaken(tabCarry.id);
+                    tabCarry.Drag.active = false;
+                    tabCarry.index = -1;
+                    tabCarry.home = false;
+                    strip.dragging = -1;
+                    strip.away = false;
+                    if (k < 0 || k >= win.tabs.length || home) return;
+                    // Taken by another window's bar (which action Wayland
+                    // reports across processes varies, so any counts), or
+                    // dropped nowhere: a window of its own.
+                    if (taken || action === Qt.MoveAction) win.takeTab(k, false);
+                    else if (action === Qt.IgnoreAction) win.tearOff(k);
+                }
+                function start(k, hotX, hotY) {
+                    const it = tabRepeater.itemAt(k);
+                    if (!it) return;
+                    tabCarry.index = k;
+                    tabCarry.id = Session.token + win.uid + "x" + Date.now().toString(36);
+                    tabCarry.Drag.mimeData = { [Tabs.mime]: Tabs.pack(Session.token, win.uid, k, win.tabs[k].snapshot(), tabCarry.id) };
+                    tabCarry.Drag.hotSpot = Qt.point(hotX, hotY);
+                    it.grabToImage(r => {
+                        tabCarry.Drag.imageSource = r.url;
+                        tabCarry.Drag.active = true;
+                    });
+                }
+            }
+            // Anywhere on the title bar takes a tab.
+            DropArea {
+                id: tabLanding
+                parent: win.titleBar
+                anchors.fill: parent
+                keys: [Tabs.mime]
+                function stripX(x) { return strip.mapFromItem(tabLanding, x, 0).x }
+                onPositionChanged: drag => strip.landing = Tabs.insertAt(strip.geometry(), tabLanding.stripX(drag.x))
+                onExited: strip.landing = -1
+                onDropped: drop => {
+                    const at = Tabs.insertAt(strip.geometry(), tabLanding.stripX(drop.x));
+                    strip.landing = -1;
+                    const d = Tabs.unpack(drop.getDataAsString(Tabs.mime));
+                    if (!d) return;
+                    if (d.token === Session.token && d.win === win.uid) {
+                        // Back on its own bar: just a new place.
+                        win.moveTab(d.index, at > d.index ? at - 1 : at);
+                        tabCarry.home = true;
+                        drop.accept(Qt.MoveAction);
+                    } else {
+                        win.newTab(d.tab, at);
+                        if (d.id) Fs.takeTab(d.id);
+                        win.requestActivate();
+                        drop.accept(Qt.MoveAction);
+                    }
+                }
+            }
+            // Where it would land.
+            Rectangle {
+                visible: strip.landing >= 0
+                z: 5
+                width: 2; height: parent.height; radius: 1
+                color: Theme.tint(0.9)
+                x: {
+                    const g = strip.geometry();
+                    if (strip.landing < 0 || g.length === 0) return 0;
+                    return strip.landing < g.length ? g[strip.landing][0] - 3 : g[g.length - 1][0] + g[g.length - 1][1] + 1;
+                }
+            }
 
             function at(x) {
-                for (let k = 0; k < tabs.count; k++) {
-                    const it = tabs.itemAt(k);
+                for (let k = 0; k < tabRepeater.count; k++) {
+                    const it = tabRepeater.itemAt(k);
                     if (it && x >= it.x && x < it.x + it.width) return k;
                 }
                 return -1;
             }
             function onClose(k, x) {
-                const it = tabs.itemAt(k);
-                return win.panes.length > 1 && it && x > it.x + it.width - 26;
+                const it = tabRepeater.itemAt(k);
+                return win.tabs.length > 1 && it && x > it.x + it.width - 26;
             }
 
             Row {
                 id: tabRow
                 spacing: 4
                 Repeater {
-                    id: tabs
-                    model: win.panes
+                    id: tabRepeater
+                    model: win.tabs
                     delegate: Rectangle {
                         required property var modelData
                         required property int index
@@ -156,7 +248,7 @@ AppWindow {
                         FolderDrop {
                             id: tabDrop
                             anchors.fill: parent
-                            dest: modelData.path
+                            dest: modelData.current.path
                             onFilesDropped: (p, d) => win.drop(p, d)
                         }
                         Timer { running: tabDrop.over && !parent.on; interval: 600; onTriggered: win.show(index) }
@@ -171,7 +263,7 @@ AppWindow {
                         }
                         Icon {
                             id: closeIcon
-                            visible: win.panes.length > 1
+                            visible: win.tabs.length > 1
                             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
                             name: "x"; size: 11
                             color: strip.hover === index ? Theme.text : Theme.faint
@@ -203,20 +295,26 @@ AppWindow {
                 onPositionChanged: m => {
                     if (strip.dragging < 0) { strip.hover = strip.at(m.x); return }
                     const below = m.y - strip.height;
-                    strip.away = win.panes.length > 1 && below > Tabs.tearOff;
-                    if (strip.away || Math.abs(m.x - strip.grabX) < 6) return;
-                    const geo = [];
-                    for (let k = 0; k < tabs.count; k++) { const it = tabs.itemAt(k); geo.push([it.x, it.width]) }
-                    const to = Tabs.slot(geo, strip.dragging, m.x);
+                    // Out of the bar: from here it's a real drag (tabCarry).
+                    if (below > Tabs.tearOff || m.y < -Tabs.tearOff) {
+                        if (!strip.away && tabCarry.index < 0) {
+                            strip.away = true;
+                            const it = tabRepeater.itemAt(strip.dragging);
+                            tabCarry.start(strip.dragging, Math.max(0, strip.grabX - it.x), 15);
+                        }
+                        return;
+                    }
+                    if (Math.abs(m.x - strip.grabX) < 6) return;
+                    const to = Tabs.slot(strip.geometry(), strip.dragging, m.x);
                     if (to !== strip.dragging) { win.moveTab(strip.dragging, to); strip.dragging = to }
                 }
                 onReleased: m => {
-                    const k = strip.dragging, away = strip.away, moved = Math.abs(m.x - strip.grabX) >= 6;
+                    // Gone out of the bar: the drag finishes it (tabCarry).
+                    if (strip.away) return;
+                    const k = strip.dragging, moved = Math.abs(m.x - strip.grabX) >= 6;
                     strip.dragging = -1;
-                    strip.away = false;
                     if (k < 0) return;
-                    if (away) win.tearOff(k);
-                    else if (!moved && strip.onClose(k, m.x)) win.closeTab(k);
+                    if (!moved && strip.onClose(k, m.x)) win.closeTab(k);
                 }
                 onClicked: m => {
                     const k = strip.at(m.x);
@@ -231,10 +329,10 @@ AppWindow {
                     items: [
                         { label: "New tab", shortcut: "Ctrl+T", run: () => win.newTab({ path: win.current?.path ?? "" }) },
                         { label: "Duplicate", run: () => win.duplicateTab(tabMenu.tab) },
-                        { label: "Move to new window", enabled: win.panes.length > 1, run: () => win.tearOff(tabMenu.tab) },
+                        { label: "Move to new window", enabled: win.tabs.length > 1, run: () => win.tearOff(tabMenu.tab) },
                         { separator: true },
                         { label: "Reopen closed tab", shortcut: "Ctrl+Shift+T", enabled: Session.closed.length > 0, run: () => win.reopenTab() },
-                        { label: "Close other tabs", enabled: win.panes.length > 1, run: () => win.closeOthers(tabMenu.tab) },
+                        { label: "Close other tabs", enabled: win.tabs.length > 1, run: () => win.closeOthers(tabMenu.tab) },
                         { label: "Close tab", shortcut: "Ctrl+W", run: () => win.closeTab(tabMenu.tab) },
                     ]
                 }
@@ -302,6 +400,8 @@ AppWindow {
                 items: [
                     { label: "New tab", shortcut: "Ctrl+T", run: () => win.newTab({ path: win.current?.path ?? "" }) },
                     { label: "New window", shortcut: "Ctrl+N", run: () => Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) },
+                    { label: win.tab?.split ? "Close split" : "Split", shortcut: "F3", run: () => win.tab.setSplit(!win.tab.split) },
+                    ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
                     { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                     { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark this folder", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                     { separator: true },
@@ -322,7 +422,7 @@ AppWindow {
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.surface1 }
     }
     // Where views come from changed: every tab in every window shows its folder again.
-    function refreshViews() { for (const w of Session.windows) for (const p of w.panes) p.refreshView() }
+    function refreshViews() { for (const w of Session.windows) for (const t of w.tabs) t.refreshView() }
     function toggleBookmark() {
         if (!win.current) return;
         const on = !sidebar.places.bookmarks.some(b => b.path === win.current.path);
@@ -367,6 +467,10 @@ AppWindow {
                 { label: "Copy", shortcut: "Ctrl+C", run: () => win.toClipboard(false) },
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Paste into folder", enabled: win.clipFiles.length > 0, run: () => win.paste(itemMenu.entry.path) }] : []),
                 { label: "Duplicate", run: () => win.run("copy", itemMenu.sel.map(e => e.path), win.current.path) },
+                ...(win.tab?.other ? [
+                    { label: "Copy to other side", shortcut: "F5", run: () => win.toOther("copy") },
+                    { label: "Move to other side", shortcut: "F6", run: () => win.toOther("move") },
+                ] : []),
                 { separator: true },
                 { label: "Rename…", shortcut: "F2", enabled: !itemMenu.many, run: () => win.askName("rename") },
                 { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
@@ -429,9 +533,11 @@ AppWindow {
     function run(kind, paths, dest) {
         if (paths.length === 0) return;
         const id = Ops.start(kind, JSON.stringify(paths), dest ?? "");
-        if (id >= 0 && dest && win.current && dest === win.current.path) {
+        // The side showing where they went selects them when they're there.
+        const shows = (win.tab?.panes ?? []).find(p => p.path === dest);
+        if (id >= 0 && dest && shows) {
             const w = Object.assign({}, win.waiting);
-            w[id] = win.current;
+            w[id] = shows;
             win.waiting = w;
         }
     }
@@ -441,6 +547,13 @@ AppWindow {
         const plan = Drops.plan(paths, dest, (mods & Qt.ControlModifier) !== 0, (mods & Qt.ShiftModifier) !== 0,
                                 Fs.sameDrive(paths[0], dest));
         if (plan) win.run(plan.kind, plan.paths, plan.kind === "trash" ? "" : dest);
+    }
+    // The selection to the folder on the other side of a split tab.
+    function toOther(kind) {
+        const sel = win.current?.selection ?? [];
+        const other = win.tab?.other;
+        if (sel.length === 0 || !other || other.inTrash) return;
+        win.run(kind, sel.map(e => e.path), other.path);
     }
     function toClipboard(cut) {
         const sel = win.current?.selection ?? [];
@@ -517,7 +630,7 @@ AppWindow {
             delete w[id];
             win.waiting = w;
             const r = JSON.parse(result);
-            if (win.panes.includes(pane)) pane.selectPaths(r.done);
+            if (win.tabs.some(t => t.panes.includes(pane))) pane.selectPaths(r.done);
         }
     }
 
@@ -629,14 +742,14 @@ AppWindow {
     // ---- keys -------------------------------------------------------------------------------
     Shortcut { sequence: "Ctrl+T"; onActivated: win.newTab({ path: win.current?.path ?? "" }) }
     Shortcut { sequence: "Ctrl+Shift+T"; onActivated: win.reopenTab() }
-    Shortcut { sequence: "Ctrl+PgDown"; onActivated: win.show((win.currentIndex + 1) % win.panes.length) }
-    Shortcut { sequence: "Ctrl+PgUp"; onActivated: win.show((win.currentIndex - 1 + win.panes.length) % win.panes.length) }
-    Shortcut { sequence: "Ctrl+Shift+PgDown"; onActivated: { if (win.currentIndex < win.panes.length - 1) win.moveTab(win.currentIndex, win.currentIndex + 1) } }
+    Shortcut { sequence: "Ctrl+PgDown"; onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }
+    Shortcut { sequence: "Ctrl+PgUp"; onActivated: win.show((win.currentIndex - 1 + win.tabs.length) % win.tabs.length) }
+    Shortcut { sequence: "Ctrl+Shift+PgDown"; onActivated: { if (win.currentIndex < win.tabs.length - 1) win.moveTab(win.currentIndex, win.currentIndex + 1) } }
     Shortcut { sequence: "Ctrl+Shift+PgUp"; onActivated: { if (win.currentIndex > 0) win.moveTab(win.currentIndex, win.currentIndex - 1) } }
     Shortcut { sequence: "Ctrl+N"; onActivated: Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) }
     Shortcut { sequence: "Ctrl+W"; onActivated: win.closeTab(win.currentIndex) }
-    Shortcut { sequence: "Ctrl+Tab"; onActivated: win.show((win.currentIndex + 1) % win.panes.length) }
-    Shortcut { sequence: "Ctrl+Shift+Tab"; onActivated: win.show((win.currentIndex - 1 + win.panes.length) % win.panes.length) }
+    Shortcut { sequence: "Ctrl+Tab"; onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }
+    Shortcut { sequence: "Ctrl+Shift+Tab"; onActivated: win.show((win.currentIndex - 1 + win.tabs.length) % win.tabs.length) }
     Shortcut { sequence: "Ctrl+L"; onActivated: address.edit() }
     Shortcut { sequence: "Alt+Left"; onActivated: win.current?.goBack() }
     Shortcut { sequence: "Alt+Right"; onActivated: win.current?.goForward() }
@@ -647,7 +760,13 @@ AppWindow {
     Shortcut { sequence: "Ctrl+H"; onActivated: Session.setHidden(!Session.hidden) }
     Shortcut { sequence: "Ctrl+A"; enabled: !win.typing; onActivated: win.current?.selectAll() }
     Shortcut { sequence: "Ctrl+D"; onActivated: win.toggleBookmark() }
-    Shortcut { sequence: "F5"; onActivated: win.current?.load() }
+    // F5 / F6 copy / move to the other side of a split tab (reload when there's none).
+    Shortcut { sequence: "F5"; enabled: !win.typing; onActivated: { if (win.tab?.other) win.toOther("copy"); else win.current?.load() } }
+    Shortcut { sequence: "F6"; enabled: !win.typing && !!win.tab?.other; onActivated: win.toOther("move") }
+    Shortcut { sequence: "F3"; enabled: !win.typing; onActivated: win.tab?.setSplit(!win.tab.split) }
+    // Tab: the other side.
+    Shortcut { sequence: "Tab"; enabled: !win.typing && !!win.tab?.other; onActivated: { win.tab.active = 1 - win.tab.active; win.tab.focusView() } }
+    Shortcut { sequence: "Ctrl+R"; onActivated: win.current?.load() }
     Shortcut { sequence: "Ctrl+C"; enabled: !win.typing; onActivated: win.toClipboard(false) }
     Shortcut { sequence: "Ctrl+X"; enabled: !win.typing; onActivated: win.toClipboard(true) }
     Shortcut { sequence: "Ctrl+V"; enabled: !win.typing && !(win.current?.inTrash ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }

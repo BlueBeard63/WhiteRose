@@ -63,6 +63,16 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "sameDrive"]
         fn same_drive(self: &Fs, a: &QString, b: &QString) -> bool;
+        /// A tab dragged between windows was taken (`id` from the drag): the
+        /// window it came from checks with `tabTaken` when its drag ends.
+        /// (Which drop action a drag reports varies between processes and
+        /// compositors, so it isn't relied on.)
+        #[qinvokable]
+        #[cxx_name = "takeTab"]
+        fn take_tab(self: &Fs, id: &QString);
+        #[qinvokable]
+        #[cxx_name = "tabTaken"]
+        fn tab_taken(self: &Fs, id: &QString) -> bool;
         /// Folders named on the command line, as JSON.
         #[qinvokable]
         fn arguments(self: &Fs) -> QString;
@@ -518,6 +528,26 @@ impl qobject::Fs {
             _ => false,
         }
     }
+
+    pub fn take_tab(&self, id: &QString) {
+        if let Some(p) = taken_file(&id.to_string()) {
+            let _ = std::fs::create_dir_all(p.parent().unwrap_or(Path::new("/")));
+            let _ = std::fs::write(p, "");
+        }
+    }
+
+    pub fn tab_taken(&self, id: &QString) -> bool {
+        taken_file(&id.to_string()).is_some_and(|p| std::fs::remove_file(p).is_ok())
+    }
+}
+
+/// $XDG_RUNTIME_DIR/whiterose/files-tabs/<id> (ids are letters and digits only).
+fn taken_file(id: &str) -> Option<PathBuf> {
+    if id.is_empty() || id.len() > 64 || !id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return None;
+    }
+    let run = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)?;
+    Some(run.join("whiterose/files-tabs").join(id))
 }
 
 fn user_name(uid: u32) -> String {

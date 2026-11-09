@@ -15,6 +15,7 @@ fn main() {
             "qml/Properties.qml",
             "qml/DragSource.qml",
             "qml/FolderDrop.qml",
+            "qml/TabView.qml",
         ]
         .map(QmlFile::from),
     );

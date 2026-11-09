@@ -6,7 +6,7 @@ import WhiteRose.Kit
 import WhiteRose.Files
 import "Format.js" as F
 
-Item {
+FocusScope {
     id: pane
     property string path: Fs.home()
     property var back: []
@@ -36,6 +36,9 @@ Item {
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
 
     signal openFile(var entry)
+    // Used (clicked, keys, navigated): in a split tab, this side becomes the one in use.
+    signal activated()
+    onActiveFocusChanged: if (pane.activeFocus) pane.activated()
     // Right-click: on `entry` (null: the folder itself), at x, y in the pane.
     signal menuAt(var entry, real x, real y)
     // Files dropped on `dest` (this folder, or a folder in it).
@@ -85,6 +88,7 @@ Item {
         pane.current = Math.min(pane.current, Math.max(0, r.entries.length - 1));
     }
     function go(p, keepForward) {
+        pane.activated();
         if (!p || p === pane.path) return;
         pane.back = pane.back.concat([pane.path]);
         if (!keepForward) pane.forward = [];
@@ -126,6 +130,7 @@ Item {
         else pane.openFile(entry);
     }
     function clickAt(i, ctrl, shift) {
+        pane.activated();
         const r = F.click(pane.shownEntries, pane.selected, pane.anchor, i, ctrl, shift);
         pane.selected = r.selected;
         pane.anchor = r.anchor;
