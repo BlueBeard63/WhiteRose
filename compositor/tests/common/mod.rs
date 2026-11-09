@@ -250,6 +250,7 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
     }
 }
 delegate_noop!(App: ignore WlCompositor);
+delegate_noop!(App: ignore wayland_client::protocol::wl_region::WlRegion);
 delegate_noop!(App: ignore WlSurface);
 delegate_noop!(App: ignore WlOutput);
 delegate_noop!(App: ignore wl_shm::WlShm);

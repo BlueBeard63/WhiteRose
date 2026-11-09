@@ -308,7 +308,15 @@ impl WhiteRose {
             .find_map(|o| self.space.output_geometry(o).filter(|g| g.to_f64().contains(pos)).map(|g| (o, g)))?;
         let map = layer_map_for_output(output);
         let local = pos - geo.loc.to_f64();
-        [Layer::Overlay, Layer::Top].into_iter().find_map(|l| map.layer_under(l, local).cloned())
+        // Only where the panel takes input: the bar's window is mostly
+        // transparent and click-through (its input region covers just the
+        // visible shapes), and a click there belongs to what's underneath.
+        [Layer::Overlay, Layer::Top].into_iter().find_map(|l| {
+            map.layers_on(l).rev().find_map(|layer| {
+                let layer_geo = map.layer_geometry(layer)?;
+                layer.surface_under(local - layer_geo.loc.to_f64(), WindowSurfaceType::ALL).map(|_| layer.clone())
+            })
+        })
     }
 
     /// The part of the first output not reserved by panels (e.g. the bar).

@@ -3,6 +3,7 @@
 //   qs -p shell ipc call dock toggle|open|close|preview <app-id>
 //   qs -p shell ipc call launcher toggle|open|close|search <text>
 //   qs -p shell ipc call quick toggle|open|close
+//   qs -p shell ipc call notifications toggle|open|close
 //   qs -p shell ipc call session lock
 pragma Singleton
 import QtQuick
@@ -55,6 +56,12 @@ Singleton {
         target: "quick"
         function toggle(): void { root.togglePanel("quick") }
         function open(): void { if (root.panel !== "quick") root.togglePanel("quick") }
+        function close(): void { root.closePanel() }
+    }
+    IpcHandler {
+        target: "notifications"
+        function toggle(): void { root.togglePanel("notifications") }
+        function open(): void { if (root.panel !== "notifications") root.togglePanel("notifications") }
         function close(): void { root.closePanel() }
     }
     IpcHandler {

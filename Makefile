@@ -50,9 +50,12 @@ build:
 	cd $(DAEMON) && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o ../build/whiterosed ./cmd/whiterosed
 	cd $(WM) && $(CARGO) build --release --locked && cp target/release/whiterose-wm ../build/
 
+# Its own D-Bus session bus, like a real WhiteRose login: WhiteRose is then the
+# notification server (GNOME keeps that name on the host bus), and apps started
+# inside notify it. System services (network, Bluetooth, power) are shared.
 run-nested:          ## WhiteRose in a window on your current desktop: bar + a terminal
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
-	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" $(CARGO) run --release -- --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
+	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(CARGO) run --release -- --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
 
 clean:
 	rm -rf build $(DAEMON)/coverage.out $(DAEMON)/coverage.html

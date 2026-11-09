@@ -363,3 +363,20 @@ The compositor implements `ext-session-lock-v1` (`compositor/src/session_lock.rs
 - **Confirmation:** `locked` is sent to the client only after a frame without the desktop has been shown.
 - **Unlocking:** only the locking client can unlock. The password is checked by PAM with `shell/pam/whiterose-lock` (pam_unix); packages install it as `/etc/pam.d/whiterose-lock`.
 - **If the shell dies while locked:** the session stays locked. The compositor restarts the shell (`shell_supervisor.rs`, which gives up after 5 exits in a minute). The compositor's `lock` event tells the new shell the session is locked, so it locks again and takes over.
+
+## Notifications
+
+The shell is the session's notification server (`shell/Notifications.qml`, using QuickShell's `NotificationServer`). It supports bodies, actions, images and persistence.
+
+- **The panel** (`NotificationsPanel.qml`) hangs from the bar like Quick Settings and opens from the bell or SUPER+N. It shows everything not yet dismissed, newest first, plus Clear all and a Do Not Disturb toggle.
+  - Clicking a card runs the app's default action, or brings the app forward.
+  - The app's other actions appear as buttons.
+- **Popups** (`NotificationPopups.qml`) show new notifications in the same spot, at most three.
+  - They stay for the app's timeout, kept between 3 and 30 s (5 s by default). Hovering pauses the countdown.
+  - Critical notifications stay until dismissed and get through Do Not Disturb. Nothing pops up while a panel is open.
+  - The bell gets a rose dot until the panel is opened.
+- **Rules** (`Notifications.js`) are tested in `shell/tests/run.mjs`.
+- **Arrival times:** notifications carry no timestamp, so the shell records when each one arrives.
+- **Nested development:** GNOME owns the notification name on the host's session bus, so `make run-nested` gives WhiteRose its own (`dbus-run-session`), like a real login. Apps started inside notify WhiteRose; system services are shared. `notify-send -A` drops actions with this server (a libnotify capability check), so test actions with `gdbus call ... Notify`.
+
+Panels and popups share `SidePanel.qml`: the shape, the grow and shrink animation, and Esc or a click elsewhere to close.

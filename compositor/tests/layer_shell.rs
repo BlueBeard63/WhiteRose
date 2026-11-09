@@ -199,3 +199,54 @@ fn unmapping_after_destroying_a_layer_surface_does_not_kill_the_client() {
         },
     );
 }
+
+/// Regression: the bar's window grows to fit an open panel but only its
+/// visible shapes take input. A click on the transparent rest must act on
+/// what's underneath (focus the window, which closes the panel), not count
+/// as a click on the panel.
+#[test]
+fn clicks_outside_a_panels_input_region_go_to_the_window_below() {
+    use smithay::backend::input::ButtonState;
+    use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        let qh = c.queue.handle();
+        let (window, _t) = c.open_window();
+        c.attach_buffer(&window, W, H);
+        // A tall panel at the top whose input region is only its top 30 px.
+        let panel = c.compositor.create_surface(&qh, ());
+        let layer = c.layer_shell.get_layer_surface(
+            &panel,
+            None,
+            zwlr_layer_shell_v1::Layer::Top,
+            "whiterose-bar".into(),
+            &qh,
+            (),
+        );
+        layer.set_size(600, 400);
+        layer.set_anchor(zwlr_layer_surface_v1::Anchor::Top);
+        layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand);
+        panel.commit();
+        c.until(|a| a.layer_configure.is_some());
+        let region = c.compositor.create_region(&qh, ());
+        region.add(0, 0, 600, 30);
+        panel.set_input_region(Some(&region));
+        c.attach_buffer(&panel, 600, 400);
+
+        let click = |x: f64, y: f64| {
+            ask.run(move |st| {
+                st.on_pointer_motion((x, y).into(), 1);
+                st.on_pointer_button(0x110, ButtonState::Pressed, 2);
+                st.on_pointer_button(0x110, ButtonState::Released, 3);
+                let f = st.keyboard_focus();
+                (f.as_ref().is_some_and(|f| st.window_for_surface(f).is_some()), f.is_some())
+            })
+        };
+        let x = (W / 2) as f64;
+        let (on_window, _) = click(x, 300.0); // inside the panel's box, outside its input region
+        assert!(on_window, "a click on the panel's transparent part focuses the window below");
+        let (on_window, focused) = click(x, 10.0); // on the panel itself
+        assert!(focused && !on_window, "a click on the panel gives it the keyboard");
+    });
+}

@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,7 @@ const Calc = load("Calc.js", ["evaluate"]);
 const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
+const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName"]);
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -180,6 +181,48 @@ test("user name and initials", () => {
     assert.equal(QS.initials("Jack Morrison"), "JM");
     assert.equal(QS.initials("bluebeard"), "b");
     assert.equal(QS.initials("  "), "?");
+});
+
+// ---- Notifications -----------------------------------------------------------
+test("notification age", () => {
+    assert.deepEqual([0, 59, 120, 3599, 3600, 86399, 86400 * 3].map(N.ago), ["now", "now", "2m", "59m", "1h", "23h", "3d"]);
+});
+test("popups respect the panel and Do Not Disturb", () => {
+    assert.equal(N.shouldPopup(1, false, false), true);
+    assert.equal(N.shouldPopup(1, false, true), false, "already visible in the open panel");
+    assert.equal(N.shouldPopup(1, true, false), false, "Do Not Disturb");
+    assert.equal(N.shouldPopup(0, true, false), false);
+    assert.equal(N.shouldPopup(2, true, false), true, "critical gets through Do Not Disturb");
+});
+test("popup timeouts", () => {
+    assert.equal(N.popupTimeout(2, 5000), 0, "critical stays until dismissed");
+    assert.equal(N.popupTimeout(1, -1), 5000, "server default");
+    assert.equal(N.popupTimeout(1, 0), 5000, "'never expire' still leaves the screen; it stays in the panel");
+    assert.equal(N.popupTimeout(1, 500), 3000, "not too short to read");
+    assert.equal(N.popupTimeout(1, 120000), 30000, "not forever");
+    assert.equal(N.popupTimeout(1, 8000), 8000);
+});
+test("action buttons leave out the default action", () => {
+    const acts = [{ identifier: "default", text: "View" }, { identifier: "open", text: "Open" }, { identifier: "folder", text: "Show in folder" }];
+    assert.deepEqual(N.buttons(acts).map(a => a.text), ["Open", "Show in folder"]);
+    assert.equal(N.hasDefault(acts), true);
+    assert.equal(N.hasDefault(N.buttons(acts)), false);
+    assert.deepEqual(N.buttons(null), []);
+});
+test("theme icons hidden in image URLs", () => {
+    assert.equal(N.themedImageName("image://icon/battery-caution"), "battery-caution");
+    assert.equal(N.themedImageName("image://icon/folder-download?fallback=x"), "folder-download");
+    assert.equal(N.themedImageName("image://qsimage/12/34"), "", "real pixel data");
+    assert.equal(N.themedImageName("file:///tmp/a.png"), "");
+    assert.equal(N.themedImageName(""), "");
+});
+test("icon strings", () => {
+    assert.deepEqual(N.iconKind("/usr/share/icons/x.png"), { kind: "url", value: "file:///usr/share/icons/x.png" });
+    assert.deepEqual(N.iconKind("file:///tmp/a.png"), { kind: "url", value: "file:///tmp/a.png" });
+    assert.deepEqual(N.iconKind("image://qsimage/12"), { kind: "url", value: "image://qsimage/12" });
+    assert.deepEqual(N.iconKind("thunderbird"), { kind: "name", value: "thunderbird" });
+    assert.deepEqual(N.iconKind(""), { kind: "none", value: "" });
+    assert.deepEqual(N.iconKind(undefined), { kind: "none", value: "" });
 });
 
 console.log(`${passed} passed, ${failed} failed`);

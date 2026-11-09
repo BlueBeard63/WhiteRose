@@ -15,6 +15,7 @@ ShellRoot {
         function onAction(name) {
             if (name === "app_launcher") ShellState.toggle("launcher");
             else if (name === "quick_settings") ShellState.togglePanel("quick");
+            else if (name === "notifications") ShellState.togglePanel("notifications");
             else if (name === "lock") ShellState.lock();
         }
     }
