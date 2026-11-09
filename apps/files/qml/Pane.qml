@@ -6,6 +6,7 @@ import WhiteRose.Kit
 import WhiteRose.Files
 import "Format.js" as F
 import "Layout.js" as Layout
+import "Arrange.js" as Arrange
 
 FocusScope {
     id: pane
@@ -47,9 +48,19 @@ FocusScope {
     property real searchSeen: 0
     property int searchId: -1
     readonly property bool searching: pane.search !== null
-    readonly property var shownEntries: pane.searching ? pane.results
+    // Group by (kind, modified, size, name; "" none): the items in group
+    // order with headings, folded groups shown by their heading only.
+    property string group: ""
+    property var folded: ({})
+    readonly property bool grouped: pane.group !== "" && !pane.searching && !pane.special
+        && ["grid", "list", "cards"].includes(pane.mode)
+    function fold(label) { const f = Object.assign({}, pane.folded); f[label] = !f[label]; pane.folded = f }
+    readonly property var filtered: pane.searching ? pane.results
         : pane.filter === "" ? pane.entries
         : pane.entries.filter(e => e.name.toLowerCase().includes(pane.filter.toLowerCase()))
+    readonly property var shownEntries: pane.grouped
+        ? Arrange.arrange(pane.filtered, pane.group, false, Date.now())
+        : pane.filtered
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
 
     signal openFile(var entry)
@@ -64,13 +75,14 @@ FocusScope {
     signal changed()
     // A folder is shown the way it was last time (or as the folder above
     // it lends, or the default); load() follows.
-    onPathChanged: { pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
+    onPathChanged: { pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
     function applyView() {
         const v = JSON.parse(Fs.view(pane.path));
         pane.applying = true;
         pane.mode = v.mode;
         pane.sortBy = v.sortBy;
+        pane.group = v.group ?? "";
         pane.descending = v.descending;
         pane.applying = false;
         pane.viewInfo = { own: v.own, subfolders: v.subfolders, from: v.from };
@@ -90,7 +102,7 @@ FocusScope {
         pane.applying = true;
         for (const k in changes) pane[k] = changes[k];
         pane.applying = false;
-        Fs.setView(pane.path, JSON.stringify({ mode: pane.mode, sortBy: pane.sortBy, descending: pane.descending }));
+        Fs.setView(pane.path, JSON.stringify({ mode: pane.mode, sortBy: pane.sortBy, descending: pane.descending, group: pane.group }));
         pane.viewInfo = { own: true, subfolders: pane.viewInfo.subfolders, from: "" };
         pane.load();
     }
@@ -269,6 +281,8 @@ FocusScope {
         // Search results come as a list (where each is matters).
         sourceComponent: pane.inDrives ? drivesView
             : pane.mode === "list" || pane.searching ? listView
+            : pane.grouped && pane.mode === "grid" ? groupedGridView
+            : pane.grouped && pane.mode === "cards" ? groupedCardsView
             : ({ columns: columnsView, gallery: galleryView, cards: cardsView, usage: usageView })[pane.mode] ?? gridView
     }
     // (Inside the views `pane` names their own property, hence view.parent.)
@@ -276,6 +290,8 @@ FocusScope {
     Component { id: listView; ListMode { pane: view.parent } }
     Component { id: columnsView; ColumnsMode { pane: view.parent } }
     Component { id: drivesView; DrivesMode { pane: view.parent } }
+    Component { id: groupedGridView; GroupedGrid { pane: view.parent } }
+    Component { id: groupedCardsView; GroupedGrid { pane: view.parent; cards: true } }
     Component { id: galleryView; GalleryMode { pane: view.parent } }
     Component { id: cardsView; CardsMode { pane: view.parent } }
     Component { id: usageView; UsageMode { pane: view.parent } }

@@ -45,87 +45,15 @@ GridView {
         }
     }
 
-    delegate: Item {
-        id: cell
-        required property var modelData
+    // Grid-wide what each cell needs.
+    readonly property int current: currentIndex
+    readonly property bool focused: activeFocus
+    function takeFocus() { grid.forceActiveFocus() }
+
+    delegate: GridCell {
         required property int index
-        readonly property bool on: !!pane.selected[modelData.path]
-        width: grid.cellWidth; height: grid.cellHeight
-        Rectangle {
-            anchors { fill: parent; margins: 4 }
-            radius: 12
-            color: cell.on || drop.over ? Theme.tint(0.22) : area.containsMouse ? Theme.surface1 : "transparent"
-            border { width: drop.over || (cell.index === grid.currentIndex && grid.activeFocus) ? 1 : 0; color: Theme.tint(0.6) }
-        }
-        // Pictures as themselves (decoded at icon size; up to 40 MB), the
-        // rest, or a picture that won't load, as their type's icon.
-        property bool thumbFailed: false
-        readonly property bool thumb: !cell.thumbFailed && String(cell.modelData.mime).startsWith("image/") && cell.modelData.size < 40e6
-        Image {
-            visible: !cell.modelData.look
-            id: icon
-            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: (cell.thumb ? 0 : 12) * grid.k }
-            width: (cell.thumb ? 60 : 48) * grid.k; height: width
-            sourceSize: Qt.size(width * 2, height * 2)
-            fillMode: Image.PreserveAspectFit
-            source: cell.thumb ? "file://" + cell.modelData.path : cell.modelData.icon ? "file://" + cell.modelData.icon : ""
-            asynchronous: true
-            autoTransform: true
-            opacity: cell.modelData.hidden ? 0.55 : 1
-            onStatusChanged: if (icon.status === Image.Error && cell.thumb) cell.thumbFailed = true
-        }
-        // A folder with its own colour or icon.
-        FolderIcon {
-            visible: !!cell.modelData.look
-            anchors.fill: icon
-            size: icon.width
-            look: cell.modelData.look ?? ({})
-        }
-        // A link: a small arrow on the icon.
-        Rectangle {
-            visible: cell.modelData.link
-            anchors { right: icon.right; bottom: icon.bottom }
-            width: 16; height: 16; radius: 8
-            color: Theme.surface2
-            Icon { anchors.centerIn: parent; name: "link"; size: 10; color: Theme.text }
-        }
-        Text {
-            anchors { top: icon.bottom; topMargin: 6; left: parent.left; right: parent.right; leftMargin: 8; rightMargin: 8 }
-            horizontalAlignment: Text.AlignHCenter
-            text: cell.modelData.name
-            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-            maximumLineCount: 2
-            elide: Text.ElideMiddle
-            color: cell.modelData.hidden ? Theme.muted : Theme.text
-            font { family: Theme.font; pointSize: Theme.pt(12 * Math.sqrt(grid.k)) }
-        }
-        // Dragged: the selection goes (pressing an unselected item selects it first).
-        DragSource { id: carry; paths: pane.selection.map(e => e.path); icon: cell.modelData.icon ?? ""; }
-        // A folder takes drops.
-        FolderDrop { id: drop; anchors.fill: parent; enabled: cell.modelData.dir; dest: cell.modelData.path; onFilesDropped: (p, d) => pane.dropped(p, d) }
-        MouseArea {
-            id: area
-            anchors.fill: parent
-            hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onPositionChanged: m => { if (area.pressedButtons & Qt.LeftButton) carry.moved(m.x, m.y) }
-            onPressed: m => {
-                if (m.button === Qt.LeftButton) carry.press(m.x, m.y);
-                if (m.button === Qt.LeftButton && !cell.on && !(m.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
-                    pane.clickAt(cell.index, false, false);
-            }
-            onClicked: m => {
-                grid.forceActiveFocus();
-                if (m.button === Qt.RightButton) {
-                    // Right-click on something not selected: just that.
-                    if (!cell.on) pane.clickAt(cell.index, false, false);
-                    const p = mapToItem(pane, m.x, m.y);
-                    pane.menuAt(cell.modelData, p.x, p.y);
-                    return;
-                }
-                pane.clickAt(cell.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
-            }
-            onDoubleClicked: pane.activate(cell.modelData)
-        }
+        at: index
+        pane: grid.pane
+        view: grid
     }
 }

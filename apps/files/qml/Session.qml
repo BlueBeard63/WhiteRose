@@ -22,6 +22,31 @@ QtObject {
     function setAdaptive(on) { Fs.setAdaptive(on); session.adaptive = on }
     property real zoom: Fs.zoom()
     function setZoom(z) { session.zoom = Fs.setZoom(Math.round(z * 100) / 100) }
+    // How lists are laid out everywhere: folders first / mixed / last, the
+    // list's columns and their widths.
+    readonly property var arrangement: JSON.parse(Fs.arrangement())
+    property string foldersAt: session.arrangement.foldersAt
+    property var columns: session.arrangement.columns
+    property var widths: session.arrangement.widths
+    function setFoldersAt(at) {
+        Fs.setFoldersAt(at);
+        session.foldersAt = at;
+        for (const w of session.windows) for (const t of w.tabs) for (const p of t.panes) p.load();
+    }
+    function toggleColumn(key) {
+        const order = ["size", "modified", "created", "kind"];
+        const on = session.columns.includes(key);
+        const next = order.filter(k => k === key ? !on : session.columns.includes(k));
+        Fs.setColumns(JSON.stringify(next));
+        session.columns = next;
+    }
+    // While dragging: shown only; `keep`: saved.
+    function setWidth(key, w, keep) {
+        const next = Object.assign({}, session.widths);
+        next[key] = Math.round(w);
+        session.widths = next;
+        if (keep) Fs.setColumnWidth(key, Math.round(w));
+    }
     // The details panel, everywhere.
     property bool details: Fs.showsDetails()
     function setDetails(on) { Fs.setShowsDetails(on); session.details = on }

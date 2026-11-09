@@ -23,6 +23,8 @@ pub struct View {
     pub mode: String,
     pub sort_by: String,
     pub descending: bool,
+    /// "" (none), kind, modified, size, name.
+    pub group: String,
 }
 
 impl Default for View {
@@ -31,6 +33,7 @@ impl Default for View {
             mode: "grid".into(),
             sort_by: "name".into(),
             descending: false,
+            group: String::new(),
         }
     }
 }
@@ -43,10 +46,14 @@ impl View {
                 _ => "grid".into(),
             },
             sort_by: match self.sort_by.as_str() {
-                "size" | "modified" | "kind" => self.sort_by,
+                "size" | "modified" | "created" | "kind" => self.sort_by,
                 _ => "name".into(),
             },
             descending: self.descending,
+            group: match self.group.as_str() {
+                "kind" | "modified" | "size" | "name" => self.group,
+                _ => String::new(),
+            },
         }
     }
 }
@@ -74,6 +81,12 @@ pub struct Views {
     pub adaptive: bool,
     /// How big items are drawn (0.75–1.6).
     pub zoom: f64,
+    /// Folders among files: first, mixed or last.
+    pub folders_at: String,
+    /// The list's columns shown after Name, in order.
+    pub columns: Vec<String>,
+    /// Their widths (px at normal size), by column.
+    pub widths: BTreeMap<String, f64>,
     pub folders: BTreeMap<String, Folder>,
     next: u64,
 }
@@ -86,10 +99,27 @@ impl Default for Views {
             details: false,
             adaptive: true,
             zoom: 1.0,
+            folders_at: "first".into(),
+            columns: vec!["size".into(), "modified".into(), "kind".into()],
+            widths: BTreeMap::new(),
             folders: BTreeMap::new(),
             next: 0,
         }
     }
+}
+
+/// The list columns that can be shown.
+pub const COLUMNS: &[&str] = &["size", "modified", "created", "kind"];
+
+/// Only known columns, once each; widths within reason.
+pub fn columns_checked(cols: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for c in cols {
+        if COLUMNS.contains(&c.as_str()) && !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Zoom kept to what's drawable.
@@ -335,6 +365,7 @@ mod tests {
                 mode: "huge".into(),
                 sort_by: "colour".into(),
                 descending: true,
+                group: String::new(),
             },
         );
         assert_eq!(
@@ -342,7 +373,8 @@ mod tests {
             View {
                 mode: "grid".into(),
                 sort_by: "name".into(),
-                descending: true
+                descending: true,
+                group: String::new(),
             }
         );
         v.set_subfolders("/keep", true);
@@ -383,6 +415,21 @@ mod tests {
         assert!(
             old.adaptive && old.zoom == 1.0,
             "older files get the defaults"
+        );
+    }
+
+    #[test]
+    fn grouping_and_columns() {
+        let mut v = Views::default();
+        v.set("/a", View { group: "modified".into(), sort_by: "created".into(), ..View::default() });
+        let f = v.find("/a").view;
+        assert_eq!((f.group.as_str(), f.sort_by.as_str()), ("modified", "created"));
+        v.set("/b", View { group: "colour".into(), ..View::default() });
+        assert_eq!(v.find("/b").view.group, "", "unknown grouping: none");
+        assert_eq!(v.folders_at, "first");
+        assert_eq!(
+            columns_checked(vec!["kind".into(), "nope".into(), "size".into(), "kind".into()]),
+            vec!["kind".to_string(), "size".to_string()]
         );
     }
 }

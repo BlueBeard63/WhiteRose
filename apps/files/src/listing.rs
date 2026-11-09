@@ -21,6 +21,8 @@ pub struct Entry {
     pub size: u64,
     /// Modified, unix ms.
     pub modified: i64,
+    /// Created, unix ms (0: the drive doesn't record it).
+    pub created: i64,
     pub hidden: bool,
     pub executable: bool,
     pub mime: String,
@@ -31,7 +33,26 @@ pub enum Sort {
     Name,
     Size,
     Modified,
+    Created,
     Kind,
+}
+
+/// Where folders go among files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Folders {
+    First,
+    Mixed,
+    Last,
+}
+
+impl Folders {
+    pub fn parse(s: &str) -> Folders {
+        match s {
+            "mixed" => Folders::Mixed,
+            "last" => Folders::Last,
+            _ => Folders::First,
+        }
+    }
 }
 
 /// "file2" < "file10", "Apple" ~ "apple".
@@ -71,12 +92,21 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
     }
 }
 
+/// Folders first (what most callers want).
+#[cfg(test)]
 pub fn sort(entries: &mut [Entry], by: Sort, descending: bool) {
+    sort_with(entries, by, descending, Folders::First)
+}
+
+pub fn sort_with(entries: &mut [Entry], by: Sort, descending: bool, folders: Folders) {
     entries.sort_by(|a, b| {
-        // Folders always first.
-        let folders = b.dir.cmp(&a.dir);
-        if folders != Ordering::Equal {
-            return folders;
+        let f = match folders {
+            Folders::First => b.dir.cmp(&a.dir),
+            Folders::Last => a.dir.cmp(&b.dir),
+            Folders::Mixed => Ordering::Equal,
+        };
+        if f != Ordering::Equal {
+            return f;
         }
         let o = match by {
             Sort::Name => natural_cmp(&a.name, &b.name),
@@ -87,6 +117,10 @@ pub fn sort(entries: &mut [Entry], by: Sort, descending: bool) {
             Sort::Modified => a
                 .modified
                 .cmp(&b.modified)
+                .then_with(|| natural_cmp(&a.name, &b.name)),
+            Sort::Created => a
+                .created
+                .cmp(&b.created)
                 .then_with(|| natural_cmp(&a.name, &b.name)),
             Sort::Kind => a
                 .mime
@@ -140,6 +174,12 @@ pub fn read(dir: &Path, hidden: bool, mime: impl Fn(&str) -> String) -> Result<V
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0),
+            created: meta
+                .created()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
             hidden: is_hidden,
             executable: !dir && meta.permissions().mode() & 0o111 != 0,
         });
@@ -182,6 +222,7 @@ mod tests {
             link: false,
             size,
             modified: 0,
+            created: 0,
             hidden: name.starts_with('.'),
             executable: false,
             mime: String::new(),
@@ -267,5 +308,21 @@ mod tests {
         fs::write(d.join("c.txt"), [b'a', 0xff, b'b']).unwrap();
         assert_eq!(text_start(&d.join("c.txt"), 100), None, "not UTF-8");
         assert_eq!(text_start(&d.join("missing"), 100), None);
+    }
+
+    #[test]
+    fn folders_first_mixed_or_last() {
+        let e = |n: &str, dir: bool| Entry {
+            name: n.into(), path: n.into(), dir, link: false, size: 0, modified: 0, created: 0,
+            hidden: false, executable: false, mime: String::new(),
+        };
+        let names = |v: &[Entry]| v.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+        let mut v = vec![e("b.txt", false), e("Zed", true), e("a.txt", false), e("Apps", true)];
+        sort_with(&mut v, Sort::Name, false, Folders::First);
+        assert_eq!(names(&v), ["Apps", "Zed", "a.txt", "b.txt"]);
+        sort_with(&mut v, Sort::Name, false, Folders::Mixed);
+        assert_eq!(names(&v), ["a.txt", "Apps", "b.txt", "Zed"]);
+        sort_with(&mut v, Sort::Name, false, Folders::Last);
+        assert_eq!(names(&v), ["a.txt", "b.txt", "Apps", "Zed"]);
     }
 }

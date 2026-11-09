@@ -1,13 +1,22 @@
 // A dropdown menu in the desktop's style: `items` is [{ label, shortcut?,
-// danger?, enabled?, checked? (a tick: on/off items), separator?, run }]. Open it with openAt(x, y) (in its
-// parent's coordinates) or open().
+// danger?, enabled?, checked? (a tick: on/off items), separator?, run }].
+// An item with `items` of its own (and no run) is a submenu: › on it, and
+// it opens beside it on hover or click (to the left if there's no room on
+// the right). Open with openAt(x, y) (in its parent's coordinates) or open().
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 
 Popup {
     id: menu
     property var items: []
     function openAt(px, py) { menu.x = px; menu.y = py; menu.open() }
+    // Something in it (or a submenu of it) was chosen.
+    signal chosen()
+    // The submenu open (its index; -1 none).
+    property int openIndex: -1
+    onClosed: menu.openIndex = -1
+    Timer { id: subTimer; interval: 160; property int want: -1; onTriggered: menu.openIndex = want }
     padding: 6
     // As wide as the widest label plus its shortcut.
     width: {
@@ -22,8 +31,11 @@ Popup {
         Repeater {
             model: menu.items
             delegate: Item {
+                id: entry
                 required property var modelData
-                readonly property real need: labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0)
+                required property int index
+                readonly property bool sub: !!modelData.items
+                readonly property real need: labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0) + (sub ? 20 : 0)
                 width: menu.width - 12
                 height: modelData.separator ? 9 : 30
                 Rectangle { visible: !!modelData.separator; anchors.centerIn: parent; width: parent.width - 8; height: 1; color: Theme.surface2 }
@@ -31,7 +43,7 @@ Popup {
                     visible: !modelData.separator
                     anchors.fill: parent
                     radius: 8
-                    color: area.containsMouse && modelData.enabled !== false ? Theme.surface2 : "transparent"
+                    color: (area.containsMouse || menu.openIndex === entry.index && entry.sub) && modelData.enabled !== false ? Theme.surface2 : "transparent"
                     Row {
                         id: row
                         anchors { left: parent.left; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
@@ -44,7 +56,7 @@ Popup {
                         }
                         Text {
                             id: labelText
-                            width: parent.width - keys.width - (tick.visible ? tick.width : 0)
+                            width: parent.width - keys.width - (tick.visible ? tick.width : 0) - (entry.sub ? 14 : 0)
                             text: modelData.label ?? ""
                             color: modelData.enabled === false ? Theme.faint : modelData.danger ? Theme.rose : Theme.text
                             font { family: Theme.font; pointSize: Theme.pt(12.5) }
@@ -55,13 +67,42 @@ Popup {
                             color: Theme.faint
                             font { family: Theme.mono; pointSize: Theme.pt(10.5) }
                         }
+                        Icon { visible: entry.sub; name: "chevR"; size: 12; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
                     }
                     MouseArea {
                         id: area
                         anchors.fill: parent
                         hoverEnabled: true
                         enabled: modelData.enabled !== false
-                        onClicked: { menu.close(); modelData.run() }
+                        // Hovering: its submenu opens (another's closes) after a moment.
+                        onContainsMouseChanged: if (containsMouse) { subTimer.want = entry.sub ? entry.index : -1; subTimer.restart() }
+                        onClicked: {
+                            if (entry.sub) { subTimer.stop(); menu.openIndex = entry.index; return }
+                            // Every menu closes first; the action runs after (it may
+                            // change what the menus hold, and they go with it).
+                            const run = modelData.run;
+                            menu.chosen();
+                            menu.close();
+                            Qt.callLater(run);
+                        }
+                    }
+                    // The submenu (made when first opened; Menu.qml can't hold itself directly).
+                    Loader {
+                        id: subLoader
+                        active: entry.sub && menu.openIndex === entry.index
+                        source: active ? Qt.resolvedUrl("Menu.qml") : ""
+                        onLoaded: {
+                            const m = subLoader.item;
+                            m.items = entry.modelData.items;
+                            // Right of the menu, or left if it would run off the window.
+                            const right = entry.mapToItem(null, entry.width, 0).x + 10;
+                            const room = (entry.Window.window?.width ?? 10000) - right;
+                            m.x = room >= m.width ? entry.width + 10 : -m.width - 10;
+                            m.y = -6;
+                            m.chosen.connect(() => { menu.close(); menu.chosen() });
+                            m.closed.connect(() => { if (menu.openIndex === entry.index) menu.openIndex = -1 });
+                            m.open();
+                        }
                     }
                 }
             }

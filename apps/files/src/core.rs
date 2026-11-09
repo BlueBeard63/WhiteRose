@@ -170,6 +170,21 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setZoom"]
         fn set_zoom(self: &Fs, zoom: f64) -> f64;
+        /// How lists are laid out everywhere: {foldersAt, columns, widths}.
+        #[qinvokable]
+        fn arrangement(self: &Fs) -> QString;
+        /// Folders among files: first | mixed | last.
+        #[qinvokable]
+        #[cxx_name = "setFoldersAt"]
+        fn set_folders_at(self: &Fs, at: &QString) -> bool;
+        /// The list's columns after Name, in order (JSON list of size,
+        /// modified, created, kind).
+        #[qinvokable]
+        #[cxx_name = "setColumns"]
+        fn set_columns(self: &Fs, json: &QString) -> bool;
+        #[qinvokable]
+        #[cxx_name = "setColumnWidth"]
+        fn set_column_width(self: &Fs, column: &QString, width: f64) -> bool;
         /// The details panel shown (everywhere).
         #[qinvokable]
         #[cxx_name = "showsDetails"]
@@ -252,6 +267,7 @@ impl qobject::Fs {
                         executable: false,
                         size: if dir { 0 } else { m.len() },
                         modified: t.deleted,
+                        created: 0,
                         link: m.file_type().is_symlink(),
                         dir,
                         path: p,
@@ -270,9 +286,11 @@ impl qobject::Fs {
             "size" => listing::Sort::Size,
             "modified" => listing::Sort::Modified,
             "kind" => listing::Sort::Kind,
+            "created" => listing::Sort::Created,
             _ => listing::Sort::Name,
         };
-        listing::sort(&mut entries, by, descending);
+        let folders = listing::Folders::parse(&views::load_from(&views::file()).folders_at);
+        listing::sort_with(&mut entries, by, descending, folders);
         let size = icon_size.clamp(16, 256) as u32;
         let looks = looks::load();
         let out: Vec<Value> = entries
@@ -546,6 +564,35 @@ impl qobject::Fs {
         let z = views::zoom_checked(zoom);
         views::change(|all| all.zoom = z);
         z
+    }
+
+    pub fn arrangement(&self) -> QString {
+        let v = views::load_from(&views::file());
+        q(json!({"foldersAt": v.folders_at, "columns": views::columns_checked(v.columns), "widths": v.widths}))
+    }
+
+    pub fn set_folders_at(&self, at: &QString) -> bool {
+        let at = match at.to_string().as_str() {
+            "mixed" => "mixed",
+            "last" => "last",
+            _ => "first",
+        };
+        views::change(|v| v.folders_at = at.into())
+    }
+
+    pub fn set_columns(&self, json: &QString) -> bool {
+        let cols: Vec<String> = serde_json::from_str(&json.to_string()).unwrap_or_default();
+        views::change(|v| v.columns = views::columns_checked(cols))
+    }
+
+    pub fn set_column_width(&self, column: &QString, width: f64) -> bool {
+        let c = column.to_string();
+        if !views::COLUMNS.contains(&c.as_str()) && c != "name" || !width.is_finite() {
+            return false;
+        }
+        views::change(|v| {
+            v.widths.insert(c, width.clamp(60.0, 600.0));
+        })
     }
 
     pub fn shows_details(&self) -> bool {

@@ -26,6 +26,10 @@ fn main() {
             "qml/GalleryMode.qml",
             "qml/CardsMode.qml",
             "qml/UsageMode.qml",
+            "qml/GridCell.qml",
+            "qml/CardCell.qml",
+            "qml/GroupedGrid.qml",
+            "qml/GroupHeading.qml",
         ]
         .map(QmlFile::from),
     );

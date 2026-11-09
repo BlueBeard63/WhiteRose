@@ -6,9 +6,10 @@ import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 
 const here = dirname(fileURLToPath(import.meta.url));
-function load(file, names) {
-    const src = readFileSync(join(here, "..", file), "utf8").replace(/^\.pragma library\s*$/m, "");
-    return new Function(`${src}\nreturn { ${names.join(", ")} };`)();
+// `deps`: what its `.import "…" as Name` lines bring in, by Name.
+function load(file, names, deps = {}) {
+    const src = readFileSync(join(here, "..", file), "utf8").replace(/^\.pragma library\s*$/m, "").replace(/^\.import .*$/gm, "");
+    return new Function(...Object.keys(deps), `${src}\nreturn { ${names.join(", ")} };`)(...Object.values(deps));
 }
 const Calc = load("Calc.js", ["evaluate"]);
 const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results"]);
@@ -24,6 +25,7 @@ const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem",
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
+const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
@@ -671,6 +673,46 @@ test("files: disk usage map", () => {
         assert.ok(ox <= 1e-6 || oy <= 1e-6, "overlap " + i + " " + j);
     }
     assert.deepEqual(Lay.treemap([], 0, 0, 10, 10), []);
+});
+test("files: grouping", () => {
+    const now = new Date(2026, 10, 9, 15).getTime();
+    const day = 86400000;
+    const f = (name, extra) => Object.assign({ name, dir: false, mime: "text/plain", size: 10, modified: now }, extra);
+    const items = [
+        f("old.txt", { modified: new Date(2023, 4, 1).getTime() }),
+        f("today.txt"),
+        f("Photos", { dir: true, mime: "inode/directory", modified: now - day }),
+        f("pic.png", { mime: "image/png", modified: new Date(2026, 1, 3).getTime() }),
+    ];
+    const by = (k, d) => Arr.arrange(items, k, d, now).map(e => e.group + ":" + e.name);
+    assert.deepEqual(by("modified"), ["Today:today.txt", "Yesterday:Photos", "Earlier this year:pic.png", "2023:old.txt"]);
+    assert.deepEqual(by("modified", true), ["2023:old.txt", "Earlier this year:pic.png", "Yesterday:Photos", "Today:today.txt"]);
+    assert.deepEqual(by("kind"), ["Folders:Photos", "Images:pic.png", "Text:old.txt", "Text:today.txt"], "folders first, then kinds; order kept inside");
+    assert.equal(Arr.groupOf(f("x", { size: 2e9 }), "size", now).label, "Huge (over 1 GB)");
+    assert.equal(Arr.groupOf(f("x", { size: 0 }), "size", now).label, "Empty");
+    assert.equal(Arr.groupOf(f(".bashrc"), "name", now).label, "B");
+    assert.equal(Arr.groupOf(f("2024 taxes"), "name", now).label, "0–9");
+    assert.equal(Arr.arrange(items, "", false, now), items, "no grouping: as it was");
+    assert.equal(items[0].group, undefined, "the originals untouched");
+});
+test("files: grouped grid rows and moving through them", () => {
+    const e = (name, group) => ({ name, group });
+    const list = [e("a", "A"), e("b", "A"), e("c", "A"), e("d", "B"), e("f", "C"), e("g", "C")];
+    const r = Arr.rows(list, 2, {});
+    assert.deepEqual(r.map(x => x.header ?? x.items.map(it => it.e.name).join("")), ["A", "ab", "c", "B", "d", "C", "fg"]);
+    assert.equal(r[0].count, 3);
+    const folded = Arr.rows(list, 2, { B: true });
+    assert.deepEqual(folded.map(x => x.header ?? x.items.map(it => it.e.name).join("")), ["A", "ab", "c", "B", "C", "fg"]);
+    assert.equal(folded[3].folded, true);
+    // a b / c / d / f g
+    assert.equal(Arr.step(r, 1, "down"), 2, "b down: c (nearest column)");
+    assert.equal(Arr.step(r, 2, "down"), 3);
+    assert.equal(Arr.step(r, 3, "down"), 4);
+    assert.equal(Arr.step(r, 5, "up"), 3, "g up: d");
+    assert.equal(Arr.step(r, 2, "right"), 3, "on to the next group");
+    assert.equal(Arr.step(r, 0, "left"), -1);
+    assert.equal(Arr.step(r, 5, "down"), -1);
+    assert.equal(Arr.step(folded, 2, "down"), 4, "over a folded group");
 });
 test("files: moving tabs", () => {
     assert.deepEqual(Tabs.move(["a", "b", "c", "d"], 0, 2), ["b", "c", "a", "d"]);
