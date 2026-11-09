@@ -16,6 +16,11 @@ Singleton {
     property int brightness: -1
     property bool airplane: false
     property int radios: 0
+    // Current weather for the place in weather.toml ({ temperature, unit,
+    // icon, description, place, updated }), or null when not set up.
+    property var weather: null
+    // Bumps whenever the calendars might have changed (re-read events).
+    property real calendars: 0
 
     // Called continuously while a slider drags: only the latest value is
     // sent, at most every 50 ms, one process at a time.
@@ -57,6 +62,8 @@ Singleton {
                     root.brightness = s.brightness ?? -1;
                     root.airplane = s.airplane;
                     root.radios = s.radios;
+                    root.weather = s.weather ?? null;
+                    root.calendars = s.calendars ?? 0;
                 } catch (e) {
                     console.warn("whiterosed watch:", e);
                 }

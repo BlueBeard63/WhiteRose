@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent"
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName"]);
+const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -223,6 +224,45 @@ test("icon strings", () => {
     assert.deepEqual(N.iconKind("thunderbird"), { kind: "name", value: "thunderbird" });
     assert.deepEqual(N.iconKind(""), { kind: "none", value: "" });
     assert.deepEqual(N.iconKind(undefined), { kind: "none", value: "" });
+});
+
+// ---- CalendarGrid --------------------------------------------------------------
+test("month grid starts on Monday and covers six weeks", () => {
+    const g = Cal.monthGrid(2026, 10, new Date(2026, 10, 9));   // November 2026
+    assert.equal(g.length, 42);
+    assert.equal(Cal.key(g[0].date), "2026-10-26", "Monday before the 1st (a Sunday)");
+    assert.deepEqual(g.slice(0, 7).map(c => c.day), [26, 27, 28, 29, 30, 31, 1]);
+    assert.equal(g[6].inMonth, true);
+    assert.equal(g.filter(c => c.today).map(c => c.day)[0], 9);
+    assert.equal(g[5].weekend && g[6].weekend && !g[4].weekend, true);
+    assert.equal(Cal.key(g[41].date), "2026-12-06");
+    assert.deepEqual(Cal.gridRange(2026, 10), { from: "2026-10-26", to: "2026-12-07" });
+    const jun = Cal.monthGrid(2026, 5, new Date(2026, 0, 1));    // June 2026 starts on a Monday
+    assert.equal(Cal.key(jun[0].date), "2026-06-01");
+});
+test("days with events, including multi-day and midnight ends", () => {
+    const iso = (y, m, d, h = 0, mi = 0) => new Date(y, m, d, h, mi).toISOString();
+    const events = [
+        { start: iso(2026, 10, 12, 15), end: iso(2026, 10, 12, 16), all_day: false },
+        { start: iso(2026, 10, 18), end: iso(2026, 10, 20), all_day: true },        // 18th and 19th
+        { start: iso(2026, 10, 24, 22), end: iso(2026, 10, 25, 0), all_day: false }, // ends at midnight
+    ];
+    assert.deepEqual(Object.keys(Cal.busyDays(events)).sort(), ["2026-11-12", "2026-11-18", "2026-11-19", "2026-11-24"]);
+    assert.equal(Cal.onDay(events, new Date(2026, 10, 19)).length, 1);
+    assert.equal(Cal.onDay(events, new Date(2026, 10, 25)).length, 0);
+});
+test("day labels and times", () => {
+    const today = new Date(2026, 10, 9, 14, 32);
+    assert.equal(Cal.dayLabel(new Date(2026, 10, 9), today), "TODAY");
+    assert.equal(Cal.dayLabel(new Date(2026, 10, 10), today), "TOMORROW");
+    assert.equal(Cal.dayLabel(new Date(2026, 10, 8), today), "YESTERDAY");
+    assert.equal(Cal.dayLabel(new Date(2026, 10, 12), today), "THU 12 NOV");
+    const iso = (d, h, m = 0) => new Date(2026, 10, d, h, m).toISOString();
+    const day = new Date(2026, 10, 9);
+    assert.equal(Cal.timeRange({ start: iso(9, 15), end: iso(9, 16), all_day: false }, day), "15:00 – 16:00");
+    assert.equal(Cal.timeRange({ start: iso(9, 18, 30), end: iso(9, 18, 30), all_day: false }, day), "18:30");
+    assert.equal(Cal.timeRange({ start: iso(8, 22), end: iso(9, 2), all_day: false }, day), "until 02:00");
+    assert.equal(Cal.timeRange({ start: iso(9, 0), end: iso(10, 0), all_day: true }, day), "All day");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

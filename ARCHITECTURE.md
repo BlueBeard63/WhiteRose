@@ -380,3 +380,20 @@ The shell is the session's notification server (`shell/Notifications.qml`, using
 - **Nested development:** GNOME owns the notification name on the host's session bus, so `make run-nested` gives WhiteRose its own (`dbus-run-session`), like a real login. Apps started inside notify WhiteRose; system services are shared. `notify-send -A` drops actions with this server (a libnotify capability check), so test actions with `gdbus call ... Notify`.
 
 Panels and popups share `SidePanel.qml`: the shape, the grow and shrink animation, and Esc or a click elsewhere to close.
+
+## Calendar and weather
+
+The calendar panel (`shell/CalendarPanel.qml`) opens from the clock. It shows the time and date, the weather, a month grid (Monday first) with a dot on days that have events, and the selected day's events. All data comes from `whiterosed`:
+
+- **Calendars** (`daemon/internal/calendar`, `internal/ical`). Read-only.
+  - **Sources:** iCal links in `~/.config/whiterose/calendars.toml`, which covers the Google, Outlook and iCloud "secret address" links and any `.ics` URL, plus `.ics` files listed there or dropped into `~/.local/share/whiterose/calendars/`.
+  - **Fetching:** links go into `~/.cache/whiterose/calendars/` every 15 minutes, using ETags, a size cap, and file names hashed so the secret link isn't exposed. The panel reads the cache: it's instant and works offline.
+  - **Reader:** the iCalendar reader handles time zones (including Outlook's Windows zone names), all-day and multi-day events, DURATION, RRULE (daily, weekly, monthly, yearly with INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY), EXDATE, moved occurrences (RECURRENCE-ID) and cancellations. It's fuzzed in `make check`.
+  - **Commands:** `whiterosed calendar events --from --to` (JSON) and `whiterosed calendar refresh`.
+- **Weather** (`internal/weather`).
+  - **Place:** set in `~/.config/whiterose/weather.toml` (`city = "London"`, or `latitude`/`longitude`, and optionally `units = "fahrenheit"`). Location is never detected.
+  - **Data:** Open-Meteo (no account), refreshed every 30 minutes. The city is looked up once and cached. Readings are cached in `~/.cache/whiterose/weather.json`.
+  - **Command:** `whiterosed weather`.
+- **Updates to the shell:** `whiterosed watch` runs both refreshes and adds `weather` and a `calendars` version to its state lines. The shell re-reads events when the version changes.
+
+The Settings app will edit these files; until then they're edited by hand.

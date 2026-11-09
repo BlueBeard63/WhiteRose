@@ -1,8 +1,8 @@
 // A panel hanging from the right end of the bar (quick settings,
 // notifications): one shape joined to the bar by an ear on its left, that
 // grows down when opened and shrinks back up, with the content fading in once
-// it has room. Esc or clicking elsewhere closes it. Children go in a 324 px
-// column.
+// it has room. Esc or clicking elsewhere closes it. Children go in a column
+// (324 px wide in the default 360 px panel).
 import QtQuick
 
 Item {
@@ -15,6 +15,8 @@ Item {
     property bool takesKeyboard: true
     default property alias content: column.data
     property alias spacing: column.spacing
+    // The panel's width (the column is this minus 18 px each side).
+    property real bodyWidth: 360
     // Called on Esc; return true to keep the panel open (e.g. a sub-menu closed).
     property var escapeHandler: null
 
@@ -32,7 +34,7 @@ Item {
 
     PanelShape {
         id: shape
-        bodyWidth: 360
+        bodyWidth: root.bodyWidth
         bodyHeight: root.targetHeight
         rightEar: false
         earWidth: 49
@@ -60,7 +62,7 @@ Item {
             id: column
             x: shape.bodyX + 18
             y: 16
-            width: 324
+            width: root.bodyWidth - 36
             spacing: 12
             opacity: root.open && !settle.running ? 1 : 0
             visible: opacity > 0

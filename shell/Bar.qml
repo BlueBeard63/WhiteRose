@@ -13,7 +13,7 @@ PanelWindow {
     anchors { top: true; left: true; right: true }
     // Bar + whatever the island's current view needs (held while morphing
     // so the window never resizes mid-animation).
-    implicitHeight: Theme.barHeight + Math.max(island.reserve, quick.reserve, notifications.reserve, popups.reserve) + 4
+    implicitHeight: Theme.barHeight + Math.max(island.reserve, quick.reserve, notifications.reserve, calendar.reserve, popups.reserve) + 4
     exclusiveZone: Theme.barHeight
     color: "transparent"
 
@@ -21,7 +21,7 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Top
     // Open views take the keyboard (Esc closes; clicking elsewhere moves focus
     // away, which closes them too).
-    WlrLayershell.keyboardFocus: island.wantsKeyboard || quick.open || notifications.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: island.wantsKeyboard || quick.open || notifications.open || calendar.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     mask: Region {
         item: bar
@@ -29,6 +29,7 @@ PanelWindow {
         Region { item: island.previewCard }
         Region { item: quick }
         Region { item: notifications }
+        Region { item: calendar }
         Region { item: popups }
     }
 
@@ -79,7 +80,11 @@ PanelWindow {
                     }
                 }
             }
-            Clock { anchors.verticalCenter: parent.verticalCenter }
+            Clock {
+                anchors.verticalCenter: parent.verticalCenter
+                active: calendar.open
+                onClicked: ShellState.togglePanel("calendar")
+            }
         }
     }
 
@@ -94,6 +99,10 @@ PanelWindow {
     }
     NotificationsPanel {
         id: notifications
+        anchors { top: bar.bottom; right: parent.right }
+    }
+    CalendarPanel {
+        id: calendar
         anchors { top: bar.bottom; right: parent.right }
     }
     NotificationPopups {

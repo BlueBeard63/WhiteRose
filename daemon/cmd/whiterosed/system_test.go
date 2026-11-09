@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -41,7 +44,7 @@ func TestEmitChangesSkipsRepeats(t *testing.T) {
 	if err := emitChanges(ch, read, &out); err != nil {
 		t.Fatal(err)
 	}
-	want := `{"brightness":null,"airplane":false,"radios":1}` + "\n" + `{"brightness":null,"airplane":true,"radios":1}` + "\n"
+	want := `{"brightness":null,"airplane":false,"radios":1,"weather":null,"calendars":0}` + "\n" + `{"brightness":null,"airplane":true,"radios":1,"weather":null,"calendars":0}` + "\n"
 	if out.String() != want {
 		t.Fatalf("got\n%s\nwant\n%s", out.String(), want)
 	}
@@ -59,5 +62,33 @@ func TestBrightnessAndAirplaneRejectBadArguments(t *testing.T) {
 func TestLockLine(t *testing.T) {
 	if got := lockLine(session.Lock); got != `{"event":"lock"}`+"\n" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCalendarEventsCommand(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	ics := "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:1\r\nSUMMARY:Gym\r\nDTSTART:20261109T183000\r\nDTEND:20261109T193000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	p := filepath.Join(root, "data", "whiterose", "calendars", "Personal.ics")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(ics), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"calendar", "events", "--from", "2026-11-09", "--to", "2026-11-10"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var evs []map[string]any
+	if err := json.Unmarshal(out.Bytes(), &evs); err != nil || len(evs) != 1 || evs[0]["title"] != "Gym" || evs[0]["calendar"] != "Personal" {
+		t.Fatalf("got %s (%v)", out.String(), err)
+	}
+	for _, bad := range [][]string{{"calendar"}, {"calendar", "events", "--from", "x", "--to", "2026-11-10"}, {"calendar", "events", "--from", "2026-11-10", "--to", "2026-11-09"}, {"calendar", "nope"}} {
+		if code := run(bad, &out, &errb); code != 2 {
+			t.Errorf("%v: exit %d", bad, code)
+		}
 	}
 }

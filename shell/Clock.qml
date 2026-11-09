@@ -1,5 +1,5 @@
-// Date and time (Figma: Trigger/Clock). SystemClock with minute precision
-// wakes once a minute, not every second.
+// Date and time (Figma: Trigger/Clock); click for the calendar. SystemClock
+// with minute precision wakes once a minute, not every second.
 import QtQuick
 import Quickshell
 

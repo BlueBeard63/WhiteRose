@@ -11,9 +11,11 @@ import (
 	"sync"
 
 	"whiterose/daemon/internal/backlight"
+	"whiterose/daemon/internal/calendar"
 	"whiterose/daemon/internal/rfkill"
 	"whiterose/daemon/internal/session"
 	"whiterose/daemon/internal/uevent"
+	"whiterose/daemon/internal/weather"
 )
 
 // SystemState is what the quick settings panel shows from the daemon.
@@ -23,6 +25,10 @@ type SystemState struct {
 	Backlight  string `json:"backlight,omitempty"`
 	Airplane   bool   `json:"airplane"`
 	Radios     int    `json:"radios"`
+	// Current conditions for the configured place, or nil.
+	Weather *weather.Now `json:"weather"`
+	// Changes whenever the calendars might have: the shell re-reads events.
+	Calendars int64 `json:"calendars"`
 }
 
 func readState(backlights, radios fs.FS) SystemState {
@@ -106,7 +112,13 @@ func cmdWatch(_ []string, stdout, stderr io.Writer) int {
 		})
 		fmt.Fprintln(stderr, "whiterosed: brightness not watched:", err)
 	}()
-	read := func() SystemState { return readState(os.DirFS(backlight.Sysfs), os.DirFS(rfkill.Sysfs)) }
+	startRefreshers(stderr, poke)
+	dirs := calendar.DefaultDirs()
+	read := func() SystemState {
+		s := readState(os.DirFS(backlight.Sysfs), os.DirFS(rfkill.Sysfs))
+		s.Weather, s.Calendars = weatherView(dirs), calendar.Version(dirs)
+		return s
+	}
 	if err := emitChanges(changed, read, out); err != nil {
 		fmt.Fprintln(stderr, "whiterosed:", err)
 		return 1
