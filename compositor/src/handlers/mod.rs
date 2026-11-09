@@ -34,6 +34,7 @@ impl SeatHandler for WhiteRose {
     fn cursor_image(&mut self, _seat: &Seat<Self>, _image: smithay::input::pointer::CursorImageStatus) {}
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+        tracing::debug!(surface = ?focused.map(|s| s.id()), "keyboard focus");
         let dh = &self.display_handle;
         let client = focused.and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, client);

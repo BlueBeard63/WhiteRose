@@ -61,6 +61,13 @@ pub struct PendingCopy {
     ignore_damage: bool,
 }
 
+impl PendingCopy {
+    /// Tells the client this copy won't happen.
+    pub fn fail(self) {
+        self.frame.failed();
+    }
+}
+
 /// Per-window capture bookkeeping, kept in the window's user data.
 #[derive(Default)]
 struct ExportTracking {
@@ -127,6 +134,8 @@ impl WhiteRose {
         let frame =
             data_init.init(frame, FrameData { window, size: size.unwrap_or_default(), used: AtomicBool::new(false) });
         match size {
+            // No window pixels leave the compositor while the screen is locked.
+            _ if self.is_locked() => frame.failed(),
             Some(s) if s.w > 0 && s.h > 0 => {
                 frame.buffer(wl_shm::Format::Argb8888, s.w as u32, s.h as u32, s.w as u32 * 4);
                 if frame.version() >= 2 {
@@ -206,6 +215,11 @@ fn render_window(renderer: &mut GlesRenderer, w: &Window, scale: f64) -> Result<
 /// Runs after each frame: fills every copy that is due.
 pub fn process(renderer: &mut GlesRenderer, _output: &Output, state: &mut WhiteRose) {
     if state.pending_exports.is_empty() {
+        return;
+    }
+    // No window pixels leave the compositor while the screen is locked.
+    if state.is_locked() {
+        state.pending_exports.drain(..).for_each(PendingCopy::fail);
         return;
     }
     let scale = state.output_scale();

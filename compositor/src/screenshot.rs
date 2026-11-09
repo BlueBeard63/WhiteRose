@@ -162,6 +162,10 @@ pub fn capture_and_save(renderer: &mut GlesRenderer, output: &Output, state: &mu
 impl WhiteRose {
     /// PrtSc: capture the whole screen on the next frame.
     pub fn request_screenshot(&mut self) {
+        if self.is_locked() {
+            self.screenshot_done(Outcome::Failed("the screen is locked".into()));
+            return;
+        }
         if self.redraw.is_none() {
             self.screenshot_done(Outcome::Failed("no renderer (headless)".into()));
             return;

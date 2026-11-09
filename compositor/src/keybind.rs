@@ -41,6 +41,8 @@ pub enum Action {
     AppSwitcher,
     WindowSwitcher,
     QuickSettings,
+    /// Lock the screen (the shell shows its lock screen).
+    Lock,
     Notifications,
     ScreenshotRegion,
     // Handled by the compositor.
@@ -59,6 +61,8 @@ pub enum Action {
     FocusApp(String),
     /// Delete a screenshot this compositor saved (requested by the shell).
     DeleteScreenshot(String),
+    /// Night Light on/off and its warmth (from the shell's quick settings).
+    NightLight(crate::night_light::NightLight),
     /// Clipboard and screenshot-tray requests from the shell.
     Shell(ShellRequest),
     Quit,
@@ -67,7 +71,14 @@ pub enum Action {
 impl Action {
     /// True for actions the shell UI implements rather than the compositor.
     pub fn is_shell(&self) -> bool {
-        matches!(self, Action::AppLauncher | Action::QuickSettings | Action::Notifications | Action::ScreenshotRegion)
+        matches!(
+            self,
+            Action::AppLauncher
+                | Action::QuickSettings
+                | Action::Lock
+                | Action::Notifications
+                | Action::ScreenshotRegion
+        )
     }
 }
 
@@ -197,6 +208,7 @@ impl Bindings {
             ("ALT+TAB", Action::AppSwitcher),
             ("SUPER+ALT+TAB", Action::WindowSwitcher),
             ("SUPER+S", Action::QuickSettings),
+            ("SUPER+L", Action::Lock),
             ("SUPER+N", Action::Notifications),
             ("SUPER+SHIFT+S", Action::ScreenshotRegion),
             ("PRTSC", Action::ScreenshotScreen),
@@ -335,6 +347,7 @@ mod tests {
             (ALT, keysyms::KEY_Tab, Action::AppSwitcher),
             (Mods { logo: true, alt: true, ..Mods::NONE }, keysyms::KEY_Tab, Action::WindowSwitcher),
             (SUPER, keysyms::KEY_s, Action::QuickSettings),
+            (SUPER, keysyms::KEY_l, Action::Lock),
             (SUPER, keysyms::KEY_q, Action::CloseWindow),
             (SUPER, keysyms::KEY_Return, Action::Spawn("foot".into())),
             (SUPER, keysyms::KEY_3, Action::Workspace(3)),

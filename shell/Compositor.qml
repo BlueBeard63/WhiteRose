@@ -58,6 +58,10 @@ Singleton {
     function focusApp(appId) { send({ cmd: "focus_app", app_id: appId }) }
     function focusWindow(id) { send({ cmd: "focus_window", id: id }) }
     // Re-sends the history, re-checking copied files on disk.
+    // Night Light: warm the screen to `kelvin` while on.
+    function nightLight(on, kelvin) { send({ cmd: "night_light", on: on, temperature: kelvin }) }
+    // Ends the session (Log Out).
+    function quit() { send({ cmd: "quit" }) }
     function clipboardList() { send({ cmd: "clipboard_list" }) }
     function clipboardPaste(id) { send({ cmd: "clipboard_paste", id: id }) }
     // Makes the named copy of an image entry that a drag hands out.
@@ -96,6 +100,10 @@ Singleton {
             break;
         case "clipboard":
             root.clipboard = msg.entries;
+            break;
+        case "lock":
+            // A restarted shell finds the session still locked: lock again.
+            if (msg.locked && !ShellState.locked) ShellState.locked = true;
             break;
         case "screenshots":
             root.screenshots = msg.files;

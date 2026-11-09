@@ -3,3 +3,5 @@ module whiterose/daemon
 go 1.26.8
 
 require github.com/BurntSushi/toml v1.5.0
+
+require github.com/godbus/dbus/v5 v5.1.0

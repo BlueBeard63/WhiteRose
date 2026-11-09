@@ -106,6 +106,13 @@ where
                         let attributes = states.data_map.get::<Mutex<LockSurfaceAttributes>>();
                         let attributes = attributes.unwrap().lock().unwrap();
 
+                        // The lock surface object is gone (the session was
+                        // unlocked): the wl_surface is a plain surface again,
+                        // and clients hide it by committing a NULL buffer.
+                        if !attributes.surface.is_alive() {
+                            return;
+                        }
+
                         let Some(state) = attributes.last_acked else {
                             attributes.surface.post_error(
                                 ext_session_lock_surface_v1::Error::CommitBeforeFirstAck,
@@ -185,12 +192,15 @@ where
                 }
 
                 state.lock_state().locked_outputs.clear();
-                state.unlock();
+                state.unlock_requested(lock);
             }
             Request::Destroy => {
                 // Ensure session is not locked.
                 if data.lock_status.load(Ordering::Relaxed) {
                     lock.post_error(Error::InvalidDestroy, "Cannot destroy session lock while locked.");
+                } else {
+                    // The client gave up before the lock was confirmed.
+                    state.lock_cancelled(lock);
                 }
             }
             _ => unreachable!(),

@@ -8,7 +8,8 @@
 //! --mod  What stands in for SUPER. Defaults to super: the nested window asks
 //!        the host desktop to pass its shortcuts through. Use ctrl-alt if the
 //!        host can't (X11, or the permission was denied).
-//! --shell  Start the shell (bar and panels), e.g. "qs -p shell".
+//! --shell  Start the shell (bar and panels), e.g. "qs -p shell". It is
+//!          restarted if it exits.
 //! -c       Run COMMAND inside the compositor at startup.
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
@@ -59,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(socket = ?state.socket_name, main_mod, "WhiteRose is running");
 
     if let Some(cmd) = shell {
-        state.spawn(&cmd);
+        state.supervise_shell(cmd);
     }
     if let Some(cmd) = startup {
         state.spawn(&cmd);

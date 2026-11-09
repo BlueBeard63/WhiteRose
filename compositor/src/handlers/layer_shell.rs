@@ -106,7 +106,9 @@ impl WhiteRose {
         let wants_exclusive = state.keyboard_interactivity == KeyboardInteractivity::Exclusive
             && matches!(state.layer, Layer::Top | Layer::Overlay);
         let granted = layer.user_data().get_or_insert(|| ExclusiveGrant(Cell::new(false)));
-        if wants_exclusive && !granted.0.get() {
+        if self.is_locked() {
+            // Panels can't take the keyboard from the lock screen.
+        } else if wants_exclusive && !granted.0.get() {
             granted.0.set(true);
             let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
             keyboard.set_focus(self, Some(surface.clone()), SERIAL_COUNTER.next_serial());

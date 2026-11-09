@@ -2,6 +2,8 @@
 //   qs -p shell ipc call island set dock|clipboard|screenshots|launcher|idle
 //   qs -p shell ipc call dock toggle|open|close|preview <app-id>
 //   qs -p shell ipc call launcher toggle|open|close|search <text>
+//   qs -p shell ipc call quick toggle|open|close
+//   qs -p shell ipc call session lock
 pragma Singleton
 import QtQuick
 import Quickshell
@@ -15,9 +17,20 @@ Singleton {
     property string islandView: "idle"   // idle | dock | clipboard | screenshots | launcher
     readonly property var views: ["idle", "dock", "clipboard", "screenshots", "launcher"]
 
-    function show(view) { if (views.includes(view)) islandView = view }
-    function toggle(view) { islandView = islandView === view ? "idle" : view }
+    function show(view) { if (views.includes(view)) { islandView = view; if (view !== "idle") panel = "" } }
+    function toggle(view) { islandView === view ? close() : show(view) }
     function close() { islandView = "idle" }
+
+    // The side panel hanging from the bar: "" (none) or "quick". Only one
+    // thing is open at a time: opening it returns the island to idle.
+    property string panel: ""
+    function togglePanel(name) { if (panel === name) closePanel(); else { panel = name; islandView = "idle" } }
+    function closePanel() { panel = "" }
+
+    // The session lock screen (LockScreen.qml) shows while this is true; only
+    // a correct password clears it.
+    property bool locked: false
+    function lock() { panel = ""; islandView = "idle"; locked = true }
 
     // An item is being dragged out of the island: keep it open meanwhile.
     property bool dragging: false
@@ -37,6 +50,16 @@ Singleton {
         function open(): void { root.show("dock") }
         function close(): void { root.close() }
         function preview(id: string): void { root.show("dock"); root.dockPreviewKey = id }
+    }
+    IpcHandler {
+        target: "quick"
+        function toggle(): void { root.togglePanel("quick") }
+        function open(): void { if (root.panel !== "quick") root.togglePanel("quick") }
+        function close(): void { root.closePanel() }
+    }
+    IpcHandler {
+        target: "session"
+        function lock(): void { root.lock() }
     }
     IpcHandler {
         target: "launcher"

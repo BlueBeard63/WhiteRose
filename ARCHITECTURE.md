@@ -293,11 +293,13 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 
 ## Vendored Smithay
 
-`compositor/vendor/smithay` is Smithay 0.7.0 plus one fix (`compositor/vendor/smithay-layer-unmap-after-destroy.patch`), used through `[patch.crates-io]`.
+`compositor/vendor/smithay` is Smithay 0.7.0 plus two patches, used through `[patch.crates-io]`.
 
-- **The bug:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell.
-- **The test:** `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client` fails without the patch.
-- **Removing it:** drop the vendored copy once upstream ships the fix.
+- **`smithay-layer-unmap-after-destroy.patch`:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell. Test: `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client`.
+- **`smithay-session-lock.patch`:**
+  - **Unlock disconnect:** the same bug for lock surfaces disconnected the shell on every unlock. Test: `hiding_a_former_lock_surface_after_unlock_does_not_kill_the_client`.
+  - **New hooks:** `lock_cancelled` (a lock destroyed before it was confirmed now ends the lock instead of leaving the screen locked forever) and `unlock_requested` (lets the compositor ignore an unlock from a lock that a newer one replaced). Tests: in `tests/session_lock.rs`.
+- **Removing them:** drop the vendored copy once upstream ships these fixes.
 
 ---
 
@@ -328,3 +330,34 @@ Implemented in `compositor/src/clipboard.rs` (pure logic) and `clipboard_capture
 Each view (`*View.qml`) only reports the size it wants. The island animates its outline to that size, fades the old content out and the new content in once the shape has settled, and keeps the bar window tall until the morph ends.
 
 Scripting: `qs ipc call island set <view>`.
+
+## Quick settings
+
+`shell/QuickSettingsPanel.qml` hangs from the right end of the bar. It opens from the status cluster or SUPER+S, and closes on Esc or a click elsewhere. Each part comes from the layer that owns it:
+
+| Part | Source |
+|---|---|
+| Wi-Fi, Bluetooth, volume, battery, power mode | QuickShell services (NetworkManager, BlueZ, PipeWire, UPower, power-profiles-daemon) |
+| Brightness, airplane mode | `whiterosed`: `brightness set <percent>` goes through logind's `SetBrightness`; `airplane on\|off` goes through `/dev/rfkill`. Neither needs root. |
+| Live brightness/airplane state, lock requests | `whiterosed watch`, which the shell keeps running. It prints a JSON line on every change and `{"event":"lock"}` when logind asks (`loginctl lock-session`). It sleeps in the kernel and on D-Bus in between: netlink uevents, rfkill reads, logind signals. |
+| Night Light | The compositor (see below). The shell stores the state and turns it off at the next 07:00. |
+| Do Not Disturb | Shell state, for the notification server |
+
+Do Not Disturb and Night Light persist in `$XDG_STATE_HOME/whiterose/quick.json`. The power button swaps the toggles for Suspend, Log Out, Restart and Power Off. Suspend locks first.
+
+## Night Light
+
+`compositor/src/night_light.rs` multiplies every pixel by the colour of the chosen temperature, 4000 K by default. In nested mode this is one GL blend pass after each frame (framebuffer × colour), and it runs only while Night Light is on. The DRM backend will load the same colour into the gamma table instead, which costs nothing. Screenshots and window previews render separately, so they stay untinted. `tests/night_light.rs` checks the pass on a real (or Mesa software) GPU.
+
+## Session lock
+
+The compositor implements `ext-session-lock-v1` (`compositor/src/session_lock.rs`). The shell's lock screen (`LockScreen.qml`, `LockView.qml`, `Auth.qml`) locks it. Triggers are the Lock button, SUPER+L, `qs ipc call session lock`, and logind.
+
+- **While locked:**
+  - Only the lock surfaces are drawn; an output without one is black.
+  - All input goes to the lock surface, and no shortcuts run.
+  - Screenshots and window previews are refused.
+  - Panels can't take the keyboard.
+- **Confirmation:** `locked` is sent to the client only after a frame without the desktop has been shown.
+- **Unlocking:** only the locking client can unlock. The password is checked by PAM with `shell/pam/whiterose-lock` (pam_unix); packages install it as `/etc/pam.d/whiterose-lock`.
+- **If the shell dies while locked:** the session stays locked. The compositor restarts the shell (`shell_supervisor.rs`, which gives up after 5 exits in a minute). The compositor's `lock` event tells the new shell the session is locked, so it locks again and takes over.

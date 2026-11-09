@@ -23,6 +23,10 @@ Item {
     }
 
     readonly property var apps: {
+        // byId() is a function, so QML can't see it change: depend on the
+        // entry list itself, or a dock opened while the shell is still
+        // scanning apps (just after it starts) would stay empty.
+        DesktopEntries.applications.values;
         const wins = Compositor.windows;
         const byKey = {};
         for (const w of wins) {

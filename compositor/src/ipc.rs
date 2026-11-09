@@ -69,6 +69,11 @@ pub enum Event {
     ScreenshotFailed {
         error: String,
     },
+    /// The session is locked (only the lock screen is shown). Sent on
+    /// connect too, so a restarted shell puts its lock screen back.
+    Lock {
+        locked: bool,
+    },
 }
 
 impl Event {
@@ -137,10 +142,22 @@ pub enum Request {
     },
     /// Capture the whole screen (e.g. the screenshot toolbar's "Screen" mode).
     Screenshot,
+    /// Night Light from the quick settings: warm the screen to `temperature` K.
+    NightLight {
+        on: bool,
+        #[serde(default = "neutral")]
+        temperature: u32,
+    },
+    /// End the session (Log Out).
+    Quit,
     /// Delete a screenshot this compositor saved (the toast's trash button).
     DeleteScreenshot {
         path: String,
     },
+}
+
+fn neutral() -> u32 {
+    crate::night_light::NEUTRAL
 }
 
 impl Request {
@@ -167,6 +184,10 @@ impl Request {
             Request::FocusWindow { id } => Action::FocusWindow(id),
             Request::FocusApp { app_id } => Action::FocusApp(app_id),
             Request::DeleteScreenshot { path } => Action::DeleteScreenshot(path),
+            Request::NightLight { on, temperature } => {
+                Action::NightLight(crate::night_light::NightLight { on, temperature })
+            }
+            Request::Quit => Action::Quit,
         }
     }
 }
@@ -176,6 +197,7 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
     Some(match action {
         Action::AppLauncher => "app_launcher",
         Action::QuickSettings => "quick_settings",
+        Action::Lock => "lock",
         Action::Notifications => "notifications",
         Action::ScreenshotRegion => "screenshot_region",
         _ => return None,
@@ -229,6 +251,7 @@ pub struct Server {
     last_switcher: Option<Event>,
     last_clipboard: Option<Event>,
     last_screenshots: Option<Event>,
+    last_lock: Option<Event>,
 }
 
 impl Server {
@@ -263,6 +286,7 @@ impl Server {
             last_switcher: None,
             last_clipboard: None,
             last_screenshots: None,
+            last_lock: None,
         })
     }
 
@@ -296,6 +320,7 @@ impl Server {
             Event::Switcher { .. } => &mut self.last_switcher,
             Event::Clipboard { .. } => &mut self.last_clipboard,
             Event::Screenshots { .. } => &mut self.last_screenshots,
+            Event::Lock { .. } => &mut self.last_lock,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
                 self.broadcast(&event);
                 return;
@@ -321,7 +346,12 @@ impl Drop for Server {
 impl WhiteRose {
     fn ipc_accept(&mut self, stream: UnixStream) {
         // Bring the new shell up to date immediately.
-        let snapshot = [self.workspaces_event(), self.focus_event(), self.windows_event()];
+        let snapshot = [
+            self.workspaces_event(),
+            self.focus_event(),
+            self.windows_event(),
+            Event::Lock { locked: self.is_locked() },
+        ];
         let Some(server) = self.ipc.as_mut() else { return };
         let (Ok(()), Ok(reader)) = (stream.set_nonblocking(true), stream.try_clone()) else { return };
         let id = server.next_id;
@@ -335,7 +365,8 @@ impl WhiteRose {
         }
         server.clients.push(client);
         // Everyone connected now has this state; don't send it again unless it changes.
-        let [ws, focus, windows] = snapshot;
+        let [ws, focus, windows, lock] = snapshot;
+        server.last_lock = Some(lock);
         server.last_workspaces = Some(ws);
         server.last_focus = Some(focus);
         server.last_windows = Some(windows);
@@ -535,6 +566,15 @@ mod tests {
         assert_eq!(Request::parse(r#"{"cmd":"clipboard_paste","id":7}"#), Ok(Request::ClipboardPaste { id: 7 }));
         assert_eq!(Request::parse(r#"{"cmd":"clipboard_clear"}"#), Ok(Request::ClipboardClear));
         assert_eq!(
+            Request::parse(r#"{"cmd":"night_light","on":true,"temperature":4000}"#),
+            Ok(Request::NightLight { on: true, temperature: 4000 })
+        );
+        assert_eq!(
+            Request::parse(r#"{"cmd":"night_light","on":false}"#),
+            Ok(Request::NightLight { on: false, temperature: 6500 })
+        );
+        assert_eq!(Request::parse(r#"{"cmd":"quit"}"#).map(Request::into_action), Ok(Action::Quit));
+        assert_eq!(
             Request::parse(r#"{"cmd":"screenshot_copy","path":"/p.png"}"#),
             Ok(Request::ScreenshotCopy { path: "/p.png".into() })
         );
@@ -571,7 +611,8 @@ mod tests {
 
     #[test]
     fn every_shell_action_has_a_wire_name_and_others_do_not() {
-        let shell = [Action::AppLauncher, Action::QuickSettings, Action::Notifications, Action::ScreenshotRegion];
+        let shell =
+            [Action::AppLauncher, Action::QuickSettings, Action::Lock, Action::Notifications, Action::ScreenshotRegion];
         for a in &shell {
             assert!(a.is_shell());
             assert!(action_name(a).is_some(), "{a:?} has no wire name");

@@ -24,6 +24,7 @@ race:
 
 fuzz:
 	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/edid
+	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/uevent
 
 cover:
 	cd $(DAEMON) && $(GO) test -coverprofile=coverage.out ./... && $(GO) tool cover -html=coverage.out -o coverage.html
@@ -50,7 +51,8 @@ build:
 	cd $(WM) && $(CARGO) build --release --locked && cp target/release/whiterose-wm ../build/
 
 run-nested:          ## WhiteRose in a window on your current desktop: bar + a terminal
-	cd $(WM) && $(CARGO) run --release -- --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
+	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
+	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" $(CARGO) run --release -- --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
 
 clean:
 	rm -rf build $(DAEMON)/coverage.out $(DAEMON)/coverage.html

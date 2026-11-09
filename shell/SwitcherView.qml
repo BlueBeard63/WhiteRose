@@ -16,7 +16,8 @@ Item {
     // Room for as many window cards as fit on the screen.
     readonly property real screenWidth: Quickshell.screens[0]?.width ?? 1440
 
-    function entryFor(appId) { return appId ? DesktopEntries.heuristicLookup(appId) : null }
+    // Reads the entry list so bindings using this re-run once apps are loaded.
+    function entryFor(appId) { DesktopEntries.applications.values; return appId ? DesktopEntries.heuristicLookup(appId) : null }
     function nameFor(appId) { return entryFor(appId)?.name ?? appId ?? "" }
 
     Column {

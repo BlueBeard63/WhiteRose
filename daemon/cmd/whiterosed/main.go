@@ -5,6 +5,9 @@
 //
 //	whiterosed monitors       list connected monitors and their stable IDs
 //	whiterosed check-config   validate ~/.config/whiterose/displays.toml
+//	whiterosed watch          stream brightness and airplane mode as JSON lines
+//	whiterosed brightness set <percent>
+//	whiterosed airplane on|off
 package main
 
 import (
@@ -34,6 +37,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdMonitors(args[1:], stdout, stderr)
 	case "check-config":
 		return cmdCheckConfig(args[1:], stdout, stderr)
+	case "watch":
+		return cmdWatch(args[1:], stdout, stderr)
+	case "brightness":
+		return cmdBrightness(args[1:], stdout, stderr)
+	case "airplane":
+		return cmdAirplane(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
@@ -50,6 +59,9 @@ func usage(w io.Writer) {
 commands:
   monitors       list connected monitors and their stable IDs
   check-config   validate a displays.toml file
+  watch          print brightness and airplane mode as JSON lines on every change
+  brightness     set <percent>: change the screen backlight (through logind)
+  airplane       on|off: block or unblock every radio
 `)
 }
 

@@ -175,6 +175,16 @@ pub trait SessionLockHandler {
     /// Handle compositor lock removal.
     fn unlock(&mut self);
 
+    /// `lock` asked to unlock (unlock_and_destroy). Defaults to [`Self::unlock`];
+    /// override to ignore a lock object that a newer lock has replaced.
+    fn unlock_requested(&mut self, _lock: &ExtSessionLockV1) {
+        self.unlock();
+    }
+
+    /// `lock` was destroyed before the session was confirmed locked: the
+    /// client gave up locking. Defaults to nothing.
+    fn lock_cancelled(&mut self, _lock: &ExtSessionLockV1) {}
+
     /// Add a new lock surface for an output.
     fn new_surface(&mut self, surface: LockSurface, output: WlOutput);
 

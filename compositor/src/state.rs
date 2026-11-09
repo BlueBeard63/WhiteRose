@@ -101,6 +101,10 @@ pub struct WhiteRose {
     pub export_timer_armed: bool,
     /// The icon of a drag in progress (drawn under the pointer).
     pub dnd_icon: Option<WlSurface>,
+    pub night_light: crate::night_light::NightLight,
+    pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    pub lock: crate::session_lock::SessionLock,
+    pub shell_restarts: crate::shell_supervisor::RestartPolicy,
     /// Clipboard history (saved under clipboard_dir).
     pub clipboard: crate::clipboard::History,
     pub clipboard_dir: std::path::PathBuf,
@@ -120,6 +124,7 @@ impl WhiteRose {
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
+        let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
         crate::toplevel_export::init(&dh);
 
@@ -197,6 +202,10 @@ impl WhiteRose {
             pending_exports: Vec::new(),
             export_timer_armed: false,
             dnd_icon: None,
+            night_light: Default::default(),
+            session_lock_state,
+            lock: Default::default(),
+            shell_restarts: Default::default(),
             clipboard,
             clipboard_dir,
             clipboard_tx,
@@ -255,6 +264,9 @@ impl WhiteRose {
     /// The surface under the pointer, respecting layer order:
     /// overlay, top (bar, panels), windows, bottom, background.
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(WlSurface, Point<f64, Logical>)> {
+        if self.is_locked() {
+            return self.lock_surface_under(pos);
+        }
         let output_hit = self
             .space
             .outputs()
@@ -326,6 +338,9 @@ impl WhiteRose {
 
     /// Gives keyboard focus to a window (or none) and updates history.
     pub fn focus_window(&mut self, window: Option<Window>) {
+        if self.is_locked() {
+            return; // the lock surface keeps the keyboard
+        }
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
         if let Some(w) = &window {
@@ -453,6 +468,13 @@ impl WhiteRose {
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
             Action::Quit => self.loop_signal.stop(),
+            Action::NightLight(n) => {
+                if self.night_light != n {
+                    tracing::info!(on = n.on, temperature = n.temperature, "night light");
+                    self.night_light = n;
+                    self.schedule_redraw();
+                }
+            }
             Action::ScreenshotScreen => self.request_screenshot(),
             Action::AppSwitcher => self.open_switcher(crate::switcher::Mode::Apps),
             Action::WindowSwitcher => self.open_switcher(crate::switcher::Mode::Windows),

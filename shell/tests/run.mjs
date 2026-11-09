@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ function load(file, names) {
 const Calc = load("Calc.js", ["evaluate"]);
 const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
+const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -142,6 +143,43 @@ test("clipboard entries drag as what they are", () => {
     assert.deepEqual(DragData.forEntry({ kind: "files", available: true, files }),
         { "text/uri-list": "file:///here\r\n", "text/plain": "/here" }, "only files still on disk");
     assert.equal(DragData.forEntry({ kind: "files", available: false, files: [{ path: "/gone", exists: false }] }), null);
+});
+
+// ---- QuickSettings -----------------------------------------------------------
+test("uptime and durations", () => {
+    assert.equal(QS.uptime(11520.4), "Up 3h 12m");
+    assert.equal(QS.uptime(420), "Up 7m");
+    assert.equal(QS.uptime(2 * 86400 + 4 * 3600 + 59), "Up 2d 4h");
+    assert.equal(QS.duration(15000), "4h 10m");
+    assert.equal(QS.duration(2700), "45m");
+    assert.equal(QS.duration(0), "");
+});
+test("battery footer", () => {
+    assert.equal(QS.batteryLine(82, "discharging", 15000, 0), "82% · 4h 10m left");
+    assert.equal(QS.batteryLine(82, "discharging", 0, 0), "82%", "UPower still estimating");
+    assert.equal(QS.batteryLine(64, "charging", 0, 3900), "64% · 1h 5m to full");
+    assert.equal(QS.batteryLine(64, "charging", 0, 0), "64% · Charging");
+    assert.equal(QS.batteryLine(100, "full", 0, 0), "Fully charged");
+});
+test("night light runs until the next 07:00", () => {
+    const at = (h, m) => new Date(2026, 10, 9, h, m).getTime();
+    assert.equal(QS.nightLightUntil(at(21, 30)), new Date(2026, 10, 10, 7, 0).getTime());
+    assert.equal(QS.nightLightUntil(at(2, 0)), new Date(2026, 10, 9, 7, 0).getTime(), "after midnight: this morning");
+    assert.equal(QS.nightLightUntil(at(7, 0)), new Date(2026, 10, 10, 7, 0).getTime(), "exactly 07:00: tomorrow");
+});
+test("power profiles cycle and skip performance when missing", () => {
+    assert.deepEqual([0, 1, 2].map(p => QS.nextProfile(p, true)), [1, 2, 0]);
+    assert.deepEqual([0, 1].map(p => QS.nextProfile(p, false)), [1, 0]);
+    assert.equal(QS.profileName(1), "Balanced");
+});
+test("user name and initials", () => {
+    const passwd = "root:x:0:0:root:/root:/bin/bash\njack:x:1000:1000:Jack Morrison,,,:/home/jack:/bin/zsh\nbluebeard:x:1001:1001:,,,:/home/b:/bin/zsh";
+    assert.equal(QS.displayName(passwd, "jack"), "Jack Morrison");
+    assert.equal(QS.displayName(passwd, "bluebeard"), "bluebeard", "empty GECOS: login name");
+    assert.equal(QS.displayName(passwd, "nobody"), "nobody");
+    assert.equal(QS.initials("Jack Morrison"), "JM");
+    assert.equal(QS.initials("bluebeard"), "b");
+    assert.equal(QS.initials("  "), "?");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

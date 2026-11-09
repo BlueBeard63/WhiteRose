@@ -26,6 +26,9 @@ use crate::state::WhiteRose;
 /// black bar and island stand out. Replaced by the wallpaper later.
 pub const CLEAR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
+/// Behind the lock screen (and instead of it, until it has drawn): black.
+pub const LOCKED: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+
 /// Draws one frame of `output` into `framebuffer`. Returns the damaged
 /// regions, or None if nothing changed since the tracker's last frame.
 ///
@@ -40,8 +43,28 @@ pub fn compose(
     tracker: &mut OutputDamageTracker,
     age: usize,
 ) -> Result<Option<Vec<Rectangle<i32, Physical>>>, String> {
-    // A drag in progress: its icon follows the pointer, above everything.
     let scale = output.current_scale().fractional_scale();
+
+    // Locked: the lock surface and nothing else.
+    if state.is_locked() {
+        let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = match state.lock.surface_for(output) {
+            Some(lock) => render_elements_from_surface_tree(
+                renderer,
+                lock.wl_surface(),
+                (0, 0),
+                Scale::from(scale),
+                1.0,
+                Kind::Unspecified,
+            ),
+            None => Vec::new(),
+        };
+        return tracker
+            .render_output(renderer, framebuffer, age, &elements, LOCKED)
+            .map(|r| r.damage.cloned())
+            .map_err(|e| format!("{e:?}"));
+    }
+
+    // A drag in progress: its icon follows the pointer, above everything.
     let mut overlay: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
     if let Some(icon) = state.dnd_icon.as_ref().filter(|i| i.is_alive()) {
         let origin = state.space.output_geometry(output).map(|g| g.loc).unwrap_or_default().to_f64();
@@ -103,6 +126,20 @@ pub fn compose(
 pub fn send_frame_callbacks(output: &Output, state: &mut WhiteRose) {
     let fullscreen = state.active_fullscreen().cloned();
     let elapsed = state.start_time.elapsed();
+    // Locked: only the lock screen draws; everything else waits, unseen.
+    if state.is_locked() {
+        for lock in state.lock.surfaces() {
+            smithay::desktop::utils::send_frames_surface_tree(
+                lock.wl_surface(),
+                output,
+                elapsed,
+                Some(Duration::ZERO),
+                |_, _| Some(output.clone()),
+            );
+        }
+        let _ = state.display_handle.flush_clients();
+        return;
+    }
     for window in state.space.elements() {
         if fullscreen.as_ref().is_none_or(|f| f == window) {
             window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));

@@ -12,8 +12,14 @@ ShellRoot {
     // Tap SUPER: the island morphs into the launcher.
     Connections {
         target: Compositor
-        function onAction(name) { if (name === "app_launcher") ShellState.toggle("launcher") }
+        function onAction(name) {
+            if (name === "app_launcher") ShellState.toggle("launcher");
+            else if (name === "quick_settings") ShellState.togglePanel("quick");
+            else if (name === "lock") ShellState.lock();
+        }
     }
+
+    LockScreen {}
 
     // Screenshot toast, on the primary screen.
     ScreenshotToast { screen: Quickshell.screens[0] ?? null }

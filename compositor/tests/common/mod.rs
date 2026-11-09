@@ -432,3 +432,46 @@ impl Client {
         self.queue.roundtrip(&mut self.app).unwrap();
     }
 }
+
+// ---------------------------------------------------------------- driving
+
+type Job = Box<dyn FnOnce(&mut WhiteRose) -> Box<dyn std::any::Any + Send> + Send>;
+
+/// Lets a test client run code on the compositor (inject input, simulate a
+/// presented frame, read state) at exact points in its own sequence.
+pub struct Ask {
+    jobs: mpsc::Sender<Job>,
+    results: mpsc::Receiver<Box<dyn std::any::Any + Send>>,
+}
+
+impl Ask {
+    pub fn run<R: Send + 'static>(&self, f: impl FnOnce(&mut WhiteRose) -> R + Send + 'static) -> R {
+        self.jobs.send(Box::new(move |s| Box::new(f(s)))).unwrap();
+        *self.results.recv_timeout(Duration::from_secs(5)).expect("compositor answered").downcast().unwrap()
+    }
+}
+
+impl Headless {
+    /// Runs `client` on a thread while this compositor dispatches, executing
+    /// whatever the client asks for in between.
+    pub fn drive<T: Send + 'static>(&mut self, client: impl FnOnce(Connection, Ask) -> T + Send + 'static) -> T {
+        let socket = runtime_dir().join(&self.state.socket_name);
+        let (job_tx, job_rx) = mpsc::channel::<Job>();
+        let (res_tx, res_rx) = mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let conn = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
+            client(conn, Ask { jobs: job_tx, results: res_rx })
+        });
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !thread.is_finished() {
+            assert!(Instant::now() < deadline, "client did not finish");
+            if let Ok(job) = job_rx.try_recv() {
+                let r = job(&mut self.state);
+                self.state.after_dispatch();
+                let _ = res_tx.send(r);
+            }
+            self.dispatch();
+        }
+        thread.join().unwrap()
+    }
+}

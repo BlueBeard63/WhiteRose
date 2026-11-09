@@ -9,7 +9,7 @@ use std::{cell::RefCell, rc::Rc};
 use smithay::{
     backend::{
         egl::EGLDevice,
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, ImportDma},
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Frame, ImportDma, Renderer},
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
     desktop::layer_map_for_output,
@@ -57,6 +57,8 @@ pub fn init_winit(
     state.redraw = Some(ping);
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
+    let mut night = crate::night_light::Pass::default();
+    let mut night_applied = state.night_light;
 
     event_loop.handle().insert_source(winit, move |event, _, state| match event {
         WinitEvent::Resized { size, .. } => {
@@ -71,7 +73,12 @@ pub fn init_winit(
             if let Some(h) = host_inhibit.as_mut() {
                 h.dispatch();
             }
-            render(&mut backend.borrow_mut(), &output, &mut damage_tracker, state);
+            // Night Light toggled: the whole frame must be redrawn and re-tinted.
+            if state.night_light != night_applied {
+                night_applied = state.night_light;
+                damage_tracker = OutputDamageTracker::from_output(&output);
+            }
+            render(&mut backend.borrow_mut(), &output, &mut damage_tracker, &mut night, state);
         }
         WinitEvent::CloseRequested => state.loop_signal.stop(),
         _ => (),
@@ -120,6 +127,7 @@ fn render(
     backend: &mut WinitGraphicsBackend<GlesRenderer>,
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,
+    night: &mut crate::night_light::Pass,
     state: &mut WhiteRose,
 ) {
     // The host compositor's EGL surface rejects buffer-age queries (BAD_SURFACE
@@ -135,13 +143,27 @@ fn render(
                 return;
             }
         };
-        match render::compose(renderer, &mut framebuffer, output, state, damage_tracker, age) {
+        let damage = match render::compose(renderer, &mut framebuffer, output, state, damage_tracker, age) {
             Ok(damage) => damage,
             Err(err) => {
                 tracing::warn!(err, "render failed");
                 return;
             }
+        };
+        // Nested mode repaints the whole frame (age 0), so tinting all of it
+        // after every drawn frame never tints anything twice.
+        if let (Some(_), Some(tint)) = (&damage, state.night_light.multiplier()) {
+            let size = output.current_mode().map(|m| m.size).unwrap_or_default();
+            match renderer.render(&mut framebuffer, size, Transform::Normal) {
+                Ok(mut frame) => {
+                    // Safety: runs inside the frame, with its framebuffer bound.
+                    let _ = frame.with_context(|gl| unsafe { night.apply(gl, tint) });
+                    let _ = frame.finish();
+                }
+                Err(err) => tracing::warn!(?err, "night light pass failed"),
+            }
         }
+        damage
     };
 
     // Nothing changed on screen: skip the swap entirely.
@@ -150,6 +172,9 @@ fn render(
             tracing::warn!(?err, "submit failed");
         }
     }
+
+    // Whatever is on screen now was drawn with the current lock state.
+    state.frame_presented();
 
     // A screenshot was requested (PrtSc): capture what is now on screen.
     if state.screenshot_pending {

@@ -13,7 +13,7 @@ PanelWindow {
     anchors { top: true; left: true; right: true }
     // Bar + whatever the island's current view needs (held while morphing
     // so the window never resizes mid-animation).
-    implicitHeight: Theme.barHeight + island.reserve + 4
+    implicitHeight: Theme.barHeight + Math.max(island.reserve, quick.reserve) + 4
     exclusiveZone: Theme.barHeight
     color: "transparent"
 
@@ -21,12 +21,13 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Top
     // Open views take the keyboard (Esc closes; clicking elsewhere moves focus
     // away, which closes them too).
-    WlrLayershell.keyboardFocus: island.wantsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: island.wantsKeyboard || quick.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     mask: Region {
         item: bar
         Region { item: island }
         Region { item: island.previewCard }
+        Region { item: quick }
     }
 
     Rectangle {
@@ -53,7 +54,11 @@ PanelWindow {
             id: right
             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 4
-            Status { anchors.verticalCenter: parent.verticalCenter }
+            Status {
+                anchors.verticalCenter: parent.verticalCenter
+                active: quick.open
+                onClicked: ShellState.togglePanel("quick")
+            }
             Trigger {
                 anchors.verticalCenter: parent.verticalCenter
                 Icon { name: "bell"; anchors.verticalCenter: parent.verticalCenter }
@@ -67,10 +72,15 @@ PanelWindow {
         anchors { top: bar.bottom; horizontalCenter: parent.horizontalCenter }
     }
 
+    QuickSettingsPanel {
+        id: quick
+        anchors { top: bar.bottom; right: parent.right }
+    }
+
     Connections {
         target: Compositor
         function onAction(name) {
-            if (["quick_settings", "notifications", "screenshot_region"].includes(name))
+            if (["notifications", "screenshot_region"].includes(name))
                 console.info("whiterose:", name, "panel is not built yet");
         }
     }

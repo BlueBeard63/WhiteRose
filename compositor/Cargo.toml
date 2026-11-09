@@ -26,7 +26,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wayland-backend = { version = "0.3", features = ["client_system"] }
 # Nested mode only: ask the host desktop to pass its shortcuts through to us.
 wayland-client = "0.31.10"
-wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+wayland-protocols = { version = "0.32", features = ["client", "unstable", "staging"] }
 wayland-scanner = "0.31"
 
 [dependencies.smithay]

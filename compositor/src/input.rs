@@ -78,7 +78,9 @@ impl WhiteRose {
         let serial = SERIAL_COUNTER.next_serial();
         let button_state = state;
 
-        if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
+        if button_state == ButtonState::Pressed && self.is_locked() {
+            self.focus_lock_surface();
+        } else if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
             let at = pointer.current_location();
             if let Some(layer) = self.top_layer_at(at) {
                 // Clicks on panels never change window focus. Panels that
@@ -109,6 +111,10 @@ impl WhiteRose {
                 let sym = handle.raw_latin_sym_or_raw_current_sym().unwrap_or_else(|| handle.modified_sym());
                 let pressed = key_state == KeyState::Pressed;
 
+                // Locked: every key goes to the lock screen, no shortcuts.
+                if state.is_locked() {
+                    return FilterResult::Forward;
+                }
                 // While a switcher is open it owns the keyboard.
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
