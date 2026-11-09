@@ -35,11 +35,15 @@ qs_bin=$(find "$work/qs/build" -maxdepth 2 -type f -name quickshell -perm -u+x |
 # ---- compositor and daemon ---------------------------------------------------
 # The Rust build cache outlives the fresh source copy, so rebuilds are quick.
 (cd compositor && CARGO_TARGET_DIR="$work/target" cargo build --release --locked)
+# WhiteRose's own apps (Qt Quick + Rust).
+(cd apps && CARGO_TARGET_DIR="$work/apps-target" cargo build --release --locked)
 (cd daemon && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$work/whiterosed" ./cmd/whiterosed)
 
 # ---- the file layout ---------------------------------------------------------
 install -Dm755 "$work/target/release/whiterose-wm" "$stage/usr/bin/whiterose-wm"
 install -Dm755 "$work/whiterosed" "$stage/usr/bin/whiterosed"
+install -Dm755 "$work/apps-target/release/whiterose-notepad" "$stage/usr/bin/whiterose-notepad"
+install -Dm644 packaging/files/whiterose-notepad.desktop "$stage/usr/share/applications/whiterose-notepad.desktop"
 install -Dm755 "$qs_bin" "$stage/usr/lib/whiterose/quickshell"
 ln -s quickshell "$stage/usr/lib/whiterose/qs"
 install -Dm755 packaging/files/whiterose-session "$stage/usr/bin/whiterose-session"
@@ -58,7 +62,7 @@ install -Dm644 profile/custom.zsh-theme "$stage/usr/share/whiterose/profile/cust
 install -Dm644 profile/vscode-extensions.txt "$stage/usr/share/whiterose/profile/vscode-extensions.txt"
 
 # ---- dependencies: what the binaries link, plus what the shell uses ------------
-bins="$stage/usr/bin/whiterose-wm $stage/usr/lib/whiterose/quickshell"
+bins="$stage/usr/bin/whiterose-wm $stage/usr/lib/whiterose/quickshell $stage/usr/bin/whiterose-notepad"
 case "$FORMAT" in
 deb)
     # dpkg-shlibdeps maps each linked library to its package.
@@ -66,14 +70,16 @@ deb)
     libs=$(cd "$work/shlib" && dpkg-shlibdeps -O $bins 2>/dev/null | sed 's/^shlibs:Depends=//')
     # QuickShell uses Qt's private API: exactly this Qt.
     qtabi=$(dpkg-query -W -f='${Provides}\n' libqt6core6t64 libqt6qml6 2>/dev/null | tr ',' '\n' | grep -E 'private-abi' | sed 's/^ *//' | paste -sd, -)
-    extra="libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime"
+    extra="qml6-module-org-kde-syntaxhighlighting, qml6-module-qtquick-controls, libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime"
     depends="$libs${qtabi:+, $qtabi}, $extra"
     ;;
 rpm)
     # RPM resolves sonames itself: require each linked library by soname.
-    libs=$(for b in $bins; do ldd "$b"; done | awk '/=>/ {print $1}' | sort -u | grep -vE '^(linux-vdso|ld-linux)' | sed 's/$/()(64bit)/' | paste -sd, -)
+    # Only what the binaries link directly (ELF NEEDED): those packages
+    # bring their own dependencies (some private, which can't be required).
+    libs=$(for b in $bins; do readelf -d "$b"; done | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u | grep -vE '^(ld-linux)' | sed 's/$/()(64bit)/' | paste -sd, -)
     qtver=$(rpm -q --qf '%{VERSION}' qt6-qtbase)
-    extra="mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam"
+    extra="kf6-syntax-highlighting, mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam"
     depends="$libs, $extra"
     ;;
 *) echo "format must be deb or rpm" >&2; exit 2 ;;

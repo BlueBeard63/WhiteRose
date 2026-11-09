@@ -293,6 +293,25 @@ Figma frame: `Screenshot - Region (SUPER + SHIFT + S)`.
 - **Lock before sleep** (`privacy.lockOnSuspend`): whiterosed holds a logind delay inhibitor. On PrepareForSleep it tells the shell to lock and lets the system sleep a second later.
 - **History:** `privacy.clipboardHistory` off stops recording (copy and paste still work). `privacy.recentFiles` keeps recent files out of search. Settings can clear the clipboard history and the launcher's remembered commands, sums and app counts.
 
+## WhiteRose's own apps (`apps/`)
+
+Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It is one binary with its QML and fonts compiled in. The apps share a Cargo workspace.
+
+- **The kit** (`apps/kit`, `import WhiteRose.Kit`):
+  - `Desktop`: a QML singleton for the session's settings, following whiterosed live, so apps restyle the moment Appearance changes;
+  - `Theme`: the shell's tokens, with Auto using the same sunrise maths as the shell;
+  - the Settings app's controls;
+  - `AppWindow`: rounded, with the desktop's Windows-style title buttons, a title-bar toolbar slot and edge resizing;
+  - `Menu`.
+- **Rule for QML here:** write properties qualified (`root.x = …`, never a bare `x = …` in a function). The QML is compiled ahead of time, and a bare write silently goes nowhere.
+- **Notepad** (`apps/notepad`, `whiterose-notepad [FILE…]`):
+  - **Tabs:** the scratch note first, then files. The scratch note always stays and saves itself as you type.
+  - **Editing:** find and replace, go to line, wrap, line numbers placed at each line's real position (only the visible ones), and text size.
+  - **Highlighting:** KDE's syntax-highlighting library when installed (a package dependency; plain text without it).
+  - **Saving:** a new file is written and renamed over the old, keeping permissions and line endings. Binary, non-UTF-8 and >20 MiB files are refused.
+  - **Changes on disk:** a file changed underneath you reloads if you haven't edited it, else asks.
+  - **Session:** the open files come back next time (`$XDG_DATA_HOME/whiterose/notepad`).
+
 ## Windows
 
 - **Minimise:** a minimised window is hidden but kept, and comes back when it's focused (dock, ALT+TAB, the app's launcher entry). It stays hidden across workspace switches.

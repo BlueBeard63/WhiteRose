@@ -3,7 +3,7 @@ FROM ubuntu:26.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git build-essential cmake ninja-build pkg-config dpkg-dev \
-    qt6-base-dev qt6-base-private-dev qt6-declarative-dev qt6-declarative-private-dev \
+    qt6-base-dev qt6-base-private-dev qmake6 qt6-declarative-dev qt6-declarative-private-dev \
     qt6-wayland-dev qt6-wayland-private-dev qt6-shadertools-dev qt6-svg-dev spirv-tools \
     libcli11-dev libdrm-dev libgbm-dev libjemalloc-dev libpipewire-0.3-dev libpam0g-dev \
     libpolkit-agent-1-dev libpolkit-gobject-1-dev libglib2.0-dev libwayland-dev wayland-protocols \

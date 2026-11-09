@@ -1,0 +1,16 @@
+[package]
+name = "whiterose-kit"
+description = "What WhiteRose's apps share: the look (following Settings > Appearance live), controls, the window frame, and the settings daemon."
+version.workspace = true
+edition.workspace = true
+links = "whiterose_kit"
+
+[dependencies]
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+cxx-qt-build.workspace = true

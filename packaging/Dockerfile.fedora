@@ -1,5 +1,5 @@
-# Build environment for the .rpm (Fedora: the Qt it links against).
-FROM fedora:43
+# Build environment for the .rpm (Fedora 45, the current release: the Qt it links against).
+FROM fedora:45
 RUN dnf -y install --setopt=install_weak_deps=False \
     ca-certificates curl git gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config rpm \
     qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel qt6-qtdeclarative-private-devel \

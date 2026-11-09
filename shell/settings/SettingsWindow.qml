@@ -161,15 +161,16 @@ FloatingWindow {
     // e.g. Apply / Revert on Displays.
     Flickable {
         id: scroller
-        anchors { left: sidebar.right; right: parent.right; top: parent.top; bottom: footerBar.visible ? footerBar.top : parent.bottom }
-        contentHeight: pageLoader.height + 86
+        // Starts below the window buttons, so the page scrolls away under
+        // that strip instead of under the buttons.
+        anchors { left: sidebar.right; right: parent.right; top: parent.top; topMargin: 36; bottom: footerBar.visible ? footerBar.top : parent.bottom }
+        contentHeight: pageLoader.height + 50
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         Loader {
             id: pageLoader
-            // Below the window buttons (34 px), so a page's own buttons
-            // never sit right beside minimise / maximise / close.
-            x: 28; y: 50
+            // (The page area starts below the window buttons.)
+            x: 28; y: 14
             width: scroller.width - 56
             source: SettingsState.current ? "file://" + SettingsState.current.dir + "/Page.qml" : ""
             onSourceChanged: scroller.contentY = 0

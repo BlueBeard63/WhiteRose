@@ -35,12 +35,15 @@ rust-check: rust-fmt clippy rust-test
 
 rust-fmt:
 	cd $(WM) && $(CARGO) fmt --check
+	cd apps && $(CARGO) fmt --check
 
 clippy:
 	cd $(WM) && $(CARGO) clippy --all-targets --locked -- -D warnings
+	cd apps && $(CARGO) clippy --all-targets --locked -- -D warnings
 
 rust-test:
 	cd $(WM) && $(CARGO) test --locked
+	cd apps && $(CARGO) test --locked
 
 # ---- Shell (QuickShell QML) -----------------------------------------------
 shell-check:         ## pure JS logic: calculator, search ranking, recent files

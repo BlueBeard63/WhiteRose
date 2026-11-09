@@ -2,3 +2,5 @@
 /daemon/coverage.out
 /daemon/coverage.html
 /compositor/target/
+/apps/target/
+.qmlls.ini

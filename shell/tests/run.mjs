@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Files Format.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,7 @@ const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
+const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -573,6 +574,33 @@ test("users: suggested usernames, checks, last seen", () => {
     assert.equal(U.lastSeen(new Date(2026, 10, 5).getTime() / 1000, now), "Signed in 4 days ago");
     assert.equal(U.lastSeen(new Date(2026, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct");
     assert.equal(U.lastSeen(new Date(2025, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct 2025");
+});
+
+// ---- Files (Format.js) ----------------------------------------------------------
+test("files: sizes, dates, kinds", () => {
+    assert.equal(F.size(512), "512 B");
+    assert.equal(F.size(1234), "1.2 kB");
+    assert.equal(F.size(52_400_000), "52 MB");
+    assert.equal(F.size(3_100_000_000), "3.1 GB");
+    const now = new Date(2026, 10, 9, 15).getTime();
+    assert.equal(F.date(new Date(2026, 10, 9, 8, 5).getTime(), now), "Today 08:05");
+    assert.equal(F.date(new Date(2026, 10, 8, 23, 0).getTime(), now), "Yesterday 23:00");
+    assert.equal(F.date(new Date(2026, 2, 4).getTime(), now), "4 Mar");
+    assert.equal(F.date(new Date(2024, 2, 4).getTime(), now), "4 Mar 2024");
+    assert.equal(F.kind("image/png"), "Image");
+    assert.equal(F.kind("application/vnd.oasis.opendocument.text"), "Document");
+    assert.equal(F.kind("inode/directory"), "Folder");
+});
+test("files: selection by click, ctrl and shift", () => {
+    const e = ["a", "b", "c", "d", "e"].map(n => ({ path: "/" + n }));
+    let s = F.click(e, {}, -1, 1, false, false);
+    assert.deepEqual(Object.keys(s.selected), ["/b"]);
+    s = F.click(e, s.selected, s.anchor, 3, false, true);
+    assert.deepEqual(Object.keys(s.selected), ["/b", "/c", "/d"], "shift: a range from the anchor");
+    s = F.click(e, s.selected, s.anchor, 2, true, false);
+    assert.deepEqual(Object.keys(s.selected), ["/b", "/d"], "ctrl: toggle one");
+    s = F.click(e, s.selected, s.anchor, 0, false, false);
+    assert.deepEqual(Object.keys(s.selected), ["/a"], "plain: just that one");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

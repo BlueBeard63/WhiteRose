@@ -1,0 +1,5 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/qt/qml/WhiteRose/Files">
+    <file>qml/Format.js</file>
+</qresource>
+</RCC>
