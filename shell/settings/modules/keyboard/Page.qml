@@ -280,7 +280,7 @@ Column {
                 readonly property bool changed: !modelData.command && JSON.stringify(modelData.keys) !== JSON.stringify(modelData.defaults)
                 width: parent.width
                 height: 54
-                color: rec ? "#241a1d" : "transparent"
+                color: rec ? Theme.tint(0.08) : "transparent"
                 Rectangle { visible: row.index > 0; width: parent.width; height: 1; color: Theme.surface2 }
 
                 Column {

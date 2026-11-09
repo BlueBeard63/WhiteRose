@@ -30,7 +30,7 @@ Popup {
                 x: 18; anchors.verticalCenter: parent.verticalCenter
                 width: 38; height: 38; radius: 11
                 color: Theme.rose
-                Icon { anchors.centerIn: parent; name: root.icon; size: 18; color: Theme.bg }
+                Icon { anchors.centerIn: parent; name: root.icon; size: 18; color: Theme.onAccent }
             }
             Column {
                 anchors { left: badge.visible ? badge.right : parent.left; leftMargin: badge.visible ? 12 : 20; verticalCenter: parent.verticalCenter }

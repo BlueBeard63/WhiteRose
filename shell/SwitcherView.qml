@@ -150,7 +150,7 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: app.modelData.windows.length
-                            color: Theme.bg
+                            color: Theme.onAccent
                             font { family: Theme.font; pointSize: Theme.pt(10.5); weight: Font.DemiBold }
                         }
                     }

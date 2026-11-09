@@ -73,6 +73,8 @@ pub struct WhiteRose {
     /// Floating geometry of maximized/fullscreen windows, for restoring.
     pub restore_geometry: Vec<(Window, smithay::utils::Rectangle<i32, Logical>)>,
     pub fullscreen: Option<Window>,
+    /// Minimised windows: hidden until focused again (dock, ALT+TAB).
+    pub minimized: Vec<Window>,
     /// Output and usable area last used to fit maximized/fullscreen windows.
     /// PrtSc pressed: capture on the next frame.
     pub screenshot_pending: bool,
@@ -225,6 +227,7 @@ impl WhiteRose {
             hidden_at: Vec::new(),
             restore_geometry: Vec::new(),
             fullscreen: None,
+            minimized: Vec::new(),
             fitted_to: None,
             next_window_id: 1,
             switcher: None,
@@ -415,6 +418,13 @@ impl WhiteRose {
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
         if let Some(w) = &window {
+            // Focusing a minimised window (dock, ALT+TAB) brings it back.
+            if let Some(i) = self.minimized.iter().position(|m| m == w) {
+                self.minimized.swap_remove(i);
+                if self.workspaces.workspace_of(w) == Some(self.workspaces.active()) {
+                    self.show(w);
+                }
+            }
             self.space.raise_element(w, true);
             self.workspaces.focus(w);
         }
@@ -464,10 +474,37 @@ impl WhiteRose {
             self.hide(w);
         }
         for w in &switch.show {
-            self.show(w);
+            if !self.minimized.contains(w) {
+                self.show(w);
+            }
         }
-        let focus = self.workspaces.focused().cloned();
+        let focus = self.next_focus();
         self.focus_window(focus);
+    }
+
+    /// The window to focus when the focused one goes away: the most
+    /// recently used on this workspace that isn't minimised.
+    pub fn next_focus(&self) -> Option<Window> {
+        let ws = self.workspaces.active();
+        self.workspaces
+            .mru()
+            .iter()
+            .find(|w| self.workspaces.workspace_of(w) == Some(ws) && !self.minimized.contains(w))
+            .cloned()
+    }
+
+    /// Hides a window until it's focused again.
+    pub fn minimize(&mut self, w: &Window) {
+        if self.minimized.contains(w) {
+            return;
+        }
+        if self.fullscreen.as_ref() == Some(w) {
+            self.unfullscreen(w);
+        }
+        self.minimized.push(w.clone());
+        self.hide(w);
+        let next = self.next_focus();
+        self.focus_window(next);
     }
 
     /// Moves the focused window to a workspace (0-based index).
@@ -509,8 +546,9 @@ impl WhiteRose {
         self.forget_window_state(w);
         self.workspaces.remove(w);
         self.hidden_at.retain(|(h, _)| h != w);
+        self.minimized.retain(|m| m != w);
         self.space.unmap_elem(w);
-        let next = self.workspaces.focused().cloned();
+        let next = self.next_focus();
         self.focus_window(next);
     }
 

@@ -104,7 +104,7 @@ Column {
                     x: 12; anchors.verticalCenter: parent.verticalCenter
                     width: 32; height: 32; radius: 16
                     color: parent.on ? Theme.rose : Theme.surface2
-                    Icon { anchors.centerIn: parent; name: modelData.icon; size: 15; color: parent.parent.on ? Theme.bg : Theme.text }
+                    Icon { anchors.centerIn: parent; name: modelData.icon; size: 15; color: parent.parent.on ? Theme.onAccent : Theme.text }
                 }
                 Column {
                     anchors { left: modeIcon.right; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }

@@ -1,0 +1,11 @@
+{
+  "id": "appearance",
+  "name": "Appearance",
+  "description": "Theme, accent colour, wallpaper, fonts",
+  "icon": "palette",
+  "category": "desktop",
+  "order": 10,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["appearance", "theme", "dark", "light", "auto", "night", "accent", "colour", "color", "wallpaper", "background", "font", "text size", "interface size", "scale"]
+}

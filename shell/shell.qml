@@ -3,6 +3,9 @@ import QtQuick
 import Quickshell
 
 ShellRoot {
+    // The wallpaper, behind everything.
+    Background {}
+
     // One bar per monitor.
     Variants {
         model: Quickshell.screens

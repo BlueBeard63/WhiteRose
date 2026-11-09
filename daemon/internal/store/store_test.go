@@ -91,6 +91,11 @@ func TestValidation(t *testing.T) {
 		"keyboard.repeatRate":          `500`,
 		"shortcuts.keys":               `{"close-window":["SUPER++Q"]}`,
 		"shortcuts.custom":             `[{"id":"files","name":"Files","command":"nautilus","keys":["SUPER+E"]}]`,
+		"appearance.theme":             `"sepia"`,
+		"appearance.accent":            `"pink"`,
+		"appearance.size":              `"huge"`,
+		"wallpaper.folders":            `["relative/dir"]`,
+		"wallpaper.rotateMinutes":      `7`,
 		"nope.unknown":                 `1`,
 		"Bad Key":                      `1`,
 		"module.x":                     `{not json`,
@@ -101,16 +106,21 @@ func TestValidation(t *testing.T) {
 		}
 	}
 	good := map[string]string{
-		"weather.city":          `"London"`,
-		"weather.latitude":      `51.5`,
-		"module.wallpaper.path": `"/home/me/bg.png"`,
-		"launcher.calculations": `[{"expr":"1+1","result":"2"}]`,
-		"displays":              `{"monitor":[],"profile":[]}`,
-		"keyboard.layouts":      `[{"layout":"gb"},{"layout":"es","variant":"nodeadkeys"}]`,
-		"keyboard.repeatDelay":  `250`,
-		"shortcuts.keys":        `{"close-window":["SUPER+Q","ALT+F4"],"lock":[],"workspace":["SUPER+1-9"]}`,
-		"shortcuts.custom":      `[{"id":"custom-files","name":"Open Files","command":"nautilus","keys":["SUPER+E"]}]`,
-		"displays.test":         `{"config":{"monitor":[{"id":"builtin","scale":1.5}],"profile":[]},"until":1794240000000}`,
+		"weather.city":            `"London"`,
+		"weather.latitude":        `51.5`,
+		"module.wallpaper.path":   `"/home/me/bg.png"`,
+		"launcher.calculations":   `[{"expr":"1+1","result":"2"}]`,
+		"displays":                `{"monitor":[],"profile":[]}`,
+		"keyboard.layouts":        `[{"layout":"gb"},{"layout":"es","variant":"nodeadkeys"}]`,
+		"keyboard.repeatDelay":    `250`,
+		"appearance.theme":        `"auto"`,
+		"appearance.accent":       `"#8FB8F2"`,
+		"wallpaper.current":       `"/home/me/Pictures/sea.jpg"`,
+		"wallpaper.folders":       `["~/Pictures/Wallpapers","/usr/share/backgrounds"]`,
+		"wallpaper.rotateMinutes": `30`,
+		"shortcuts.keys":          `{"close-window":["SUPER+Q","ALT+F4"],"lock":[],"workspace":["SUPER+1-9"]}`,
+		"shortcuts.custom":        `[{"id":"custom-files","name":"Open Files","command":"nautilus","keys":["SUPER+E"]}]`,
+		"displays.test":           `{"config":{"monitor":[{"id":"builtin","scale":1.5}],"profile":[]},"until":1794240000000}`,
 	}
 	for k, v := range good {
 		if err := s.Set(k, json.RawMessage(v)); err != nil {

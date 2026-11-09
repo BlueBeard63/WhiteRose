@@ -34,7 +34,7 @@ Item {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             visible: root.entries.length > 0
             width: clearText.implicitWidth + 24; height: 30; radius: 10
-            color: clearMouse.containsMouse ? Qt.rgba(0.91, 0.64, 0.68, 0.18) : Theme.surface1
+            color: clearMouse.containsMouse ? Theme.tint(0.18) : Theme.surface1
             Text {
                 id: clearText
                 anchors.centerIn: parent

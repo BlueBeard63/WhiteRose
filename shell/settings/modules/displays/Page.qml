@@ -165,7 +165,7 @@ Column {
                 height: Math.max(40, r.h * arrange.k)
                 radius: 10
                 z: dragging ? 2 : on ? 1 : 0
-                color: on ? "#241f21" : Theme.bg
+                color: on ? Theme.tint(0.1) : Theme.bg
                 opacity: modelData.enabled ? 1 : 0.45
                 border { width: on ? 1.5 : 1; color: on ? Theme.pearl : Theme.surface2 }
 
@@ -180,7 +180,7 @@ Column {
                         Text {
                             anchors.centerIn: parent
                             text: tile.index + 1
-                            color: tile.on ? Theme.bg : Theme.muted
+                            color: tile.on ? Theme.onAccent : Theme.muted
                             font { family: Theme.font; pointSize: Theme.pt(8.5); weight: Font.DemiBold }
                         }
                     }
@@ -282,7 +282,7 @@ Column {
                 Badge { height: 22; text: "# " + (page.current?.id ?? "") }
                 Rectangle {
                     height: 22; width: strongRow.implicitWidth + 14; radius: 6
-                    color: page.current?.strong ? "#3a2a2e" : Theme.surface2
+                    color: page.current?.strong ? Theme.tint(0.16) : Theme.surface2
                     Row {
                         id: strongRow
                         anchors.centerIn: parent

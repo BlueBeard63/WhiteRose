@@ -49,7 +49,7 @@ Column {
                 x: 14; anchors.verticalCenter: parent.verticalCenter
                 width: 36; height: 36; radius: 10
                 color: Networking.wifiEnabled ? Theme.rose : Theme.surface2
-                Icon { anchors.centerIn: parent; name: Networking.wifiEnabled ? "wifi" : "wifiOff"; size: 17; color: Networking.wifiEnabled ? Theme.bg : Theme.muted }
+                Icon { anchors.centerIn: parent; name: Networking.wifiEnabled ? "wifi" : "wifiOff"; size: 17; color: Networking.wifiEnabled ? Theme.onAccent : Theme.muted }
             }
             Column {
                 anchors { left: wifiTile.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
@@ -171,7 +171,7 @@ Column {
                     x: 14; anchors.verticalCenter: parent.verticalCenter
                     width: 36; height: 36; radius: 10
                     color: eth.dev.connected ? Theme.rose : Theme.surface2
-                    Icon { anchors.centerIn: parent; name: "ethernet"; size: 17; color: eth.dev.connected ? Theme.bg : Theme.muted }
+                    Icon { anchors.centerIn: parent; name: "ethernet"; size: 17; color: eth.dev.connected ? Theme.onAccent : Theme.muted }
                 }
                 Column {
                     anchors { left: ethTile.right; leftMargin: 12; verticalCenter: parent.verticalCenter }

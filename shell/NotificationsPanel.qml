@@ -32,7 +32,7 @@ SidePanel {
                     id: countText
                     anchors.centerIn: parent
                     text: Notifications.count
-                    color: Theme.bg
+                    color: Theme.onAccent
                     font { family: Theme.font; pointSize: Theme.pt(11); weight: Font.DemiBold }
                 }
             }
@@ -59,7 +59,7 @@ SidePanel {
                 width: 28; height: 28; icon: "bellOff"; iconSize: 14
                 fill: QuickState.doNotDisturb ? Theme.rose : "transparent"
                 hoverFill: QuickState.doNotDisturb ? Theme.rose : Theme.surface2
-                iconColor: QuickState.doNotDisturb ? Theme.bg : Theme.muted
+                iconColor: QuickState.doNotDisturb ? Theme.onAccent : Theme.muted
                 onClicked: QuickState.setDoNotDisturb(!QuickState.doNotDisturb)
             }
         }

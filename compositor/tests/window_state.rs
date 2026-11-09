@@ -152,3 +152,39 @@ fn closing_a_fullscreen_window_clears_fullscreen() {
         },
     );
 }
+
+#[test]
+fn minimize_hides_until_focused_again() {
+    let mut h = Headless::new(true);
+    h.run(
+        |conn| {
+            let mut c = Client::connect(&conn);
+            let (a, _ta) = c.open_window();
+            c.attach_buffer(&a, 400, 300);
+            let (b, tb) = c.open_window();
+            c.attach_buffer(&b, 400, 300);
+            // The title bar's minimise button on the newest window.
+            tb.set_minimized();
+            c.queue.roundtrip(&mut c.app).unwrap();
+        },
+        |state, ()| {
+            let all: Vec<_> = state.workspaces.mru().to_vec();
+            assert_eq!(all.len(), 2);
+            let hidden = state.minimized.first().cloned().expect("a window is minimised");
+            assert_eq!(state.space.elements().count(), 1, "it's gone from the screen");
+            let other = all.iter().find(|w| **w != hidden).unwrap().clone();
+            assert_eq!(state.focused_window(), Some(other.clone()), "focus moves to the other window");
+
+            // Away and back: it stays minimised.
+            state.switch_workspace(1);
+            state.switch_workspace(0);
+            assert_eq!(state.space.elements().count(), 1, "switching workspaces doesn't bring it back");
+
+            // Clicking it in the dock or ALT+TAB focuses it: it's back.
+            state.activate_window(&hidden);
+            assert!(state.minimized.is_empty());
+            assert_eq!(state.space.elements().count(), 2);
+            assert_eq!(state.focused_window(), Some(hidden));
+        },
+    );
+}

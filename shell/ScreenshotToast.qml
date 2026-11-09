@@ -89,12 +89,12 @@ PanelWindow {
                 spacing: 10
                 Rectangle {
                     width: 32; height: 32; radius: 10
-                    color: root.failed ? Qt.rgba(0.91, 0.64, 0.68, 0.18) : Theme.rose
+                    color: root.failed ? Theme.tint(0.18) : Theme.rose
                     Icon {
                         anchors.centerIn: parent
                         size: 16
                         name: root.failed ? "alert" : "camera"
-                        color: root.failed ? Theme.rose : Theme.bg
+                        color: root.failed ? Theme.rose : Theme.onAccent
                     }
                 }
                 Column {
@@ -160,7 +160,7 @@ PanelWindow {
                     width: copiedRow.implicitWidth + 16
                     height: 22
                     radius: 7
-                    color: Qt.rgba(0.91, 0.64, 0.68, 0.14)
+                    color: Theme.tint(0.14)
                     Row {
                         id: copiedRow
                         anchors.centerIn: parent

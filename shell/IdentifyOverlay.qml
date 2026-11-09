@@ -51,7 +51,7 @@ Scope {
                         Text {
                             anchors.centerIn: parent
                             text: index >= 0 ? index + 1 : "?"
-                            color: Theme.bg
+                            color: Theme.onAccent
                             font { family: Theme.font; pointSize: Theme.pt(24); weight: Font.DemiBold }
                         }
                     }

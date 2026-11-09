@@ -118,7 +118,7 @@ SidePanel {
             }
             IconButton {
                 width: 30; height: 30; icon: "power"
-                iconColor: root.powerMenu ? Theme.bg : Theme.rose
+                iconColor: root.powerMenu ? Theme.onAccent : Theme.rose
                 fill: root.powerMenu ? Theme.rose : Theme.surface1
                 hoverFill: root.powerMenu ? Theme.rose : Theme.surface2
                 onClicked: root.powerMenu = !root.powerMenu

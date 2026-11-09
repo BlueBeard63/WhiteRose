@@ -162,6 +162,39 @@ var Known = map[string]Key{
 		Default: json.RawMessage(`{"monitor":[],"profile":[]}`),
 		Check:   checkDisplays,
 	},
+	// Appearance: dark, light, or auto (light between sunrise and sunset).
+	"appearance.theme": {Default: json.RawMessage(`"dark"`), Check: into(oneOf("dark", "light", "auto"))},
+	"appearance.accent": {Default: json.RawMessage(`"#E8A3AE"`), Check: into(func(s string) error {
+		if !hexColor.MatchString(s) {
+			return errors.New("must be a colour like #E8A3AE")
+		}
+		return nil
+	})},
+	"appearance.font": {Default: json.RawMessage(`"Geist"`), Check: into(func(s string) error {
+		if strings.TrimSpace(s) == "" {
+			return errors.New("needs a font name")
+		}
+		return limit(s, 100)
+	})},
+	"appearance.size": {Default: json.RawMessage(`"default"`), Check: into(oneOf("compact", "default", "large"))},
+	// The wallpaper: "builtin:<name>" or an image's path.
+	"wallpaper.current": {Default: json.RawMessage(`"builtin:rose"`), Check: into(func(s string) error {
+		if strings.TrimSpace(s) == "" {
+			return errors.New("needs a wallpaper")
+		}
+		return limit(s, 4096)
+	})},
+	// Folders whose images are offered (and rotated through), and single images added.
+	"wallpaper.folders": {Default: json.RawMessage(`["~/Pictures/Wallpapers"]`), Check: into(paths(20))},
+	"wallpaper.files":   {Default: json.RawMessage(`[]`), Check: into(paths(200))},
+	// Change to the next image every this many minutes (0: never).
+	"wallpaper.rotateMinutes": {Default: json.RawMessage(`0`), Check: into(func(v int) error {
+		switch v {
+		case 0, 15, 30, 60, 1440:
+			return nil
+		}
+		return errors.New("must be 0, 15, 30, 60 or 1440 minutes")
+	})},
 	// Keyboard layouts, first is the default: UK English to start with.
 	// An empty list means the system's (/etc/default/keyboard or the X11
 	// keyboard config).
@@ -244,7 +277,33 @@ type CustomShortcut struct {
 	Keys    []string `json:"keys"`
 }
 
+func oneOf(allowed ...string) func(string) error {
+	return func(s string) error {
+		for _, a := range allowed {
+			if s == a {
+				return nil
+			}
+		}
+		return fmt.Errorf("must be one of %s", strings.Join(allowed, ", "))
+	}
+}
+
+func paths(n int) func([]string) error {
+	return func(v []string) error {
+		if len(v) > n {
+			return fmt.Errorf("at most %d entries", n)
+		}
+		for _, p := range v {
+			if p == "" || len(p) > 4096 || !(strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~/")) {
+				return fmt.Errorf("%q must be an absolute path (or start with ~/)", p)
+			}
+		}
+		return nil
+	}
+}
+
 var (
+	hexColor   = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 	xkbName    = regexp.MustCompile(`^[A-Za-z0-9_()-]{1,40}$`)
 	shortcutID = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 	// "SUPER+SHIFT+S", "PRTSC", "SUPER+1-9": modifiers and one key. The

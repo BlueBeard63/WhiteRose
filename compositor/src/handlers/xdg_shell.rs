@@ -144,6 +144,12 @@ impl XdgShellHandler for WhiteRose {
         }
     }
 
+    fn minimize_request(&mut self, surface: ToplevelSurface) {
+        if let Some(w) = self.window_for_surface(surface.wl_surface()) {
+            self.minimize(&w);
+        }
+    }
+
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
         if let Some(w) = self.window_for_surface(surface.wl_surface()) {
             self.unmaximize(&w);

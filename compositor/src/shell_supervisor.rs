@@ -37,14 +37,33 @@ impl RestartPolicy {
     }
 }
 
+/// The daemon and shell belong to this session: when the compositor exits,
+/// however it exits (even killed), the kernel sends them SIGTERM, so none is
+/// left behind holding the session's sockets.
+fn die_with_us(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    // Safety: prctl is async-signal-safe, and nothing else runs between fork
+    // and exec here.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
 impl WhiteRose {
     /// Starts `command` and restarts it whenever it exits (see module docs).
     /// `name` is for logs and keeps each process's restart count apart.
     pub fn supervise(&mut self, name: &'static str, command: String) {
         let mut parts = command.split_whitespace();
         let Some(program) = parts.next() else { return };
-        let child =
-            Command::new(program).args(parts).env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env()).spawn();
+        let mut cmd = Command::new(program);
+        cmd.args(parts).env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env());
+        die_with_us(&mut cmd);
+        let child = cmd.spawn();
         let mut child = match child {
             Ok(c) => c,
             Err(err) => {

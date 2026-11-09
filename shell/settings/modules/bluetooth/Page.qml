@@ -48,7 +48,7 @@ Column {
                 x: 14; anchors.verticalCenter: parent.verticalCenter
                 width: 36; height: 36; radius: 10
                 color: page.on ? Theme.rose : Theme.surface2
-                Icon { anchors.centerIn: parent; name: "bluetooth"; size: 17; color: page.on ? Theme.bg : Theme.muted }
+                Icon { anchors.centerIn: parent; name: "bluetooth"; size: 17; color: page.on ? Theme.onAccent : Theme.muted }
             }
             Column {
                 anchors { left: tile.right; leftMargin: 12; verticalCenter: parent.verticalCenter }

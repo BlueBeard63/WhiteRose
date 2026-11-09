@@ -70,7 +70,7 @@ Item {
             Icon {
                 anchors.centerIn: parent
                 name: "x"; size: 12
-                color: closeMouse.containsMouse ? Theme.bg : Theme.text
+                color: closeMouse.containsMouse ? Theme.onAccent : Theme.text
             }
             MouseArea {
                 id: closeMouse

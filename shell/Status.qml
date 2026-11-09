@@ -60,21 +60,32 @@ Trigger {
         color: root.sink?.audio?.muted ? Theme.muted : Theme.text
     }
 
-    Item {
+    // The battery: always the outline with its fill level, plus a small
+    // bolt beside it while charging (the same weight as the icons around it).
+    Row {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.hasBattery
-        width: 16
-        height: 16
-        Icon { name: root.charging ? "zap" : "battery"; size: 16; color: root.percent <= 15 && !root.charging ? Theme.rose : Theme.text }
-        // Fill level inside the battery outline (inner area x 5-14, y 9-15 of 24).
-        Rectangle {
-            visible: !root.charging
-            x: 5 * 16 / 24
-            y: 9 * 16 / 24
-            height: 6 * 16 / 24
-            width: Math.max(1, 9 * 16 / 24 * root.percent / 100)
-            radius: 1
-            color: root.percent <= 15 ? Theme.rose : Theme.text
+        spacing: 1
+        Icon {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.charging
+            name: "zap"; size: 10
+            color: Theme.text
+        }
+        Item {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16
+            height: 16
+            Icon { name: "battery"; size: 16; color: root.percent <= 15 && !root.charging ? Theme.rose : Theme.text }
+            // Fill level inside the battery outline (inner area x 5-14, y 9-15 of 24).
+            Rectangle {
+                x: 5 * 16 / 24
+                y: 9 * 16 / 24
+                height: 6 * 16 / 24
+                width: Math.max(1, 9 * 16 / 24 * root.percent / 100)
+                radius: 1
+                color: root.percent <= 15 && !root.charging ? Theme.rose : Theme.text
+            }
         }
     }
 

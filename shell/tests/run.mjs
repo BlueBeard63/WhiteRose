@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,8 @@ const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "night
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
 const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
 const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "newId", "parseLayouts", "searchLayouts"]);
+const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
+const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -479,6 +481,45 @@ test("keys: new ids and the XKB layout list", () => {
     assert.deepEqual(db.variants[1], { layout: "es", variant: "nodeadkeys", name: "Spanish (no dead keys)" });
     assert.deepEqual(K.searchLayouts(db, "spanish").map(l => l.variant), ["", "nodeadkeys"]);
     assert.equal(K.searchLayouts(db, "").length, 2, "browsing shows plain layouts");
+});
+
+// ---- Sun (Auto theme) ------------------------------------------------------
+const near = (a, b, mins) => Math.abs(a - b) <= mins * 60000;
+test("sun: London's longest day and a winter day", () => {
+    const june = Sun.times(Date.UTC(2026, 5, 21, 12), 51.5074, -0.1278);
+    assert.ok(near(june.rise, Date.UTC(2026, 5, 21, 3, 43), 3), new Date(june.rise).toISOString());
+    assert.ok(near(june.set, Date.UTC(2026, 5, 21, 20, 21), 3), new Date(june.set).toISOString());
+    const dec = Sun.times(Date.UTC(2026, 11, 21, 12), 51.5074, -0.1278);
+    assert.ok(near(dec.rise, Date.UTC(2026, 11, 21, 8, 4), 3), new Date(dec.rise).toISOString());
+    assert.ok(near(dec.set, Date.UTC(2026, 11, 21, 15, 53), 3), new Date(dec.set).toISOString());
+});
+test("sun: day and night, poles, and no location", () => {
+    assert.equal(Sun.isDay(Date.UTC(2026, 5, 21, 12), 51.5, -0.13), true);
+    assert.equal(Sun.isDay(Date.UTC(2026, 5, 21, 23), 51.5, -0.13), false);
+    assert.equal(Sun.times(Date.UTC(2026, 5, 21, 12), 78.2, 15.6).polar, "day", "Svalbard in June");
+    assert.equal(Sun.isDay(Date.UTC(2026, 11, 21, 12), 78.2, 15.6), false, "Svalbard in December");
+    const noon = new Date(2026, 10, 9, 12).getTime();
+    assert.equal(Sun.isDay(noon, null, null), true);
+    assert.equal(Sun.isDay(new Date(2026, 10, 9, 22).getTime(), null, null), false);
+    assert.equal(Sun.untilChange(noon, null, null), 7 * 3600000 + 1000 > 6 * 3600000 ? 6 * 3600000 : 7 * 3600000 + 1000);
+    const evening = new Date(2026, 10, 9, 18, 30).getTime();
+    assert.equal(Sun.untilChange(evening, null, null), 30 * 60000 + 1000);
+});
+
+// ---- Wallpapers --------------------------------------------------------------
+test("wallpapers: paths, listing and rotation", () => {
+    assert.equal(W.expand("~/Pictures/Wallpapers", "/home/me"), "/home/me/Pictures/Wallpapers");
+    assert.equal(W.expand("/srv/bg", "/home/me"), "/srv/bg");
+    assert.equal(W.tildify("/home/me/Pictures/a.jpg", "/home/me"), "~/Pictures/a.jpg");
+    assert.deepEqual(W.parseList("/w/b.JPG\n/w/a.png\n/w/notes.txt\n\n/w/a.png\n"), ["/w/a.png", "/w/b.JPG"]);
+    assert.ok(W.isBuiltin("builtin:rose") && W.builtin("builtin:rose").name === "Rose");
+    assert.equal(W.all(["/w/a.png"], ["/x/c.jpg", "/w/a.png"]).length, 4 + 2);
+    assert.equal(W.next(["/w/a.png", "/w/b.png"], [], "/w/a.png"), "/w/b.png");
+    assert.equal(W.next(["/w/a.png", "/w/b.png"], [], "/w/b.png"), "/w/a.png", "wraps");
+    assert.equal(W.next(["/w/a.png"], [], "builtin:rose"), "/w/a.png", "from a gradient to your images");
+    assert.equal(W.next([], [], "builtin:rose"), "builtin:dusk", "no images: through the gradients");
+    assert.equal(W.rotationText(30), "changes every 30 min");
+    assert.equal(W.rotationText(0), "");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -246,6 +246,22 @@ Figma frames: `Settings - Displays` and `Settings - Displays (dragging)`.
 - Identify shows each monitor's number and name on it for 3 s (`shell/IdentifyOverlay.qml`).
 - The logic (snapping, overlap, building the setting) is `settings/modules/displays/Displays.js`, tested by `shell/tests/run.mjs`.
 
+## Appearance
+
+Figma frame: `Settings - Appearance`.
+
+- **Theme** (`appearance.theme`: dark, light, auto). `shell/Theme.qml` holds both palettes and every surface reads it, so a change restyles the bar, panels, island and Settings at once. Text on the accent colour uses `Theme.onAccent` (always dark: every accent is a light pastel).
+- **Auto** is light from sunrise to sunset at the weather location (`shell/Sun.js`, the standard sunrise equation), else 07:00–19:00. One timer fires at the next change; nothing polls.
+- **Accent** (`appearance.accent`): one of the seven Figma swatches.
+- **Font and size** (`appearance.font`, `appearance.size`): the size scales text (`Theme.pt`).
+- **Wallpaper** (`wallpaper.current`: `builtin:<name>` or an image path). The shell draws it on a layer-shell background surface per screen (`shell/Background.qml`). The compositor's damage tracking means a still wallpaper costs nothing after the first frame. Built-in gradients need no file. Images are decoded at the screen's size, not the file's. `wallpaper.folders` (default `~/Pictures/Wallpapers`) and `wallpaper.files` are offered, and `wallpaper.rotateMinutes` steps through them.
+- **Not built:** "Blur behind panels" from the Figma. The compositor has no blur pass yet, and the row would be a switch that does nothing. Apps' own light/dark preference (the portal's colour scheme) isn't set either. It's shared with GNOME's settings, so changing it here would change GNOME too.
+
+## Windows
+
+- **Minimise:** a minimised window is hidden but kept, and comes back when it's focused (dock, ALT+TAB, the app's launcher entry). It stays hidden across workspace switches.
+- **The session's own processes:** the daemon and shell get SIGTERM when the compositor exits, however it exits, so none is left holding the session's sockets.
+
 ## Keyboard and shortcuts
 
 Figma frame: `Settings - Keyboard & Shortcuts`.
@@ -457,7 +473,8 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Notifications | Do Not Disturb, popup duration, per-app mute (the shell records which apps notify). |
 | Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
 | Keyboard & Shortcuts | Compositor `shortcuts` and `keyboard` events; `keyboard.*` and `shortcuts.*` settings. |
+| Appearance | `appearance.*` and `wallpaper.*`; the wallpaper list from `find` in the folders. |
 | Displays | Compositor `outputs` event; Apply writes the `displays.test` trial, Keep writes `displays`. |
 | Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
 
-- **Pages not built yet** don't appear in the sidebar: Appearance, Top Bar, Updates, Users, Privacy. They wait on their backends: theming, the update system.
+- **Pages not built yet** don't appear in the sidebar: Top Bar, Updates, Users, Privacy. They wait on their backends: the update system.

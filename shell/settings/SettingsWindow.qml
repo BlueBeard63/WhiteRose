@@ -32,32 +32,26 @@ FloatingWindow {
     // Rounded and frameless (Figma): the app draws its own window.
     ClippingRectangle {
     anchors.fill: parent
-    radius: 16
+    radius: win.maximized ? 0 : 16
     color: Theme.bg
     Rectangle {
         id: sidebar
         width: 250
         height: parent.height
-        color: "#151517"
+        color: Theme.sidebar
 
-        // Window buttons (close, minimise unavailable, maximise unavailable):
-        // the close dot quits.
-        Row {
-            x: 18; y: 18
-            spacing: 7
-            Rectangle {
-                width: 11; height: 11; radius: 6
-                color: closeMouse.containsMouse ? Qt.lighter(Theme.rose, 1.1) : Theme.rose
-                MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Qt.quit() }
-            }
-            Rectangle { width: 11; height: 11; radius: 6; color: Theme.surface2 }
-            Rectangle { width: 11; height: 11; radius: 6; color: Theme.surface2 }
+        // The window's title, in the strip that moves it.
+        Text {
+            x: 18; y: 13
+            text: "Settings"
+            color: Theme.muted
+            font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
         }
-        // The empty strip at the top moves the window.
         MouseArea {
-            width: parent.width; height: 44
+            width: parent.width; height: 40
             z: -1
             onPressed: win.startSystemMove()
+            onDoubleClicked: win.maximized = !win.maximized
         }
 
         Rectangle {
@@ -189,6 +183,38 @@ FloatingWindow {
         Loader {
             anchors { fill: parent; leftMargin: 28; rightMargin: 28 }
             sourceComponent: pageLoader.item?.footer ?? null
+        }
+    }
+
+    // Window buttons, top right: minimise, maximise (restore), close.
+    // The strip beside them moves the window; double-click maximises.
+    MouseArea {
+        anchors { left: sidebar.right; right: windowButtons.left; top: parent.top }
+        height: 24
+        onPressed: win.startSystemMove()
+        onDoubleClicked: win.maximized = !win.maximized
+    }
+    Row {
+        id: windowButtons
+        anchors { top: parent.top; right: parent.right }
+        Repeater {
+            model: [
+                { icon: "minus", run: () => win.minimized = true },
+                { icon: win.maximized ? "restore" : "square", run: () => win.maximized = !win.maximized },
+                { icon: "x", close: true, run: () => Qt.quit() },
+            ]
+            delegate: Rectangle {
+                required property var modelData
+                width: 46; height: 34
+                color: !btnMouse.containsMouse ? "transparent" : modelData.close ? "#C42B1C" : Theme.surface2
+                Icon {
+                    anchors.centerIn: parent
+                    name: modelData.icon
+                    size: modelData.icon === "x" ? 14 : 12
+                    color: btnMouse.containsMouse && modelData.close ? "white" : Theme.text
+                }
+                MouseArea { id: btnMouse; anchors.fill: parent; hoverEnabled: true; onClicked: modelData.run() }
+            }
         }
     }
 

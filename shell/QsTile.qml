@@ -28,7 +28,7 @@ Rectangle {
         Icon {
             anchors.centerIn: parent
             name: root.icon; size: 15
-            color: root.active ? Theme.bg : Theme.text
+            color: root.active ? Theme.onAccent : Theme.text
         }
     }
     Column {
