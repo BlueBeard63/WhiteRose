@@ -165,6 +165,17 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		err := session.Watch(func(r session.Request) { srv.Broadcast(map[string]string{"event": string(r)}) })
 		fmt.Fprintln(stderr, "whiterosed: lock requests not watched:", err)
 	}()
+	// Lock before sleeping (privacy.lockOnSuspend): the shell locks, then
+	// the inhibitor is let go a moment later.
+	go func() {
+		err := session.WatchSleep(time.Second, func() {
+			var on bool
+			if st.GetInto("privacy.lockOnSuspend", &on) == nil && on {
+				srv.Broadcast(map[string]string{"event": string(session.Lock)})
+			}
+		})
+		fmt.Fprintln(stderr, "whiterosed: no lock before sleep:", err)
+	}()
 
 	// Calendars every 15 minutes, weather every 30, and straight away when
 	// their settings change.

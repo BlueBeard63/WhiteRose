@@ -11,6 +11,7 @@ pub mod foreign_toplevel;
 pub mod grabs;
 mod handlers;
 mod host_inhibit;
+pub mod idle;
 pub mod input;
 pub mod ipc;
 pub mod keybind;

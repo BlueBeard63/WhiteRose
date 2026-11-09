@@ -549,8 +549,9 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
     let Some(surface) = s.surface.as_mut() else { return };
     let info = outputs::info(&s.output);
 
-    // Disabled in the settings: dark (DPMS off) until enabled again.
-    if !info.enabled {
+    // Disabled in the settings, or everything idle: dark (DPMS off) until
+    // enabled again or the next input.
+    if !info.enabled || state.idle.screens_off {
         if s.lit {
             if let Err(err) = surface.with_compositor(|c| c.clear()) {
                 tracing::warn!(?err, "couldn't turn the screen off");
@@ -558,6 +559,10 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
             s.lit = false;
         }
         return;
+    }
+    if !s.lit {
+        // Coming back on: draw everything, not just what changed while dark.
+        surface.reset_buffers();
     }
     s.lit = true;
 

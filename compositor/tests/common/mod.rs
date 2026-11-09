@@ -214,6 +214,8 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for App {
 
 delegate_noop!(App: ignore hyprland_toplevel_export_manager_v1::HyprlandToplevelExportManagerV1);
 delegate_noop!(App: ignore wayland_client::protocol::wl_seat::WlSeat);
+delegate_noop!(App: ignore wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);
+delegate_noop!(App: ignore wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1);
 
 impl Dispatch<hyprland_toplevel_export_frame_v1::HyprlandToplevelExportFrameV1, ()> for App {
     fn event(

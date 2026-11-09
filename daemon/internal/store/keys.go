@@ -208,6 +208,13 @@ var Known = map[string]Key{
 		}
 		return errors.New("must be 0, 15, 30, 60 or 1440 minutes")
 	})},
+	// Privacy: lock after this many idle minutes (0: never), screens off
+	// after this many (0: never), lock before sleeping, and what's remembered.
+	"privacy.lockAfter":        {Default: json.RawMessage(`5`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
+	"privacy.screenOffAfter":   {Default: json.RawMessage(`10`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
+	"privacy.lockOnSuspend":    {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"privacy.recentFiles":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Keyboard layouts, first is the default: UK English to start with.
 	// An empty list means the system's (/etc/default/keyboard or the X11
 	// keyboard config).
@@ -298,6 +305,17 @@ func oneOf(allowed ...string) func(string) error {
 			}
 		}
 		return fmt.Errorf("must be one of %s", strings.Join(allowed, ", "))
+	}
+}
+
+func minutes(allowed ...int) func(int) error {
+	return func(v int) error {
+		for _, a := range allowed {
+			if v == a {
+				return nil
+			}
+		}
+		return fmt.Errorf("must be one of %v minutes", allowed)
 	}
 }
 

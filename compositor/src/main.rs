@@ -73,6 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.keyboard.logo_remap = logo_remap;
     state.apply_shortcuts();
     state.apply_keyboard();
+    state.arm_idle();
 
     let nested = match backend.as_str() {
         "auto" => std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some(),

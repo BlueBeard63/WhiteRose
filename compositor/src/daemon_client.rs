@@ -110,9 +110,13 @@ impl WhiteRose {
     }
 
     fn daemon_message(&mut self, v: &Value) {
-        let (mut displays, mut keyboard, mut shortcuts) = (false, false, false);
+        let (mut displays, mut keyboard, mut shortcuts, mut idle) = (false, false, false, false);
         let mut take = |state: &mut WhiteRose, key: &str, value: &Value| {
             displays |= state.set_display_setting(key, value);
+            idle |= state.idle_setting(key, value);
+            if key == "privacy.clipboardHistory" {
+                state.clipboard_history_on = value.as_bool().unwrap_or(true);
+            }
             let (k, s) = state.keyboard_setting(key, value);
             keyboard |= k;
             shortcuts |= s;
@@ -140,6 +144,9 @@ impl WhiteRose {
         }
         if shortcuts {
             self.apply_shortcuts();
+        }
+        if idle {
+            self.arm_idle();
         }
     }
 

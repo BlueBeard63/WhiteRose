@@ -99,6 +99,8 @@ func TestValidation(t *testing.T) {
 		"bar.timeFormat":               `"13h"`,
 		"bar.screens":                  `"some"`,
 		"bar.seconds":                  `"yes"`,
+		"privacy.lockAfter":            `7`,
+		"privacy.screenOffAfter":       `-1`,
 		"nope.unknown":                 `1`,
 		"Bad Key":                      `1`,
 		"module.x":                     `{not json`,

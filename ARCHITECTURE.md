@@ -277,6 +277,13 @@ Figma frame: `Screenshot - Region (SUPER + SHIFT + S)`.
 - **Accounts** (`daemon/internal/accounts`): AccountsService over D-Bus. Listing, name, picture, administrator rights, password, adding and removing people. Calls allow interactive authorization, so polkit asks through the prompt. Passwords are hashed in the daemon (SHA-512 crypt, checked against the specification's test vectors) and never sent in the clear. You can't remove your own administrator rights or your own account.
 - **Slow requests don't block:** whiterosed answers the optional ops (users, battery, network profiles) on their own goroutines, so a request waiting on a password doesn't hold up the shell's settings traffic. Settings requests stay in order.
 
+## Privacy: idle and history
+
+- **Idle** (`compositor/src/idle.rs`): `privacy.lockAfter` and `privacy.screenOffAfter` (minutes; 0 is never). Input only stamps the time. One timer wakes at the next deadline: it asks the shell to lock, or turns every screen off (DPMS), and the next input turns them back on. Only on real hardware: nested, the host desktop handles idle.
+- **Staying awake:** a window on screen holding `zwp_idle_inhibit_v1` (a video, a call) holds both off.
+- **Lock before sleep** (`privacy.lockOnSuspend`): whiterosed holds a logind delay inhibitor. On PrepareForSleep it tells the shell to lock and lets the system sleep a second later.
+- **History:** `privacy.clipboardHistory` off stops recording (copy and paste still work). `privacy.recentFiles` keeps recent files out of search. Settings can clear the clipboard history and the launcher's remembered commands, sums and app counts.
+
 ## Windows
 
 - **Minimise:** a minimised window is hidden but kept, and comes back when it's focused (dock, ALT+TAB, the app's launcher entry). It stays hidden across workspace switches.
@@ -494,9 +501,10 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
 | Keyboard & Shortcuts | Compositor `shortcuts` and `keyboard` events; `keyboard.*` and `shortcuts.*` settings. |
 | Appearance | `appearance.*` and `wallpaper.*`; the wallpaper list from `find` in the folders. |
+| Privacy | `privacy.*` settings (compositor idle, daemon sleep lock); clears via the compositor and settings. |
 | Users | `whiterosed` users ops (AccountsService); permission through the shell's polkit prompt. |
 | Top Bar | The `bar.*` settings. |
 | Displays | Compositor `outputs` event; Apply writes the `displays.test` trial, Keep writes `displays`. |
 | Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
 
-- **Pages not built yet** don't appear in the sidebar: Updates, Privacy. They wait on their backends: the update system.
+- **Pages not built yet** don't appear in the sidebar: Updates, which waits on the update system.

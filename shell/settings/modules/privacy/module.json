@@ -1,0 +1,11 @@
+{
+  "id": "privacy",
+  "name": "Privacy",
+  "description": "Screen lock, and what the desktop remembers",
+  "icon": "shield",
+  "category": "personal",
+  "order": 31,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["privacy", "lock", "screen lock", "idle", "auto lock", "screen off", "blank", "suspend", "sleep", "clipboard", "history", "recent files", "forget", "clear"]
+}

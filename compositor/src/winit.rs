@@ -72,6 +72,8 @@ pub fn init_winit(
     };
 
     init_dmabuf(&backend, state);
+    // The host desktop handles idle (and sees input we never get).
+    state.idle.enabled = false;
 
     // Let SUPER, ALT+TAB and PrtSc reach us instead of the host desktop.
     let mut host_inhibit = crate::host_inhibit::HostInhibit::request(backend.borrow().window());

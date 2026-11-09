@@ -78,6 +78,11 @@ impl WhiteRose {
 
     /// A client set the clipboard: read and record it.
     pub fn capture_clipboard(&mut self, mimes: Vec<String>) {
+        // Clipboard history turned off (Settings > Privacy): copying still
+        // works, nothing is remembered.
+        if !self.clipboard_history_on {
+            return;
+        }
         let Some(choice) = clipboard::choose(&mimes) else { return };
         let Ok((reader, writer)) = UnixStream::pair() else { return };
         if reader.set_read_timeout(Some(READ_TIMEOUT)).is_err() {
@@ -106,6 +111,9 @@ impl WhiteRose {
 
     /// Adds a screenshot to the history (it is already on the clipboard).
     pub fn clipboard_add_screenshot(&mut self, png: Arc<Vec<u8>>) {
+        if !self.clipboard_history_on {
+            return;
+        }
         let tx = self.clipboard_tx.clone();
         let images = self.clipboard_images_dir();
         std::thread::spawn(move || {

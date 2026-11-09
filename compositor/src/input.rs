@@ -39,6 +39,7 @@ impl WhiteRose {
                 self.on_pointer_button(event.button_code(), event.state(), event.time_msec())
             }
             InputEvent::PointerAxis { event, .. } => {
+                self.activity();
                 let source = event.source();
                 let amount =
                     |axis| event.amount(axis).unwrap_or_else(|| event.amount_v120(axis).unwrap_or(0.0) * 15.0 / 120.);
@@ -65,6 +66,7 @@ impl WhiteRose {
 
     /// The pointer moved to `pos` (global coordinates). Also driven by tests.
     pub fn on_pointer_motion(&mut self, pos: Point<f64, Logical>, time: u32) {
+        self.activity();
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         let under = self.surface_under(pos);
@@ -92,6 +94,7 @@ impl WhiteRose {
     /// A pointer button changed (`button` is a Linux input code, e.g. 0x110
     /// for the left button). Also driven by tests.
     pub fn on_pointer_button(&mut self, button: u32, state: ButtonState, time: u32) {
+        self.activity();
         self.logo_tap_pending = false;
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         let serial = SERIAL_COUNTER.next_serial();
@@ -120,6 +123,7 @@ impl WhiteRose {
 
     /// One key event from any backend (also driven directly by tests).
     pub fn on_key(&mut self, keycode: smithay::input::keyboard::Keycode, key_state: KeyState, time: u32) {
+        self.activity();
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
 

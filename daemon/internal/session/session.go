@@ -5,6 +5,7 @@ package session
 
 import (
 	"os"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -77,4 +78,63 @@ func Find(conn *dbus.Conn) (dbus.ObjectPath, error) {
 		}
 	}
 	return "", err
+}
+
+// WatchSleep calls beforeSleep when the computer is about to suspend or
+// hibernate, while holding sleep back (a logind "delay" inhibitor, at most
+// logind's InhibitDelayMaxSec, 5 s by default) for `hold`, so the screen is
+// locked before the lid opens again. Runs until the bus connection fails.
+func WatchSleep(hold time.Duration, beforeSleep func()) error {
+	conn, err := dbus.ConnectSystemBus()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	manager := conn.Object("org.freedesktop.login1", "/org/freedesktop/login1")
+	inhibit := func() (*os.File, error) {
+		var fd dbus.UnixFD
+		err := manager.Call("org.freedesktop.login1.Manager.Inhibit", 0,
+			"sleep", "WhiteRose", "Lock the screen before sleeping", "delay").Store(&fd)
+		if err != nil {
+			return nil, err
+		}
+		return os.NewFile(uintptr(fd), "logind-inhibitor"), nil
+	}
+	held, err := inhibit()
+	if err != nil {
+		return err
+	}
+	if err := conn.AddMatchSignal(dbus.WithMatchObjectPath("/org/freedesktop/login1"),
+		dbus.WithMatchInterface("org.freedesktop.login1.Manager"), dbus.WithMatchMember("PrepareForSleep")); err != nil {
+		return err
+	}
+	signals := make(chan *dbus.Signal, 8)
+	conn.Signal(signals)
+	for s := range signals {
+		going, ok := sleepSignal(s)
+		if !ok {
+			continue
+		}
+		if going {
+			beforeSleep()
+			time.Sleep(hold)
+			if held != nil {
+				held.Close() // let it sleep
+				held = nil
+			}
+		} else if held == nil {
+			// Awake again: hold the next sleep back too.
+			held, _ = inhibit()
+		}
+	}
+	return nil
+}
+
+// sleepSignal reads PrepareForSleep: true before sleeping, false after.
+func sleepSignal(s *dbus.Signal) (going bool, ok bool) {
+	if s.Name != "org.freedesktop.login1.Manager.PrepareForSleep" || len(s.Body) != 1 {
+		return false, false
+	}
+	going, ok = s.Body[0].(bool)
+	return going, ok
 }

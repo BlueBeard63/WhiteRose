@@ -122,6 +122,11 @@ pub struct WhiteRose {
     pub cursor_status: smithay::input::pointer::CursorImageStatus,
     /// True when the backend draws the pointer (DRM), so moving it redraws.
     pub draws_cursor: bool,
+    /// Idle lock and screens off (see idle.rs).
+    pub idle: crate::idle::Idle,
+    pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
+    /// "privacy.clipboardHistory": remember what's copied.
+    pub clipboard_history_on: bool,
     /// Layouts, key repeat and the shortcut settings (see keyboard.rs).
     pub keyboard: crate::keyboard::KeyboardSettings,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
@@ -163,6 +168,7 @@ impl WhiteRose {
         let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Self>(&dh);
         let cursor_shape_state = smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
+        let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
         crate::toplevel_export::init(&dh);
 
@@ -269,6 +275,9 @@ impl WhiteRose {
                 ..Default::default()
             },
             shortcuts_paused: None,
+            idle: Default::default(),
+            idle_inhibit_state,
+            clipboard_history_on: true,
             cursor_shape_state,
             vt_switch: None,
             session_lock_state,
