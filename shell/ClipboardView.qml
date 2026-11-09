@@ -1,10 +1,12 @@
 // Island view: clipboard history. Click an entry to put it back on the
 // clipboard. Copied files are re-checked on disk every time this opens:
 // removed ones are marked, and an entry whose files are all gone can't be
-// pasted. Clear removes the whole history (on disk too).
+// pasted. Clear removes the whole history (on disk too). Entries can be
+// dragged into other apps: files and images as files, text as text.
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
+import "DragData.js" as DragData
 
 Item {
     id: root
@@ -75,8 +77,18 @@ Item {
                 id: rowMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                cursorShape: row.e.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+                cursorShape: drag.active ? Qt.ClosedHandCursor : row.e.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+                drag.target: ghost.mime ? ghost : null
+                preventStealing: true // a drag out, not a scroll of the list (the wheel scrolls)
+                onPressed: if (row.e.kind === "image" && ghost.mime) Compositor.clipboardPrepareDrag(row.e.id)
                 onClicked: if (row.e.available) { Compositor.clipboardPaste(row.e.id); ShellState.close(); }
+            }
+            DragGhost {
+                id: ghost
+                area: rowMouse
+                mime: DragData.forEntry(row.e)
+                picture: row.e.kind === "image" ? thumb : body
+                pictureScale: row.e.kind === "image" ? 1 : 0.7
             }
 
             Row {
@@ -93,6 +105,7 @@ Item {
                     Icon { anchors.centerIn: parent; size: 15; color: Theme.pearl; name: row.e.kind === "files" ? "folder" : "clipboard" }
                 }
                 ClippingRectangle {
+                    id: thumb
                     visible: row.e.kind === "image"
                     width: 120; height: 72; radius: 8
                     color: Theme.surface1

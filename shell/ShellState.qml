@@ -19,6 +19,9 @@ Singleton {
     function toggle(view) { islandView = islandView === view ? "idle" : view }
     function close() { islandView = "idle" }
 
+    // An item is being dragged out of the island: keep it open meanwhile.
+    property bool dragging: false
+
     // Desktop entry id whose windows the dock should preview (hover, or IPC).
     property string dockPreviewKey: ""
     // Text to pre-fill when the launcher opens (from `launcher search <text>`).

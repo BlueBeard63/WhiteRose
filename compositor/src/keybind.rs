@@ -76,6 +76,7 @@ impl Action {
 pub enum ShellRequest {
     ClipboardList,
     ClipboardPaste(u64),
+    ClipboardPrepareDrag(u64),
     ClipboardDelete(u64),
     ClipboardClear,
     ScreenshotList,

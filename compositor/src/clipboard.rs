@@ -129,11 +129,18 @@ pub struct EntryView {
     pub kind: String,
     /// Text: the first ~300 characters. Files: the file names.
     pub preview: String,
+    /// Text: the whole text, for dragging it into another app. Left out for
+    /// texts over DRAG_TEXT_MAX (those can still be pasted by clicking).
+    pub text: Option<String>,
     /// Image: absolute path to the stored image.
     pub image: Option<String>,
     pub files: Vec<FileView>,
     /// False when nothing can be pasted (every copied file is gone).
     pub available: bool,
+    /// Image: where a readably named copy is put for drag-and-drop (an email
+    /// attachment called "Clipboard image ….png", not a hash). Created on
+    /// request just before a drag starts.
+    pub drag_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,8 +219,8 @@ impl History {
     }
 
     /// What the shell shows. Checks every copied file against the disk.
-    pub fn view(&self, images_dir: &Path) -> Vec<EntryView> {
-        self.entries.iter().map(|e| view_entry(e, images_dir)).collect()
+    pub fn view(&self, images_dir: &Path, drag_dir: &Path) -> Vec<EntryView> {
+        self.entries.iter().map(|e| view_entry(e, images_dir, drag_dir)).collect()
     }
 
     pub fn to_json(&self) -> String {
@@ -237,16 +244,18 @@ fn image_file(c: &Content) -> Option<String> {
     }
 }
 
-fn view_entry(e: &Entry, images_dir: &Path) -> EntryView {
+fn view_entry(e: &Entry, images_dir: &Path, drag_dir: &Path) -> EntryView {
     match &e.content {
         Content::Text { text } => EntryView {
             id: e.id,
             time: e.time,
             kind: "text".into(),
             preview: text.chars().take(300).collect(),
+            text: (text.len() <= DRAG_TEXT_MAX).then(|| text.clone()),
             image: None,
             files: Vec::new(),
             available: true,
+            drag_path: None,
         },
         Content::Image { file, .. } => {
             let path = images_dir.join(file);
@@ -255,9 +264,11 @@ fn view_entry(e: &Entry, images_dir: &Path) -> EntryView {
                 time: e.time,
                 kind: "image".into(),
                 preview: String::new(),
+                text: None,
                 available: path.exists(),
                 image: Some(path.to_string_lossy().into_owned()),
                 files: Vec::new(),
+                drag_path: Some(drag_dir.join(drag_name(e.time, file)).to_string_lossy().into_owned()),
             }
         }
         Content::Files { paths } => {
@@ -274,11 +285,46 @@ fn view_entry(e: &Entry, images_dir: &Path) -> EntryView {
                     })
                     .collect::<Vec<_>>()
                     .join(", "),
+                text: None,
                 image: None,
                 available: files.iter().any(|f| f.exists),
                 files,
+                drag_path: None,
             }
         }
+    }
+}
+
+/// Longest text sent to the shell whole (so it can be dragged out). Keeps the
+/// history event small: 50 entries can't add up to more than ~800 KB.
+pub const DRAG_TEXT_MAX: usize = 16 * 1024;
+
+/// "Clipboard image 2026-11-09 14-32-07.png": the name a dragged clipboard
+/// image gets, from the copy's local time and the stored file's extension.
+pub fn drag_name(time: i64, stored_file: &str) -> String {
+    use chrono::TimeZone;
+    let ext = Path::new(stored_file).extension().and_then(|e| e.to_str()).unwrap_or("png");
+    let when = chrono::Local.timestamp_opt(time, 0).single().unwrap_or_else(chrono::Local::now);
+    format!("Clipboard image {}.{ext}", when.format("%Y-%m-%d %H-%M-%S"))
+}
+
+/// `$XDG_RUNTIME_DIR/whiterose/drag`: cleared at logout, never on disk.
+pub fn drag_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("whiterose/drag")
+}
+
+/// Keeps the `keep` newest files in `dir` (an app may still be reading a
+/// recently dropped one) and deletes the rest.
+pub fn prune_dir(dir: &Path, keep: usize) {
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .collect();
+    files.sort_by_key(|f| std::cmp::Reverse(f.0));
+    for (_, p) in files.into_iter().skip(keep) {
+        let _ = std::fs::remove_file(p);
     }
 }
 
@@ -492,7 +538,7 @@ mod tests {
         let mut h = History::default();
         let (id, _) =
             h.add(Content::Files { paths: vec![alive.to_string_lossy().into(), gone.to_string_lossy().into()] }, 1);
-        let v = &h.view(&dir)[0];
+        let v = &h.view(&dir, &dir)[0];
         assert_eq!(v.kind, "files");
         assert_eq!(v.files.iter().map(|f| f.exists).collect::<Vec<_>>(), vec![true, false]);
         assert!(v.available);
@@ -505,7 +551,7 @@ mod tests {
 
         // Once every file is gone, the entry can't be pasted.
         std::fs::remove_file(&alive).unwrap();
-        assert!(!h.view(&dir)[0].available);
+        assert!(!h.view(&dir, &dir)[0].available);
         assert!(payloads(h.get(id).unwrap(), &dir).is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -534,5 +580,46 @@ mod tests {
         let reloaded = History::from_json(&h.to_json());
         assert_eq!(reloaded.next_id, 2);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn dragged_images_get_readable_names() {
+        use chrono::TimeZone;
+        let t = chrono::Local.with_ymd_and_hms(2026, 11, 9, 14, 32, 7).unwrap().timestamp();
+        assert_eq!(drag_name(t, "3f9a1c2b7e440000.png"), "Clipboard image 2026-11-09 14-32-07.png");
+        assert_eq!(drag_name(t, "abc.jpg"), "Clipboard image 2026-11-09 14-32-07.jpg");
+        let mut h = History::default();
+        h.add(Content::Image { file: "abc.png".into(), mime: "image/png".into(), bytes: 1 }, t);
+        let v = &h.view(Path::new("/img"), Path::new("/run/drag"))[0];
+        assert_eq!(v.drag_path.as_deref(), Some("/run/drag/Clipboard image 2026-11-09 14-32-07.png"));
+    }
+
+    #[test]
+    fn prune_keeps_the_newest_files() {
+        let dir = std::env::temp_dir().join(format!("wr-prune-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..5 {
+            let p = dir.join(format!("{i}"));
+            std::fs::write(&p, b"x").unwrap();
+            let t = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000 + i);
+            std::fs::File::options().write(true).open(&p).unwrap().set_modified(t).unwrap();
+        }
+        prune_dir(&dir, 2);
+        let mut left: Vec<String> =
+            std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        left.sort();
+        assert_eq!(left, vec!["3", "4"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn short_texts_are_sent_whole_for_dragging() {
+        let mut h = History::default();
+        h.add(Content::Text { text: "x".repeat(DRAG_TEXT_MAX + 1) }, 1);
+        h.add(Content::Text { text: "y".repeat(400) }, 2);
+        let v = h.view(Path::new("/i"), Path::new("/d"));
+        assert_eq!(v[0].text.as_deref().map(str::len), Some(400), "whole, not the 300-char preview");
+        assert_eq!(v[0].preview.len(), 300);
+        assert_eq!(v[1].text, None, "too long to send; click to paste instead");
     }
 }

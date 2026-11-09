@@ -60,6 +60,8 @@ Singleton {
     // Re-sends the history, re-checking copied files on disk.
     function clipboardList() { send({ cmd: "clipboard_list" }) }
     function clipboardPaste(id) { send({ cmd: "clipboard_paste", id: id }) }
+    // Makes the named copy of an image entry that a drag hands out.
+    function clipboardPrepareDrag(id) { send({ cmd: "clipboard_prepare_drag", id: id }) }
     function clipboardDelete(id) { send({ cmd: "clipboard_delete", id: id }) }
     function clipboardClear() { send({ cmd: "clipboard_clear" }) }
     function screenshotList() { send({ cmd: "screenshot_list" }) }

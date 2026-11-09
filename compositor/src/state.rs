@@ -99,6 +99,8 @@ pub struct WhiteRose {
     /// Window copies requested by clients (live previews), filled after frames.
     pub pending_exports: Vec<crate::toplevel_export::PendingCopy>,
     pub export_timer_armed: bool,
+    /// The icon of a drag in progress (drawn under the pointer).
+    pub dnd_icon: Option<WlSurface>,
     /// Clipboard history (saved under clipboard_dir).
     pub clipboard: crate::clipboard::History,
     pub clipboard_dir: std::path::PathBuf,
@@ -194,6 +196,7 @@ impl WhiteRose {
             foreign_toplevels,
             pending_exports: Vec::new(),
             export_timer_armed: false,
+            dnd_icon: None,
             clipboard,
             clipboard_dir,
             clipboard_tx,
@@ -475,6 +478,7 @@ impl WhiteRose {
                 match req {
                     R::ClipboardList => self.clipboard_sync(),
                     R::ClipboardPaste(id) => self.clipboard_paste(id),
+                    R::ClipboardPrepareDrag(id) => self.clipboard_prepare_drag(id),
                     R::ClipboardDelete(id) => self.clipboard_delete(id),
                     R::ClipboardClear => self.clipboard_clear(),
                     R::ScreenshotList => self.screenshots_sync(),

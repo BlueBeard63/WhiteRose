@@ -10,7 +10,7 @@ use smithay::{
         keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
-    utils::SERIAL_COUNTER,
+    utils::{Logical, Point, SERIAL_COUNTER},
 };
 
 use crate::{
@@ -28,38 +28,10 @@ impl WhiteRose {
                 let Some(output) = self.space.outputs().next() else { return };
                 let Some(output_geo) = self.space.output_geometry(output) else { return };
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
-                let serial = SERIAL_COUNTER.next_serial();
-                let pointer = self.seat.get_pointer().expect("seat has a pointer");
-                let under = self.surface_under(pos);
-                pointer.motion(self, under, &MotionEvent { location: pos, serial, time: event.time_msec() });
-                pointer.frame(self);
+                self.on_pointer_motion(pos, event.time_msec());
             }
             InputEvent::PointerButton { event, .. } => {
-                self.logo_tap_pending = false;
-                let pointer = self.seat.get_pointer().expect("seat has a pointer");
-                let serial = SERIAL_COUNTER.next_serial();
-                let button_state = event.state();
-
-                if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
-                    let at = pointer.current_location();
-                    if let Some(layer) = self.top_layer_at(at) {
-                        // Clicks on panels never change window focus. Panels that
-                        // take typing (e.g. a search field) get the keyboard.
-                        if layer.can_receive_keyboard_focus() {
-                            let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
-                            keyboard.set_focus(self, Some(layer.wl_surface().clone()), serial);
-                        }
-                    } else {
-                        let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
-                        // Click-to-focus; clicking the background clears focus.
-                        self.focus_window(clicked);
-                    }
-                }
-                pointer.button(
-                    self,
-                    &ButtonEvent { button: event.button_code(), state: button_state, serial, time: event.time_msec() },
-                );
-                pointer.frame(self);
+                self.on_pointer_button(event.button_code(), event.state(), event.time_msec())
             }
             InputEvent::PointerAxis { event, .. } => {
                 let source = event.source();
@@ -84,6 +56,45 @@ impl WhiteRose {
             }
             _ => {}
         }
+    }
+
+    /// The pointer moved to `pos` (global coordinates). Also driven by tests.
+    pub fn on_pointer_motion(&mut self, pos: Point<f64, Logical>, time: u32) {
+        let serial = SERIAL_COUNTER.next_serial();
+        let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        let under = self.surface_under(pos);
+        pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
+        pointer.frame(self);
+        if self.dnd_icon.is_some() {
+            self.schedule_redraw(); // the drag icon follows the pointer
+        }
+    }
+
+    /// A pointer button changed (`button` is a Linux input code, e.g. 0x110
+    /// for the left button). Also driven by tests.
+    pub fn on_pointer_button(&mut self, button: u32, state: ButtonState, time: u32) {
+        self.logo_tap_pending = false;
+        let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        let serial = SERIAL_COUNTER.next_serial();
+        let button_state = state;
+
+        if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
+            let at = pointer.current_location();
+            if let Some(layer) = self.top_layer_at(at) {
+                // Clicks on panels never change window focus. Panels that
+                // take typing (e.g. a search field) get the keyboard.
+                if layer.can_receive_keyboard_focus() {
+                    let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
+                    keyboard.set_focus(self, Some(layer.wl_surface().clone()), serial);
+                }
+            } else {
+                let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
+                // Click-to-focus; clicking the background clears focus.
+                self.focus_window(clicked);
+            }
+        }
+        pointer.button(self, &ButtonEvent { button, state: button_state, serial, time });
+        pointer.frame(self);
     }
 
     /// One key event from any backend (also driven directly by tests).

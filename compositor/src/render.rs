@@ -6,7 +6,10 @@ use std::time::Duration;
 use smithay::{
     backend::renderer::{
         damage::OutputDamageTracker,
-        element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
+        element::{
+            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+            AsRenderElements, Kind,
+        },
         gles::{GlesRenderer, GlesTarget},
     },
     desktop::layer_map_for_output,
@@ -14,6 +17,8 @@ use smithay::{
     utils::{Physical, Rectangle, Scale},
     wayland::shell::wlr_layer::Layer as WlrLayer,
 };
+
+use smithay::reexports::wayland_server::Resource;
 
 use crate::state::WhiteRose;
 
@@ -35,11 +40,26 @@ pub fn compose(
     tracker: &mut OutputDamageTracker,
     age: usize,
 ) -> Result<Option<Vec<Rectangle<i32, Physical>>>, String> {
+    // A drag in progress: its icon follows the pointer, above everything.
+    let scale = output.current_scale().fractional_scale();
+    let mut overlay: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+    if let Some(icon) = state.dnd_icon.as_ref().filter(|i| i.is_alive()) {
+        let origin = state.space.output_geometry(output).map(|g| g.loc).unwrap_or_default().to_f64();
+        let at = state.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default() - origin;
+        overlay = render_elements_from_surface_tree(
+            renderer,
+            icon,
+            at.to_physical_precise_round(scale),
+            Scale::from(scale),
+            1.0,
+            Kind::Unspecified,
+        );
+    }
+
     let result = match state.active_fullscreen() {
         Some(window) => {
-            let scale = output.current_scale().fractional_scale();
             // Elements are listed front to back.
-            let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+            let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = overlay;
             {
                 let map = layer_map_for_output(output);
                 for layer in map.layers_on(WlrLayer::Overlay) {
@@ -68,7 +88,7 @@ pub fn compose(
             1.0,
             age,
             [&state.space],
-            &[],
+            &overlay,
             tracker,
             CLEAR,
         )

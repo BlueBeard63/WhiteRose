@@ -114,7 +114,7 @@ Item {
 
         onActiveFocusChanged: {
             if (activeFocus) focusSeen = true;
-            else if (root.wantsKeyboard && focusSeen) ShellState.close();
+            else if (root.wantsKeyboard && focusSeen && !ShellState.dragging) ShellState.close();
         }
     }
     onWantsKeyboardChanged: if (!wantsKeyboard) keys.focusSeen = false

@@ -126,7 +126,7 @@ impl WhiteRose {
 
     /// Sends the history to the shell, re-checking copied files on disk.
     pub fn clipboard_sync(&mut self) {
-        let entries = self.clipboard.view(&self.clipboard_images_dir());
+        let entries = self.clipboard.view(&self.clipboard_images_dir(), &clipboard::drag_dir());
         if let Some(ipc) = self.ipc.as_mut() {
             ipc.update(ipc::Event::Clipboard { entries });
         }
@@ -144,6 +144,24 @@ impl WhiteRose {
         set_data_device_selection(&self.display_handle, &self.seat, mimes, Arc::new(payloads));
         self.clipboard.touch(id, now());
         self.after_clipboard_change(Vec::new());
+    }
+
+    /// Makes the readably named copy of an image entry that a drag hands to
+    /// the drop target (Thunderbird attaches it under that name).
+    pub fn clipboard_prepare_drag(&mut self, id: u64) {
+        let Some(entry) = self.clipboard.get(id) else { return };
+        let Content::Image { file, .. } = &entry.content else { return };
+        let dir = clipboard::drag_dir();
+        let dest = dir.join(clipboard::drag_name(entry.time, file));
+        if dest.exists() {
+            return;
+        }
+        let src = self.clipboard_images_dir().join(file);
+        if std::fs::create_dir_all(&dir).is_ok() && std::fs::copy(&src, &dest).is_ok() {
+            clipboard::prune_dir(&dir, 8);
+        } else {
+            tracing::warn!(src = %src.display(), "couldn't prepare clipboard image for dragging");
+        }
     }
 
     pub fn clipboard_delete(&mut self, id: u64) {

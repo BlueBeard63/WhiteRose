@@ -1,8 +1,9 @@
 // Island view: recent screenshots. Click one to copy it; hover for open and
-// delete. The list comes from the compositor (the Screenshots folder).
+// delete; drag one into another app to attach or upload it. The list comes from the compositor (the Screenshots folder).
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
+import "DragData.js" as DragData
 
 Item {
     id: root
@@ -78,8 +79,16 @@ Item {
                     id: cellMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
+                    cursorShape: drag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                    drag.target: ghost
                     onClicked: { Compositor.screenshotCopy(cell.modelData); ShellState.close(); }
+                }
+                DragGhost {
+                    id: ghost
+                    area: cellMouse
+                    mime: DragData.forFiles([cell.modelData])
+                    picture: cell
+                    pictureScale: 0.75
                 }
                 Row {
                     anchors { right: parent.right; top: parent.top; margins: 6 }

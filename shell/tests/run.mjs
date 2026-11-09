@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ function load(file, names) {
 }
 const Calc = load("Calc.js", ["evaluate"]);
 const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify"]);
+const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -119,6 +120,28 @@ test("file matching and display paths", () => {
     assert.equal(Search.matchFiles("here", [{ name: "01-start-here.md" }]).length, 1);
     assert.equal(Search.tildify("/home/u/Projects", "/home/u"), "~/Projects");
     assert.equal(Search.tildify("/etc/x", "/home/u"), "/etc/x");
+});
+
+// ---- DragData --------------------------------------------------------------
+test("dragged files: encoded uri list plus plain paths", () => {
+    assert.equal(DragData.fileUri("/home/me/Pictures/Screenshot 2026-11-09 #1?.png"),
+        "file:///home/me/Pictures/Screenshot%202026-11-09%20%231%3F.png");
+    assert.equal(DragData.fileUri("/tmp/café.txt"), "file:///tmp/caf%C3%A9.txt");
+    assert.deepEqual(DragData.forFiles(["/a b", "/c"]), {
+        "text/uri-list": "file:///a%20b\r\nfile:///c\r\n",
+        "text/plain": "/a b\n/c",
+    });
+    assert.equal(DragData.forFiles([]), null);
+});
+test("clipboard entries drag as what they are", () => {
+    assert.deepEqual(DragData.forEntry({ kind: "text", available: true, text: "hi" }), { "text/plain": "hi" });
+    assert.equal(DragData.forEntry({ kind: "text", available: true, text: null }), null, "too long to drag");
+    assert.deepEqual(DragData.forEntry({ kind: "image", available: true, drag_path: "/run/d/Clipboard image.png" }),
+        { "text/uri-list": "file:///run/d/Clipboard%20image.png\r\n", "text/plain": "/run/d/Clipboard image.png" });
+    const files = [{ path: "/gone", exists: false }, { path: "/here", exists: true }];
+    assert.deepEqual(DragData.forEntry({ kind: "files", available: true, files }),
+        { "text/uri-list": "file:///here\r\n", "text/plain": "/here" }, "only files still on disk");
+    assert.equal(DragData.forEntry({ kind: "files", available: false, files: [{ path: "/gone", exists: false }] }), null);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -122,6 +122,10 @@ pub enum Request {
     ClipboardPaste {
         id: u64,
     },
+    /// Make the named copy of an image entry before it's dragged out.
+    ClipboardPrepareDrag {
+        id: u64,
+    },
     ClipboardDelete {
         id: u64,
     },
@@ -153,6 +157,7 @@ impl Request {
             Request::Screenshot => Action::ScreenshotScreen,
             Request::ClipboardList => Action::Shell(ShellRequest::ClipboardList),
             Request::ClipboardPaste { id } => Action::Shell(ShellRequest::ClipboardPaste(id)),
+            Request::ClipboardPrepareDrag { id } => Action::Shell(ShellRequest::ClipboardPrepareDrag(id)),
             Request::ClipboardDelete { id } => Action::Shell(ShellRequest::ClipboardDelete(id)),
             Request::ClipboardClear => Action::Shell(ShellRequest::ClipboardClear),
             Request::ScreenshotList => Action::Shell(ShellRequest::ScreenshotList),

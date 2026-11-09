@@ -311,6 +311,7 @@ Implemented in `compositor/src/clipboard.rs` (pure logic) and `clipboard_capture
 - **Limits:** 50 entries, 256 KB of text per entry, 16 MB per image, 64 MB of images in total. The oldest entries are evicted first. Copying something already in the history moves it to the top.
 - **Files:** stored as paths and re-checked on disk every time the history is shown. Missing files are marked; pasting offers only the files that still exist; an entry with none left can't be pasted.
 - **Clearing:** Clear removes everything, including the images on disk. Individual entries can be removed too.
+- **Drag out:** clipboard entries and screenshots can be dragged from the island into any app (`shell/DragGhost.qml`, `shell/DragData.js`). Files and images go as `text/uri-list` (mail clients attach them; web pages and file pickers upload them) plus their path as `text/plain` (what a text field inserts). Text goes as text; texts over 16 KB aren't sent to the shell and are click-to-paste only. A clipboard image is first copied to `$XDG_RUNTIME_DIR/whiterose/drag/Clipboard image <date>.png`, so it arrives with a readable name; that folder keeps only the 8 newest copies. The compositor draws the drag icon under the pointer (`tests/dnd.rs` drops a file from a panel into a window).
 - **Tests:** `WHITEROSE_CLIPBOARD_DIR` overrides the location, and tests always point it at a temporary folder.
 
 ## The island

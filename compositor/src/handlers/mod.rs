@@ -91,7 +91,22 @@ impl DataDeviceHandler for WhiteRose {
         &self.data_device_state
     }
 }
-impl ClientDndGrabHandler for WhiteRose {}
+impl ClientDndGrabHandler for WhiteRose {
+    fn started(
+        &mut self,
+        _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
+        icon: Option<WlSurface>,
+        _seat: Seat<Self>,
+    ) {
+        self.dnd_icon = icon;
+        self.schedule_redraw();
+    }
+
+    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
+        self.dnd_icon = None;
+        self.schedule_redraw();
+    }
+}
 impl ServerDndGrabHandler for WhiteRose {}
 delegate_data_device!(WhiteRose);
 
