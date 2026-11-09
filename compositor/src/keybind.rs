@@ -69,6 +69,8 @@ pub enum Action {
     Shell(ShellRequest),
     /// Ctrl+Alt+Fn: switch to console n (real hardware only).
     SwitchVt(i32),
+    /// The screenshot tool's capture (region, pointer, save or copy).
+    Capture(crate::screenshot::Shot),
     /// The next keyboard layout (SUPER+SPACE).
     NextLayout,
     /// Volume, brightness and media keys, done by the shell; the name is
@@ -103,6 +105,8 @@ pub enum ShellRequest {
     ClipboardClear,
     ScreenshotList,
     ScreenshotCopy(String),
+    /// Re-send the window list (with positions) now.
+    WindowsList,
 }
 
 /// A key plus modifiers. `key` is stored lower-cased so "S" and "s" match.

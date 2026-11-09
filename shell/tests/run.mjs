@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel"
 const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "newId", "parseLayouts", "searchLayouts"]);
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
+const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -520,6 +521,35 @@ test("wallpapers: paths, listing and rotation", () => {
     assert.equal(W.next([], [], "builtin:rose"), "builtin:dusk", "no images: through the gradients");
     assert.equal(W.rotationText(30), "changes every 30 min");
     assert.equal(W.rotationText(0), "");
+});
+
+// ---- Shot (screenshot tool) --------------------------------------------------
+test("shot: drawing a selection, any direction, square with shift", () => {
+    assert.deepEqual(Shot.fromDrag({ x: 100, y: 100 }, { x: 300, y: 250 }), { x: 100, y: 100, w: 200, h: 150 });
+    assert.deepEqual(Shot.fromDrag({ x: 300, y: 250 }, { x: 100, y: 100 }), { x: 100, y: 100, w: 200, h: 150 }, "dragged up-left");
+    assert.deepEqual(Shot.fromDrag({ x: 100, y: 100 }, { x: 300, y: 250 }, true), { x: 100, y: 100, w: 150, h: 150 });
+    assert.deepEqual(Shot.fromDrag({ x: 300, y: 300 }, { x: 100, y: 250 }, true), { x: 250, y: 250, w: 50, h: 50 });
+});
+test("shot: moving stays on screen, resizing keeps the other side", () => {
+    const screen = { x: 0, y: 0, w: 1440, h: 808 };
+    assert.deepEqual(Shot.clampMove({ x: 1400, y: -20, w: 200, h: 100 }, screen), { x: 1240, y: 0, w: 200, h: 100 });
+    const r = { x: 100, y: 100, w: 200, h: 100 };
+    assert.deepEqual(Shot.resize(r, "se", 50, 20), { x: 100, y: 100, w: 250, h: 120 });
+    assert.deepEqual(Shot.resize(r, "w", -30, 999), { x: 70, y: 100, w: 230, h: 100 }, "an edge only moves its own side");
+    assert.deepEqual(Shot.resize(r, "e", -260, 0), { x: 40, y: 100, w: 60, h: 100 }, "dragged past the other side flips");
+    assert.deepEqual(Shot.resize(r, "nw", -10, -10, true), { x: 190, y: 90, w: 110, h: 110 }, "square from a corner");
+});
+test("shot: regions, windows under the pointer, size label", () => {
+    assert.deepEqual(Shot.toRegion({ x: 10.4, y: 20.6, w: 100.2, h: 50 }), [10, 21, 101, 50]);
+    const wins = [
+        { id: 2, workspace: 1, geometry: [100, 100, 400, 300] },
+        { id: 1, workspace: 1, geometry: [0, 0, 1000, 800] },
+        { id: 3, workspace: 2, geometry: [0, 0, 1000, 800] },
+    ];
+    assert.equal(Shot.windowAt(wins, 150, 150, 1).id, 2, "the topmost");
+    assert.equal(Shot.windowAt(wins, 700, 700, 1).id, 1);
+    assert.equal(Shot.windowAt(wins, 1200, 10, 1), null);
+    assert.equal(Shot.sizeLabel({ w: 560, h: 330 }, 1.25), "700 × 413");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -6,9 +6,14 @@ ShellRoot {
     // The wallpaper, behind everything.
     Background {}
 
-    // One bar per monitor.
+    // One bar per monitor, or only on the main one (Settings > Top Bar):
+    // the built-in screen, else the first.
+    readonly property var mainScreen: {
+        const first = Compositor.outputs.find(o => o.enabled);
+        return Quickshell.screens.find(s => s.name === first?.connector) ?? Quickshell.screens[0] ?? null;
+    }
     Variants {
-        model: Quickshell.screens
+        model: Daemon.setting("bar.screens", "all") === "main" && mainScreen ? [mainScreen] : Quickshell.screens
         delegate: Bar {}
     }
 
@@ -30,6 +35,9 @@ ShellRoot {
 
     // Each monitor's number and name, when asked from Settings > Displays.
     IdentifyOverlay {}
+
+    // SUPER+SHIFT+S: the screenshot tool.
+    ScreenshotOverlay {}
 
     // Screenshot toast, on the primary screen.
     ScreenshotToast { screen: Quickshell.screens[0] ?? null }

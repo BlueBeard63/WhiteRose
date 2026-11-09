@@ -138,7 +138,8 @@ pub fn init_drm(
 
     init_dmabuf(&backend, state);
     state.draws_cursor = true;
-    state.caps = outputs::Capabilities { modes: true, rotation: true, position: true, disable: true, vrr: false };
+    state.caps =
+        outputs::Capabilities { modes: true, rotation: true, position: true, disable: true, vrr: false, pointer: true };
 
     // vblanks: the frame is on screen; draw the next if something changed.
     let b = backend.clone();
@@ -635,9 +636,17 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
         s.callbacks_armed = false;
     }
 
-    if state.screenshot_pending {
+    // A screenshot comes from the output it's of (the region's, or the one
+    // under the pointer), with the pointer drawn in if asked.
+    if state.screenshot_pending && state.screenshot_output().as_ref() == Some(&output) {
         state.screenshot_pending = false;
-        crate::screenshot::capture_and_save(&mut b.renderer, &output, state);
+        let pointer = match geo {
+            Some(g) if g.to_f64().contains(pointer) => {
+                b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale)
+            }
+            _ => Vec::new(),
+        };
+        crate::screenshot::capture_and_save(&mut b.renderer, &output, state, pointer);
     }
     crate::toplevel_export::process(&mut b.renderer, &output, state);
     drop(guard);

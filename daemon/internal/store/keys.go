@@ -144,6 +144,19 @@ var Known = map[string]Key{
 		},
 	},
 	"bar.batteryPercent": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// What the top bar shows.
+	"bar.workspaces":     {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"bar.workspaceStyle": {Default: json.RawMessage(`"dots"`), Check: into(oneOf("dots", "numbers"))},
+	"bar.media":          {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"bar.network":        {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"bar.bluetooth":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"bar.volume":         {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"bar.bell":           {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"bar.date":           {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"bar.timeFormat":     {Default: json.RawMessage(`"24h"`), Check: into(oneOf("24h", "12h"))},
+	"bar.seconds":        {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// A bar on every screen, or only the main one (built-in first).
+	"bar.screens": {Default: json.RawMessage(`"all"`), Check: into(oneOf("all", "main"))},
 	// How long notification popups stay (seconds); critical ones always stay.
 	"notifications.popupSeconds": {Default: json.RawMessage(`5`), Check: into(func(v int) error {
 		if v < 3 || v > 30 {

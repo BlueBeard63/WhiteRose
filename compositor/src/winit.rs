@@ -62,8 +62,14 @@ pub fn init_winit(
         },
     );
     state.outputs.push(output.clone());
-    state.caps =
-        crate::outputs::Capabilities { modes: false, rotation: false, position: false, disable: false, vrr: false };
+    state.caps = crate::outputs::Capabilities {
+        modes: false,
+        rotation: false,
+        position: false,
+        disable: false,
+        vrr: false,
+        pointer: false,
+    };
 
     init_dmabuf(&backend, state);
 
@@ -211,9 +217,10 @@ fn render(
     state.frame_presented();
 
     // A screenshot was requested (PrtSc): capture what is now on screen.
+    // (The host draws the pointer here, so a capture can't include it.)
     if state.screenshot_pending {
         state.screenshot_pending = false;
-        screenshot::capture_and_save(backend.renderer(), output, state);
+        screenshot::capture_and_save(backend.renderer(), output, state, Vec::new());
     }
 
     // Live window previews (dock hover, switcher).

@@ -27,7 +27,8 @@ fn setup() -> Headless {
         },
     );
     h.state.outputs.push(out);
-    h.state.caps = Capabilities { modes: true, rotation: true, position: true, disable: true, vrr: true };
+    h.state.caps =
+        Capabilities { modes: true, rotation: true, position: true, disable: true, vrr: true, pointer: false };
     h
 }
 
@@ -72,7 +73,8 @@ fn a_trial_layout_reverts_by_itself() {
 #[test]
 fn a_backend_that_cant_rotate_ignores_rotation() {
     let mut h = setup();
-    h.state.caps = Capabilities { modes: false, rotation: false, position: false, disable: false, vrr: false };
+    h.state.caps =
+        Capabilities { modes: false, rotation: false, position: false, disable: false, vrr: false, pointer: false };
     h.state.displays = cfg(
         r#"{"monitor":[{"id":"builtin","scale":1.5,"transform":"90"}],"profile":[{"output":[{"id":"builtin","position":[500,0]}]}]}"#,
     );

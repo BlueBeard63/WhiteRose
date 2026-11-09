@@ -43,14 +43,14 @@ PanelWindow {
             id: left
             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 6
-            Workspaces { anchors.verticalCenter: parent.verticalCenter }
+            Workspaces { id: workspaces; anchors.verticalCenter: parent.verticalCenter; visible: Daemon.setting("bar.workspaces", true) }
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1; height: 12
                 color: Theme.surface2
-                visible: media.visible
+                visible: media.visible && workspaces.visible
             }
-            Media { id: media; anchors.verticalCenter: parent.verticalCenter }
+            Media { id: media; anchors.verticalCenter: parent.verticalCenter; enabled: Daemon.setting("bar.media", true) }
         }
 
         Row {
@@ -65,6 +65,7 @@ PanelWindow {
             // The bell: a rose dot when something arrived since the panel was last open.
             Trigger {
                 anchors.verticalCenter: parent.verticalCenter
+                visible: Daemon.setting("bar.bell", true)
                 active: notifications.open
                 onClicked: ShellState.togglePanel("notifications")
                 Item {
@@ -108,13 +109,5 @@ PanelWindow {
     NotificationPopups {
         id: popups
         anchors { top: bar.bottom; right: parent.right }
-    }
-
-    Connections {
-        target: Compositor
-        function onAction(name) {
-            if (["screenshot_region"].includes(name))
-                console.info("whiterose:", name, "panel is not built yet");
-        }
     }
 }

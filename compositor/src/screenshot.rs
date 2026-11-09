@@ -30,8 +30,64 @@ use crate::{ipc, render, state::WhiteRose};
 /// A finished capture, reported back to the main loop.
 #[derive(Debug)]
 pub enum Outcome {
-    Saved { path: PathBuf, width: u32, height: u32, png: Arc<Vec<u8>> },
+    Saved {
+        path: PathBuf,
+        width: u32,
+        height: u32,
+        png: Arc<Vec<u8>>,
+    },
+    /// Copy only: on the clipboard, no file.
+    Copied {
+        width: u32,
+        height: u32,
+        png: Arc<Vec<u8>>,
+    },
     Failed(String),
+}
+
+/// What to capture (the screenshot tool's choices; PrtSc is the default:
+/// the whole screen, saved).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shot {
+    /// Global logical [x, y, w, h]; None for the whole screen.
+    pub region: Option<[i32; 4]>,
+    /// Draw the pointer into it.
+    pub pointer: bool,
+    /// Save a file (and copy); false copies only.
+    pub save: bool,
+}
+
+impl Default for Shot {
+    fn default() -> Self {
+        Shot { region: None, pointer: false, save: true }
+    }
+}
+
+/// The part of an output's pixels inside `region` (global logical), given
+/// the output's position and scale: (x, y, w, h) in its pixels, clamped to
+/// it. None if they don't overlap.
+pub fn crop_rect(
+    region: [i32; 4],
+    origin: (i32, i32),
+    scale: f64,
+    size: (i32, i32),
+) -> Option<(usize, usize, usize, usize)> {
+    let px = |v: i32| (v as f64 * scale).round() as i32;
+    let x0 = px(region[0] - origin.0).clamp(0, size.0);
+    let y0 = px(region[1] - origin.1).clamp(0, size.1);
+    let x1 = px(region[0] + region[2] - origin.0).clamp(0, size.0);
+    let y1 = px(region[1] + region[3] - origin.1).clamp(0, size.1);
+    (x1 > x0 && y1 > y0).then(|| (x0 as usize, y0 as usize, (x1 - x0) as usize, (y1 - y0) as usize))
+}
+
+/// Copies the rectangle (x, y, w, h) out of RGBA rows `stride` wide.
+pub fn crop(pixels: &[u8], stride: usize, (x, y, w, h): (usize, usize, usize, usize)) -> Vec<u8> {
+    let mut out = Vec::with_capacity(w * h * 4);
+    for row in y..y + h {
+        let start = row * stride * 4 + x * 4;
+        out.extend_from_slice(&pixels[start..start + w * 4]);
+    }
+    out
 }
 
 /// Reverses row order in place. OpenGL reads framebuffers bottom-up.
@@ -117,7 +173,12 @@ pub fn encode_and_save(rgba: &[u8], width: u32, height: u32, dir: &Path, now: Da
 }
 
 /// Draws the output offscreen and returns RGBA pixels, top row first.
-fn capture(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose) -> Result<(Vec<u8>, u32, u32), String> {
+fn capture(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    state: &WhiteRose,
+    front: Vec<render::OutputElement>,
+) -> Result<(Vec<u8>, u32, u32), String> {
     let mode = output.current_mode().ok_or("output has no mode")?;
     let size = mode.size;
     let buffer_size: Size<i32, BufferCoord> = (size.w, size.h).into();
@@ -127,7 +188,8 @@ fn capture(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose) -> R
     let mut framebuffer = renderer.bind(&mut texture).map_err(|e| e.to_string())?;
     // A fresh tracker means a full redraw, independent of on-screen damage.
     let mut tracker = OutputDamageTracker::new(size, output.current_scale().fractional_scale(), Transform::Normal);
-    render::compose(renderer, &mut framebuffer, output, state, &mut tracker, 0)?;
+    let (elements, clear) = render::output_elements(renderer, output, state, front);
+    tracker.render_output(renderer, &mut framebuffer, 0, &elements, clear).map_err(|e| format!("{e:?}"))?;
 
     let mapping = renderer
         .copy_framebuffer(&framebuffer, Rectangle::from_size(buffer_size), Fourcc::Abgr8888)
@@ -142,17 +204,41 @@ fn capture(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose) -> R
     if bottom_up {
         flip_rows(&mut pixels, size.w as usize * 4);
     }
+    // A region: just that part.
+    if let Some(region) = state.screenshot_shot.region {
+        let origin = state.space.output_geometry(output).map(|g| (g.loc.x, g.loc.y)).unwrap_or((0, 0));
+        let scale = output.current_scale().fractional_scale();
+        let r = crop_rect(region, origin, scale, (size.w, size.h)).ok_or("the region is off this screen")?;
+        return Ok((crop(&pixels, size.w as usize, r), r.2 as u32, r.3 as u32));
+    }
     Ok((pixels, size.w as u32, size.h as u32))
 }
 
 /// Called by the backend after it drew a frame with a capture pending.
-pub fn capture_and_save(renderer: &mut GlesRenderer, output: &Output, state: &mut WhiteRose) {
-    match capture(renderer, output, state) {
+/// `pointer` is the pointer's render elements (empty where the backend
+/// doesn't draw it), drawn in only if the capture asked for it.
+pub fn capture_and_save(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    state: &mut WhiteRose,
+    pointer: Vec<render::OutputElement>,
+) {
+    let shot = state.screenshot_shot;
+    let front = if shot.pointer { pointer } else { Vec::new() };
+    match capture(renderer, output, state, front) {
         Ok((pixels, w, h)) => {
             let tx = state.screenshot_tx.clone();
             let dir = screenshots_dir();
             std::thread::spawn(move || {
-                let _ = tx.send(encode_and_save(&pixels, w, h, &dir, Local::now()));
+                let outcome = if shot.save {
+                    encode_and_save(&pixels, w, h, &dir, Local::now())
+                } else {
+                    match encode_png(&pixels, w, h) {
+                        Ok(png) => Outcome::Copied { width: w, height: h, png: Arc::new(png) },
+                        Err(e) => Outcome::Failed(e),
+                    }
+                };
+                let _ = tx.send(outcome);
             });
         }
         Err(e) => state.screenshot_done(Outcome::Failed(e)),
@@ -160,7 +246,28 @@ pub fn capture_and_save(renderer: &mut GlesRenderer, output: &Output, state: &mu
 }
 
 impl WhiteRose {
-    /// PrtSc: capture the whole screen on the next frame.
+    /// The output a pending screenshot comes from: the one holding the
+    /// region's centre, else the one under the pointer.
+    pub fn screenshot_output(&self) -> Option<Output> {
+        let at = match self.screenshot_shot.region {
+            Some([x, y, w, h]) => smithay::utils::Point::from(((x + w / 2) as f64, (y + h / 2) as f64)),
+            None => self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default(),
+        };
+        self.space
+            .outputs()
+            .find(|o| self.space.output_geometry(o).is_some_and(|g| g.to_f64().contains(at)))
+            .or_else(|| self.space.outputs().next())
+            .cloned()
+    }
+
+    /// The screenshot tool's capture (PrtSc passes the default: the whole
+    /// screen, saved).
+    pub fn request_shot(&mut self, shot: Shot) {
+        self.screenshot_shot = shot;
+        self.request_screenshot();
+    }
+
+    /// Capture on the next frame.
     pub fn request_screenshot(&mut self) {
         if self.is_locked() {
             self.screenshot_done(Outcome::Failed("the screen is locked".into()));
@@ -188,6 +295,17 @@ impl WhiteRose {
                 self.clipboard_add_screenshot(png.clone());
                 self.saved_screenshots.push(path.clone());
                 ipc::Event::Screenshot { path: path.to_string_lossy().into_owned(), width, height }
+            }
+            Outcome::Copied { width, height, png } => {
+                tracing::info!(width, height, "screenshot copied");
+                set_data_device_selection(
+                    &self.display_handle,
+                    &self.seat,
+                    vec!["image/png".into()],
+                    Arc::new(vec![("image/png".to_string(), png.as_ref().clone())]),
+                );
+                self.clipboard_add_screenshot(png.clone());
+                ipc::Event::Screenshot { path: String::new(), width, height }
             }
             Outcome::Failed(error) => {
                 tracing::warn!(error, "screenshot failed");
@@ -221,6 +339,18 @@ impl WhiteRose {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn crops_regions_in_output_pixels() {
+        // A 1000x500 logical region on an output at x=1600, scale 2.
+        assert_eq!(crop_rect([1700, 100, 400, 200], (1600, 0), 2.0, (3200, 2000)), Some((200, 200, 800, 400)));
+        // Partly off the output: clamped.
+        assert_eq!(crop_rect([1500, -10, 200, 50], (1600, 0), 1.0, (1600, 1000)), Some((0, 0, 100, 40)));
+        assert_eq!(crop_rect([0, 0, 100, 100], (1600, 0), 1.0, (1600, 1000)), None, "another screen");
+        // 3x2 RGBA image, take the 2x1 at (1, 1).
+        let px: Vec<u8> = (0..24).collect();
+        assert_eq!(crop(&px, 3, (1, 1, 2, 1)), vec![16, 17, 18, 19, 20, 21, 22, 23]);
+    }
 
     #[test]
     fn flips_rows() {
@@ -296,7 +426,7 @@ mod tests {
                 assert_eq!((width, height), (2, 2));
                 assert_eq!(std::fs::read(&path).unwrap(), *png);
             }
-            Outcome::Failed(e) => panic!("{e}"),
+            other => panic!("{other:?}"),
         }
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }

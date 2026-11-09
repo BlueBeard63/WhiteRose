@@ -79,6 +79,9 @@ pub struct Capabilities {
     pub position: bool,
     pub disable: bool,
     pub vrr: bool,
+    /// Screenshots can include the pointer (the compositor draws it).
+    #[serde(default)]
+    pub pointer: bool,
 }
 
 /// An output as the shell sees it.

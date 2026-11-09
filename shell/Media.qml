@@ -9,7 +9,8 @@ Trigger {
     readonly property var player: Mpris.players.values.length > 0 ? Mpris.players.values[0] : null
     readonly property bool playing: player !== null && player.isPlaying
 
-    visible: player !== null && (player.trackTitle ?? "") !== ""
+    // Turned off in Settings > Top Bar: hidden (and its EQ stops).
+    visible: enabled && player !== null && (player.trackTitle ?? "") !== ""
     onClicked: if (player && player.canTogglePlaying) player.togglePlaying()
 
     Row {

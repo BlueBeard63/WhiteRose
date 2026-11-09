@@ -114,6 +114,9 @@ pub struct WindowInfo {
     /// 1-based.
     pub workspace: u8,
     pub focused: bool,
+    /// [x, y, w, h] in global logical pixels while it's on screen.
+    #[serde(default)]
+    pub geometry: Option<[i32; 4]>,
 }
 
 /// Messages from the shell to the compositor.
@@ -164,6 +167,19 @@ pub enum Request {
     },
     /// Capture the whole screen (e.g. the screenshot toolbar's "Screen" mode).
     Screenshot,
+    /// The screenshot tool: `region` [x, y, w, h] (global logical) or the
+    /// screen under the pointer; with the pointer drawn in; saved, or only
+    /// copied.
+    Capture {
+        #[serde(default)]
+        region: Option<[i32; 4]>,
+        #[serde(default)]
+        pointer: bool,
+        #[serde(default = "yes")]
+        save: bool,
+    },
+    /// Send the window list (with where each window is) now.
+    WindowsList,
     /// Night Light from the quick settings: warm the screen to `temperature` K.
     NightLight {
         on: bool,
@@ -183,6 +199,10 @@ pub enum Request {
     PauseShortcuts {
         on: bool,
     },
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn neutral() -> u32 {
@@ -218,6 +238,10 @@ impl Request {
             }
             Request::Quit => Action::Quit,
             Request::IdentifyOutputs => Action::IdentifyOutputs,
+            Request::Capture { region, pointer, save } => {
+                Action::Capture(crate::screenshot::Shot { region, pointer, save })
+            }
+            Request::WindowsList => Action::Shell(ShellRequest::WindowsList),
             Request::PauseShortcuts { .. } => unreachable!("handled per client in ipc_request"),
         }
     }
@@ -571,6 +595,7 @@ impl WhiteRose {
                     title,
                     workspace: self.workspaces.workspace_of(w).map(|i| i as u8 + 1).unwrap_or(0),
                     focused: Some(w) == focused.as_ref(),
+                    geometry: self.space.element_geometry(w).map(|g| [g.loc.x, g.loc.y, g.size.w, g.size.h]),
                 }
             })
             .collect();
@@ -692,6 +717,17 @@ mod tests {
             Ok(Request::Spawn { command: "foot".into() })
         );
         assert_eq!(Request::parse(r#"{"cmd":"close_window"}"#), Ok(Request::CloseWindow));
+        // The screenshot tool: a region, copied, with the pointer.
+        let shot = Request::parse(r#"{"cmd":"capture","region":[10,20,300,200],"pointer":true,"save":false}"#).unwrap();
+        assert_eq!(
+            shot.into_action(),
+            Action::Capture(crate::screenshot::Shot { region: Some([10, 20, 300, 200]), pointer: true, save: false })
+        );
+        // Defaults: the screen, saved, no pointer.
+        assert_eq!(
+            Request::parse(r#"{"cmd":"capture"}"#).unwrap().into_action(),
+            Action::Capture(crate::screenshot::Shot::default())
+        );
         assert_eq!(Request::parse(r#"{"cmd":"screenshot"}"#), Ok(Request::Screenshot));
         assert_eq!(Request::parse(r#"{"cmd":"clipboard_paste","id":7}"#), Ok(Request::ClipboardPaste { id: 7 }));
         assert_eq!(Request::parse(r#"{"cmd":"clipboard_clear"}"#), Ok(Request::ClipboardClear));

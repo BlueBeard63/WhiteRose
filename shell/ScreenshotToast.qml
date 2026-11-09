@@ -102,13 +102,13 @@ PanelWindow {
                     width: parent.width - 32 - 10 - nowLabel.width - 10
                     spacing: 1
                     Text {
-                        text: root.failed ? "Screenshot failed" : "Screenshot saved"
+                        text: root.failed ? "Screenshot failed" : root.path === "" ? "Screenshot copied" : "Screenshot saved"
                         color: Theme.text
                         font { family: Theme.font; pointSize: Theme.pt(13.5); weight: Font.DemiBold }
                     }
                     Text {
                         width: parent.width
-                        text: root.failed ? root.error : `Full screen · ${root.shotWidth} × ${root.shotHeight}`
+                        text: root.failed ? root.error : root.path === "" ? `On the clipboard · ${root.shotWidth} × ${root.shotHeight}` : `${root.shotWidth} × ${root.shotHeight}`
                         color: root.failed ? Theme.rose : Theme.muted
                         elide: Text.ElideRight
                         font { family: Theme.font; pointSize: Theme.pt(11.5) }
@@ -125,7 +125,7 @@ PanelWindow {
 
             // Thumbnail, in the screen's aspect ratio.
             ClippingRectangle {
-                visible: !root.failed
+                visible: !root.failed && root.path !== ""
                 width: parent.width
                 height: root.shotWidth > 0 ? Math.round(width * root.shotHeight / root.shotWidth) : 0
                 radius: 10
@@ -144,7 +144,7 @@ PanelWindow {
 
             // File path + "Copied" (the compositor put it on the clipboard).
             Row {
-                visible: !root.failed
+                visible: !root.failed && root.path !== ""
                 width: parent.width
                 spacing: 8
                 Text {
@@ -176,9 +176,9 @@ PanelWindow {
                 }
             }
 
-            // Actions.
+            // Actions (for a saved file).
             Row {
-                visible: !root.failed
+                visible: !root.failed && root.path !== ""
                 width: parent.width
                 spacing: 8
                 ToastButton {

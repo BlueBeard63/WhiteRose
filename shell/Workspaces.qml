@@ -20,11 +20,21 @@ Row {
             readonly property bool isActive: Compositor.activeWorkspace === number
             readonly property bool occupied: Compositor.occupiedWorkspaces.includes(number)
 
+            readonly property bool numbers: Daemon.setting("bar.workspaceStyle", "dots") === "numbers"
             anchors.verticalCenter: parent.verticalCenter
-            width: isActive ? 18 : 6
-            height: 6
-            radius: 3
-            color: isActive ? Theme.pearl : occupied ? Theme.muted : Theme.faint
+            width: numbers ? Math.max(16, label.implicitWidth + 8) : isActive ? 18 : 6
+            height: numbers ? 16 : 6
+            radius: numbers ? 5 : 3
+            color: numbers ? (isActive ? Theme.pearl : "transparent") : isActive ? Theme.pearl : occupied ? Theme.muted : Theme.faint
+            // Numbers style: the workspace number, bold where something's open.
+            Text {
+                id: label
+                visible: parent.numbers
+                anchors.centerIn: parent
+                text: parent.number
+                color: parent.isActive ? Theme.bg : parent.occupied ? Theme.text : Theme.faint
+                font { family: Theme.mono; pointSize: Theme.pt(10.5); weight: parent.occupied || parent.isActive ? Font.DemiBold : Font.Normal }
+            }
             Behavior on width { NumberAnimation { duration: Theme.fastAnim; easing.type: Easing.OutCubic } }
             Behavior on color { ColorAnimation { duration: Theme.fastAnim } }
 

@@ -1,0 +1,11 @@
+{
+  "id": "topbar",
+  "name": "Top Bar",
+  "description": "What the bar shows: workspaces, status icons, the clock",
+  "icon": "panelTop",
+  "category": "desktop",
+  "order": 11,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["bar", "top bar", "panel", "workspaces", "clock", "time", "date", "24 hour", "12 hour", "seconds", "battery percentage", "status icons", "media", "now playing", "monitors"]
+}

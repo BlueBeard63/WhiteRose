@@ -78,6 +78,8 @@ pub struct WhiteRose {
     /// Output and usable area last used to fit maximized/fullscreen windows.
     /// PrtSc pressed: capture on the next frame.
     pub screenshot_pending: bool,
+    /// What the pending screenshot captures (region, pointer, save or copy).
+    pub screenshot_shot: crate::screenshot::Shot,
     /// Worker threads report finished captures here.
     pub screenshot_tx: smithay::reexports::calloop::channel::Sender<crate::screenshot::Outcome>,
     /// Paths this compositor saved; the only files the shell may ask it to delete.
@@ -216,6 +218,7 @@ impl WhiteRose {
                 position: false,
                 disable: false,
                 vrr: false,
+                pointer: false,
             },
             socket_name,
             display_handle: dh,
@@ -233,6 +236,7 @@ impl WhiteRose {
             switcher: None,
             shortcut_mods: crate::keybind::Mods::NONE,
             screenshot_pending: false,
+            screenshot_shot: Default::default(),
             screenshot_tx,
             saved_screenshots: Vec::new(),
             bindings,
@@ -597,7 +601,8 @@ impl WhiteRose {
                     self.schedule_redraw();
                 }
             }
-            Action::ScreenshotScreen => self.request_screenshot(),
+            Action::ScreenshotScreen => self.request_shot(Default::default()),
+            Action::Capture(shot) => self.request_shot(shot),
             Action::AppSwitcher => self.open_switcher(crate::switcher::Mode::Apps),
             Action::WindowSwitcher => self.open_switcher(crate::switcher::Mode::Windows),
             Action::FocusWindow(id) => {
@@ -636,6 +641,12 @@ impl WhiteRose {
                     R::ClipboardClear => self.clipboard_clear(),
                     R::ScreenshotList => self.screenshots_sync(),
                     R::ScreenshotCopy(path) => self.screenshot_copy(std::path::Path::new(&path)),
+                    R::WindowsList => {
+                        let e = self.windows_event();
+                        if let Some(ipc) = self.ipc.as_mut() {
+                            ipc.update(e);
+                        }
+                    }
                 }
             }
             Action::ToggleFullscreen => {

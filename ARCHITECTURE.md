@@ -257,6 +257,20 @@ Figma frame: `Settings - Appearance`.
 - **Wallpaper** (`wallpaper.current`: `builtin:<name>` or an image path). The shell draws it on a layer-shell background surface per screen (`shell/Background.qml`). The compositor's damage tracking means a still wallpaper costs nothing after the first frame. Built-in gradients need no file. Images are decoded at the screen's size, not the file's. `wallpaper.folders` (default `~/Pictures/Wallpapers`) and `wallpaper.files` are offered, and `wallpaper.rotateMinutes` steps through them.
 - **Not built:** "Blur behind panels" from the Figma. The compositor has no blur pass yet, and the row would be a switch that does nothing. Apps' own light/dark preference (the portal's colour scheme) isn't set either. It's shared with GNOME's settings, so changing it here would change GNOME too.
 
+## Top bar
+
+- `bar.*` settings choose what the bar shows: workspaces (`bar.workspaceStyle`: dots or numbers), now playing, the network, Bluetooth and volume icons, the battery percentage, the bell, the date, 12- or 24-hour time, and seconds. `bar.screens` puts the bar on every screen or only the main one.
+- Seconds are the only option with a cost: the clock then wakes every second instead of every minute.
+
+## Screenshot tool
+
+Figma frame: `Screenshot - Region (SUPER + SHIFT + S)`.
+
+- **The toolbar takes the island's place**, drawn in the overlay itself so it sits above the dim. The overlay (`shell/ScreenshotOverlay.qml`, one per screen, layer-shell Overlay) dims everything but the selection. The key-hint row in the Figma is left out: no key hints on island views.
+- **Region:** drag to select, drag inside to move, eight handles resize, Shift keeps it square (`shell/Shot.js`, tested). **Window:** point and click; the window is raised before the capture. **Screen:** the screen under the pointer.
+- **Delay** (3/5/10 s) and **Pointer** (drawn into the capture; only where the compositor draws the pointer, so greyed out nested). **Copy** puts it on the clipboard only; **Save** also writes `~/Pictures/Screenshots`. Enter saves, Ctrl+C copies, Esc cancels.
+- **The compositor captures** (`capture` request: region, pointer, save). The tool hides itself first, so it's never in the shot. A region is cropped from the frame of the output holding its centre.
+
 ## Windows
 
 - **Minimise:** a minimised window is hidden but kept, and comes back when it's focused (dock, ALT+TAB, the app's launcher entry). It stays hidden across workspace switches.

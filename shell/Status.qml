@@ -38,14 +38,14 @@ Trigger {
 
     Icon {
         anchors.verticalCenter: parent.verticalCenter
-        visible: Networking.backend !== NetworkBackendType.None
+        visible: Networking.backend !== NetworkBackendType.None && Daemon.setting("bar.network", true)
         name: root.networkIcon
         color: root.wifiNetwork || root.wired ? Theme.text : Theme.muted
     }
 
     Icon {
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.btOn
+        visible: root.btOn && Daemon.setting("bar.bluetooth", true)
         name: "bluetooth"
         color: root.btConnected ? Theme.text : Theme.muted
     }
@@ -55,7 +55,7 @@ Trigger {
 
     Icon {
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.sink !== null
+        visible: root.sink !== null && Daemon.setting("bar.volume", true)
         name: root.sink?.audio?.muted ? "volumeMuted" : "volume"
         color: root.sink?.audio?.muted ? Theme.muted : Theme.text
     }
