@@ -44,6 +44,8 @@ impl CompositorHandler for WhiteRose {
             if let Some(window) = self.window_for_surface(&root) {
                 window.on_commit();
                 self.mark_export_dirty(&window);
+                // Its size may have changed (maximized, resized).
+                self.island_sync();
             }
         };
 

@@ -2,6 +2,8 @@
 // that morphs between every view: idle, dock, clipboard, screenshots,
 // launcher, and the ALT+TAB / SUPER+ALT+TAB switchers. Switching views
 // reshapes the same outline in place; closing shrinks it back to idle.
+// When a window sits right under it (a maximized title bar), the idle island
+// tucks into the bar, leaving its grip there; hovering brings it back out.
 import QtQuick
 import Quickshell
 
@@ -26,8 +28,20 @@ Item {
         dock: dockLoader, clipboard: clipLoader, screenshots: shotsLoader,
         launcher: launcherLoader, switcher: switcherLoader
     })[view] ?? null
+    // ---- tucking ----------------------------------------------------------------
+    // Hovering the bar's centre or the island itself keeps it out; leaving
+    // tucks it back after a moment (so crossing the edge doesn't flicker).
+    readonly property bool hovering: peek.containsMouse || gripMouse.containsMouse
+    property bool peeking: false
+    onHoveringChanged: {
+        if (hovering) { unpeek.stop(); peeking = true; }
+        else unpeek.restart();
+    }
+    Timer { id: unpeek; interval: 300; onTriggered: root.peeking = false }
+    readonly property bool tucked: idle && Compositor.islandCovered && !peeking
+
     readonly property real targetWidth: idle || !current?.item ? 170 : current.item.implicitWidth
-    readonly property real targetHeight: idle || !current?.item ? 18 : current.item.implicitHeight
+    readonly property real targetHeight: tucked ? 0 : idle || !current?.item ? 18 : current.item.implicitHeight
 
     // Room the bar window must leave below the bar. Grows at once, shrinks only
     // after the morph has finished, so the window never resizes mid-animation.
@@ -46,8 +60,9 @@ Item {
         id: shape
         bodyWidth: root.targetWidth
         bodyHeight: root.targetHeight
-        earWidth: root.idle ? 12 : 26
-        earHeight: root.idle ? 7 : 30
+        visible: bodyHeight > 0.5
+        earWidth: root.tucked ? 0 : root.idle ? 12 : 26
+        earHeight: root.tucked ? 0 : root.idle ? 7 : 30
         bottomLeftRadius: root.idle ? 11 : Math.min(40, Math.max(11, root.targetHeight - 30))
         bottomRightRadius: bottomLeftRadius
 
@@ -69,9 +84,29 @@ Item {
     Rectangle {
         anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 8 }
         width: 30; height: 3; radius: 2
-        opacity: root.idle && !root.morphing ? 1 : 0
+        opacity: root.idle && !root.tucked && !root.morphing ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 120 } }
         color: gripMouse.containsMouse ? Theme.muted : Theme.grip
+    }
+    // Tucked: the grip sits in the bar, and the bar's centre is the handle.
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: -Theme.barHeight / 2 - 1.5
+        width: 30; height: 3; radius: 2
+        opacity: root.tucked ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 160 } }
+        color: peek.containsMouse ? Theme.muted : Theme.grip
+    }
+    MouseArea {
+        id: peek
+        visible: root.idle
+        x: (root.width - 170) / 2
+        y: -Theme.barHeight
+        width: 170
+        height: Theme.barHeight
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: ShellState.show("dock")
     }
     MouseArea {
         id: gripMouse

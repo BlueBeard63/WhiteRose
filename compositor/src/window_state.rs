@@ -52,6 +52,7 @@ impl WhiteRose {
         if let Some(r) = rect {
             self.space.map_element(w.clone(), r.loc, true);
         }
+        self.island_sync();
         self.schedule_redraw();
     }
 

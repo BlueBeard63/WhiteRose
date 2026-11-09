@@ -74,6 +74,11 @@ pub enum Event {
     Lock {
         locked: bool,
     },
+    /// A window sits right under the idle island (a maximized window's
+    /// title bar): the shell tucks the island into the bar.
+    Island {
+        covered: bool,
+    },
 }
 
 impl Event {
@@ -252,6 +257,7 @@ pub struct Server {
     last_clipboard: Option<Event>,
     last_screenshots: Option<Event>,
     last_lock: Option<Event>,
+    last_island: Option<Event>,
 }
 
 impl Server {
@@ -287,6 +293,7 @@ impl Server {
             last_clipboard: None,
             last_screenshots: None,
             last_lock: None,
+            last_island: None,
         })
     }
 
@@ -321,6 +328,7 @@ impl Server {
             Event::Clipboard { .. } => &mut self.last_clipboard,
             Event::Screenshots { .. } => &mut self.last_screenshots,
             Event::Lock { .. } => &mut self.last_lock,
+            Event::Island { .. } => &mut self.last_island,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
                 self.broadcast(&event);
                 return;
@@ -350,6 +358,7 @@ impl WhiteRose {
             self.workspaces_event(),
             self.focus_event(),
             self.windows_event(),
+            self.island_event(),
             Event::Lock { locked: self.is_locked() },
         ];
         let Some(server) = self.ipc.as_mut() else { return };
@@ -365,8 +374,9 @@ impl WhiteRose {
         }
         server.clients.push(client);
         // Everyone connected now has this state; don't send it again unless it changes.
-        let [ws, focus, windows, lock] = snapshot;
+        let [ws, focus, windows, island, lock] = snapshot;
         server.last_lock = Some(lock);
+        server.last_island = Some(island);
         server.last_workspaces = Some(ws);
         server.last_focus = Some(focus);
         server.last_windows = Some(windows);
@@ -515,8 +525,47 @@ impl WhiteRose {
             server.update(focus);
             server.update(windows);
         }
+        self.island_sync();
         self.foreign_toplevel_refresh();
     }
+
+    pub fn island_event(&self) -> Event {
+        let Some(output) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) else {
+            return Event::Island { covered: false };
+        };
+        let bar_bottom = self.usable_area().loc.y;
+        let windows: Vec<_> = self.space.elements().filter_map(|w| self.space.element_geometry(w)).collect();
+        Event::Island { covered: island_covered(&windows, output, bar_bottom) }
+    }
+
+    /// Re-checks the area under the island (windows mapped, moved, resized).
+    /// Only sends anything when the answer changes.
+    pub fn island_sync(&mut self) {
+        let e = self.island_event();
+        if let Some(server) = self.ipc.as_mut() {
+            server.update(e);
+        }
+    }
+}
+
+/// Half the width and the depth of the area the idle island hangs into,
+/// below the bar at the top centre (the island is 170 wide plus its ears).
+pub const ISLAND_HALF_WIDTH: i32 = 120;
+pub const ISLAND_DEPTH: i32 = 24;
+
+/// Whether any window overlaps the area under the bar where the idle island
+/// hangs, on `output`.
+pub fn island_covered(
+    windows: &[smithay::utils::Rectangle<i32, smithay::utils::Logical>],
+    output: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
+    bar_bottom: i32,
+) -> bool {
+    let centre = output.loc.x + output.size.w / 2;
+    let zone = smithay::utils::Rectangle::new(
+        (centre - ISLAND_HALF_WIDTH, bar_bottom).into(),
+        (2 * ISLAND_HALF_WIDTH, ISLAND_DEPTH).into(),
+    );
+    windows.iter().any(|w| w.overlaps(zone))
 }
 
 /// A toplevel's (app_id, title).
@@ -607,6 +656,24 @@ mod tests {
     fn requests_map_to_actions() {
         assert_eq!(Request::Workspace { n: 4 }.into_action(), Action::Workspace(4));
         assert_eq!(Request::CloseWindow.into_action(), Action::CloseWindow);
+    }
+
+    #[test]
+    fn island_is_covered_only_by_windows_right_under_it() {
+        use smithay::utils::Rectangle;
+        let out = Rectangle::new((0, 0).into(), (1440, 808).into());
+        let r = |x, y, w, h| Rectangle::new((x, y).into(), (w, h).into());
+        let bar = 26;
+        assert!(island_covered(&[r(0, 26, 1440, 782)], out, bar), "maximized window");
+        assert!(island_covered(&[r(600, 30, 400, 300)], out, bar), "title bar just under the island");
+        assert!(!island_covered(&[r(600, 200, 400, 300)], out, bar), "lower down: island stays out");
+        assert!(!island_covered(&[r(0, 26, 500, 782)], out, bar), "left half only (tiled)");
+        assert!(island_covered(&[r(0, 26, 601, 782)], out, bar), "reaches into the island's span");
+        assert!(!island_covered(&[], out, bar), "empty desktop");
+        // A second output to the right: its own centre.
+        let out2 = Rectangle::new((1440, 0).into(), (1920, 1080).into());
+        assert!(island_covered(&[r(1440 + 900, 26, 200, 100)], out2, bar));
+        assert!(!island_covered(&[r(600, 26, 400, 100)], out2, bar), "a window on the other output");
     }
 
     #[test]

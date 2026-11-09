@@ -331,6 +331,8 @@ Each view (`*View.qml`) only reports the size it wants. The island animates its 
 
 Scripting: `qs ipc call island set <view>`.
 
+- **Tucking:** when a window sits right under the idle island (a maximized title bar), the compositor sends `{"event":"island","covered":true}`. The island then tucks into the bar, leaving its grip there. Hovering the bar's centre brings it back out, and clicking opens the dock. The compositor re-checks when windows map, move, resize or change workspace (`ipc::island_covered`, tested in `tests/island.rs`).
+
 ## Quick settings
 
 `shell/QuickSettingsPanel.qml` hangs from the right end of the bar. It opens from the status cluster or SUPER+S, and closes on Esc or a click elsewhere. Each part comes from the layer that owns it:

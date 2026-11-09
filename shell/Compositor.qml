@@ -29,6 +29,8 @@ Singleton {
     property var clipboard: []
     // Newest screenshots in the Screenshots folder (absolute paths).
     property var screenshots: []
+    // A window sits right under the idle island (e.g. a maximized title bar).
+    property bool islandCovered: false
 
     function windowById(id) { return root.windows.find(w => w.id === id) ?? null }
 
@@ -100,6 +102,9 @@ Singleton {
             break;
         case "clipboard":
             root.clipboard = msg.entries;
+            break;
+        case "island":
+            root.islandCovered = msg.covered;
             break;
         case "lock":
             // A restarted shell finds the session still locked: lock again.

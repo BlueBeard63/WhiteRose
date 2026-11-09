@@ -76,6 +76,8 @@ fn shell_ipc_round_trip() {
         assert_eq!(focus["app_id"], Value::Null);
         let windows = shell.recv();
         assert_eq!(windows, serde_json::json!({"event": "windows", "windows": []}));
+        let island = shell.recv();
+        assert_eq!(island, serde_json::json!({"event": "island", "covered": false}), "nothing under the island");
         let lock = shell.recv();
         assert_eq!(lock, serde_json::json!({"event": "lock", "locked": false}), "a new shell learns the lock state");
 
@@ -182,6 +184,7 @@ fn screenshot_without_a_renderer_reports_failure_to_the_shell() {
         shell.recv(); // workspaces snapshot
         shell.recv(); // focus snapshot
         shell.recv(); // windows snapshot
+        shell.recv(); // island snapshot
         shell.recv(); // lock snapshot
         shell.send(r#"{"cmd":"screenshot"}"#);
         shell.recv()
