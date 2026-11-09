@@ -1,8 +1,9 @@
 // Calendar (Figma: "Desktop - Calendar"): hangs from the right end of the bar,
 // opened by clicking the clock. The time and date, the weather for the place
-// in weather.toml, a month you can page through with dots on days that have
+// chosen in the settings, a month you can page through with dots on days that have
 // events, and the events of the selected day (today unless you click
-// another). Events come from whiterosed (iCal links and .ics files).
+// another). Events come from whiterosed (calendars in the settings database:
+// iCal links kept in the keyring, and .ics files).
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -41,24 +42,18 @@ SidePanel {
 
     function load() {
         const r = Cal.gridRange(year, month);
-        fetcher.command = ["whiterosed", "calendar", "events", "--from", r.from, "--to", r.to];
-        fetcher.running = false;
-        fetcher.running = true;
+        const want = r.from;
+        Daemon.request({ op: "calendar_events", from: r.from, to: r.to }, (events, err) => {
+            if (err) { console.warn("calendar events:", err); return; }
+            // A reply for a month we've already paged away from is dropped.
+            if (Cal.gridRange(root.year, root.month).from === want) root.events = events ?? [];
+        });
     }
     onYearChanged: if (open) load()
     onMonthChanged: if (open) load()
     Connections {
         target: System
         function onCalendarsChanged() { if (root.open) root.load() }
-    }
-    Process {
-        id: fetcher
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try { root.events = JSON.parse(text) ?? []; }
-                catch (e) { console.warn("calendar events:", e); }
-            }
-        }
     }
 
     // ---- time, date, weather ------------------------------------------------

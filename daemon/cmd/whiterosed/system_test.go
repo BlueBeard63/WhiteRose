@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
-	"whiterose/daemon/internal/session"
+	"whiterose/daemon/internal/calendar"
+	"whiterose/daemon/internal/server"
+	"whiterose/daemon/internal/store"
 )
 
 func TestReadState(t *testing.T) {
@@ -31,25 +34,6 @@ func TestReadState(t *testing.T) {
 	}
 }
 
-func TestEmitChangesSkipsRepeats(t *testing.T) {
-	states := []SystemState{{Radios: 1}, {Radios: 1}, {Radios: 1, Airplane: true}, {Radios: 1, Airplane: true}}
-	i := 0
-	read := func() SystemState { s := states[i]; i++; return s }
-	ch := make(chan struct{}, 3)
-	ch <- struct{}{}
-	ch <- struct{}{}
-	ch <- struct{}{}
-	close(ch)
-	var out bytes.Buffer
-	if err := emitChanges(ch, read, &out); err != nil {
-		t.Fatal(err)
-	}
-	want := `{"brightness":null,"airplane":false,"radios":1,"weather":null,"calendars":0}` + "\n" + `{"brightness":null,"airplane":true,"radios":1,"weather":null,"calendars":0}` + "\n"
-	if out.String() != want {
-		t.Fatalf("got\n%s\nwant\n%s", out.String(), want)
-	}
-}
-
 func TestBrightnessAndAirplaneRejectBadArguments(t *testing.T) {
 	for _, args := range [][]string{{"brightness"}, {"brightness", "set", "0"}, {"brightness", "set", "101"}, {"brightness", "set", "x"}, {"airplane"}, {"airplane", "maybe"}} {
 		var out, errb bytes.Buffer
@@ -59,36 +43,70 @@ func TestBrightnessAndAirplaneRejectBadArguments(t *testing.T) {
 	}
 }
 
-func TestLockLine(t *testing.T) {
-	if got := lockLine(session.Lock); got != `{"event":"lock"}`+"\n" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestCalendarEventsCommand(t *testing.T) {
+func TestSettingsAndCalendarCommandsTalkToTheDaemon(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
-	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	st, err := store.Open(filepath.Join(root, "settings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	d := calendar.Dirs{Data: filepath.Join(root, "data"), Cache: filepath.Join(root, "cache"), Home: root}
+	srv := &server.Server{Store: st, Secrets: store.Resolver{Fallback: st.Fallback()}, Dirs: d}
+	sock := filepath.Join(root, "d.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+	t.Setenv("WHITEROSE_DAEMON_SOCKET", sock)
+
+	cli := func(args ...string) (string, int) {
+		var out, errb bytes.Buffer
+		code := run(args, &out, &errb)
+		return out.String() + errb.String(), code
+	}
+	if out, code := cli("settings", "set", "weather.city", `"London"`); code != 0 {
+		t.Fatalf("set: %s", out)
+	}
+	if out, code := cli("settings", "get", "weather.city"); code != 0 || strings.TrimSpace(out) != `"London"` {
+		t.Fatalf("get: %q", out)
+	}
+	if out, code := cli("settings", "list"); code != 0 || !strings.Contains(out, `weather.city = "London"`) || !strings.Contains(out, "dock.pinned = ") {
+		t.Fatalf("list: %s", out)
+	}
+	if out, code := cli("settings", "set", "weather.city", "London"); code != 2 || !strings.Contains(out, "JSON") {
+		t.Fatalf("unquoted word: %d %s", code, out)
+	}
+	if out, code := cli("settings", "set", "quick.doNotDisturb", `"maybe"`); code != 1 {
+		t.Fatalf("invalid value: %d %s", code, out)
+	}
 	ics := "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:1\r\nSUMMARY:Gym\r\nDTSTART:20261109T183000\r\nDTEND:20261109T193000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	p := filepath.Join(root, "data", "whiterose", "calendars", "Personal.ics")
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		t.Fatal(err)
+	_ = os.WriteFile(filepath.Join(root, "gym.ics"), []byte(ics), 0o644)
+	if out, code := cli("calendar", "add", "Gym", filepath.Join(root, "gym.ics"), "#9BD5A8"); code != 0 {
+		t.Fatalf("add: %s", out)
 	}
-	if err := os.WriteFile(p, []byte(ics), 0o644); err != nil {
-		t.Fatal(err)
+	if out, code := cli("calendar", "add", "Personal", "https://cal.example/private-xyz/basic.ics"); code != 0 {
+		t.Fatalf("add link: %s", out)
 	}
-	var out, errb bytes.Buffer
-	if code := run([]string{"calendar", "events", "--from", "2026-11-09", "--to", "2026-11-10"}, &out, &errb); code != 0 {
-		t.Fatalf("exit %d: %s", code, errb.String())
+	out, code := cli("calendar", "list")
+	if code != 0 || !strings.Contains(out, "1. Gym  #9BD5A8") || !strings.Contains(out, "2. Personal") || strings.Contains(out, "private-xyz") {
+		t.Fatalf("list: %s", out)
 	}
 	var evs []map[string]any
-	if err := json.Unmarshal(out.Bytes(), &evs); err != nil || len(evs) != 1 || evs[0]["title"] != "Gym" || evs[0]["calendar"] != "Personal" {
-		t.Fatalf("got %s (%v)", out.String(), err)
+	out, _ = cli("calendar", "events", "2026-11-09", "2026-11-10")
+	if err := json.Unmarshal([]byte(out), &evs); err != nil || len(evs) != 1 || evs[0]["title"] != "Gym" {
+		t.Fatalf("events: %s", out)
 	}
-	for _, bad := range [][]string{{"calendar"}, {"calendar", "events", "--from", "x", "--to", "2026-11-10"}, {"calendar", "events", "--from", "2026-11-10", "--to", "2026-11-09"}, {"calendar", "nope"}} {
-		if code := run(bad, &out, &errb); code != 2 {
-			t.Errorf("%v: exit %d", bad, code)
-		}
+	if out, code := cli("calendar", "remove", "2"); code != 0 {
+		t.Fatalf("remove: %s", out)
+	}
+	if _, code := cli("calendar", "remove", "zero"); code != 2 {
+		t.Fatal("bad number accepted")
+	}
+
+	t.Setenv("WHITEROSE_DAEMON_SOCKET", filepath.Join(root, "nobody.sock"))
+	if out, code := cli("settings", "list"); code != 1 || !strings.Contains(out, "isn't running") {
+		t.Fatalf("no daemon: %d %s", code, out)
 	}
 }

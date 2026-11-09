@@ -46,6 +46,8 @@ pub type DmabufImporter = Box<dyn FnMut(&Dmabuf) -> bool>;
 
 pub struct WhiteRose {
     pub start_time: std::time::Instant,
+    /// Where this session's whiterosed listens (passed to everything we start).
+    pub daemon_socket: std::path::PathBuf,
     pub socket_name: OsString,
     pub display_handle: DisplayHandle,
     pub loop_signal: LoopSignal,
@@ -104,7 +106,8 @@ pub struct WhiteRose {
     pub night_light: crate::night_light::NightLight,
     pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
     pub lock: crate::session_lock::SessionLock,
-    pub shell_restarts: crate::shell_supervisor::RestartPolicy,
+    /// Restart bookkeeping per supervised process ("shell", "daemon").
+    pub restarts: std::collections::HashMap<&'static str, crate::shell_supervisor::RestartPolicy>,
     /// Clipboard history (saved under clipboard_dir).
     pub clipboard: crate::clipboard::History,
     pub clipboard_dir: std::path::PathBuf,
@@ -160,12 +163,15 @@ impl WhiteRose {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(std::env::temp_dir)
             .join(format!("whiterose-{}.sock", socket_name.to_string_lossy()));
+        // whiterosed's socket for this session (it creates it; we only say where).
+        let daemon_socket = ipc_path.with_file_name(format!("whiterosed-{}.sock", socket_name.to_string_lossy()));
         let ipc = ipc::Server::bind(&ipc_path, &event_loop.handle())
             .map_err(|err| tracing::warn!(%err, "shell ipc disabled"))
             .ok();
 
         Self {
             start_time: std::time::Instant::now(),
+            daemon_socket,
             socket_name,
             display_handle: dh,
             loop_signal: event_loop.get_signal(),
@@ -205,7 +211,7 @@ impl WhiteRose {
             night_light: Default::default(),
             session_lock_state,
             lock: Default::default(),
-            shell_restarts: Default::default(),
+            restarts: Default::default(),
             clipboard,
             clipboard_dir,
             clipboard_tx,
@@ -451,9 +457,12 @@ impl WhiteRose {
         self.focus_window(next);
     }
 
-    /// Environment for spawned processes so the shell can find the IPC socket.
-    fn ipc_env(&self) -> Vec<(&'static str, std::path::PathBuf)> {
-        self.ipc.iter().map(|s| ("WHITEROSE_SOCKET", s.path.clone())).collect()
+    /// Environment for processes we start: where the compositor's IPC socket
+    /// and this session's whiterosed are.
+    pub fn ipc_env(&self) -> Vec<(&'static str, std::path::PathBuf)> {
+        let mut env: Vec<_> = self.ipc.iter().map(|s| ("WHITEROSE_SOCKET", s.path.clone())).collect();
+        env.push(("WHITEROSE_DAEMON_SOCKET", self.daemon_socket.clone()));
+        env
     }
 
     pub fn spawn(&self, command: &str) {

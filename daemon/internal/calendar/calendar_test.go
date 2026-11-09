@@ -49,24 +49,24 @@ func TestLinksAreFetchedCachedAndReadOffline(t *testing.T) {
 	}))
 	defer srv.Close()
 	secret := srv.URL + "/calendar/ical/private-abc123/basic.ics"
-	write(t, filepath.Join(d.Config, "calendars.toml"), "[[calendar]]\nname = \"Personal\"\nurl = \""+secret+"\"\n")
+	srcs := Sources(d, []Source{{Name: "Personal", URL: secret}})
 
-	changed, errs := Refresh(context.Background(), d, srv.Client())
+	changed, errs := Refresh(context.Background(), d, srcs, srv.Client())
 	if len(errs) != 0 || changed != 1 {
 		t.Fatalf("first refresh: changed %d, errs %v", changed, errs)
 	}
-	changed, errs = Refresh(context.Background(), d, srv.Client())
+	changed, errs = Refresh(context.Background(), d, srcs, srv.Client())
 	if len(errs) != 0 || changed != 0 || notModified != 1 {
 		t.Fatalf("second refresh should be a 304: changed %d errs %v 304s %d", changed, errs, notModified)
 	}
 	srv.Close() // offline from here on
-	_, errs = Refresh(context.Background(), d, http.DefaultClient)
+	_, errs = Refresh(context.Background(), d, srcs, http.DefaultClient)
 	if len(errs) != 1 || strings.Contains(errs[0].Error(), "private-abc123") {
 		t.Fatalf("offline: errors %v (and the secret link must never appear)", errs)
 	}
-	evs, err := Events(d, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), time.UTC)
-	if err != nil || len(evs) != 1 || evs[0].Title != "Design review" || evs[0].Calendar != "Personal" || evs[0].Color != Palette[0] {
-		t.Fatalf("events from the cache: %+v %v", evs, err)
+	evs := Events(d, srcs, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), time.UTC)
+	if len(evs) != 1 || evs[0].Title != "Design review" || evs[0].Calendar != "Personal" || evs[0].Color != Palette[0] {
+		t.Fatalf("events from the cache: %+v", evs)
 	}
 	// Cache files are named by hash, not by the secret link.
 	entries, _ := os.ReadDir(filepath.Join(d.Cache, "calendars"))
@@ -87,8 +87,8 @@ func TestBadLinksAreRefusedWithoutTouchingTheCache(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer srv.Close()
-	write(t, filepath.Join(d.Config, "calendars.toml"), "[[calendar]]\nname = \"A\"\nurl = \""+srv.URL+"/html\"\n[[calendar]]\nname = \"B\"\nurl = \""+srv.URL+"/x\"\n[[calendar]]\nname = \"C\"\nurl = \"ftp://example.com/x.ics\"\n")
-	changed, errs := Refresh(context.Background(), d, srv.Client())
+	srcs := []Source{{Name: "A", URL: srv.URL + "/html"}, {Name: "B", URL: srv.URL + "/x"}, {Name: "C", URL: "ftp://example.com/x.ics"}}
+	changed, errs := Refresh(context.Background(), d, srcs, srv.Client())
 	if changed != 0 || len(errs) != 3 {
 		t.Fatalf("changed %d errs %v", changed, errs)
 	}
@@ -107,31 +107,25 @@ func TestFilesDropInsColoursAndVersion(t *testing.T) {
 	d := dirs(t)
 	write(t, filepath.Join(d.Home, "Documents", "work.ics"), feed)
 	write(t, filepath.Join(d.Data, "calendars", "Holidays.ics"), strings.Replace(feed, "Design review", "Bank holiday", 1))
-	write(t, filepath.Join(d.Config, "calendars.toml"), "[[calendar]]\nname = \"Work\"\npath = \"~/Documents/work.ics\"\ncolor = \"#123456\"\n")
-	srcs, err := Sources(d)
-	if err != nil || len(srcs) != 2 || srcs[0].Color != "#123456" || srcs[1].Name != "Holidays" || srcs[1].Color != Palette[1] {
-		t.Fatalf("sources: %+v %v", srcs, err)
+	srcs := Sources(d, []Source{{Name: "Work", Path: "~/Documents/work.ics", Color: "#123456"}})
+	if len(srcs) != 2 || srcs[0].Color != "#123456" || srcs[1].Name != "Holidays" || srcs[1].Color != Palette[1] {
+		t.Fatalf("sources: %+v", srcs)
 	}
-	v1 := Version(d)
-	evs, _ := Events(d, time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC), time.UTC)
+	v1 := Version(d, srcs)
+	evs := Events(d, srcs, time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC), time.UTC)
 	if len(evs) != 2 {
 		t.Fatalf("events: %+v", evs)
 	}
 	later := time.Now().Add(2 * time.Second)
 	_ = os.Chtimes(filepath.Join(d.Home, "Documents", "work.ics"), later, later)
-	if Version(d) == v1 {
+	if Version(d, srcs) == v1 {
 		t.Fatal("editing a calendar file must change the version")
 	}
 }
 
-func TestNoConfigMeansNoCalendars(t *testing.T) {
+func TestNoCalendarsMeansNoEvents(t *testing.T) {
 	d := dirs(t)
-	evs, err := Events(d, time.Now(), time.Now().Add(time.Hour), time.UTC)
-	if err != nil || len(evs) != 0 {
-		t.Fatalf("%v %v", evs, err)
-	}
-	write(t, filepath.Join(d.Config, "calendars.toml"), "[[calendar]\nbroken")
-	if _, err := Sources(d); err == nil {
-		t.Fatal("a broken config must be reported")
+	if evs := Events(d, Sources(d, nil), time.Now(), time.Now().Add(time.Hour), time.UTC); len(evs) != 0 {
+		t.Fatalf("%v", evs)
 	}
 }

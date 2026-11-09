@@ -1,11 +1,8 @@
 // Package weather gets the current conditions for the calendar panel's
 // weather pill from Open-Meteo (free, no account or API key). The place is
-// set by the user in ~/.config/whiterose/weather.toml; nothing is detected:
-//
-//	city = "London"          # looked up once, then cached
-//	# latitude = 51.5        # or give coordinates directly
-//	# longitude = -0.12
-//	# units = "fahrenheit"   # default celsius
+// the user's choice in the settings (weather.city, or weather.latitude and
+// weather.longitude; weather.units); nothing is detected. A city is looked up
+// once, then cached.
 package weather
 
 import (
@@ -21,16 +18,19 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
-
-	"github.com/BurntSushi/toml"
 )
 
-// Config is weather.toml.
+// Config is the weather settings.
 type Config struct {
-	City      string   `toml:"city"`
-	Latitude  *float64 `toml:"latitude"`
-	Longitude *float64 `toml:"longitude"`
-	Units     string   `toml:"units"`
+	City      string
+	Latitude  *float64
+	Longitude *float64
+	Units     string
+}
+
+// Configured: a place has been chosen.
+func (c Config) Configured() bool {
+	return c.City != "" || c.Latitude != nil && c.Longitude != nil
 }
 
 // Now is what the pill shows (also the cached file).
@@ -55,20 +55,8 @@ var (
 	ForecastURL = "https://api.open-meteo.com/v1/forecast"
 )
 
-// ErrNotConfigured: no weather.toml (or no place in it): the pill stays hidden.
-var ErrNotConfigured = errors.New("no place set in weather.toml")
-
-func LoadConfig(configDir string) (Config, error) {
-	var c Config
-	_, err := toml.DecodeFile(filepath.Join(configDir, "weather.toml"), &c)
-	if errors.Is(err, os.ErrNotExist) || err == nil && c.City == "" && (c.Latitude == nil || c.Longitude == nil) {
-		return c, ErrNotConfigured
-	}
-	if err != nil {
-		return c, fmt.Errorf("weather.toml: %w", err)
-	}
-	return c, nil
-}
+// ErrNotConfigured: no place chosen; the pill stays hidden.
+var ErrNotConfigured = errors.New("no place set for the weather")
 
 // Cached reads the last reading, if any.
 func Cached(cacheDir string) (Now, bool) {
@@ -81,11 +69,11 @@ func Cached(cacheDir string) (Now, bool) {
 }
 
 // Refresh fetches the current conditions and caches them.
-func Refresh(ctx context.Context, configDir, cacheDir string, client *http.Client) (Now, error) {
-	cfg, err := LoadConfig(configDir)
-	if err != nil {
-		return Now{}, err
+func Refresh(ctx context.Context, cfg Config, cacheDir string, client *http.Client) (Now, error) {
+	if !cfg.Configured() {
+		return Now{}, ErrNotConfigured
 	}
+	var err error
 	prev, _ := Cached(cacheDir)
 	n := Now{Place: cfg.City, City: cfg.City}
 	switch {

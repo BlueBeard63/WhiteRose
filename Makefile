@@ -56,7 +56,7 @@ build:
 # inside notify it. System services (network, Bluetooth, power) are shared.
 run-nested:          ## WhiteRose in a window on your current desktop: bar + a terminal
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
-	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(CARGO) run --release -- --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
+	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
 
 clean:
 	rm -rf build $(DAEMON)/coverage.out $(DAEMON)/coverage.html

@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,11 +37,11 @@ func fakeAPI(t *testing.T) (*httptest.Server, *int) {
 
 func TestCityIsLookedUpOnceThenCached(t *testing.T) {
 	srv, geocodes := fakeAPI(t)
-	cfg, cache := t.TempDir(), t.TempDir()
-	if _, err := Refresh(context.Background(), cfg, cache, srv.Client()); err != ErrNotConfigured {
-		t.Fatalf("no weather.toml: %v", err)
+	cache := t.TempDir()
+	if _, err := Refresh(context.Background(), Config{}, cache, srv.Client()); err != ErrNotConfigured {
+		t.Fatalf("no place chosen: %v", err)
 	}
-	_ = os.WriteFile(filepath.Join(cfg, "weather.toml"), []byte(`city = "London"`), 0o644)
+	cfg := Config{City: "London"}
 	n, err := Refresh(context.Background(), cfg, cache, srv.Client())
 	if err != nil || n.Temperature != 12 || n.Unit != "C" || n.Icon != "cloudSun" || n.Place != "London" {
 		t.Fatalf("got %+v %v", n, err)
@@ -54,7 +52,7 @@ func TestCityIsLookedUpOnceThenCached(t *testing.T) {
 	if c, ok := Cached(cache); !ok || c.Temperature != 12 {
 		t.Fatalf("cache: %+v %v", c, ok)
 	}
-	_ = os.WriteFile(filepath.Join(cfg, "weather.toml"), []byte("city = \"London\"\nunits = \"fahrenheit\""), 0o644)
+	cfg.Units = "fahrenheit"
 	if n, _ := Refresh(context.Background(), cfg, cache, srv.Client()); n.Temperature != 53 || n.Unit != "F" {
 		t.Fatalf("fahrenheit: %+v", n)
 	}
@@ -62,14 +60,13 @@ func TestCityIsLookedUpOnceThenCached(t *testing.T) {
 
 func TestUnknownCityAndCoordinates(t *testing.T) {
 	srv, geocodes := fakeAPI(t)
-	cfg, cache := t.TempDir(), t.TempDir()
-	_ = os.WriteFile(filepath.Join(cfg, "weather.toml"), []byte(`city = "Nowhere"`), 0o644)
-	if _, err := Refresh(context.Background(), cfg, cache, srv.Client()); err == nil || !strings.Contains(err.Error(), "Nowhere") {
+	cache := t.TempDir()
+	if _, err := Refresh(context.Background(), Config{City: "Nowhere"}, cache, srv.Client()); err == nil || !strings.Contains(err.Error(), "Nowhere") {
 		t.Fatalf("unknown city: %v", err)
 	}
-	_ = os.WriteFile(filepath.Join(cfg, "weather.toml"), []byte("latitude = 51.5085\nlongitude = -0.1257"), 0o644)
+	lat, lon := 51.5085, -0.1257
 	before := *geocodes
-	if _, err := Refresh(context.Background(), cfg, cache, srv.Client()); err != nil || *geocodes != before {
+	if _, err := Refresh(context.Background(), Config{Latitude: &lat, Longitude: &lon}, cache, srv.Client()); err != nil || *geocodes != before {
 		t.Fatalf("coordinates must skip the lookup: %v", err)
 	}
 }

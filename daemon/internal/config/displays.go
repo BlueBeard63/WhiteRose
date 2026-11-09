@@ -17,38 +17,39 @@ import (
 	"whiterose/daemon/internal/monitor"
 )
 
-// Displays is ~/.config/whiterose/displays.toml.
+// Displays is the display configuration (the "displays" setting; formerly
+// ~/.config/whiterose/displays.toml, which is imported once).
 //
 // Per-monitor preferences (mode, scale, ...) live in [[monitor]] and follow the
 // monitor everywhere. Placement depends on which monitors are plugged in
 // together, so it lives in [[profile]].
 type Displays struct {
-	Monitors []Monitor `toml:"monitor"`
-	Profiles []Profile `toml:"profile"`
+	Monitors []Monitor `toml:"monitor" json:"monitor"`
+	Profiles []Profile `toml:"profile" json:"profile"`
 }
 
 // Monitor holds preferences for one monitor, keyed by its stable ID.
 type Monitor struct {
-	ID        string            `toml:"id"`
-	Label     string            `toml:"label"`
-	Mode      string            `toml:"mode"`  // "2560x1440@165", "2560x1440", or "" / "preferred"
-	Scale     float64           `toml:"scale"` // 0 means 1
-	Transform monitor.Transform `toml:"transform"`
-	VRR       string            `toml:"vrr"` // "", "auto", "on", "off"
+	ID        string            `toml:"id" json:"id"`
+	Label     string            `toml:"label" json:"label,omitempty"`
+	Mode      string            `toml:"mode" json:"mode,omitempty"`   // "2560x1440@165", "2560x1440", or "" / "preferred"
+	Scale     float64           `toml:"scale" json:"scale,omitempty"` // 0 means 1
+	Transform monitor.Transform `toml:"transform" json:"transform,omitempty"`
+	VRR       string            `toml:"vrr" json:"vrr,omitempty"` // "", "auto", "on", "off"
 }
 
 // Profile is a layout for one exact set of connected monitors.
 type Profile struct {
-	Name    string          `toml:"name"`
-	Outputs []ProfileOutput `toml:"output"`
+	Name    string          `toml:"name" json:"name,omitempty"`
+	Outputs []ProfileOutput `toml:"output" json:"output"`
 }
 
 // ProfileOutput places one monitor within a profile.
 type ProfileOutput struct {
-	ID       string `toml:"id"`
-	Position [2]int `toml:"position"`
+	ID       string `toml:"id" json:"id"`
+	Position [2]int `toml:"position" json:"position"`
 	// Disabled turns the monitor off while this profile is active.
-	Disabled bool `toml:"disabled"`
+	Disabled bool `toml:"disabled" json:"disabled,omitempty"`
 }
 
 // Mode is a parsed display mode. Refresh is 0 when unspecified.

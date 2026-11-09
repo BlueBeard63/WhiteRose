@@ -1,0 +1,227 @@
+package store
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+func open(t *testing.T) (*Store, string) {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "whiterose", "settings.db")
+	s, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s, p
+}
+
+func TestDefaultsSetGetAndPersistence(t *testing.T) {
+	s, p := open(t)
+	v, ok, err := s.Get("dock.pinned")
+	if err != nil || !ok || !strings.Contains(string(v), "org.gnome.Nautilus") {
+		t.Fatalf("default dock: %s %v %v", v, ok, err)
+	}
+	if err := s.Set("dock.pinned", json.RawMessage(` [ "firefox_firefox" ] `)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetValue("quick.doNotDisturb", true); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s2, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	var pinned []string
+	var dnd bool
+	if err := s2.GetInto("dock.pinned", &pinned); err != nil || len(pinned) != 1 || pinned[0] != "firefox_firefox" {
+		t.Fatalf("after reopening: %v %v", pinned, err)
+	}
+	_ = s2.GetInto("quick.doNotDisturb", &dnd)
+	if !dnd {
+		t.Fatal("bool setting lost")
+	}
+	all, _ := s2.All()
+	if string(all["dock.pinned"]) != `["firefox_firefox"]` || string(all["weather.units"]) != `"celsius"` {
+		t.Fatalf("All mixes stored values and defaults: %s %s", all["dock.pinned"], all["weather.units"])
+	}
+	if err := s2.Reset("dock.pinned"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s2.GetInto("dock.pinned", &pinned)
+	if len(pinned) != 6 {
+		t.Fatalf("reset should bring the default back: %v", pinned)
+	}
+}
+
+func TestOnlyTheUserCanReadTheDatabase(t *testing.T) {
+	_, p := open(t)
+	for _, f := range []string{p, filepath.Dir(p)} {
+		fi, err := os.Stat(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s is %v: others can read it", f, fi.Mode().Perm())
+		}
+	}
+}
+
+func TestValidation(t *testing.T) {
+	s, _ := open(t)
+	bad := map[string]string{
+		"dock.pinned":                  `"firefox"`,
+		"quick.doNotDisturb":           `"yes"`,
+		"quick.nightLight.temperature": `9000`,
+		"weather.units":                `"kelvin"`,
+		"weather.latitude":             `123`,
+		"launcher.calculations":        `[{"expr":"1+1","result":"2","extra":true}]`,
+		"displays":                     `{"monitor":[{"id":"not-an-id"}],"profile":[]}`,
+		"nope.unknown":                 `1`,
+		"Bad Key":                      `1`,
+		"module.x":                     `{not json`,
+	}
+	for k, v := range bad {
+		if err := s.Set(k, json.RawMessage(v)); err == nil {
+			t.Errorf("%s = %s was accepted", k, v)
+		}
+	}
+	good := map[string]string{
+		"weather.city":          `"London"`,
+		"weather.latitude":      `51.5`,
+		"module.wallpaper.path": `"/home/me/bg.png"`,
+		"launcher.calculations": `[{"expr":"1+1","result":"2"}]`,
+		"displays":              `{"monitor":[],"profile":[]}`,
+	}
+	for k, v := range good {
+		if err := s.Set(k, json.RawMessage(v)); err != nil {
+			t.Errorf("%s = %s refused: %v", k, v, err)
+		}
+	}
+	if err := s.Set("module.big", json.RawMessage(`"`+strings.Repeat("x", MaxValue)+`"`)); err == nil {
+		t.Error("oversized value accepted")
+	}
+}
+
+func TestSubscribersSeeEveryChange(t *testing.T) {
+	s, _ := open(t)
+	ch, stop := s.Subscribe()
+	defer stop()
+	_ = s.SetValue("weather.city", "Leeds")
+	_ = s.Reset("weather.city")
+	for _, want := range []string{`"Leeds"`, `""`} {
+		select {
+		case c := <-ch:
+			if c.Key != "weather.city" || string(c.Value) != want {
+				t.Fatalf("got %s=%s, want %s", c.Key, c.Value, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("no change delivered")
+		}
+	}
+	stop()
+	stop() // safe twice
+	_ = s.SetValue("weather.city", "York")
+}
+
+func TestConcurrentWritersAndReaders(t *testing.T) {
+	s, _ := open(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				if err := s.SetValue("module.test.n", i*100+j); err != nil {
+					t.Error(err)
+				}
+				if _, err := s.All(); err != nil {
+					t.Error(err)
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestNewerSchemaIsRefused(t *testing.T) {
+	s, p := open(t)
+	if _, err := s.db.Exec(`PRAGMA user_version = 99`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if _, err := Open(p); err == nil || !strings.Contains(err.Error(), "newer") {
+		t.Fatalf("a database from a newer WhiteRose must not be touched: %v", err)
+	}
+}
+
+// fakeKeyring is an in-memory Secret Service.
+type fakeKeyring struct {
+	m    map[string]string
+	fail bool
+}
+
+func (f *fakeKeyring) Name() string { return "keyring" }
+func (f *fakeKeyring) Get(id string) (string, error) {
+	v, ok := f.m[id]
+	if !ok {
+		return "", ErrNoSecret
+	}
+	return v, nil
+}
+func (f *fakeKeyring) Set(id, v string) error {
+	if f.fail {
+		return errors.New("locked")
+	}
+	f.m[id] = v
+	return nil
+}
+func (f *fakeKeyring) Delete(id string) error { delete(f.m, id); return nil }
+
+func TestSecretsPreferTheKeyringAndMoveThere(t *testing.T) {
+	s, _ := open(t)
+	fb := s.Fallback()
+	// No keyring yet: secrets go in the database.
+	r := Resolver{Fallback: fb}
+	id := NewSecretID()
+	if where, err := r.Set(id, "https://cal.example/private-abc"); err != nil || where != "settings database" {
+		t.Fatalf("%s %v", where, err)
+	}
+	// A keyring appears (next login): the secret moves there.
+	k := &fakeKeyring{m: map[string]string{}}
+	if n, err := s.MoveToKeyring(k); err != nil || n != 1 {
+		t.Fatalf("moved %d: %v", n, err)
+	}
+	if _, err := fb.Get(id); !errors.Is(err, ErrNoSecret) {
+		t.Fatal("secret left in the database after moving")
+	}
+	r = Resolver{Keyring: k, Fallback: fb}
+	if v, err := r.Get(id); err != nil || v != "https://cal.example/private-abc" {
+		t.Fatalf("%q %v", v, err)
+	}
+	// A keyring that refuses (locked): fall back rather than lose it.
+	k.fail = true
+	id2 := NewSecretID()
+	if where, err := r.Set(id2, "x"); err != nil || where != "settings database" {
+		t.Fatalf("%s %v", where, err)
+	}
+	if v, _ := r.Get(id2); v != "x" {
+		t.Fatal("fallback secret not readable")
+	}
+	r.Delete(id)
+	r.Delete(id2)
+	if _, err := r.Get(id); err == nil {
+		t.Fatal("deleted secret still readable")
+	}
+	if NewSecretID() == NewSecretID() {
+		t.Fatal("secret ids must be unique")
+	}
+}

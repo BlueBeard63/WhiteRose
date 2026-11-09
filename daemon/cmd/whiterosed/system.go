@@ -1,20 +1,15 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"strconv"
-	"sync"
 
 	"whiterose/daemon/internal/backlight"
-	"whiterose/daemon/internal/calendar"
 	"whiterose/daemon/internal/rfkill"
-	"whiterose/daemon/internal/session"
-	"whiterose/daemon/internal/uevent"
 	"whiterose/daemon/internal/weather"
 )
 
@@ -27,7 +22,8 @@ type SystemState struct {
 	Radios     int    `json:"radios"`
 	// Current conditions for the configured place, or nil.
 	Weather *weather.Now `json:"weather"`
-	// Changes whenever the calendars might have: the shell re-reads events.
+	// Changes whenever a calendar was downloaded or a calendar file changed:
+	// the shell re-reads events.
 	Calendars int64 `json:"calendars"`
 }
 
@@ -41,89 +37,6 @@ func readState(backlights, radios fs.FS) SystemState {
 		s.Airplane, s.Radios = rfkill.Airplane(r), len(r)
 	}
 	return s
-}
-
-// emitChanges writes the state as one JSON line now and again after each
-// signal on changed, skipping repeats (one rfkill toggle fires several events).
-func emitChanges(changed <-chan struct{}, read func() SystemState, out io.Writer) error {
-	enc := json.NewEncoder(out)
-	var last []byte
-	emit := func() error {
-		b, err := json.Marshal(read())
-		if err != nil || string(b) == string(last) {
-			return err
-		}
-		last = b
-		return enc.Encode(json.RawMessage(b))
-	}
-	if err := emit(); err != nil {
-		return err
-	}
-	for range changed {
-		if err := emit(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// syncWriter lets the state stream and lock requests share stdout without
-// interleaving lines.
-type syncWriter struct {
-	mu sync.Mutex
-	w  io.Writer
-}
-
-func (s *syncWriter) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.w.Write(p)
-}
-
-// lockLine is what watch prints when logind asks the session to lock/unlock.
-func lockLine(r session.Request) string { return `{"event":"` + string(r) + `"}` + "\n" }
-
-// cmdWatch prints the system state as JSON lines whenever it changes, and
-// {"event":"lock"|"unlock"} when logind asks. It blocks in the kernel and on
-// D-Bus between changes (rfkill reads, netlink uevents, logind signals).
-func cmdWatch(_ []string, stdout, stderr io.Writer) int {
-	out := &syncWriter{w: stdout}
-	go func() {
-		err := session.Watch(func(r session.Request) { _, _ = io.WriteString(out, lockLine(r)) })
-		fmt.Fprintln(stderr, "whiterosed: lock requests not watched:", err)
-	}()
-	changed := make(chan struct{}, 1)
-	poke := func() {
-		select {
-		case changed <- struct{}{}:
-		default:
-		}
-	}
-	if f, err := os.Open(rfkill.Device); err == nil {
-		go func() { _ = rfkill.ReadEvents(f, func(rfkill.Event) { poke() }) }()
-	} else {
-		fmt.Fprintln(stderr, "whiterosed: radios not watched:", err)
-	}
-	go func() {
-		err := uevent.Listen(func(e *uevent.Event) {
-			if e.Props["SUBSYSTEM"] == "backlight" || e.Props["SUBSYSTEM"] == "rfkill" {
-				poke()
-			}
-		})
-		fmt.Fprintln(stderr, "whiterosed: brightness not watched:", err)
-	}()
-	startRefreshers(stderr, poke)
-	dirs := calendar.DefaultDirs()
-	read := func() SystemState {
-		s := readState(os.DirFS(backlight.Sysfs), os.DirFS(rfkill.Sysfs))
-		s.Weather, s.Calendars = weatherView(dirs), calendar.Version(dirs)
-		return s
-	}
-	if err := emitChanges(changed, read, out); err != nil {
-		fmt.Fprintln(stderr, "whiterosed:", err)
-		return 1
-	}
-	return 0
 }
 
 func cmdBrightness(args []string, stdout, stderr io.Writer) int {

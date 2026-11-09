@@ -107,7 +107,7 @@ Identical cheap monitors often report serial `0` and no serial string, which giv
 
 ### Config shape
 
-Implemented in `daemon/internal/config`. A full example is in `daemon/internal/config/testdata/displays.toml`.
+Implemented in `daemon/internal/config`. It's stored as the `displays` setting in the settings database (as JSON, same shape). A `displays.toml` like the example in `daemon/internal/config/testdata/displays.toml` is imported once.
 
 ```toml
 # Per-monitor preferences follow the monitor everywhere.
@@ -184,7 +184,7 @@ Rules that keep RAM low:
 - **Modules hold no processes of their own.** The real work lives in a small set of **providers** inside `whiterosed`, for example outputs, audio, network, bluetooth and power. A module only declares which providers it uses, so installing 30 modules does not mean running 30 backends.
 - **The settings app loads a page only while it is open.** It loads the page's `Page.qml` with a QML `Loader` and destroys it when you leave the page. Closed pages cost no memory.
 - **The settings app is itself on demand.** It is a separate QuickShell window that exits when closed. It is not part of the always-running bar.
-- **Config is one TOML file per module** in `~/.config/whiterose/<module>.toml`. `whiterosed` checks each file against the module's schema, watches it with inotify, and pushes changes out live. Hand edits and UI edits behave the same.
+- **Config lives in the settings database**, under `module.<name>.…` keys (see Settings database below). `whiterosed` checks values against the module's schema and pushes changes out live, whether they come from the UI or `whiterosed settings set`.
 - **Optional modules are not distro packages.** They are just QML plus a manifest. The Modules page downloads, verifies the signature of, and installs them into `~/.local/share/whiterose/modules/`. If a module needs system software (`requires = ["cups"]`), the Modules page installs it through **PackageKit**, which works on both apt and dnf.
 
 ---
@@ -341,11 +341,11 @@ Scripting: `qs ipc call island set <view>`.
 |---|---|
 | Wi-Fi, Bluetooth, volume, battery, power mode | QuickShell services (NetworkManager, BlueZ, PipeWire, UPower, power-profiles-daemon) |
 | Brightness, airplane mode | `whiterosed`: `brightness set <percent>` goes through logind's `SetBrightness`; `airplane on\|off` goes through `/dev/rfkill`. Neither needs root. |
-| Live brightness/airplane state, lock requests | `whiterosed watch`, which the shell keeps running. It prints a JSON line on every change and `{"event":"lock"}` when logind asks (`loginctl lock-session`). It sleeps in the kernel and on D-Bus in between: netlink uevents, rfkill reads, logind signals. |
+| Live brightness/airplane state, lock requests | `whiterosed serve`'s socket: it pushes a `state` event on every change and `{"event":"lock"}` when logind asks (`loginctl lock-session`). It sleeps in the kernel and on D-Bus in between: netlink uevents, rfkill reads, logind signals. |
 | Night Light | The compositor (see below). The shell stores the state and turns it off at the next 07:00. |
 | Do Not Disturb | Shell state, for the notification server |
 
-Do Not Disturb and Night Light persist in `$XDG_STATE_HOME/whiterose/quick.json`. The power button swaps the toggles for Suspend, Log Out, Restart and Power Off. Suspend locks first.
+Do Not Disturb and Night Light are settings (`quick.doNotDisturb`, `quick.nightLight.until`, `quick.nightLight.temperature`). The power button swaps the toggles for Suspend, Log Out, Restart and Power Off. Suspend locks first.
 
 ## Night Light
 
@@ -386,14 +386,26 @@ Panels and popups share `SidePanel.qml`: the shape, the grow and shrink animatio
 The calendar panel (`shell/CalendarPanel.qml`) opens from the clock. It shows the time and date, the weather, a month grid (Monday first) with a dot on days that have events, and the selected day's events. All data comes from `whiterosed`:
 
 - **Calendars** (`daemon/internal/calendar`, `internal/ical`). Read-only.
-  - **Sources:** iCal links in `~/.config/whiterose/calendars.toml`, which covers the Google, Outlook and iCloud "secret address" links and any `.ics` URL, plus `.ics` files listed there or dropped into `~/.local/share/whiterose/calendars/`.
+  - **Sources:** the `calendar.sources` setting: iCal links (Google, Outlook and iCloud "secret address" links, any `.ics` URL) and `.ics` files, plus files dropped into `~/.local/share/whiterose/calendars/`. Links are kept in the keyring, never in the settings. They're changed with their own requests (`whiterosed calendar add|remove|list`), not a plain `set`.
   - **Fetching:** links go into `~/.cache/whiterose/calendars/` every 15 minutes, using ETags, a size cap, and file names hashed so the secret link isn't exposed. The panel reads the cache: it's instant and works offline.
   - **Reader:** the iCalendar reader handles time zones (including Outlook's Windows zone names), all-day and multi-day events, DURATION, RRULE (daily, weekly, monthly, yearly with INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY), EXDATE, moved occurrences (RECURRENCE-ID) and cancellations. It's fuzzed in `make check`.
-  - **Commands:** `whiterosed calendar events --from --to` (JSON) and `whiterosed calendar refresh`.
+  - **Commands:** `whiterosed calendar list | add NAME URL|FILE [#COLOUR] | remove N | events FROM TO`.
 - **Weather** (`internal/weather`).
-  - **Place:** set in `~/.config/whiterose/weather.toml` (`city = "London"`, or `latitude`/`longitude`, and optionally `units = "fahrenheit"`). Location is never detected.
+  - **Place:** the `weather.city` setting (or `weather.latitude` and `weather.longitude`), plus `weather.units`. Location is never detected. Changing them refreshes at once.
   - **Data:** Open-Meteo (no account), refreshed every 30 minutes. The city is looked up once and cached. Readings are cached in `~/.cache/whiterose/weather.json`.
-  - **Command:** `whiterosed weather`.
-- **Updates to the shell:** `whiterosed watch` runs both refreshes and adds `weather` and a `calendars` version to its state lines. The shell re-reads events when the version changes.
+- **Updates to the shell:** `whiterosed serve` runs both refreshes and adds `weather` and a `calendars` version to its state events. The shell re-reads events when the version changes.
 
-The Settings app will edit these files; until then they're edited by hand.
+## Settings database
+
+All user settings live in one SQLite database, `~/.local/share/whiterose/settings.db`. Both the folder and the file are readable only by the user. It's owned by `whiterosed serve`, which the compositor starts and restarts (`--daemon`), one per session, on `$WHITEROSE_DAEMON_SOCKET`.
+
+- **Keys and values:** each setting is a key holding a JSON value (`dock.pinned`, `launcher.*`, `quick.*`, `weather.*`, `calendar.sources`, `displays`).
+  - Known keys have a default and a type check (`daemon/internal/store/keys.go`).
+  - Settings modules keep theirs under `module.<name>.`.
+  - Bad values are refused with a reason.
+  - The schema is versioned, and a database from a newer WhiteRose is left untouched.
+- **Live:** clients get every value on connect and every change as it happens (`daemon/internal/server`). The shell reaches it through `shell/Daemon.qml`; the CLI is `whiterosed settings list|get|set|reset`.
+- **Secrets** (calendar links) go into the desktop keyring through the Secret Service (GNOME Keyring, KWallet), but only one already running and unlocked; the daemon never starts one or causes a prompt. Without one (nested development, a session with no keyring), they're kept in the database's own table and moved into the keyring once there is one.
+- **Import:** at start, any old config file found (`dock.json`, `launcher.json`, `quick.json`, `calendars.toml`, `weather.toml`, `displays.toml`) is imported and renamed `*.migrated`. A file that can't be read is left alone and reported.
+- **Not settings:** clipboard history (the compositor's data, with images) stays in `~/.local/share/whiterose/clipboard/`.
+- **Tests:** store, validation, secrets (with a fake keyring), import, the socket protocol with real clients, and the CLI against an in-process daemon.

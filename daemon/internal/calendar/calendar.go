@@ -1,18 +1,10 @@
 // Package calendar collects the user's calendars for the shell's calendar
 // panel: iCal links (Google, Outlook, iCloud "secret address", any .ics URL)
-// listed in ~/.config/whiterose/calendars.toml, and .ics files, either listed
-// there or dropped into ~/.local/share/whiterose/calendars/. Links are
-// fetched into ~/.cache/whiterose/calendars so the panel works offline and
-// opens without waiting for the network. Read-only.
-//
-//	[[calendar]]
-//	name = "Personal"
-//	url = "https://calendar.google.com/calendar/ical/…/basic.ics"
-//	color = "#E8A3AE"   # optional
-//
-//	[[calendar]]
-//	name = "Work"
-//	path = "~/Documents/work.ics"
+// and .ics files from the settings ("calendar.sources", links resolved from
+// the keyring by the caller), plus .ics files dropped into
+// ~/.local/share/whiterose/calendars/. Links are fetched into
+// ~/.cache/whiterose/calendars so the panel works offline and opens without
+// waiting for the network. Read-only.
 package calendar
 
 import (
@@ -29,21 +21,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
-
 	"whiterose/daemon/internal/ical"
 )
 
-// Source is one calendar.
+// Source is one calendar, with its link (if any) already resolved.
 type Source struct {
-	Name  string `toml:"name"`
-	URL   string `toml:"url"`
-	Path  string `toml:"path"`
-	Color string `toml:"color"`
-}
-
-type file struct {
-	Calendar []Source `toml:"calendar"`
+	Name  string
+	URL   string
+	Path  string
+	Color string
 }
 
 // Palette for calendars without a colour (the Figma accents).
@@ -51,7 +37,7 @@ var Palette = []string{"#E8A3AE", "#8FB8F2", "#9BD5A8", "#F2C98F", "#B9A3E8", "#
 
 // Dirs are where things live (overridable in tests).
 type Dirs struct {
-	Config string // ~/.config/whiterose
+	Config string // ~/.config/whiterose (only for importing old config files)
 	Data   string // ~/.local/share/whiterose
 	Cache  string // ~/.cache/whiterose
 	Home   string
@@ -74,14 +60,10 @@ func DefaultDirs() Dirs {
 	}
 }
 
-// Sources lists the configured calendars plus any dropped-in .ics files,
-// each with a colour. A missing config file just means none configured.
-func Sources(d Dirs) ([]Source, error) {
-	var f file
-	if _, err := toml.DecodeFile(filepath.Join(d.Config, "calendars.toml"), &f); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("calendars.toml: %w", err)
-	}
-	out := f.Calendar
+// Sources is the configured calendars plus any dropped-in .ics files, each
+// with a colour.
+func Sources(d Dirs, configured []Source) []Source {
+	out := append([]Source(nil), configured...)
 	drop, _ := filepath.Glob(filepath.Join(d.Data, "calendars", "*.ics"))
 	sort.Strings(drop)
 	for _, p := range drop {
@@ -95,7 +77,7 @@ func Sources(d Dirs) ([]Source, error) {
 			out[i].Path = filepath.Join(d.Home, out[i].Path[2:])
 		}
 	}
-	return out, nil
+	return out
 }
 
 // cachePath is where a link's last download is kept (named by a hash: the
@@ -111,11 +93,7 @@ const MaxFeed = 32 << 20
 // Refresh downloads every linked calendar into the cache. A failed fetch
 // keeps the previous copy. Returns how many changed; errors never include the
 // link (it's a secret).
-func Refresh(ctx context.Context, d Dirs, client *http.Client) (changed int, errs []error) {
-	srcs, err := Sources(d)
-	if err != nil {
-		return 0, []error{err}
-	}
+func Refresh(ctx context.Context, d Dirs, srcs []Source, client *http.Client) (changed int, errs []error) {
 	for _, s := range srcs {
 		if s.URL == "" {
 			continue
@@ -210,11 +188,7 @@ type Event struct {
 
 // Events lists every calendar's events overlapping [from, to), sorted.
 // Calendars that can't be read (not downloaded yet, a bad file) are skipped.
-func Events(d Dirs, from, to time.Time, loc *time.Location) ([]Event, error) {
-	srcs, err := Sources(d)
-	if err != nil {
-		return nil, err
-	}
+func Events(d Dirs, srcs []Source, from, to time.Time, loc *time.Location) []Event {
 	out := []Event{}
 	for _, s := range srcs {
 		p := s.Path
@@ -240,22 +214,21 @@ func Events(d Dirs, from, to time.Time, loc *time.Location) ([]Event, error) {
 		}
 		return out[i].AllDay && !out[j].AllDay
 	})
-	return out, nil
+	return out
 }
 
-// Version changes whenever anything the panel shows could have: the config,
-// a dropped-in file, or a downloaded copy. The shell re-reads when it does.
-func Version(d Dirs) int64 {
+// Version changes whenever anything the panel shows could have: a
+// dropped-in file or a downloaded copy (settings changes are pushed
+// separately). The shell re-reads when it does.
+func Version(d Dirs, srcs []Source) int64 {
 	var v int64
 	bump := func(p string) {
 		if fi, err := os.Stat(p); err == nil && fi.ModTime().UnixNano() > v {
 			v = fi.ModTime().UnixNano()
 		}
 	}
-	bump(filepath.Join(d.Config, "calendars.toml"))
 	bump(filepath.Join(d.Data, "calendars"))
 	bump(filepath.Join(d.Cache, "calendars"))
-	srcs, _ := Sources(d)
 	for _, s := range srcs {
 		if s.URL != "" {
 			bump(cachePath(d, s.URL))

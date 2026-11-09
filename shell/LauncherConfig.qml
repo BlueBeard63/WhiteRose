@@ -1,7 +1,8 @@
-// The launcher's memory, persisted to $XDG_CONFIG_HOME/whiterose/launcher.json:
-// how often each app was launched (for ranking), recent commands and recent
-// calculations. Also the programs on $PATH for the Commands chip, scanned
-// once and refreshed at most once a minute when asked.
+// The launcher's memory, in the settings database: how often each app was
+// launched (launcher.launches, for ranking), recent commands
+// (launcher.commands) and calculations (launcher.calculations). Also the
+// programs on $PATH for the Commands chip, scanned once and refreshed at most
+// once a minute when asked.
 pragma Singleton
 import QtQuick
 import Quickshell
@@ -10,19 +11,19 @@ import "Search.js" as Search
 
 Singleton {
     id: root
-    readonly property var launches: adapter.launches
-    readonly property var history: adapter.commands
-    readonly property var calcHistory: adapter.calculations
+    readonly property var launches: Daemon.setting("launcher.launches", ({}))
+    readonly property var history: Daemon.setting("launcher.commands", [])
+    readonly property var calcHistory: Daemon.setting("launcher.calculations", [])
     property var commands: []
 
     function record(id) {
-        const l = Object.assign({}, adapter.launches);
+        const l = Object.assign({}, root.launches);
         l[id] = (l[id] ?? 0) + 1;
-        adapter.launches = l;
+        Daemon.set("launcher.launches", l);
     }
-    function recordCommand(cmd) { adapter.commands = Search.pushHistory(adapter.commands, cmd, 20) }
+    function recordCommand(cmd) { Daemon.set("launcher.commands", Search.pushHistory(root.history, cmd, 20)) }
     function recordCalculation(expr, result) {
-        adapter.calculations = Search.pushHistory(adapter.calculations, { expr, result }, 10, (a, b) => a.expr === b.expr);
+        Daemon.set("launcher.calculations", Search.pushHistory(root.calcHistory, { expr, result }, 10, (a, b) => a.expr === b.expr));
     }
 
     property real scannedAt: 0
@@ -40,17 +41,4 @@ Singleton {
     }
     Component.onCompleted: scanCommands()
 
-    FileView {
-        path: DockConfig.configDir + "/launcher.json"
-        watchChanges: true
-        onFileChanged: reload()
-        onAdapterUpdated: writeAdapter()
-        onLoadFailed: error => { if (error === FileViewError.FileNotFound) writeAdapter() }
-        JsonAdapter {
-            id: adapter
-            property var launches: ({})
-            property var commands: []
-            property var calculations: []
-        }
-    }
 }
