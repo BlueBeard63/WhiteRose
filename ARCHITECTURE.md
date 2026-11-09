@@ -298,3 +298,32 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 - **The bug:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell.
 - **The test:** `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client` fails without the patch.
 - **Removing it:** drop the vendored copy once upstream ships the fix.
+
+---
+
+## Clipboard history
+
+Implemented in `compositor/src/clipboard.rs` (pure logic) and `clipboard_capture.rs`; shown in the island's clipboard view.
+
+- **Capture:** every clipboard copy by an app is read by the compositor on a worker thread, with a 3 s timeout and a size cap. It keeps one representation, in this order: file list, image, text.
+- **Never stored:** anything a password manager marks as secret (`x-kde-passwordManagerHint`), whitespace-only text, and data over the caps.
+- **Storage:** `$XDG_DATA_HOME/whiterose/clipboard/`, containing `history.json` (written atomically) and `images/`. Identical images share one file.
+- **Limits:** 50 entries, 256 KB of text per entry, 16 MB per image, 64 MB of images in total. The oldest entries are evicted first. Copying something already in the history moves it to the top.
+- **Files:** stored as paths and re-checked on disk every time the history is shown. Missing files are marked; pasting offers only the files that still exist; an entry with none left can't be pasted.
+- **Clearing:** Clear removes everything, including the images on disk. Individual entries can be removed too.
+- **Tests:** `WHITEROSE_CLIPBOARD_DIR` overrides the location, and tests always point it at a temporary folder.
+
+## The island
+
+`shell/Island.qml` is one `PanelShape` hanging from the bar. It morphs between every view:
+
+- `idle`
+- `dock`
+- `clipboard`
+- `screenshots`
+- `launcher`
+- `switcher`, which the compositor drives while ALT+TAB / SUPER+ALT+TAB is held
+
+Each view (`*View.qml`) only reports the size it wants. The island animates its outline to that size, fades the old content out and the new content in once the shape has settled, and keeps the bar window tall until the morph ends.
+
+Scripting: `qs ipc call island set <view>`.

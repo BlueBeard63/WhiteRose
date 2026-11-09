@@ -1,4 +1,5 @@
 // WhiteRose shell entry point: `qs -p shell` (the compositor starts it with --shell).
+import QtQuick
 import Quickshell
 
 ShellRoot {
@@ -8,8 +9,11 @@ ShellRoot {
         delegate: Bar {}
     }
 
-    // ALT+TAB / SUPER+ALT+TAB, on the primary screen.
-    Switcher { screen: Quickshell.screens[0] ?? null }
+    // Tap SUPER: the island morphs into the launcher.
+    Connections {
+        target: Compositor
+        function onAction(name) { if (name === "app_launcher") ShellState.toggle("launcher") }
+    }
 
     // Screenshot toast, on the primary screen.
     ScreenshotToast { screen: Quickshell.screens[0] ?? null }

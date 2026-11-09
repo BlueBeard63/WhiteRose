@@ -24,6 +24,11 @@ Singleton {
     // ALT+TAB / SUPER+ALT+TAB, run by the compositor: null when closed, else
     // { mode: "apps"|"windows", items: [{ app_id, windows: [id] }], selected, sub }.
     property var switcher: null
+    // Clipboard history, newest first:
+    // { id, time, kind: "text"|"image"|"files", preview, image, files: [{ path, exists }], available }.
+    property var clipboard: []
+    // Newest screenshots in the Screenshots folder (absolute paths).
+    property var screenshots: []
 
     function windowById(id) { return root.windows.find(w => w.id === id) ?? null }
 
@@ -52,6 +57,13 @@ Singleton {
     // Focus an app's most recent window, or cycle if it already has focus.
     function focusApp(appId) { send({ cmd: "focus_app", app_id: appId }) }
     function focusWindow(id) { send({ cmd: "focus_window", id: id }) }
+    // Re-sends the history, re-checking copied files on disk.
+    function clipboardList() { send({ cmd: "clipboard_list" }) }
+    function clipboardPaste(id) { send({ cmd: "clipboard_paste", id: id }) }
+    function clipboardDelete(id) { send({ cmd: "clipboard_delete", id: id }) }
+    function clipboardClear() { send({ cmd: "clipboard_clear" }) }
+    function screenshotList() { send({ cmd: "screenshot_list" }) }
+    function screenshotCopy(path) { send({ cmd: "screenshot_copy", path: path }) }
     // The compositor only deletes files it saved itself.
     function deleteScreenshot(path) { send({ cmd: "delete_screenshot", path: path }) }
 
@@ -79,6 +91,12 @@ Singleton {
             break;
         case "switcher":
             root.switcher = msg.state;
+            break;
+        case "clipboard":
+            root.clipboard = msg.entries;
+            break;
+        case "screenshots":
+            root.screenshots = msg.files;
             break;
         case "action":
             root.action(msg.name);

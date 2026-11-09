@@ -21,7 +21,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use smithay::reexports::calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction};
 
-use crate::{keybind::Action, state::WhiteRose};
+use crate::{
+    keybind::{Action, ShellRequest},
+    state::WhiteRose,
+};
 
 /// Messages from the compositor to the shell.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +51,14 @@ pub enum Event {
     /// ALT+TAB / SUPER+ALT+TAB state; `state` is null when closed.
     Switcher {
         state: Option<crate::switcher::Switcher>,
+    },
+    /// Clipboard history, newest first; copied files re-checked on disk.
+    Clipboard {
+        entries: Vec<crate::clipboard::EntryView>,
+    },
+    /// The newest screenshots in the Screenshots folder (absolute paths).
+    Screenshots {
+        files: Vec<String>,
     },
     /// A screenshot was saved (and put on the clipboard as image/png).
     Screenshot {
@@ -105,6 +116,21 @@ pub enum Request {
     FocusApp {
         app_id: String,
     },
+    /// Re-send the clipboard history (re-checks copied files on disk).
+    ClipboardList,
+    /// Put a history entry back on the clipboard.
+    ClipboardPaste {
+        id: u64,
+    },
+    ClipboardDelete {
+        id: u64,
+    },
+    ClipboardClear,
+    ScreenshotList,
+    /// Copy a screenshot from the tray onto the clipboard.
+    ScreenshotCopy {
+        path: String,
+    },
     /// Capture the whole screen (e.g. the screenshot toolbar's "Screen" mode).
     Screenshot,
     /// Delete a screenshot this compositor saved (the toast's trash button).
@@ -125,6 +151,12 @@ impl Request {
             Request::Spawn { command } => Action::Spawn(command),
             Request::CloseWindow => Action::CloseWindow,
             Request::Screenshot => Action::ScreenshotScreen,
+            Request::ClipboardList => Action::Shell(ShellRequest::ClipboardList),
+            Request::ClipboardPaste { id } => Action::Shell(ShellRequest::ClipboardPaste(id)),
+            Request::ClipboardDelete { id } => Action::Shell(ShellRequest::ClipboardDelete(id)),
+            Request::ClipboardClear => Action::Shell(ShellRequest::ClipboardClear),
+            Request::ScreenshotList => Action::Shell(ShellRequest::ScreenshotList),
+            Request::ScreenshotCopy { path } => Action::Shell(ShellRequest::ScreenshotCopy(path)),
             Request::Switcher { mode: crate::switcher::Mode::Apps } => Action::AppSwitcher,
             Request::Switcher { mode: crate::switcher::Mode::Windows } => Action::WindowSwitcher,
             Request::FocusWindow { id } => Action::FocusWindow(id),
@@ -190,6 +222,8 @@ pub struct Server {
     last_focus: Option<Event>,
     last_windows: Option<Event>,
     last_switcher: Option<Event>,
+    last_clipboard: Option<Event>,
+    last_screenshots: Option<Event>,
 }
 
 impl Server {
@@ -222,6 +256,8 @@ impl Server {
             last_focus: None,
             last_windows: None,
             last_switcher: None,
+            last_clipboard: None,
+            last_screenshots: None,
         })
     }
 
@@ -253,6 +289,8 @@ impl Server {
             Event::Focus { .. } => &mut self.last_focus,
             Event::Windows { .. } => &mut self.last_windows,
             Event::Switcher { .. } => &mut self.last_switcher,
+            Event::Clipboard { .. } => &mut self.last_clipboard,
+            Event::Screenshots { .. } => &mut self.last_screenshots,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
                 self.broadcast(&event);
                 return;
@@ -457,6 +495,12 @@ mod tests {
         );
         assert_eq!(Request::parse(r#"{"cmd":"close_window"}"#), Ok(Request::CloseWindow));
         assert_eq!(Request::parse(r#"{"cmd":"screenshot"}"#), Ok(Request::Screenshot));
+        assert_eq!(Request::parse(r#"{"cmd":"clipboard_paste","id":7}"#), Ok(Request::ClipboardPaste { id: 7 }));
+        assert_eq!(Request::parse(r#"{"cmd":"clipboard_clear"}"#), Ok(Request::ClipboardClear));
+        assert_eq!(
+            Request::parse(r#"{"cmd":"screenshot_copy","path":"/p.png"}"#),
+            Ok(Request::ScreenshotCopy { path: "/p.png".into() })
+        );
         assert_eq!(
             Request::parse(r#"{"cmd":"switcher","mode":"windows"}"#),
             Ok(Request::Switcher { mode: crate::switcher::Mode::Windows })

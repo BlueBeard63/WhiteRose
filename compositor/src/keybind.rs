@@ -59,6 +59,8 @@ pub enum Action {
     FocusApp(String),
     /// Delete a screenshot this compositor saved (requested by the shell).
     DeleteScreenshot(String),
+    /// Clipboard and screenshot-tray requests from the shell.
+    Shell(ShellRequest),
     Quit,
 }
 
@@ -67,6 +69,17 @@ impl Action {
     pub fn is_shell(&self) -> bool {
         matches!(self, Action::AppLauncher | Action::QuickSettings | Action::Notifications | Action::ScreenshotRegion)
     }
+}
+
+/// Requests only the shell sends (never bound to keys).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellRequest {
+    ClipboardList,
+    ClipboardPaste(u64),
+    ClipboardDelete(u64),
+    ClipboardClear,
+    ScreenshotList,
+    ScreenshotCopy(String),
 }
 
 /// A key plus modifiers. `key` is stored lower-cased so "S" and "s" match.

@@ -1,10 +1,12 @@
 //! WhiteRose compositor library. The binary (`whiterose-wm`) is a thin
 //! wrapper; integration tests drive the same state directly.
 
+pub mod clipboard;
+pub mod clipboard_capture;
 pub mod foreign_toplevel;
 pub mod grabs;
-mod host_inhibit;
 mod handlers;
+mod host_inhibit;
 pub mod input;
 pub mod ipc;
 pub mod keybind;

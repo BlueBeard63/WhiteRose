@@ -26,6 +26,13 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Client {
 }
 
 fn runtime_dir() -> PathBuf {
+    // Never touch the user's real clipboard history from tests.
+    if std::env::var_os("WHITEROSE_CLIPBOARD_DIR").is_none() {
+        std::env::set_var(
+            "WHITEROSE_CLIPBOARD_DIR",
+            std::env::temp_dir().join(format!("whiterose-clip-test-{}", std::process::id())),
+        );
+    }
     // CI runners often have no XDG_RUNTIME_DIR; give the socket somewhere to live.
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         return dir.into();

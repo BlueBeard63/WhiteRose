@@ -175,7 +175,13 @@ impl WhiteRose {
         let event = match outcome {
             Outcome::Saved { path, width, height, png } => {
                 tracing::info!(path = %path.display(), width, height, "screenshot saved");
-                set_data_device_selection(&self.display_handle, &self.seat, vec!["image/png".into()], png);
+                set_data_device_selection(
+                    &self.display_handle,
+                    &self.seat,
+                    vec!["image/png".into()],
+                    Arc::new(vec![("image/png".to_string(), png.as_ref().clone())]),
+                );
+                self.clipboard_add_screenshot(png.clone());
                 self.saved_screenshots.push(path.clone());
                 ipc::Event::Screenshot { path: path.to_string_lossy().into_owned(), width, height }
             }
@@ -187,17 +193,23 @@ impl WhiteRose {
         if let Some(ipc) = self.ipc.as_mut() {
             ipc.update(event);
         }
+        self.screenshots_sync();
     }
 
     /// Deletes a screenshot, but only one this compositor saved: the shell
     /// can't use this to remove arbitrary files.
     pub fn delete_screenshot(&mut self, path: &Path) -> bool {
-        let Some(i) = self.saved_screenshots.iter().position(|p| p == path) else {
+        // Ours from this session, or a PNG directly in the Screenshots folder
+        // (the tray shows older ones too). Nothing else.
+        let ours = self.saved_screenshots.iter().position(|p| p == path);
+        if ours.is_none() && !self.is_screenshot_file(path) {
             tracing::warn!(path = %path.display(), "refusing to delete a file that isn't one of our screenshots");
             return false;
-        };
-        let p = self.saved_screenshots.swap_remove(i);
-        std::fs::remove_file(&p).map_err(|e| tracing::warn!(%e, "delete screenshot")).is_ok()
+        }
+        if let Some(i) = ours {
+            self.saved_screenshots.swap_remove(i);
+        }
+        std::fs::remove_file(path).map_err(|e| tracing::warn!(%e, "delete screenshot")).is_ok()
     }
 }
 

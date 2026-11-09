@@ -42,13 +42,32 @@ impl SeatHandler for WhiteRose {
 delegate_seat!(WhiteRose);
 
 impl SelectionHandler for WhiteRose {
-    /// Data for selections the compositor itself offers (a screenshot PNG).
-    type SelectionUserData = std::sync::Arc<Vec<u8>>;
+    /// Selections the compositor itself offers (a screenshot, a history
+    /// entry pasted back): the data for each offered mime type.
+    type SelectionUserData = std::sync::Arc<Vec<(String, Vec<u8>)>>;
+
+    fn new_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        source: Option<smithay::wayland::selection::SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
+        // Only the real clipboard (not the middle-click primary selection),
+        // and only copies made by apps.
+        if ty == smithay::wayland::selection::SelectionTarget::Clipboard {
+            if let Some(source) = source {
+                // Smithay calls this *before* it records the new selection, so
+                // reading now would read the previous one. Read once it's set.
+                let mimes = source.mime_types();
+                self.loop_handle.insert_idle(move |state| state.capture_clipboard(mimes));
+            }
+        }
+    }
 
     fn send_selection(
         &mut self,
         _ty: smithay::wayland::selection::SelectionTarget,
-        _mime_type: String,
+        mime_type: String,
         fd: std::os::fd::OwnedFd,
         _seat: Seat<Self>,
         user_data: &Self::SelectionUserData,
@@ -57,8 +76,10 @@ impl SelectionHandler for WhiteRose {
         let data = user_data.clone();
         std::thread::spawn(move || {
             use std::io::Write;
+            let bytes =
+                data.iter().find(|(m, _)| *m == mime_type).or(data.first()).map(|(_, b)| b.as_slice()).unwrap_or(&[]);
             let mut f = std::fs::File::from(fd);
-            if let Err(e) = f.write_all(&data) {
+            if let Err(e) = f.write_all(bytes) {
                 tracing::debug!(%e, "clipboard reader went away");
             }
         });

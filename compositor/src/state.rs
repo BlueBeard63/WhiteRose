@@ -99,6 +99,10 @@ pub struct WhiteRose {
     /// Window copies requested by clients (live previews), filled after frames.
     pub pending_exports: Vec<crate::toplevel_export::PendingCopy>,
     pub export_timer_armed: bool,
+    /// Clipboard history (saved under clipboard_dir).
+    pub clipboard: crate::clipboard::History,
+    pub clipboard_dir: std::path::PathBuf,
+    pub clipboard_tx: smithay::reexports::calloop::channel::Sender<crate::clipboard_capture::Captured>,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 }
@@ -123,6 +127,19 @@ impl WhiteRose {
         seat.add_pointer();
 
         let socket_name = Self::init_wayland_listener(display, event_loop);
+        let (clipboard_tx, clipboard_rx) = smithay::reexports::calloop::channel::channel();
+        event_loop
+            .handle()
+            .insert_source(clipboard_rx, |event, _, state| {
+                if let smithay::reexports::calloop::channel::Event::Msg(captured) = event {
+                    state.clipboard_captured(captured);
+                }
+            })
+            .expect("insert clipboard channel");
+        let clipboard_dir = std::env::var_os("WHITEROSE_CLIPBOARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(crate::clipboard::history_dir);
+        let clipboard = crate::clipboard::load(&clipboard_dir);
         let (screenshot_tx, screenshot_rx) = smithay::reexports::calloop::channel::channel();
         event_loop
             .handle()
@@ -177,6 +194,9 @@ impl WhiteRose {
             foreign_toplevels,
             pending_exports: Vec::new(),
             export_timer_armed: false,
+            clipboard,
+            clipboard_dir,
+            clipboard_tx,
             popups: PopupManager::default(),
             seat,
         }
@@ -448,6 +468,18 @@ impl WhiteRose {
             }
             Action::DeleteScreenshot(path) => {
                 self.delete_screenshot(std::path::Path::new(&path));
+                self.screenshots_sync();
+            }
+            Action::Shell(req) => {
+                use crate::keybind::ShellRequest as R;
+                match req {
+                    R::ClipboardList => self.clipboard_sync(),
+                    R::ClipboardPaste(id) => self.clipboard_paste(id),
+                    R::ClipboardDelete(id) => self.clipboard_delete(id),
+                    R::ClipboardClear => self.clipboard_clear(),
+                    R::ScreenshotList => self.screenshots_sync(),
+                    R::ScreenshotCopy(path) => self.screenshot_copy(std::path::Path::new(&path)),
+                }
             }
             Action::ToggleFullscreen => {
                 if let Some(w) = self.focused_window() {

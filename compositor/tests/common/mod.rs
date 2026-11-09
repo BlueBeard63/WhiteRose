@@ -37,6 +37,13 @@ pub const BAR: u32 = 26;
 // ---------------------------------------------------------------- server side
 
 pub fn runtime_dir() -> PathBuf {
+    // Never touch the user's real clipboard history from tests.
+    if std::env::var_os("WHITEROSE_CLIPBOARD_DIR").is_none() {
+        std::env::set_var(
+            "WHITEROSE_CLIPBOARD_DIR",
+            std::env::temp_dir().join(format!("whiterose-clip-test-{}", std::process::id())),
+        );
+    }
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         return dir.into();
     }
@@ -58,6 +65,11 @@ impl Headless {
         let mut event_loop = EventLoop::try_new().unwrap();
         let display: Display<WhiteRose> = Display::new().unwrap();
         let mut state = WhiteRose::new(&mut event_loop, display, Bindings::defaults("true"));
+        // Each test compositor gets its own, empty clipboard history folder.
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        state.clipboard_dir = std::env::temp_dir().join(format!("whiterose-clip-{}-{n}", std::process::id()));
+        state.clipboard = Default::default();
         let output = with_output.then(|| {
             let output = Output::new(
                 "TEST-1".into(),

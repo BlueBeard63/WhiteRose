@@ -15,6 +15,13 @@ use whiterose_wm::{
 };
 
 fn runtime_dir() {
+    // Never touch the user's real clipboard history from tests.
+    if std::env::var_os("WHITEROSE_CLIPBOARD_DIR").is_none() {
+        std::env::set_var(
+            "WHITEROSE_CLIPBOARD_DIR",
+            std::env::temp_dir().join(format!("whiterose-clip-test-{}", std::process::id())),
+        );
+    }
     if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
         let dir = std::env::temp_dir().join(format!("whiterose-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

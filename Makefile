@@ -6,9 +6,9 @@ DAEMON   := daemon
 WM       := compositor
 FUZZTIME ?= 20s
 
-.PHONY: check go-check rust-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested clean
+.PHONY: check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested clean
 
-check: go-check rust-check
+check: go-check rust-check shell-check
 
 # ---- Go daemon -------------------------------------------------------------
 go-check: fmt vet race fuzz
@@ -39,6 +39,10 @@ clippy:
 
 rust-test:
 	cd $(WM) && $(CARGO) test --locked
+
+# ---- Shell (QuickShell QML) -----------------------------------------------
+shell-check:         ## pure JS logic: calculator, search ranking, recent files
+	node shell/tests/run.mjs
 
 # ---- Build / run -----------------------------------------------------------
 build:

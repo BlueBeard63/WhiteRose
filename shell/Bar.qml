@@ -11,24 +11,22 @@ PanelWindow {
     screen: modelData
 
     anchors { top: true; left: true; right: true }
-    // Tall enough for the open dock while it is open or animating, so the
-    // window never resizes mid-animation; otherwise just bar + idle island.
-    implicitHeight: Theme.barHeight + (dock.expanded
-        ? dock.openHeight + 30 + (dock.previewing ? dock.previewHeight + 16 : 0)
-        : dock.height)
+    // Bar + whatever the island's current view needs (held while morphing
+    // so the window never resizes mid-animation).
+    implicitHeight: Theme.barHeight + island.reserve + 4
     exclusiveZone: Theme.barHeight
     color: "transparent"
 
     WlrLayershell.namespace: "whiterose-bar"
     WlrLayershell.layer: WlrLayer.Top
-    // The open dock takes the keyboard (Esc closes it; clicking elsewhere
-    // moves focus away, which closes it too).
-    WlrLayershell.keyboardFocus: dock.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    // Open views take the keyboard (Esc closes; clicking elsewhere moves focus
+    // away, which closes them too).
+    WlrLayershell.keyboardFocus: island.wantsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     mask: Region {
         item: bar
-        Region { item: dock }
-        Region { item: dock.previewCard }
+        Region { item: island }
+        Region { item: island.previewCard }
     }
 
     Rectangle {
@@ -64,13 +62,16 @@ PanelWindow {
         }
     }
 
-    Dock {
-        id: dock
+    Island {
+        id: island
         anchors { top: bar.bottom; horizontalCenter: parent.horizontalCenter }
     }
 
     Connections {
         target: Compositor
-        function onAction(name) { console.info("whiterose: action", name, "(panel not built yet)") }
+        function onAction(name) {
+            if (["quick_settings", "notifications", "screenshot_region"].includes(name))
+                console.info("whiterose:", name, "panel is not built yet");
+        }
     }
 }
