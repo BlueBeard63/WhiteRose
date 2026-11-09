@@ -48,6 +48,17 @@ pub struct WhiteRose {
     pub start_time: std::time::Instant,
     /// Where this session's whiterosed listens (passed to everything we start).
     pub daemon_socket: std::path::PathBuf,
+    /// Connection to whiterosed (None while it's not running).
+    pub daemon: Option<std::os::unix::net::UnixStream>,
+    /// Display settings: the saved layout, and one being tried out.
+    pub displays: crate::display_config::Displays,
+    pub display_trial: Option<crate::daemon_client::Trial>,
+    /// The profile that placed the current layout, if any.
+    pub display_profile: Option<String>,
+    /// Every connected output (also the turned-off ones, which aren't in the space).
+    pub outputs: Vec<smithay::output::Output>,
+    /// What the backend can change about outputs.
+    pub caps: crate::outputs::Capabilities,
     pub socket_name: OsString,
     pub display_handle: DisplayHandle,
     pub loop_signal: LoopSignal,
@@ -103,8 +114,18 @@ pub struct WhiteRose {
     pub export_timer_armed: bool,
     /// The icon of a drag in progress (drawn under the pointer).
     pub dnd_icon: Option<WlSurface>,
+    /// The pointer image clients asked for (drawn by backends that draw it).
+    pub cursor_status: smithay::input::pointer::CursorImageStatus,
+    /// True when the backend draws the pointer (DRM), so moving it redraws.
+    pub draws_cursor: bool,
+    /// Switches to another console (DRM backend only).
+    pub vt_switch: Option<Box<dyn FnMut(i32)>>,
     pub night_light: crate::night_light::NightLight,
     pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    /// wp_fractional_scale_v1 and wp_viewporter: clients draw at exactly
+    /// 125%, 150%, ... instead of rounding up to 200% and being scaled down.
+    pub fractional_scale_state: smithay::wayland::fractional_scale::FractionalScaleManagerState,
+    pub viewporter_state: smithay::wayland::viewporter::ViewporterState,
     pub lock: crate::session_lock::SessionLock,
     /// Restart bookkeeping per supervised process ("shell", "daemon").
     pub restarts: std::collections::HashMap<&'static str, crate::shell_supervisor::RestartPolicy>,
@@ -128,6 +149,8 @@ impl WhiteRose {
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
+        let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Self>(&dh);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
         crate::toplevel_export::init(&dh);
 
@@ -172,6 +195,18 @@ impl WhiteRose {
         Self {
             start_time: std::time::Instant::now(),
             daemon_socket,
+            daemon: None,
+            displays: Default::default(),
+            display_trial: None,
+            display_profile: None,
+            outputs: Vec::new(),
+            caps: crate::outputs::Capabilities {
+                modes: false,
+                rotation: false,
+                position: false,
+                disable: false,
+                vrr: false,
+            },
             socket_name,
             display_handle: dh,
             loop_signal: event_loop.get_signal(),
@@ -209,7 +244,12 @@ impl WhiteRose {
             export_timer_armed: false,
             dnd_icon: None,
             night_light: Default::default(),
+            cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
+            draws_cursor: false,
+            vt_switch: None,
             session_lock_state,
+            fractional_scale_state,
+            viewporter_state,
             lock: Default::default(),
             restarts: Default::default(),
             clipboard,
@@ -485,6 +525,11 @@ impl WhiteRose {
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
             Action::Quit => self.loop_signal.stop(),
+            Action::SwitchVt(vt) => {
+                if let Some(switch) = self.vt_switch.as_mut() {
+                    switch(vt);
+                }
+            }
             Action::NightLight(n) => {
                 if self.night_light != n {
                     tracing::info!(on = n.on, temperature = n.temperature, "night light");

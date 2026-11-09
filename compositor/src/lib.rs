@@ -3,6 +3,10 @@
 
 pub mod clipboard;
 pub mod clipboard_capture;
+pub mod cursor;
+pub mod daemon_client;
+pub mod display_config;
+pub mod drm;
 pub mod foreign_toplevel;
 pub mod grabs;
 mod handlers;
@@ -10,7 +14,9 @@ mod host_inhibit;
 pub mod input;
 pub mod ipc;
 pub mod keybind;
+pub mod monitor_id;
 pub mod night_light;
+pub mod outputs;
 pub mod protocols;
 pub mod render;
 pub mod screenshot;

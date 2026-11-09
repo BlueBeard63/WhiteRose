@@ -32,6 +32,15 @@ Singleton {
     // A window sits right under the idle island (e.g. a maximized title bar).
     property bool islandCovered: false
 
+    // Connected monitors, built-in first: { id, strong, connector, make, model,
+    // builtin, physical_mm, modes: [{ width, height, refresh (mHz), preferred }],
+    // mode, scale, transform, position: [x, y], enabled, vrr, profile }.
+    property var outputs: []
+    // What the backend can change: { modes, rotation, position, disable, vrr }.
+    property var outputCaps: ({})
+    // While a layout is being tried: when it reverts (ms since the epoch), else 0.
+    property real trialUntil: 0
+
     function windowById(id) { return root.windows.find(w => w.id === id) ?? null }
 
     // The QuickShell Toplevel (for live previews) behind a compositor window id.
@@ -64,6 +73,8 @@ Singleton {
     function nightLight(on, kelvin) { send({ cmd: "night_light", on: on, temperature: kelvin }) }
     // Ends the session (Log Out).
     function quit() { send({ cmd: "quit" }) }
+    // Shows each monitor's number and name on it (Displays page).
+    function identifyOutputs() { send({ cmd: "identify_outputs" }) }
     function clipboardList() { send({ cmd: "clipboard_list" }) }
     function clipboardPaste(id) { send({ cmd: "clipboard_paste", id: id }) }
     // Makes the named copy of an image entry that a drag hands out.
@@ -102,6 +113,11 @@ Singleton {
             break;
         case "clipboard":
             root.clipboard = msg.entries;
+            break;
+        case "outputs":
+            root.outputs = msg.outputs;
+            root.outputCaps = msg.capabilities;
+            root.trialUntil = msg.trial_until ?? 0;
             break;
         case "island":
             root.islandCovered = msg.covered;

@@ -42,6 +42,28 @@ pub fn init_winit(
     output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
     output.set_preferred(mode);
     state.space.map_output(&output, (0, 0));
+    // Nested, the one output is our window: only its scale is ours to change.
+    let window_mode = |size: smithay::utils::Size<i32, smithay::utils::Physical>| crate::display_config::ModeInfo {
+        width: size.w,
+        height: size.h,
+        refresh: 60_000,
+        preferred: true,
+    };
+    crate::outputs::set_info(
+        &output,
+        crate::outputs::OutputInfo {
+            id: "connector:winit".into(),
+            connector: "winit".into(),
+            make: "WhiteRose".into(),
+            model: "Nested window".into(),
+            modes: vec![window_mode(mode.size)],
+            enabled: true,
+            ..Default::default()
+        },
+    );
+    state.outputs.push(output.clone());
+    state.caps =
+        crate::outputs::Capabilities { modes: false, rotation: false, position: false, disable: false, vrr: false };
 
     init_dmabuf(&backend, state);
 
@@ -63,6 +85,10 @@ pub fn init_winit(
     event_loop.handle().insert_source(winit, move |event, _, state| match event {
         WinitEvent::Resized { size, .. } => {
             output.change_current_state(Some(Mode { size, refresh: 60_000 }), None, None, None);
+            let mut info = crate::outputs::info(&output);
+            info.modes = vec![window_mode(size)];
+            crate::outputs::set_info(&output, info);
+            state.outputs_sync();
             // Panels anchored to edges (the bar) must follow the new size.
             layer_map_for_output(&output).arrange();
             state.refit_windows();

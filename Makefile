@@ -6,7 +6,7 @@ DAEMON   := daemon
 WM       := compositor
 FUZZTIME ?= 20s
 
-.PHONY: check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested clean
+.PHONY: check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty clean
 
 check: go-check rust-check shell-check
 
@@ -57,6 +57,13 @@ build:
 run-nested:          ## WhiteRose in a window on your current desktop: bar + a terminal
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
 	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
+
+run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl+Alt+F3) first
+	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
+	cd $(WM) && $(CARGO) build --release
+	@if [ -n "$$WAYLAND_DISPLAY$$DISPLAY" ]; then echo "run-tty takes over the screens, so it must start from a text console: press Ctrl+Alt+F3, log in, then run make run-tty there (make run-nested runs it in a window here)."; exit 1; fi
+	@echo "Starting on this console; Ctrl+Alt+F1/F2 gets you back to your desktop. Log: build/whiterose-tty.log"
+	PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(WM)/target/release/whiterose-wm --backend drm --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone" > build/whiterose-tty.log 2>&1
 
 clean:
 	rm -rf build $(DAEMON)/coverage.out $(DAEMON)/coverage.html

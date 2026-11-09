@@ -138,18 +138,16 @@ name = "desk"
 
 ### When a monitor is plugged in or removed
 
-1. Work out the set of connected IDs.
-2. Pick the best-matching profile.
-3. Test the configuration with a DRM atomic test-only commit, then apply it.
-4. If nothing matches, use an automatic layout and remember it for those monitors.
+1. The compositor's DRM backend (`compositor/src/drm.rs`) rescans connectors on the udev event, reads each EDID and `PATH` property, and computes the IDs (`compositor/src/monitor_id.rs`, a port of the Go code checked against the same fixture, `testdata/monitor-ids.json`).
+2. `display_config::plan` picks the first profile whose monitors are exactly the connected set; otherwise it lays them out left to right, built-in first.
+3. Each monitor gets its saved mode, scale, rotation and VRR; disabled monitors are turned off (DPMS). At least one always stays on.
 
 ### Where it lives
 
-- The compositor implements the standard `wlr-output-management` protocol.
-- `whiterosed` connects to it as a client, the way kanshi does. It reads EDID from sysfs, computes the IDs and applies the profiles.
-- This keeps the compositor small.
-- It can be developed and tested **today** on niri or Sway, which already speak `wlr-output-management`, without modifying either.
-- The QuickShell display settings panel talks to the same daemon.
+- Settings are the `displays` key in the settings database. The compositor follows it through `whiterosed` (`compositor/src/daemon_client.rs`) and applies every change at once.
+- A layout being tried is the `displays.test` key: `{config, until}`. The compositor shows it until `until`, then goes back by itself and clears the key, so a black screen or a crashed Settings app can't strand you. Keep copies it into `displays`.
+- The compositor tells the shell about outputs (IDs, modes, current state, what the backend can change, the trial deadline) in the `outputs` IPC event.
+- Plan changed from the first draft: no `wlr-output-management` client in the daemon. The compositor is ours, so it applies the settings itself, which removes a protocol round trip and a moving part.
 
 Note: Hyprland (`desc:`) and niri can already match monitors by make, model and serial. Neither handles duplicate serials or profiles well.
 
@@ -239,11 +237,27 @@ Figma frames: `Settings - Displays` and `Settings - Displays (dragging)`.
 
 - The arrangement canvas draws every monitor at its **logical** size (resolution ÷ scale), all multiplied by one shared canvas zoom.
 - Dragging a monitor converts the pointer position back to logical pixels. That value is the monitor's `position`.
-- **Snapping:** within ~8 px (on screen) of another monitor's edge or centre line, snap to it and show a guide line. Monitors may not overlap, and the layout must stay connected (every monitor touches at least one other).
+- **Snapping:** within 14 px (on screen) of another monitor's edge, snap side by side or aligned; the snapped position shows under the tile. Monitors may not overlap, and the layout must stay connected (every monitor touches at least one other).
 - After snapping, shift everything so the top-left-most monitor sits at `0,0`. Positions stay positive.
-- **Releasing the mouse previews the layout.** `whiterosed` sends it with a test-only commit, then applies it. A 15 s "Keep these changes?" timer reverts automatically unless confirmed.
+- **Apply previews the whole page** (layout and per-monitor settings) as a `displays.test` trial. A 15 s countdown reverts automatically unless you keep it.
 - Confirmed positions are saved against each monitor's **EDID ID** in the active profile. Plugging the same monitors into different ports gives the same layout.
 - The X and Y fields in the detail card are the same value, editable precisely. Editing them moves the tile.
+- Controls the backend can't honour are greyed out: nested in a window, only scale (and the name) can change.
+- Identify shows each monitor's number and name on it for 3 s (`shell/IdentifyOverlay.qml`).
+- The logic (snapping, overlap, building the setting) is `settings/modules/displays/Displays.js`, tested by `shell/tests/run.mjs`.
+
+## Real hardware (DRM backend)
+
+`whiterose-wm --backend drm` (the default when not inside another desktop), or `make run-tty` from a console login.
+
+- **Session:** libseat/logind opens the GPU and input devices. Switching consoles pauses DRM and libinput and resumes them on return. Ctrl+Alt+F1–F12 switch consoles, even when locked.
+- **Display:** one GPU (the boot GPU), GBM buffers and a GLES renderer. Smithay's DRM compositor puts the cursor and suitable windows straight on hardware planes.
+- **Drawing on demand:** a screen redraws only when something changed, at most once per vblank. When nothing changed, frame callbacks wait one refresh instead of firing at once, so idle clients can't make it spin.
+- **Night Light** loads the colour into each screen's gamma table, so it costs no drawing.
+- **Cursor:** XCursor theme (`XCURSOR_THEME`, `XCURSOR_SIZE`). Animated cursors show their first frame only, so a busy pointer doesn't redraw the screen continuously.
+- **Input:** libinput, with tap-to-click on touchpads. The pointer crosses between screens and stops at outer edges.
+- **Scaling:** `wp_fractional_scale_v1` and `wp_viewporter`, so apps draw at exactly 125% or 150% instead of rendering at 200% and being scaled down.
+- Only the GPU's own outputs are used; a second GPU (hybrid laptops' discrete card) is ignored for now.
 
 ---
 
@@ -430,6 +444,7 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Dock | `dock.pinned`: order, remove, add from installed apps. |
 | Notifications | Do Not Disturb, popup duration, per-app mute (the shell records which apps notify). |
 | Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
+| Displays | Compositor `outputs` event; Apply writes the `displays.test` trial, Keep writes `displays`. |
 | Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
 
-- **Pages not built yet** don't appear in the sidebar: Displays, Keyboard & Shortcuts, Appearance, Top Bar, Updates, Users, Privacy. They wait on their backends: compositor output control, shortcuts read from the settings database, theming, the update system.
+- **Pages not built yet** don't appear in the sidebar: Keyboard & Shortcuts, Appearance, Top Bar, Updates, Users, Privacy. They wait on their backends: shortcuts read from the settings database, theming, the update system.

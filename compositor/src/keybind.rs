@@ -43,6 +43,8 @@ pub enum Action {
     QuickSettings,
     /// Lock the screen (the shell shows its lock screen).
     Lock,
+    /// Show each output's number on it (the shell draws it).
+    IdentifyOutputs,
     Notifications,
     ScreenshotRegion,
     // Handled by the compositor.
@@ -65,6 +67,8 @@ pub enum Action {
     NightLight(crate::night_light::NightLight),
     /// Clipboard and screenshot-tray requests from the shell.
     Shell(ShellRequest),
+    /// Ctrl+Alt+Fn: switch to console n (real hardware only).
+    SwitchVt(i32),
     Quit,
 }
 
@@ -76,6 +80,7 @@ impl Action {
             Action::AppLauncher
                 | Action::QuickSettings
                 | Action::Lock
+                | Action::IdentifyOutputs
                 | Action::Notifications
                 | Action::ScreenshotRegion
         )

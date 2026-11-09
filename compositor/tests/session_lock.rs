@@ -371,3 +371,29 @@ fn hiding_a_former_lock_surface_after_unlock_does_not_kill_the_client() {
         assert!(!ask.run(|st| st.is_locked()));
     });
 }
+
+#[test]
+fn console_switching_still_works_while_locked() {
+    // Ctrl+Alt+Fn must always get you to another console (the lock screen
+    // stays in charge of this one).
+    let mut h = Headless::new(true);
+    let switched = h.drive(|conn, ask| {
+        let mut s = Seat::bind(&conn);
+        let qh = s.q.handle();
+        let _lock = s.manager.lock(&qh, ());
+        s.q.roundtrip(&mut s.l).unwrap();
+        ask.run(|st| {
+            assert!(st.is_locked());
+            let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let s2 = seen.clone();
+            st.vt_switch = Some(Box::new(move |vt| s2.borrow_mut().push(vt)));
+            for (code, down) in [(37, true), (64, true), (69, true), (69, false), (64, false), (37, false)] {
+                key(st, code, down);
+            }
+            st.vt_switch = None;
+            let v = seen.borrow().clone();
+            v
+        })
+    });
+    assert_eq!(switched, vec![3]);
+}

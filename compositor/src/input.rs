@@ -4,7 +4,7 @@
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::FilterResult,
@@ -28,6 +28,11 @@ impl WhiteRose {
                 let Some(output) = self.space.outputs().next() else { return };
                 let Some(output_geo) = self.space.output_geometry(output) else { return };
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
+                self.on_pointer_motion(pos, event.time_msec());
+            }
+            InputEvent::PointerMotion { event, .. } => {
+                let pointer = self.seat.get_pointer().expect("seat has a pointer");
+                let pos = self.clamp_to_outputs(pointer.current_location(), pointer.current_location() + event.delta());
                 self.on_pointer_motion(pos, event.time_msec());
             }
             InputEvent::PointerButton { event, .. } => {
@@ -65,9 +70,23 @@ impl WhiteRose {
         let under = self.surface_under(pos);
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
         pointer.frame(self);
-        if self.dnd_icon.is_some() {
-            self.schedule_redraw(); // the drag icon follows the pointer
+        // The drag icon follows the pointer, and so does a pointer we draw.
+        if self.dnd_icon.is_some() || self.draws_cursor {
+            self.schedule_redraw();
         }
+    }
+
+    /// Where a relative move from `from` to `to` ends up: anywhere on a
+    /// screen, else stopped at the edge of the screen it started on (so the
+    /// pointer slides along edges and can't get lost in gaps between them).
+    pub fn clamp_to_outputs(&self, from: Point<f64, Logical>, to: Point<f64, Logical>) -> Point<f64, Logical> {
+        let geos: Vec<_> = self.space.outputs().filter_map(|o| self.space.output_geometry(o)).collect();
+        if geos.iter().any(|g| g.to_f64().contains(to)) {
+            return to;
+        }
+        let Some(g) = geos.iter().find(|g| g.to_f64().contains(from)).or(geos.first()) else { return to };
+        let max = (g.loc + g.size).to_f64();
+        Point::from((to.x.clamp(g.loc.x as f64, max.x - 1.0), to.y.clamp(g.loc.y as f64, max.y - 1.0)))
     }
 
     /// A pointer button changed (`button` is a Linux input code, e.g. 0x110
@@ -110,6 +129,16 @@ impl WhiteRose {
                 // shortcuts keep working on non-Latin layouts.
                 let sym = handle.raw_latin_sym_or_raw_current_sym().unwrap_or_else(|| handle.modified_sym());
                 let pressed = key_state == KeyState::Pressed;
+
+                // Ctrl+Alt+Fn (the keymap turns it into XF86Switch_VT_n):
+                // always works, even locked, so you can get back to a console.
+                use smithay::input::keyboard::keysyms::{KEY_XF86Switch_VT_1, KEY_XF86Switch_VT_12};
+                let raw = handle.modified_sym().raw();
+                if (KEY_XF86Switch_VT_1..=KEY_XF86Switch_VT_12).contains(&raw) && pressed && state.vt_switch.is_some() {
+                    state.swallowed.push(keycode);
+                    let vt = (raw - KEY_XF86Switch_VT_1 + 1) as i32;
+                    return FilterResult::Intercept(Some(Action::SwitchVt(vt)));
+                }
 
                 // Locked: every key goes to the lock screen, no shortcuts.
                 if state.is_locked() {

@@ -21,6 +21,8 @@ png = "0.17"
 raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+smithay-drm-extras = { version = "0.1", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wayland-backend = { version = "0.3", features = ["client_system"] }
@@ -28,11 +30,22 @@ wayland-backend = { version = "0.3", features = ["client_system"] }
 wayland-client = "0.31.10"
 wayland-protocols = { version = "0.32", features = ["client", "unstable", "staging"] }
 wayland-scanner = "0.31"
+xcursor = "0.3"
 
 [dependencies.smithay]
 version = "0.7.0"
 default-features = false
-features = ["backend_winit", "backend_drm", "wayland_frontend", "desktop"]
+features = [
+    "backend_winit",
+    "backend_drm",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_udev",
+    "renderer_gl",
+    "wayland_frontend",
+    "desktop",
+]
 
 [dev-dependencies]
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }

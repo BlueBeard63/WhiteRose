@@ -85,6 +85,7 @@ func TestValidation(t *testing.T) {
 		"weather.latitude":             `123`,
 		"launcher.calculations":        `[{"expr":"1+1","result":"2","extra":true}]`,
 		"displays":                     `{"monitor":[{"id":"not-an-id"}],"profile":[]}`,
+		"displays.test":                `{"config":{"monitor":[],"profile":[]}}`,
 		"nope.unknown":                 `1`,
 		"Bad Key":                      `1`,
 		"module.x":                     `{not json`,
@@ -100,6 +101,7 @@ func TestValidation(t *testing.T) {
 		"module.wallpaper.path": `"/home/me/bg.png"`,
 		"launcher.calculations": `[{"expr":"1+1","result":"2"}]`,
 		"displays":              `{"monitor":[],"profile":[]}`,
+		"displays.test":         `{"config":{"monitor":[{"id":"builtin","scale":1.5}],"profile":[]},"until":1794240000000}`,
 	}
 	for k, v := range good {
 		if err := s.Set(k, json.RawMessage(v)); err != nil {

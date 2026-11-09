@@ -79,6 +79,13 @@ pub enum Event {
     Island {
         covered: bool,
     },
+    /// Every connected output and what this backend can change about them
+    /// (the Displays page); `trial_until` while a layout is being tried out.
+    Outputs {
+        outputs: Vec<crate::outputs::OutputView>,
+        capabilities: crate::outputs::Capabilities,
+        trial_until: Option<u64>,
+    },
 }
 
 impl Event {
@@ -155,6 +162,8 @@ pub enum Request {
     },
     /// End the session (Log Out).
     Quit,
+    /// Show each output's number and name on it (Displays page).
+    IdentifyOutputs,
     /// Delete a screenshot this compositor saved (the toast's trash button).
     DeleteScreenshot {
         path: String,
@@ -193,6 +202,7 @@ impl Request {
                 Action::NightLight(crate::night_light::NightLight { on, temperature })
             }
             Request::Quit => Action::Quit,
+            Request::IdentifyOutputs => Action::IdentifyOutputs,
         }
     }
 }
@@ -203,6 +213,7 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
         Action::AppLauncher => "app_launcher",
         Action::QuickSettings => "quick_settings",
         Action::Lock => "lock",
+        Action::IdentifyOutputs => "identify_outputs",
         Action::Notifications => "notifications",
         Action::ScreenshotRegion => "screenshot_region",
         _ => return None,
@@ -258,6 +269,7 @@ pub struct Server {
     last_screenshots: Option<Event>,
     last_lock: Option<Event>,
     last_island: Option<Event>,
+    last_outputs: Option<Event>,
 }
 
 impl Server {
@@ -294,6 +306,7 @@ impl Server {
             last_screenshots: None,
             last_lock: None,
             last_island: None,
+            last_outputs: None,
         })
     }
 
@@ -329,6 +342,7 @@ impl Server {
             Event::Screenshots { .. } => &mut self.last_screenshots,
             Event::Lock { .. } => &mut self.last_lock,
             Event::Island { .. } => &mut self.last_island,
+            Event::Outputs { .. } => &mut self.last_outputs,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
                 self.broadcast(&event);
                 return;
@@ -359,6 +373,7 @@ impl WhiteRose {
             self.focus_event(),
             self.windows_event(),
             self.island_event(),
+            self.outputs_event(),
             Event::Lock { locked: self.is_locked() },
         ];
         let Some(server) = self.ipc.as_mut() else { return };
@@ -374,7 +389,8 @@ impl WhiteRose {
         }
         server.clients.push(client);
         // Everyone connected now has this state; don't send it again unless it changes.
-        let [ws, focus, windows, island, lock] = snapshot;
+        let [ws, focus, windows, island, outputs, lock] = snapshot;
+        server.last_outputs = Some(outputs);
         server.last_lock = Some(lock);
         server.last_island = Some(island);
         server.last_workspaces = Some(ws);
@@ -678,8 +694,14 @@ mod tests {
 
     #[test]
     fn every_shell_action_has_a_wire_name_and_others_do_not() {
-        let shell =
-            [Action::AppLauncher, Action::QuickSettings, Action::Lock, Action::Notifications, Action::ScreenshotRegion];
+        let shell = [
+            Action::AppLauncher,
+            Action::QuickSettings,
+            Action::Lock,
+            Action::IdentifyOutputs,
+            Action::Notifications,
+            Action::ScreenshotRegion,
+        ];
         for a in &shell {
             assert!(a.is_shell());
             assert!(action_name(a).is_some(), "{a:?} has no wire name");

@@ -22,6 +22,9 @@ ShellRoot {
 
     LockScreen {}
 
+    // Each monitor's number and name, when asked from Settings > Displays.
+    IdentifyOverlay {}
+
     // Screenshot toast, on the primary screen.
     ScreenshotToast { screen: Quickshell.screens[0] ?? null }
 }

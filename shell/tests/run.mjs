@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent"
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
+const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -319,6 +320,97 @@ test("day labels and times", () => {
         assert.deepEqual(Search.terminalCommand("weird-term", "x").slice(0, 2), ["weird-term", "-e"]);
     });
 }
+
+// ---- Displays ------------------------------------------------------------
+const laptop = {
+    id: "builtin", strong: true, builtin: true, connector: "eDP-1", make: "BOE", model: "NE160QDM",
+    modes: [{ width: 2560, height: 1600, refresh: 165000, preferred: true }, { width: 2560, height: 1600, refresh: 60000, preferred: false },
+            { width: 1920, height: 1200, refresh: 60000, preferred: false }],
+    mode: { width: 2560, height: 1600, refresh: 165000, preferred: true }, scale: 1.6, transform: "normal",
+    position: [0, 0], enabled: true, vrr: false,
+};
+const dell = {
+    id: "edid:3f9a1c2b7e44", strong: true, builtin: false, connector: "DP-5", make: "DEL", model: "DELL U2723QE",
+    modes: [{ width: 2560, height: 1440, refresh: 59951, preferred: true }], mode: { width: 2560, height: 1440, refresh: 59951 },
+    scale: 1, transform: "normal", position: [1600, 0], enabled: true, vrr: false,
+};
+
+test("modes: strings the daemon accepts, labels, choices", () => {
+    assert.equal(D.modeString({ width: 2560, height: 1440, refresh: 165000 }), "2560x1440@165");
+    assert.equal(D.modeString({ width: 1920, height: 1080, refresh: 59951 }), "1920x1080@59.951");
+    assert.match(D.modeString({ width: 1920, height: 1080, refresh: 59951 }), /^([1-9][0-9]{2,4})x([1-9][0-9]{2,4})(?:@([0-9]{1,3}(?:\.[0-9]{1,3})?))?$/);
+    assert.equal(D.hzLabel(165000), "165 Hz");
+    assert.equal(D.hzLabel(59951), "59.95 Hz");
+    assert.equal(D.hzLabel(60020), "60 Hz");
+    assert.deepEqual(D.resolutions(laptop.modes).map(r => r.width), [2560, 1920]);
+    assert.deepEqual(D.refreshes(laptop.modes, 2560, 1600), [165000, 60000]);
+    assert.deepEqual(D.withResolution(laptop.modes, 1920, 1200, 165000), { width: 1920, height: 1200, refresh: 60000 });
+});
+
+test("logical size follows scale and rotation", () => {
+    const d = D.draftFrom([laptop])[0];
+    assert.deepEqual(D.logicalSize(d), { w: 1600, h: 1000 });
+    assert.deepEqual(D.logicalSize(Object.assign({}, d, { transform: "90" })), { w: 1000, h: 1600 });
+});
+
+test("labels: saved, else Built-in or the model", () => {
+    const draft = D.draftFrom([laptop, dell], { monitor: [{ id: dell.id, label: "Desk left" }] });
+    assert.deepEqual(draft.map(d => d.label), ["Built-in", "Desk left"]);
+});
+
+test("snapping: side by side and aligned, only within reach", () => {
+    const other = { x: 0, y: 0, w: 1600, h: 1000 };
+    assert.deepEqual(D.snap({ x: 1612, y: 9, w: 2560, h: 1440 }, [other], 20), { x: 1600, y: 0, to: 0 });
+    assert.deepEqual(D.snap({ x: 1700, y: 300, w: 2560, h: 1440 }, [other], 20), { x: 1700, y: 300, to: -1 });
+    // Bottoms line up.
+    assert.equal(D.snap({ x: 1600, y: -446, w: 2560, h: 1440 }, [other], 20).y, -440);
+});
+
+test("dropping never overlaps and the layout starts at 0,0", () => {
+    let draft = D.draftFrom([laptop, dell]);
+    draft = D.place(draft, 1, 800, 100, 20);
+    const [a, b] = draft.map(d => ({ x: d.position[0], y: d.position[1], w: D.logicalSize(d).w, h: D.logicalSize(d).h }));
+    assert.ok(!(a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h), JSON.stringify([a, b]));
+    assert.equal(Math.min(a.x, b.x), 0);
+    assert.equal(Math.min(a.y, b.y), 0);
+    assert.ok(D.connected(draft));
+    // Dragged far away: still placed, but no longer touching.
+    const apart = D.place(D.draftFrom([laptop, dell]), 1, 5000, 3000, 20);
+    assert.ok(!D.connected(apart));
+});
+
+test("toConfig keeps other monitors, writes a profile first, and round-trips", () => {
+    const saved = {
+        monitor: [{ id: "edid:aaaaaaaaaaaa", scale: 2 }, { id: "builtin", scale: 1.25 }],
+        profile: [{ name: "Old", output: [{ id: "builtin", position: [0, 0] }] }],
+    };
+    let draft = D.draftFrom([laptop, dell], saved);
+    draft[1].label = "Desk left";
+    draft[1].vrr = true;
+    draft[1].enabled = false;
+    const cfg = D.toConfig(saved, draft, "");
+    assert.deepEqual(cfg.monitor[0], { id: "edid:aaaaaaaaaaaa", scale: 2 }, "other monitors untouched");
+    assert.deepEqual(cfg.monitor[1], { id: "builtin", mode: "2560x1600@165", scale: 1.6 });
+    assert.deepEqual(cfg.monitor[2], { id: dell.id, label: "Desk left", mode: "2560x1440@59.951", vrr: "on" });
+    assert.equal(cfg.profile[0].name, "Built-in + Desk left");
+    assert.deepEqual(cfg.profile[0].output[1], { id: dell.id, position: [1600, 0], disabled: true });
+    assert.equal(cfg.profile[1].name, "Old");
+    assert.deepEqual(D.profilesFor(cfg, ["builtin", dell.id]).map(p => p.name), ["Built-in + Desk left"]);
+    // Saving again under the same name replaces, not duplicates.
+    const again = D.toConfig(cfg, draft, "Built-in + Desk left");
+    assert.equal(again.profile.length, 2);
+    // One monitor: no profile.
+    assert.equal(D.toConfig({}, D.draftFrom([laptop]), "").profile.length, 0);
+    assert.equal(D.profileName(draft, { profile: [{ name: "Built-in + Desk left", output: [] }] }), "Built-in + Desk left 2");
+});
+
+test("differs notices changes and only changes", () => {
+    const a = D.draftFrom([laptop, dell]);
+    const b = D.draftFrom([laptop, dell]);
+    assert.ok(!D.differs(a, b));
+    b[0].scale = 2;
+    assert.ok(D.differs(a, b));
+});
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

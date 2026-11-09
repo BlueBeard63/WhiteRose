@@ -31,7 +31,12 @@ impl SeatHandler for WhiteRose {
         &mut self.seat_state
     }
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: smithay::input::pointer::CursorImageStatus) {}
+    fn cursor_image(&mut self, _seat: &Seat<Self>, image: smithay::input::pointer::CursorImageStatus) {
+        self.cursor_status = image;
+        if self.draws_cursor {
+            self.schedule_redraw();
+        }
+    }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
         tracing::debug!(surface = ?focused.map(|s| s.id()), "keyboard focus");
@@ -113,3 +118,16 @@ delegate_data_device!(WhiteRose);
 
 impl OutputHandler for WhiteRose {}
 delegate_output!(WhiteRose);
+
+impl smithay::wayland::fractional_scale::FractionalScaleHandler for WhiteRose {
+    /// Tell a new client its scale before it draws its first frame (after
+    /// that, rendering keeps it up to date; see render::send_scale).
+    fn new_fractional_scale(&mut self, surface: WlSurface) {
+        let output = self.space.outputs().next().cloned();
+        if let Some(output) = output {
+            crate::render::send_scale(&surface, &output);
+        }
+    }
+}
+smithay::delegate_fractional_scale!(WhiteRose);
+smithay::delegate_viewporter!(WhiteRose);

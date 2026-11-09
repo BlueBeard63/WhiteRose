@@ -119,6 +119,30 @@ var Known = map[string]Key{
 			return nil
 		}),
 	},
+	// A display layout being tried out: the compositor shows it until
+	// `until` (unix ms), then goes back to "displays" unless Settings
+	// confirms it first. null when nothing is being tried.
+	"displays.test": {
+		Default: json.RawMessage(`null`),
+		Check: func(raw json.RawMessage) error {
+			if string(bytes.TrimSpace(raw)) == "null" {
+				return nil
+			}
+			var t struct {
+				Config json.RawMessage `json:"config"`
+				Until  float64         `json:"until"`
+			}
+			dec := json.NewDecoder(bytes.NewReader(raw))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&t); err != nil {
+				return err
+			}
+			if t.Until <= 0 {
+				return errors.New("until must be a time")
+			}
+			return checkDisplays(t.Config)
+		},
+	},
 	"bar.batteryPercent": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// How long notification popups stay (seconds); critical ones always stay.
 	"notifications.popupSeconds": {Default: json.RawMessage(`5`), Check: into(func(v int) error {
@@ -136,16 +160,19 @@ var Known = map[string]Key{
 	"settings.modules.disabled": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](200))},
 	"displays": {
 		Default: json.RawMessage(`{"monitor":[],"profile":[]}`),
-		Check: func(raw json.RawMessage) error {
-			var d config.Displays
-			dec := json.NewDecoder(bytes.NewReader(raw))
-			dec.DisallowUnknownFields()
-			if err := dec.Decode(&d); err != nil {
-				return err
-			}
-			return d.Validate()
-		},
+		Check:   checkDisplays,
 	},
+}
+
+// checkDisplays validates a display layout like the daemon's config does.
+func checkDisplays(raw json.RawMessage) error {
+	var d config.Displays
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&d); err != nil {
+		return err
+	}
+	return d.Validate()
 }
 
 func limit(s string, n int) error {

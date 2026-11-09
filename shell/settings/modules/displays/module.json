@@ -1,0 +1,11 @@
+{
+  "id": "displays",
+  "name": "Displays",
+  "description": "Arrangement, resolution, refresh rate, scale and rotation",
+  "icon": "monitor",
+  "category": "system",
+  "order": 1,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["display", "displays", "monitor", "screen", "resolution", "refresh", "hz", "scale", "scaling", "rotation", "rotate", "arrange", "layout", "profile", "vrr", "variable refresh", "identify", "edid"]
+}

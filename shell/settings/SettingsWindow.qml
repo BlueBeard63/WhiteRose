@@ -163,9 +163,11 @@ FloatingWindow {
     }
 
     // The open page: loaded on entry, unloaded on leaving (Modules page).
+    // A page can set `footer` (a Component) for a bar fixed at the bottom,
+    // e.g. Apply / Revert on Displays.
     Flickable {
         id: scroller
-        anchors { left: sidebar.right; right: parent.right; top: parent.top; bottom: parent.bottom }
+        anchors { left: sidebar.right; right: parent.right; top: parent.top; bottom: footerBar.visible ? footerBar.top : parent.bottom }
         contentHeight: pageLoader.height + 64
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -176,6 +178,17 @@ FloatingWindow {
             source: SettingsState.current ? "file://" + SettingsState.current.dir + "/Page.qml" : ""
             onSourceChanged: scroller.contentY = 0
             onStatusChanged: if (status === Loader.Error) console.warn("settings: page failed to load:", source)
+        }
+    }
+    Rectangle {
+        id: footerBar
+        visible: (pageLoader.item?.footer ?? null) !== null
+        anchors { left: sidebar.right; right: parent.right; bottom: parent.bottom }
+        height: visible ? 54 : 0
+        color: Theme.bg
+        Loader {
+            anchors { fill: parent; leftMargin: 28; rightMargin: 28 }
+            sourceComponent: pageLoader.item?.footer ?? null
         }
     }
 
