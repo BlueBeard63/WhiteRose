@@ -107,6 +107,7 @@ pub fn background() {
 
 fn entries(hits: &[search::Hit]) -> Vec<Value> {
     let ic = icons::shared();
+    let looks = crate::looks::load();
     hits.iter()
         .map(|h| {
             let mime = if h.dir { "inode/directory".to_string() } else { ic.mime.type_of(&h.name).to_string() };
@@ -120,6 +121,7 @@ fn entries(hits: &[search::Hit]) -> Vec<Value> {
                 "modified": h.modified, "hidden": h.name.starts_with('.'), "executable": false,
                 "mime": mime, "icon": icon.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
                 "folder": Path::new(&h.path).parent().map(|p| p.to_string_lossy().into_owned()),
+                "look": if h.dir { looks.get(&h.path).cloned() } else { None },
             })
         })
         .collect()

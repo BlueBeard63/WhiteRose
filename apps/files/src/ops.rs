@@ -99,6 +99,12 @@ pub struct Outcome {
     /// [path, what went wrong]
     pub failed: Vec<(String, String)>,
     pub cancelled: bool,
+    /// [from, to] for what moved (to the Trash too): folders' looks follow.
+    #[serde(skip)]
+    pub moved: Vec<(String, String)>,
+    /// What's gone for good.
+    #[serde(skip)]
+    pub gone: Vec<String>,
 }
 
 /// "name (n).ext"; ".tar.gz" and friends stay together, dotfiles have no ext.
@@ -542,6 +548,12 @@ pub fn run<R: Report>(
                     run.out.cancelled = true;
                     break;
                 }
+                if kind == Kind::Move && fs::symlink_metadata(src).is_err() {
+                    run.out.moved.push((
+                        src.to_string_lossy().into_owned(),
+                        target.to_string_lossy().into_owned(),
+                    ));
+                }
                 run.out.done.push(target.to_string_lossy().into_owned());
             }
             Kind::Trash => {
@@ -549,7 +561,13 @@ pub fn run<R: Report>(
                 let (mut b, mut i) = (0, 0);
                 measure(src, &mut b, &mut i);
                 match crate::trash::put(src) {
-                    Ok(p) => run.out.done.push(p.to_string_lossy().into_owned()),
+                    Ok(p) => {
+                        run.out.moved.push((
+                            src.to_string_lossy().into_owned(),
+                            p.to_string_lossy().into_owned(),
+                        ));
+                        run.out.done.push(p.to_string_lossy().into_owned());
+                    }
                     Err(e) => run.fail(src, e),
                 }
                 run.prog.bytes_done += b;
@@ -564,8 +582,9 @@ pub fn run<R: Report>(
                     run.out.cancelled = true;
                     break;
                 }
-                if let Some(i) = info {
-                    if fs::symlink_metadata(src).is_err() {
+                if fs::symlink_metadata(src).is_err() {
+                    run.out.gone.push(src.to_string_lossy().into_owned());
+                    if let Some(i) = info {
                         let _ = fs::remove_file(i);
                     }
                 }

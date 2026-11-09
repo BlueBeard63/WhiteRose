@@ -29,6 +29,7 @@ Rectangle {
         property string name
         property string path
         property string icon
+        property var look: null
         property real total: 0
         property real free: 0
         signal secondary()
@@ -43,7 +44,9 @@ Rectangle {
             width: 18; height: 18
             sourceSize: Qt.size(36, 36)
             source: pr.icon ? "file://" + pr.icon : ""
+            visible: !pr.look
         }
+        FolderIcon { visible: !!pr.look; anchors.fill: prIcon; size: prIcon.width; look: pr.look ?? ({}) }
         Text {
             anchors { left: prIcon.right; leftMargin: 10; right: parent.right; rightMargin: 10 }
             y: pr.total > 0 ? 7 : (pr.height - height) / 2
@@ -89,14 +92,14 @@ Rectangle {
             Heading { text: "Places" }
             Repeater {
                 model: side.places.folders
-                delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon }
+                delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null }
             }
             Heading { visible: side.places.bookmarks.length > 0; text: "Bookmarks" }
             Repeater {
                 model: side.places.bookmarks
                 delegate: PlaceRow {
                     required property var modelData
-                    name: modelData.name; path: modelData.path; icon: modelData.icon
+                    name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null
                     onSecondary: bookmarkMenu.openAt(24, height - 2)
                     Menu {
                         id: bookmarkMenu

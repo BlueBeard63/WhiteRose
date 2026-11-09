@@ -75,6 +75,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 ## 6. Appearance & personalisation
 - [x] Native light, dark and system modes (MVP) — follows the desktop theme via the kit
 - [ ] Per-folder background images (Next)
+- [x] Folder colours and icons (added) — a colour, a symbol, or a picture; follows renames, moves and the Trash
 - [ ] Custom toolbar buttons and layouts (Next)
 - [ ] Customisable right-click context menus (Next)
 - [x] Fully remappable keyboard shortcuts (MVP) — ☰ › Keyboard shortcuts…: every shortcut, press new keys, clashes refused, reset

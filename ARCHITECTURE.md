@@ -326,6 +326,7 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
   - **Folder sizes:** list view asks `Ops.sizeFolders` for the folders shown; one idle-priority thread works through them, dropping the queue when asked again (moving folder) and reusing sizes from the last minute. Not for `/`.
   - **Storage** (`drives:`): every mounted drive as a card with how full it is, refreshed while shown.
   - **Shortcuts:** one table in `Main.qml` (id, label, default); `files.keys` in whiterosed holds only the changed ones, so every window follows a change at once.
+  - **Folder colours and icons** (`src/looks.rs`, `$XDG_STATE_HOME/whiterose/files/looks.json`): a colour from a fixed palette, a symbol (kit icon names) or a picture, per folder path. `FolderIcon.qml` draws the folder itself (two shapes and the symbol), so it's sharp at every size. Renames, moves, trashing and restoring inside Files carry it along; deleting for good drops it. Listings, places and search results carry each folder's `look`.
   - **Rule for dialogs:** a popup closed from inside a key handler (Enter) crashes Qt; close it with `Qt.callLater`.
   - **Clipboard:** files go as `text/uri-list`, `x-special/gnome-copied-files` and plain paths (`cpp/clip.cpp`), so copy and paste work with other file managers both ways.
   - **Default:** `/etc/xdg/whiterose-mimeapps.list` makes Files open folders inside a WhiteRose session only.

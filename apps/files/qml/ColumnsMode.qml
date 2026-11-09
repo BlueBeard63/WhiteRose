@@ -67,6 +67,7 @@ FocusScope {
                     color: on || drop.over ? Theme.tint(col.last || drop.over ? 0.22 : 0.12) : rowArea.containsMouse ? Theme.surface1 : "transparent"
                     border { width: drop.over ? 1 : 0; color: Theme.tint(0.6) }
                     Image {
+                        visible: !row.modelData.look
                         id: ic
                         x: 8; anchors.verticalCenter: parent.verticalCenter
                         width: 18; height: 18
@@ -74,6 +75,13 @@ FocusScope {
                         source: row.modelData.icon ? "file://" + row.modelData.icon : ""
                         asynchronous: true
                         opacity: row.modelData.hidden ? 0.55 : 1
+                    }
+                    // A folder with its own colour or icon.
+                    FolderIcon {
+                        visible: !!row.modelData.look
+                        anchors.fill: ic
+                        size: ic.width
+                        look: row.modelData.look ?? ({})
                     }
                     Text {
                         anchors { left: ic.right; leftMargin: 8; right: chev.left; rightMargin: 4; verticalCenter: parent.verticalCenter }

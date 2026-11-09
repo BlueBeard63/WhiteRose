@@ -59,6 +59,7 @@ GridView {
         property bool thumbFailed: false
         readonly property bool thumb: !cell.thumbFailed && String(cell.modelData.mime).startsWith("image/") && cell.modelData.size < 40e6
         Image {
+            visible: !cell.modelData.look
             id: icon
             anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: cell.thumb ? 0 : 12 }
             width: cell.thumb ? 60 : 48; height: width
@@ -69,6 +70,13 @@ GridView {
             autoTransform: true
             opacity: cell.modelData.hidden ? 0.55 : 1
             onStatusChanged: if (icon.status === Image.Error && cell.thumb) cell.thumbFailed = true
+        }
+        // A folder with its own colour or icon.
+        FolderIcon {
+            visible: !!cell.modelData.look
+            anchors.fill: icon
+            size: icon.width
+            look: cell.modelData.look ?? ({})
         }
         // A link: a small arrow on the icon.
         Rectangle {

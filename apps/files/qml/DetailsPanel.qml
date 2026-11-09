@@ -53,6 +53,13 @@ Rectangle {
                     id: preview
                     anchors { fill: parent; margins: 6 }
                     entry: root.entry
+                    visible: !root.entry?.look
+                }
+                FolderIcon {
+                    visible: !!root.entry?.look
+                    anchors.centerIn: parent
+                    size: Math.min(parent.width, parent.height) * 0.5
+                    look: root.entry?.look ?? ({})
                 }
             }
             Column {

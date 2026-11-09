@@ -69,6 +69,17 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setMode"]
         fn set_mode(self: &Fs, path: &QString, mode: i32) -> QString;
+        /// A folder's own colour and icon: {colour, symbol, image} (null: none).
+        #[qinvokable]
+        fn look(self: &Fs, path: &QString) -> QString;
+        /// Gives a folder a colour, symbol or picture ({} back to plain).
+        #[qinvokable]
+        #[cxx_name = "setLook"]
+        fn set_look(self: &Fs, path: &QString, json: &QString) -> bool;
+        /// The colours and symbols offered: {colours, symbols}.
+        #[qinvokable]
+        #[cxx_name = "lookChoices"]
+        fn look_choices(self: &Fs) -> QString;
         /// On the same drive (a drop between them moves rather than copies).
         #[qinvokable]
         #[cxx_name = "sameDrive"]
@@ -171,7 +182,7 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{launch, listing, places, session, trash, views};
+use crate::{launch, listing, looks, places, session, trash, views};
 
 /// The Trash, as a place to go.
 const TRASH: &str = "trash:";
@@ -251,6 +262,7 @@ impl qobject::Fs {
         };
         listing::sort(&mut entries, by, descending);
         let size = icon_size.clamp(16, 256) as u32;
+        let looks = looks::load();
         let out: Vec<Value> = entries
             .into_iter()
             .map(|e| {
@@ -266,6 +278,9 @@ impl qobject::Fs {
                 v["icon"] = json!(icon);
                 if let Some(o) = origins.get(&e.path) {
                     v["origin"] = json!(o);
+                }
+                if let Some(l) = looks.get(&e.path).filter(|_| e.dir) {
+                    v["look"] = json!(l);
                 }
                 v
             })
@@ -293,12 +308,13 @@ impl qobject::Fs {
 
     pub fn places(&self) -> QString {
         let ic = icons::shared();
+        let looks = looks::load();
         let with_icon = |p: places::Place| {
             let file = icon_path(
                 ic.lookup(&p.icon, 20, 1)
                     .or_else(|| ic.lookup("folder", 20, 1)),
             );
-            json!({"name": p.name, "path": p.path, "icon": file})
+            json!({"name": p.name, "path": p.path, "icon": file, "look": looks.get(&p.path)})
         };
         let drives: Vec<Value> = places::drives()
             .into_iter()
@@ -614,6 +630,25 @@ impl qobject::Fs {
             Ok(()) => QString::from(""),
             Err(e) => QString::from(e.to_string().as_str()),
         }
+    }
+
+    pub fn look(&self, path: &QString) -> QString {
+        q(json!(looks::load().get(&path.to_string())))
+    }
+
+    pub fn set_look(&self, path: &QString, json: &QString) -> bool {
+        let Ok(l) = serde_json::from_str::<looks::Look>(&json.to_string()) else {
+            return false;
+        };
+        let path = path.to_string();
+        looks::change(|all| {
+            all.set(&path, l);
+            true
+        })
+    }
+
+    pub fn look_choices(&self) -> QString {
+        q(json!({"colours": looks::COLOURS, "symbols": looks::SYMBOLS}))
     }
 
     pub fn same_drive(&self, a: &QString, b: &QString) -> bool {

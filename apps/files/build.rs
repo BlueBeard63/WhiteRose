@@ -21,6 +21,8 @@ fn main() {
             "qml/QuickLook.qml",
             "qml/DrivesMode.qml",
             "qml/KeysDialog.qml",
+            "qml/FolderIcon.qml",
+            "qml/LookDialog.qml",
         ]
         .map(QmlFile::from),
     );

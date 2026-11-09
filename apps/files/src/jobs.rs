@@ -384,6 +384,13 @@ impl qobject::Ops {
             });
             w.publish();
             let out = ops::run(kind, &sources, dest.as_deref(), &control, &mut w);
+            // Folders' colours and icons go where they went (or go with them).
+            if !out.moved.is_empty() || !out.gone.is_empty() {
+                crate::looks::change(|l| {
+                    let a = out.moved.iter().fold(false, |c, (f, t)| l.moved(f, t) | c);
+                    out.gone.iter().fold(a, |c, g| l.forget(g) | c)
+                });
+            }
             w.update(|j| {
                 j.state = "done";
                 j.failed = out.failed.clone();
@@ -442,8 +449,13 @@ impl qobject::Ops {
     }
 
     pub fn rename(&self, path: &QString, name: &QString) -> QString {
-        match ops::rename(Path::new(&path.to_string()), &name.to_string()) {
-            Ok(p) => q(json!({"ok": true, "path": p})),
+        let from = path.to_string();
+        match ops::rename(Path::new(&from), &name.to_string()) {
+            Ok(p) => {
+                let to = p.to_string_lossy().into_owned();
+                crate::looks::change(|l| l.moved(&from, &to));
+                q(json!({"ok": true, "path": p}))
+            }
             Err(e) => q(json!({"ok": false, "error": e})),
         }
     }
@@ -460,7 +472,11 @@ impl qobject::Ops {
         let (mut done, mut failed) = (vec![], vec![]);
         for p in paths {
             match crate::trash::restore(Path::new(&p)) {
-                Ok(to) => done.push(to.to_string_lossy().into_owned()),
+                Ok(to) => {
+                    let to = to.to_string_lossy().into_owned();
+                    crate::looks::change(|l| l.moved(&p, &to));
+                    done.push(to);
+                }
                 Err(e) => failed.push((p, e)),
             }
         }

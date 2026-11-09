@@ -109,6 +109,7 @@ FocusScope {
                 Item {
                     width: head.width - 32 - root.sizeW - root.dateW - root.kindW; height: parent.height
                     Image {
+                        visible: !row.modelData.look
                         id: ic
                         anchors.verticalCenter: parent.verticalCenter
                         width: 20; height: 20
@@ -116,6 +117,13 @@ FocusScope {
                         source: row.modelData.icon ? "file://" + row.modelData.icon : ""
                         asynchronous: true
                         opacity: row.modelData.hidden ? 0.55 : 1
+                    }
+                    // A folder with its own colour or icon.
+                    FolderIcon {
+                        visible: !!row.modelData.look
+                        anchors.fill: ic
+                        size: ic.width
+                        look: row.modelData.look ?? ({})
                     }
                     Text {
                         anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }

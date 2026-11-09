@@ -7,6 +7,7 @@ mod finder;
 mod jobs;
 mod launch;
 mod listing;
+mod looks;
 mod ops;
 mod places;
 mod search;

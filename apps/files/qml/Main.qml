@@ -638,6 +638,7 @@ AppWindow {
                 ...(itemMenu.openIn.length > 0 ? [{ separator: true }].concat(itemMenu.openIn) : []),
                 { separator: true },
                 { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
+                { label: "Colour and icon…", run: () => looks.show(win.current.path, win.current.title) },
                 { label: "Properties", run: () => props.show([win.current.path]) },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
@@ -656,6 +657,7 @@ AppWindow {
                 ] : []),
                 { separator: true },
                 { label: "Rename…", shortcut: "F2", enabled: !itemMenu.many, run: () => win.askName("rename") },
+                ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
                 { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
                 { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
                 { separator: true },
@@ -705,7 +707,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: keysDialog.visible || address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
+    readonly property bool typing: keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -984,6 +986,13 @@ AppWindow {
             if (key === "apps.editor") win.editorApp = JSON.parse(Fs.editor(win.choice("apps.editor")));
         }
     }
+    // A folder's colour and icon: every tab, window and the sidebar show the change.
+    LookDialog {
+        id: looks
+        onChanged: { for (const w of Session.windows) { for (const t of w.tabs) for (const p of t.panes) p.load(); w.refreshSidebar() } }
+        onClosed: win.current?.focusView()
+    }
+    function refreshSidebar() { sidebar.refresh() }
     KeysDialog { id: keysDialog; list: win.keyList; overrides: win.keyOverrides; onClosed: win.current?.focusView() }
     Shortcut { sequence: win.keys("new-tab", "Ctrl+T"); onActivated: win.newTab({ path: win.current?.path ?? "" }) }
     Shortcut { sequence: win.keys("reopen-tab", "Ctrl+Shift+T"); onActivated: win.reopenTab() }
