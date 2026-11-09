@@ -1,0 +1,11 @@
+{
+  "id": "about",
+  "name": "About",
+  "description": "This computer and WhiteRose",
+  "icon": "info",
+  "category": "footer",
+  "order": 99,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["system", "version", "hardware", "memory", "cpu", "kernel", "computer"]
+}

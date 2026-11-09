@@ -1,0 +1,11 @@
+{
+  "id": "calendar",
+  "name": "Calendar & Weather",
+  "description": "Calendars shown in the clock panel, and the weather's place",
+  "icon": "calendar",
+  "category": "desktop",
+  "order": 15,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["calendar", "events", "ical", "ics", "google", "outlook", "icloud", "weather", "city", "temperature", "celsius", "fahrenheit"]
+}

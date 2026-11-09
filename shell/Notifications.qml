@@ -72,9 +72,13 @@ Singleton {
             root.arrivedAt[n.id] = Date.now();
             root.arrivedAtChanged();
             const panelOpen = ShellState.panel === "notifications";
-            if (!panelOpen) root.unread = true;
-            if (N.shouldPopup(n.urgency, QuickState.doNotDisturb, panelOpen))
+            const muted = Daemon.setting("notifications.muted", []).includes(n.appName);
+            if (!panelOpen && !muted) root.unread = true;
+            if (N.shouldPopup(n.urgency, QuickState.doNotDisturb, panelOpen, muted))
                 root.popupIds = [n.id, ...root.popupIds];
+            // Settings → Notifications lists every app that has notified.
+            const apps = Daemon.setting("notifications.apps", []);
+            if (n.appName && apps[0] !== n.appName) Daemon.set("notifications.apps", N.rememberApp(apps, n.appName));
         }
     }
 }

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Opens WhiteRose Settings, at PAGE if given (network, sound, power, ...).
+# If Settings is already open it just goes to that page: there's only ever one.
+dir="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+cfg="$dir/settings.qml"
+# This user's running Settings, found by its command line (QuickShell's own
+# lookup by config path isn't reliable).
+pid="$(pgrep -u "$(id -u)" -n -f "^qs -p $cfg( |\$)")"
+if [ -n "$pid" ]; then
+    [ -n "$1" ] && qs ipc --pid "$pid" call settings open "$1" >/dev/null 2>&1
+    exit 0
+fi
+# Settings draws its own window frame (WhiteRose has no server-side ones).
+QT_WAYLAND_DISABLE_WINDOWDECORATION=1 WHITEROSE_SETTINGS_PAGE="$1" exec qs -p "$cfg"

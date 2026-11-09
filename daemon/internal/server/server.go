@@ -41,6 +41,9 @@ type Server struct {
 	Dirs    calendar.Dirs
 	// Called after calendars are added or removed (to fetch them).
 	CalendarsChanged func()
+	// Extra requests, by op name (battery details, ...), kept out of this
+	// package so it doesn't depend on every subsystem.
+	Ops map[string]func(Request) (any, error)
 
 	mu      sync.Mutex
 	clients map[*client]struct{}
@@ -212,10 +215,18 @@ type Request struct {
 	Path  string `json:"path"`
 	Color string `json:"color"`
 	Index *int   `json:"index"`
+	// set_charge_limit
+	On bool `json:"on"`
+	// network_profile / network_update
+	UUID    string          `json:"uuid"`
+	Changes json.RawMessage `json:"changes"`
 }
 
 // Handle runs one request (also used directly by the CLI and tests).
 func (s *Server) Handle(r Request) (any, error) {
+	if op, ok := s.Ops[r.Op]; ok {
+		return op(r)
+	}
 	switch r.Op {
 	case "get":
 		v, ok, err := s.Store.Get(r.Key)

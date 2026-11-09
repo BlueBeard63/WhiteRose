@@ -1,0 +1,11 @@
+{
+  "id": "dock",
+  "name": "Dock",
+  "description": "Pinned apps and their order",
+  "icon": "grid",
+  "category": "desktop",
+  "order": 12,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["dock", "pin", "pinned", "apps", "favourites", "favorites", "launcher", "order"]
+}

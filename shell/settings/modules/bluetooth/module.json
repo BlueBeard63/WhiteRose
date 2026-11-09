@@ -1,0 +1,11 @@
+{
+  "id": "bluetooth",
+  "name": "Bluetooth",
+  "description": "Pairing and devices via BlueZ",
+  "icon": "bluetooth",
+  "category": "system",
+  "order": 4,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["bluetooth", "pair", "headphones", "mouse", "keyboard", "earbuds", "speaker", "controller"]
+}

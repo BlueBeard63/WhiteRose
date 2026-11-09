@@ -113,6 +113,10 @@ SidePanel {
                 onClicked: { ShellState.closePanel(); ShellState.lock() }
             }
             IconButton {
+                width: 30; height: 30; icon: "gear"
+                onClicked: ShellState.openSettings("")
+            }
+            IconButton {
                 width: 30; height: 30; icon: "power"
                 iconColor: root.powerMenu ? Theme.bg : Theme.rose
                 fill: root.powerMenu ? Theme.rose : Theme.surface1
@@ -217,16 +221,44 @@ SidePanel {
         }
     }
 
-    // Battery.
-    Row {
-        visible: root.hasBattery
-        spacing: 6
-        Icon { anchors.verticalCenter: parent.verticalCenter; name: root.batteryState === "charging" ? "zap" : "battery"; size: 16; color: Theme.muted }
-        Text {
+    // Battery, and the way into Settings.
+    Item {
+        width: parent.width
+        height: 18
+        Row {
+            visible: root.hasBattery
             anchors.verticalCenter: parent.verticalCenter
-            text: QS.batteryLine(root.percent, root.batteryState, root.battery?.timeToEmpty ?? 0, root.battery?.timeToFull ?? 0)
-            color: Theme.muted
-            font { family: Theme.font; pointSize: Theme.pt(11.5) }
+            spacing: 6
+            Icon { anchors.verticalCenter: parent.verticalCenter; name: root.batteryState === "charging" ? "zap" : "battery"; size: 16; color: Theme.muted }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: QS.batteryLine(root.percent, root.batteryState, root.battery?.timeToEmpty ?? 0, root.battery?.timeToFull ?? 0)
+                color: Theme.muted
+                font { family: Theme.font; pointSize: Theme.pt(11.5) }
+            }
+        }
+        Item {
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            width: allRow.implicitWidth
+            height: allRow.implicitHeight
+            Row {
+                id: allRow
+                spacing: 2
+                Text {
+                    text: "All settings"
+                    color: allMouse.containsMouse ? Theme.text : Theme.muted
+                    font { family: Theme.font; pointSize: Theme.pt(11.5); weight: Font.Medium }
+                }
+                Icon { anchors.verticalCenter: parent.verticalCenter; name: "chevR"; size: 13; color: allMouse.containsMouse ? Theme.text : Theme.muted }
+            }
+            MouseArea {
+                id: allMouse
+                anchors.fill: parent
+                anchors.margins: -6
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: ShellState.openSettings("")
+            }
         }
     }
 }

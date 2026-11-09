@@ -15,7 +15,7 @@ SidePanel {
         delegate: NotificationCard {
             required property var modelData
             notification: modelData
-            timeout: N.popupTimeout(modelData.urgency, modelData.expireTimeout)
+            timeout: N.popupTimeout(modelData.urgency, modelData.expireTimeout, Daemon.setting("notifications.popupSeconds", 5) * 1000)
             onTimedOut: Notifications.hidePopup(modelData)
         }
     }

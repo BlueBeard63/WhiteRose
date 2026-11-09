@@ -80,7 +80,7 @@ Trigger {
 
     Text {
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.hasBattery
+        visible: root.hasBattery && Daemon.setting("bar.batteryPercent", true)
         text: root.percent + "%"
         color: Theme.text
         font { family: Theme.mono; pointSize: Theme.pt(11); weight: Font.Medium }

@@ -13,19 +13,27 @@ function ago(seconds) {
 }
 
 // Whether a new notification pops up. Not while the panel is open (it's
-// listed there already); under Do Not Disturb only critical ones do.
-function shouldPopup(urgency, doNotDisturb, panelOpen) {
+// listed there already); under Do Not Disturb, or from a muted app, only
+// critical ones do.
+function shouldPopup(urgency, doNotDisturb, panelOpen, muted) {
     if (panelOpen) return false;
-    return !doNotDisturb || urgency === CRITICAL;
+    return (!doNotDisturb && !muted) || urgency === CRITICAL;
 }
 
 // How long the popup stays, in ms; 0 means until dismissed. Critical ones
 // stay. Otherwise the app's own timeout (D-Bus: -1 = server default, 0 =
-// never), kept between 3 and 30 s so nothing flashes past or lingers forever.
-function popupTimeout(urgency, expireTimeout) {
+// never; the default is the user's setting, `defaultMs`), kept between 3 and
+// 30 s so nothing flashes past or lingers forever.
+function popupTimeout(urgency, expireTimeout, defaultMs) {
     if (urgency === CRITICAL) return 0;
-    if (expireTimeout === undefined || expireTimeout < 0 || expireTimeout === 0) return 5000;
+    if (expireTimeout === undefined || expireTimeout < 0 || expireTimeout === 0) return defaultMs || 5000;
     return Math.max(3000, Math.min(30000, expireTimeout));
+}
+
+// The list of apps that have sent notifications, with `app` first.
+function rememberApp(apps, app) {
+    if (!app) return apps;
+    return [app].concat((apps || []).filter(a => a !== app)).slice(0, 200);
 }
 
 // The buttons to show: every action except "default" (that's clicking the

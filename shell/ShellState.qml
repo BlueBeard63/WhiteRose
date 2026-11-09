@@ -29,6 +29,12 @@ Singleton {
     function togglePanel(name) { if (panel === name) closePanel(); else { panel = name; islandView = "idle" } }
     function closePanel() { panel = "" }
 
+    // Opens the Settings app (its own window), at `page` if given.
+    function openSettings(page) {
+        panel = ""; islandView = "idle";
+        Quickshell.execDetached([Quickshell.shellDir + "/bin/whiterose-settings", page ?? ""]);
+    }
+
     // The session lock screen (LockScreen.qml) shows while this is true; only
     // a correct password clears it.
     property bool locked: false

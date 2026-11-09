@@ -17,9 +17,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/godbus/dbus/v5"
+
 	"whiterose/daemon/internal/backlight"
 	"whiterose/daemon/internal/calendar"
 	"whiterose/daemon/internal/migrate"
+	"whiterose/daemon/internal/netconf"
+	"whiterose/daemon/internal/power"
 	"whiterose/daemon/internal/rfkill"
 	"whiterose/daemon/internal/server"
 	"whiterose/daemon/internal/session"
@@ -182,6 +186,48 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		poke()
 	}
 	srv.CalendarsChanged = refreshCalendars
+	srv.Ops = map[string]func(server.Request) (any, error){
+		"battery": func(server.Request) (any, error) {
+			conn, err := dbus.ConnectSystemBus()
+			if err != nil {
+				return nil, err
+			}
+			defer conn.Close()
+			return power.Read(conn, uint32(time.Now().Unix()))
+		},
+		"network_profile": func(r server.Request) (any, error) {
+			conn, err := dbus.ConnectSystemBus()
+			if err != nil {
+				return nil, err
+			}
+			defer conn.Close()
+			p, d, err := netconf.Get(conn, r.UUID)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"profile": p, "details": d}, nil
+		},
+		"network_update": func(r server.Request) (any, error) {
+			var ch netconf.Changes
+			if err := json.Unmarshal(r.Changes, &ch); err != nil {
+				return nil, fmt.Errorf("bad changes: %w", err)
+			}
+			conn, err := dbus.ConnectSystemBus()
+			if err != nil {
+				return nil, err
+			}
+			defer conn.Close()
+			return nil, netconf.Update(conn, r.UUID, ch)
+		},
+		"set_charge_limit": func(r server.Request) (any, error) {
+			conn, err := dbus.ConnectSystemBus()
+			if err != nil {
+				return nil, err
+			}
+			defer conn.Close()
+			return nil, power.SetLimit(conn, r.On)
+		},
+	}
 	every := func(d time.Duration, fn func()) {
 		for {
 			fn()

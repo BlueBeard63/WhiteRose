@@ -1,0 +1,11 @@
+{
+  "id": "power",
+  "name": "Power & Battery",
+  "description": "Battery, power modes and the charge limit",
+  "icon": "battery",
+  "category": "system",
+  "order": 5,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["battery", "power", "charge", "charging", "health", "saver", "performance", "balanced", "profile", "percentage"]
+}

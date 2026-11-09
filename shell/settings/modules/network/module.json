@@ -1,0 +1,11 @@
+{
+  "id": "network",
+  "name": "Network",
+  "description": "Wi-Fi and Ethernet via NetworkManager",
+  "icon": "wifi",
+  "category": "system",
+  "order": 3,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["wifi", "wi-fi", "wireless", "internet", "ethernet", "ip", "dns", "dhcp", "password", "mac", "proxy"]
+}

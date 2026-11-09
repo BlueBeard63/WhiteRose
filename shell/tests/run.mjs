@@ -14,7 +14,7 @@ const Calc = load("Calc.js", ["evaluate"]);
 const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
-const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName"]);
+const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -194,6 +194,8 @@ test("popups respect the panel and Do Not Disturb", () => {
     assert.equal(N.shouldPopup(1, true, false), false, "Do Not Disturb");
     assert.equal(N.shouldPopup(0, true, false), false);
     assert.equal(N.shouldPopup(2, true, false), true, "critical gets through Do Not Disturb");
+    assert.equal(N.shouldPopup(1, false, false, true), false, "a muted app doesn't pop up");
+    assert.equal(N.shouldPopup(2, false, false, true), true, "unless it's critical");
 });
 test("popup timeouts", () => {
     assert.equal(N.popupTimeout(2, 5000), 0, "critical stays until dismissed");
@@ -202,6 +204,10 @@ test("popup timeouts", () => {
     assert.equal(N.popupTimeout(1, 500), 3000, "not too short to read");
     assert.equal(N.popupTimeout(1, 120000), 30000, "not forever");
     assert.equal(N.popupTimeout(1, 8000), 8000);
+    assert.equal(N.popupTimeout(1, -1, 12000), 12000, "the user's popup duration");
+    assert.equal(N.popupTimeout(1, 8000, 12000), 8000, "an app's own timeout wins");
+    assert.deepEqual(N.rememberApp(["Mail", "Chat"], "Chat"), ["Chat", "Mail"]);
+    assert.deepEqual(N.rememberApp(["Mail"], ""), ["Mail"]);
 });
 test("action buttons leave out the default action", () => {
     const acts = [{ identifier: "default", text: "View" }, { identifier: "open", text: "Open" }, { identifier: "folder", text: "Show in folder" }];

@@ -409,3 +409,27 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 - **Import:** at start, any old config file found (`dock.json`, `launcher.json`, `quick.json`, `calendars.toml`, `weather.toml`, `displays.toml`) is imported and renamed `*.migrated`. A file that can't be read is left alone and reported.
 - **Not settings:** clipboard history (the compositor's data, with images) stays in `~/.local/share/whiterose/clipboard/`.
 - **Tests:** store, validation, secrets (with a fake keyring), import, the socket protocol with real clients, and the CLI against an in-process daemon.
+
+## Settings app
+
+`shell/settings.qml` is a separate QuickShell window, started on demand by `shell/bin/whiterose-settings [page]` (the Quick Settings gear and "All settings"). Running it again only switches the open window to the page: the launcher finds the running window by its command line and tells it over QuickShell IPC (QuickShell's own lookup by config path isn't reliable). It exits when closed. It draws its own frameless, rounded window, because WhiteRose has no server-side decorations.
+
+- **Pages are modules:** each is a folder with `module.json` (id, name, icon, category, order, version, core, keywords) and `Page.qml`. Built-in pages live in `shell/settings/modules/`; installed ones go in `~/.local/share/whiterose/modules/`.
+  - Only the open page is loaded.
+  - The Modules page turns optional pages off (`settings.modules.disabled`).
+  - Search matches names, descriptions and keywords.
+- **Shared components** live in `shell/settings/`: cards, rows, toggles, dropdowns, segmented control, fields, sliders and dialogs.
+- **Pages in this first set**, each backed by the real service:
+
+| Page | Backed by |
+|---|---|
+| Network | QuickShell Networking for the list, connect and forget; `whiterosed` (`internal/netconf`) for profile details and editing: security, password, MAC privacy, frame protection, IPv4/IPv6, DNS, metered, autoconnect. Edits keep the stored password and re-apply the profile if it's in use. |
+| Bluetooth | QuickShell Bluetooth: adapter, pair, connect, forget. Searches only while the page is open. |
+| Sound | QuickShell PipeWire: default output and input, volumes, per-app streams. |
+| Power & Battery | UPower and power profiles; `whiterosed` (`internal/power`) for cycles, the 24 h charge history and the charge limit (shown only where the battery supports one); `bar.batteryPercent`. |
+| Dock | `dock.pinned`: order, remove, add from installed apps. |
+| Notifications | Do Not Disturb, popup duration, per-app mute (the shell records which apps notify). |
+| Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
+| Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
+
+- **Pages not built yet** don't appear in the sidebar: Displays, Keyboard & Shortcuts, Appearance, Top Bar, Updates, Users, Privacy. They wait on their backends: compositor output control, shortcuts read from the settings database, theming, the update system.

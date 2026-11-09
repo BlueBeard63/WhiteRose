@@ -1,0 +1,11 @@
+{
+  "id": "modules",
+  "name": "Modules",
+  "description": "Every settings page is a module: turn them on or off",
+  "icon": "package",
+  "category": "footer",
+  "order": 98,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["modules", "pages", "plugins", "extensions", "memory"]
+}

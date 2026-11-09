@@ -119,6 +119,21 @@ var Known = map[string]Key{
 			return nil
 		}),
 	},
+	"bar.batteryPercent": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// How long notification popups stay (seconds); critical ones always stay.
+	"notifications.popupSeconds": {Default: json.RawMessage(`5`), Check: into(func(v int) error {
+		if v < 3 || v > 30 {
+			return errors.New("must be 3-30 seconds")
+		}
+		return nil
+	})},
+	// Apps whose notifications are kept quietly in the panel (no popup).
+	"notifications.muted": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](200))},
+	// Apps that have sent notifications (recorded by the shell, for the
+	// Notifications page's list).
+	"notifications.apps": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](200))},
+	// Settings pages switched off on the Modules page (core pages can't be).
+	"settings.modules.disabled": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](200))},
 	"displays": {
 		Default: json.RawMessage(`{"monitor":[],"profile":[]}`),
 		Check: func(raw json.RawMessage) error {

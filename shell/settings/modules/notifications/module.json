@@ -1,0 +1,11 @@
+{
+  "id": "notifications",
+  "name": "Notifications",
+  "description": "Do Not Disturb, popups and which apps can interrupt",
+  "icon": "bell",
+  "category": "desktop",
+  "order": 14,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["notifications", "do not disturb", "dnd", "popup", "mute", "alerts", "quiet"]
+}

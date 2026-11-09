@@ -1,0 +1,11 @@
+{
+  "id": "sound",
+  "name": "Sound",
+  "description": "Outputs, inputs and per-app volume (PipeWire)",
+  "icon": "volume",
+  "category": "system",
+  "order": 2,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["audio", "volume", "speaker", "headphones", "microphone", "mic", "output", "input", "mute", "pipewire"]
+}
