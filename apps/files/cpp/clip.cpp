@@ -3,6 +3,7 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QMimeData>
+#include <QPalette>
 #include <QUrl>
 
 void setClipboardFiles(rust::Str uris, bool cut)
@@ -53,4 +54,15 @@ rust::String clipboardFiles()
                 out += '\n' + u.toEncoded();
     }
     return rust::String(out.constData(), size_t(out.size()));
+}
+
+void setLinkColour(rust::Str colour)
+{
+    QPalette p = QGuiApplication::palette();
+    const QColor c(QString::fromUtf8(colour.data(), static_cast<qsizetype>(colour.size())));
+    if (!c.isValid() || p.color(QPalette::Link) == c)
+        return;
+    p.setColor(QPalette::Link, c);
+    p.setColor(QPalette::LinkVisited, c);
+    QGuiApplication::setPalette(p);
 }

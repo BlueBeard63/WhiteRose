@@ -14,6 +14,7 @@ fn main() {
             "qml/Segmented.qml",
             "qml/Badge.qml",
             "qml/Menu.qml",
+            "qml/Highlight.qml",
         ]
         .map(QmlFile::from),
     );

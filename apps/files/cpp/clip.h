@@ -12,3 +12,6 @@ rust::String clipboardFiles();
 void setClipboardText(rust::Str text);
 // Ctrl / Shift / Alt held right now (Qt::KeyboardModifiers), for a drop.
 int keyboardModifiers();
+// The application's link colour (#rrggbb): Qt's Markdown takes links'
+// colour from it when it reads the text.
+void setLinkColour(rust::Str colour);

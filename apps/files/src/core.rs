@@ -57,6 +57,10 @@ pub mod qobject {
         #[qinvokable]
         fn subfolders(self: &Fs, path: &QString, hidden: bool) -> QString;
         /// Puts a bookmark at position `to` (others keep their order).
+        /// A JSON, JSONC or JSON5 file formatted: {ok, text} or {ok: false, error}.
+        #[qinvokable]
+        #[cxx_name = "prettyJson"]
+        fn pretty_json(self: &Fs, path: &QString) -> QString;
         /// Saved workspaces: [{name, saved, windows, tabs, folders}].
         #[qinvokable]
         fn workspaces(self: &Fs) -> QString;
@@ -612,6 +616,21 @@ impl qobject::Fs {
             Path::new(&path.to_string()),
             hidden
         )))
+    }
+
+    pub fn pretty_json(&self, path: &QString) -> QString {
+        let p = path.to_string();
+        let text = match std::fs::metadata(&p) {
+            Ok(m) if m.len() > 8 << 20 => {
+                return q(json!({"ok": false, "error": "Too big to format (over 8 MB)"}))
+            }
+            Ok(_) => std::fs::read_to_string(&p).map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match text.and_then(|t| crate::json_view::pretty(&t)) {
+            Ok(t) => q(json!({"ok": true, "text": t})),
+            Err(e) => q(json!({"ok": false, "error": e})),
+        }
     }
 
     pub fn workspaces(&self) -> QString {

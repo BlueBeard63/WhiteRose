@@ -14,7 +14,8 @@ cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+json5 = "0.4"
 libc = "0.2"
 zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "lzma"] }
 tar = "0.4"

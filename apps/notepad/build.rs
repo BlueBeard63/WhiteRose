@@ -5,7 +5,6 @@ fn main() {
         "qml/Main.qml",
         "qml/Editor.qml",
         "qml/FindBar.qml",
-        "qml/Highlight.qml",
     ]))
     .qt_module("Quick")
     .files(["src/core.rs"])

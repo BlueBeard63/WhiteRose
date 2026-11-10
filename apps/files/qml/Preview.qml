@@ -1,7 +1,10 @@
-// A file shown as itself: pictures, the start of text and code, video and
-// audio with a play button, PDF pages; anything else as its icon. `big`
-// (quick look) shows it all: full size, playing, every page. `facts` is
-// what it turned out to be ("4032 × 3024", "3:05", "12 pages").
+// A file shown as itself: pictures, the start of text and code (in
+// colour), Markdown drawn (tables, code; Mermaid and maths when their tools
+// are installed), JSON / JSONC / JSON5 formatted, video and audio with a
+// play button, PDF pages; anything else as its icon. `big` (quick look)
+// shows it all: full size, playing, every page, and can show the source of
+// Markdown and JSON. `facts` is what it turned out to be ("4032 × 3024",
+// "3:05", "12 pages").
 //
 // Video, audio and PDF come from MediaPreview.qml and PdfPreview.qml,
 // loaded only when needed (and only if Qt's multimedia and PDF modules are
@@ -26,6 +29,9 @@ Item {
         if (m.startsWith("video/")) return "video";
         if (m.startsWith("audio/")) return "audio";
         if (m === "application/pdf") return "pdf";
+        const name = (root.entry.name ?? "").toLowerCase();
+        if (m === "text/markdown" || /\.(md|markdown|mdown|mkd)$/.test(name)) return "markdown";
+        if (m === "application/json" || /\.(json|jsonc|json5)$/.test(name)) return "json";
         if (m.startsWith("text/") || ["application/json", "application/x-shellscript", "application/javascript", "application/xml",
              "application/toml", "application/x-yaml", "application/sql", "application/x-desktop", "application/x-php",
              "application/x-perl", "application/x-ruby", "application/x-python", "application/x-trash"].includes(m)) return "text";
@@ -33,11 +39,14 @@ Item {
     }
     readonly property string facts: root.kind === "image" ? Fs.imageSize(root.path)
         : root.kind === "text" ? (textView.more ? "First part shown" : "")
+        : root.kind === "json" ? (root.showSource || !jsonView.ok ? "" : "Formatted")
+        : root.kind === "markdown" ? (mdView.read.hint ?? "")
         : (special.item?.facts ?? "")
     // Shown as its icon (nothing better, or it couldn't be shown).
     readonly property bool iconOnly: root.kind === "folder" || root.kind === "other"
         || (root.kind === "image" && picture.status === Image.Error)
-        || (root.kind === "text" && !textView.ok)
+        || ((root.kind === "text" || root.kind === "json" || (root.kind === "markdown" && root.showSource)) && !textView.ok)
+        || (root.kind === "markdown" && !root.showSource && !mdView.ok)
         || ((root.kind === "video" || root.kind === "audio" || root.kind === "pdf") && special.status !== Loader.Ready)
 
     // ---- pictures ------------------------------------------------------------------------
@@ -65,12 +74,20 @@ Item {
     }
 
     // ---- text and code -------------------------------------------------------------------------
+    // Markdown and JSON: their source instead (quick look's "Source").
+    property bool showSource: false
+    onPathChanged: root.showSource = false
+    // JSON formatted (when it parses).
+    readonly property var jsonView: root.kind === "json" && !root.showSource ? JSON.parse(Fs.prettyJson(root.path)) : ({ ok: false })
+    readonly property bool asText: root.kind === "text" || (root.kind === "json" && (root.showSource || !root.jsonView.ok)) || (root.kind === "markdown" && root.showSource)
     Flickable {
         id: textView
-        readonly property var read: root.kind === "text" ? JSON.parse(Fs.readText(root.path, root.big ? 1048576 : 16384)) : ({ ok: false })
+        readonly property var read: root.kind === "json" && !root.showSource && root.jsonView.ok
+            ? { ok: true, text: root.big ? root.jsonView.text : root.jsonView.text.slice(0, 16384), more: !root.big && root.jsonView.text.length > 16384 }
+            : root.asText ? JSON.parse(Fs.readText(root.path, root.big ? 1048576 : 16384)) : ({ ok: false })
         readonly property bool ok: textView.read.ok === true
         readonly property bool more: textView.read.more === true
-        visible: root.kind === "text" && textView.ok
+        visible: root.asText || (root.kind === "json" && textView.ok)
         anchors.fill: parent
         clip: true
         interactive: root.big
@@ -90,6 +107,80 @@ Item {
             selectionColor: Theme.tint(0.4)
             font { family: Theme.mono; pointSize: Theme.pt(root.big ? 11.5 : 9.5) }
         }
+        // In colour (formatted JSON as JSON, whatever the file's called).
+        Highlight {
+            textEdit: body
+            fileName: textView.visible ? (root.kind === "json" && !root.showSource ? "formatted.json" : root.entry?.name ?? "") : ""
+            dark: !Theme.light
+        }
+    }
+    // Doesn't parse: shown as it is, with where it went wrong.
+    Rectangle {
+        visible: root.kind === "json" && !root.showSource && !root.jsonView.ok && (root.jsonView.error ?? "") !== ""
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 8 }
+        height: jsonErr.implicitHeight + 12; radius: 8
+        color: Theme.surface2
+        Text {
+            id: jsonErr
+            anchors { fill: parent; margins: 6 }
+            wrapMode: Text.Wrap
+            text: "Not valid JSON: " + (root.jsonView.error ?? "")
+            color: Theme.rose
+            font { family: Theme.font; pointSize: Theme.pt(10.5) }
+        }
+    }
+
+    // ---- Markdown, drawn ------------------------------------------------------------------------
+    Flickable {
+        id: mdView
+        property var read: ({ ok: false })
+        readonly property bool ok: mdView.read.ok === true
+        function load() {
+            Ops.accent = Theme.rose.toString();
+            mdView.read = root.kind === "markdown" && !root.showSource
+                ? JSON.parse(Ops.markdown(root.path, !Theme.light, Theme.text.toString())) : { ok: false };
+        }
+        Connections { target: root; function onPathChanged() { mdView.load() } function onShowSourceChanged() { mdView.load() } function onKindChanged() { mdView.load() } }
+        // Diagrams or maths finished drawing: shown.
+        Connections { target: Ops; function onRendered(path) { if (path === root.path) mdView.load() } }
+        Component.onCompleted: load()
+        visible: root.kind === "markdown" && !root.showSource && mdView.ok
+        anchors.fill: parent
+        clip: true
+        interactive: root.big
+        contentWidth: width
+        contentHeight: mdText.implicitHeight + 32
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: root.big ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+        Text {
+            id: mdText
+            x: root.big ? 24 : 12; y: root.big ? 20 : 12
+            width: parent.width - 2 * x
+            textFormat: Text.MarkdownText
+            text: mdView.read.text ?? ""
+            baseUrl: mdView.read.base ?? ""
+            wrapMode: Text.Wrap
+            color: Theme.text
+            linkColor: Theme.rose
+            font { family: Theme.font; pointSize: Theme.pt(root.big ? 12.5 : 9.5) }
+            onLinkActivated: link => Qt.openUrlExternally(link)
+            HoverHandler { cursorShape: mdText.hoveredLink ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        }
+    }
+    // Quick look: the source of Markdown or JSON, and back.
+    Rectangle {
+        visible: root.big && (root.kind === "markdown" || (root.kind === "json" && root.jsonView.ok !== undefined))
+        anchors { top: parent.top; right: parent.right; margins: 10 }
+        width: srcText.implicitWidth + 20; height: 26; radius: 13
+        color: srcArea.containsMouse ? Theme.surface2 : Theme.surface1
+        Text {
+            id: srcText
+            anchors.centerIn: parent
+            text: root.showSource ? (root.kind === "markdown" ? "Drawn" : "Formatted") : "Source"
+            color: Theme.muted
+            font { family: Theme.font; pointSize: Theme.pt(11) }
+        }
+        MouseArea { id: srcArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.showSource = !root.showSource }
     }
 
     // ---- video, audio, PDF ------------------------------------------------------------------------

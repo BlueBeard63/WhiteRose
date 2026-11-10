@@ -21,6 +21,8 @@ pub mod qobject {
         fn keyboard_modifiers() -> i32;
         #[cxx_name = "setClipboardText"]
         fn set_clipboard_text(text: &str);
+        #[cxx_name = "setLinkColour"]
+        fn set_link_colour(colour: &str);
     }
 
     extern "RustQt" {
@@ -31,6 +33,8 @@ pub mod qobject {
         /// itemsTotal, current, rate, conflict, failed, cancelled}]
         /// state: waiting | running | paused | conflict | done
         #[qproperty(QString, jobs)]
+        /// The accent (#rrggbb): links in drawn Markdown take it.
+        #[qproperty(QString, accent)]
         type Ops = super::OpsRust;
 
         /// kind: copy | move | trash | delete; sources: JSON [path]; dest: a
@@ -122,6 +126,15 @@ pub mod qobject {
         fn hash(self: &Ops, path: &QString);
         #[qsignal]
         fn hashed(self: Pin<&mut Ops>, path: QString, result: QString);
+        /// A Markdown file for showing: {ok, text, base, pending, hint}.
+        /// Mermaid diagrams and LaTeX maths already drawn are images in
+        /// `text`; with the tools installed the rest are drawn in the
+        /// background and `rendered` says when to ask again; without them
+        /// `hint` says what to install. `ink`: the text colour (#rrggbb).
+        #[qinvokable]
+        fn markdown(self: &Ops, path: &QString, dark: bool, ink: &QString) -> QString;
+        #[qsignal]
+        fn rendered(self: Pin<&mut Ops>, path: QString);
         /// Settings › Files › Verify copies.
         #[qinvokable]
         #[cxx_name = "setVerify"]
@@ -190,6 +203,7 @@ struct Job {
 #[derive(Default)]
 pub struct OpsRust {
     jobs: QString,
+    accent: QString,
     list: Arc<Mutex<Vec<Job>>>,
     /// Held by the copy or move that's running.
     transfers: Arc<Mutex<()>>,
@@ -197,6 +211,8 @@ pub struct OpsRust {
     /// Counts going on, each with its stop flag.
     measuring: Arc<Mutex<std::collections::HashMap<i32, Arc<std::sync::atomic::AtomicBool>>>>,
     sizer: Arc<Mutex<Sizer>>,
+    /// Drawings being made (markdown.rs), so each is drawn once.
+    drawing: Arc<Mutex<std::collections::HashSet<String>>>,
     /// The checksum being worked out, and its stop flag.
     hashing: Arc<Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>>,
 }
@@ -760,6 +776,76 @@ impl qobject::Ops {
 }
 
 impl qobject::Ops {
+    pub fn markdown(&self, path: &QString, dark: bool, ink: &QString) -> QString {
+        use crate::markdown as md;
+        let p = path.to_string();
+        let ink = ink.to_string();
+        // (Links in drawn Markdown take the accent.)
+        qobject::set_link_colour(&self.accent.to_string());
+        let text = match std::fs::metadata(&p) {
+            Ok(m) if m.len() > 4 << 20 => {
+                return q(json!({"ok": false, "error": "Too big to show (over 4 MB)"}))
+            }
+            Ok(_) => match std::fs::read_to_string(&p) {
+                Ok(t) => t,
+                Err(e) => return q(json!({"ok": false, "error": e.to_string()})),
+            },
+            Err(e) => return q(json!({"ok": false, "error": e.to_string()})),
+        };
+        let cache = md::cache_dir();
+        let (out, missing) = md::with_drawings(&text, &cache, dark, &ink);
+        let (mermaid, maths) = md::tools(&|n| crate::launch::installed(n));
+        let drawable: Vec<md::Piece> = missing
+            .iter()
+            .filter(|x| {
+                if x.kind == md::Kind::Mermaid {
+                    mermaid
+                } else {
+                    maths
+                }
+            })
+            .cloned()
+            .collect();
+        let mut hint = vec![];
+        if !mermaid && missing.iter().any(|x| x.kind == md::Kind::Mermaid) {
+            hint.push("diagrams: install mermaid-cli (mmdc)");
+        }
+        if !maths && missing.iter().any(|x| x.kind != md::Kind::Mermaid) {
+            hint.push("maths: install TeX Live (latex, dvisvgm)");
+        }
+        let base = Path::new(&p)
+            .parent()
+            .map(|d| format!("file://{}/", d.display()))
+            .unwrap_or_default();
+        // Draw what can be, once each, then tell QML to ask again.
+        let todo: Vec<md::Piece> = {
+            let mut busy = self.drawing.lock().unwrap();
+            drawable
+                .iter()
+                .filter(|x| busy.insert(md::key(x, dark, &ink)))
+                .cloned()
+                .collect()
+        };
+        if !todo.is_empty() {
+            let thread = self.qt_thread();
+            let busy = self.drawing.clone();
+            let path = p.clone();
+            std::thread::spawn(move || {
+                for x in &todo {
+                    if let Err(e) = md::draw(x, &cache, dark, &ink) {
+                        crate::log::warn(&format!("drawing a {:?} in {path}: {e}", x.kind));
+                    }
+                    busy.lock().unwrap().remove(&md::key(x, dark, &ink));
+                }
+                let _ = thread
+                    .queue(move |mut obj| obj.as_mut().rendered(QString::from(path.as_str())));
+            });
+        }
+        q(
+            json!({"ok": true, "text": out, "base": base, "pending": !drawable.is_empty(), "hint": if hint.is_empty() { String::new() } else { format!("To see {}", hint.join("; ")) }}),
+        )
+    }
+
     pub fn set_verify(&self, on: bool) {
         crate::ops::VERIFY.store(on, Ordering::Relaxed);
     }

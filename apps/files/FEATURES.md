@@ -55,10 +55,10 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Integrated preview/details pane (MVP) — Alt+P: preview plus kind, size, dates, dimensions / length / pages
 - [x] Quick preview using the Space key (MVP) — full window; arrows go through the folder, Enter opens
 - [x] Image, audio, video and PDF previews (MVP) — and the start of text and code; photo thumbnails in the grid
-- [ ] Markdown rendering including tables and code (Next)
-- [ ] Mermaid and LaTeX rendering in Markdown (Advanced)
-- [ ] Syntax-highlighted source code and config previews (Next)
-- [ ] JSON/JSONC/JSON5 formatted viewer (Next)
+- [x] Markdown rendering including tables and code (Next) — drawn in the preview and quick look (headings, tables, code, task lists, pictures beside it, links in the accent); "Source" shows the text
+- [x] Mermaid and LaTeX rendering in Markdown (Advanced) — drawn by mermaid-cli and TeX Live when they're installed (nothing bundled), cached as SVG per theme; otherwise shown as code with what to install
+- [x] Syntax-highlighted source code and config previews (Next) — KDE's syntax-highlighting (about 300 formats), chosen by file name, light and dark
+- [x] JSON/JSONC/JSON5 formatted viewer (Next) — comments, trailing commas, unquoted keys read; shown formatted in its own order; where it's broken if it doesn't parse
 - [ ] Browse and extract individual items from archives (Next)
 - [ ] Inspector with editable metadata and default app (Next)
 
