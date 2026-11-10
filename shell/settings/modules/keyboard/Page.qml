@@ -136,24 +136,24 @@ Column {
                     required property var modelData
                     required property int index
                     readonly property bool first: index === 0
-                    width: chipRow.implicitWidth + 24; height: 28; radius: 14
+                    width: chipRow.implicitWidth + 12; height: 28; radius: 7
                     anchors.verticalCenter: parent.verticalCenter
-                    color: first ? Theme.pearl : chipMouse.containsMouse ? Theme.grip : Theme.surface2
+                    color: chipMouse.containsMouse ? Theme.surface2 : "transparent"
                     Row {
                         id: chipRow
                         anchors.centerIn: parent
                         spacing: 6
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.name
-                            color: parent.parent.first ? Theme.bg : Theme.text
-                            font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
+                            text: modelData.name + (index < page.inUse.length - 1 ? "," : "")
+                            color: parent.parent.first ? Theme.text : Theme.muted
+                            font { family: Theme.font; pointSize: Theme.pt(12); weight: parent.parent.first ? Font.Medium : Font.Normal }
                         }
                         // Remove (not the last one).
                         Icon {
                             visible: page.inUse.length > 1 && chipMouse.containsMouse
                             anchors.verticalCenter: parent.verticalCenter
-                            name: "x"; size: 11; color: parent.parent.first ? Theme.bg : Theme.muted
+                            name: "x"; size: 11; color: Theme.muted
                         }
                     }
                     MouseArea {
@@ -173,7 +173,7 @@ Column {
                 }
             }
             Rectangle {
-                width: 28; height: 28; radius: 14
+                width: 28; height: 28; radius: 8
                 anchors.verticalCenter: parent.verticalCenter
                 color: addMouse.containsMouse ? Theme.grip : Theme.surface2
                 Icon { anchors.centerIn: parent; name: "plus"; size: 13; color: Theme.muted }
@@ -243,23 +243,10 @@ Column {
                 }
             }
         }
-        Repeater {
-            model: page.groups
-            delegate: Rectangle {
-                required property string modelData
-                readonly property bool on: page.group === modelData
-                anchors.verticalCenter: parent.verticalCenter
-                width: groupText.implicitWidth + 24; height: 28; radius: 14
-                color: on ? Theme.pearl : Theme.surface1
-                Text {
-                    id: groupText
-                    anchors.centerIn: parent
-                    text: modelData
-                    color: parent.on ? Theme.bg : Theme.muted
-                    font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
-                }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.group = modelData }
-            }
+        Segmented {
+            options: page.groups.map(g => ({ label: g, value: g }))
+            value: page.group
+            onPicked: v => page.group = v
         }
     }
 

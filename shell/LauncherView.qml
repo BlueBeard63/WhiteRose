@@ -171,27 +171,33 @@ Item {
             }
         }
 
-        // Category chips.
-        Row {
-            spacing: 6
-            Repeater {
-                model: [["all", "All"], ["apps", "Apps"], ["files", "Files"], ["commands", "Commands"], ["calculator", "Calculator"]]
-                delegate: Rectangle {
-                    required property var modelData
-                    readonly property bool active: root.category === modelData[0]
-                    width: chipText.implicitWidth + 24; height: 26; radius: 13
-                    color: active ? Theme.pearl : Theme.surface1
-                    Text {
-                        id: chipText
-                        anchors.centerIn: parent
-                        text: modelData[1]
-                        color: parent.active ? Theme.bg : Theme.muted
-                        font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.category = modelData[0]; search.forceActiveFocus(); }
+        // Categories: one of several, as a segmented control.
+        Rectangle {
+            width: catRow.implicitWidth + 6; height: 32; radius: 10
+            color: Theme.surface1
+            Row {
+                id: catRow
+                anchors.centerIn: parent
+                spacing: 2
+                Repeater {
+                    model: [["all", "All"], ["apps", "Apps"], ["files", "Files"], ["commands", "Commands"], ["calculator", "Calculator"]]
+                    delegate: Rectangle {
+                        required property var modelData
+                        readonly property bool active: root.category === modelData[0]
+                        width: chipText.implicitWidth + 22; height: 26; radius: 8
+                        color: active ? Theme.pearl : "transparent"
+                        Text {
+                            id: chipText
+                            anchors.centerIn: parent
+                            text: modelData[1]
+                            color: parent.active ? Theme.bg : Theme.muted
+                            font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { root.category = modelData[0]; search.forceActiveFocus(); }
+                        }
                     }
                 }
             }

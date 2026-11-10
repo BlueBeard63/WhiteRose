@@ -354,7 +354,7 @@ Column {
         SettingRow {
             title: "Settings snapshot"
             subtitle: "Your settings are copied before a new version first starts, and put back if it fails"
-            Badge { text: page.st?.snapshot ? "Taken " + Up.ago(page.st.snapshot, page.now) : "None yet" }
+            Badge { dot: false; text: page.st?.snapshot ? "Taken " + Up.ago(page.st.snapshot, page.now) : "None yet" }
         }
         SettingRow {
             title: "Check for updates"

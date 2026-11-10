@@ -277,13 +277,20 @@ Column {
                 }
 
                 // The snapped position while dragging (Figma: "x 2560  y -24").
-                Badge {
+                Rectangle {
                     visible: tile.dragging && tile.preview !== null
-                    anchors { verticalCenter: undefined; horizontalCenter: parent.horizontalCenter }
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: posText.implicitWidth + 12; height: 20; radius: 6
                     // Below the tile, or above it near the bottom of the card.
                     y: tile.y + tile.height + 28 < arrange.height - arrange.hintHeight ? parent.height + 6 : -height - 6
-                    tint: Theme.pearl; ink: Theme.bg
-                    text: tile.preview ? "x " + tile.preview.x + "   y " + tile.preview.y : ""
+                    color: Theme.pearl
+                    Text {
+                        id: posText
+                        anchors.centerIn: parent
+                        text: tile.preview ? "x " + tile.preview.x + "   y " + tile.preview.y : ""
+                        color: Theme.bg
+                        font { family: Theme.mono; pointSize: Theme.pt(9.5) }
+                    }
                 }
             }
         }
@@ -333,13 +340,13 @@ Column {
                 id: badges
                 anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                 spacing: 6
-                Badge { height: 22; text: "# " + (page.current?.id ?? "") }
-                Rectangle {
-                    height: 22; width: strongRow.implicitWidth + 14; radius: 6
-                    color: page.current?.strong ? Theme.tint(0.16) : Theme.surface2
+                Badge { dot: false; text: "# " + (page.current?.id ?? "") }
+                Item { width: 6; height: 1 }
+                Item {
+                    height: 22; width: strongRow.implicitWidth
                     Row {
                         id: strongRow
-                        anchors.centerIn: parent
+                        anchors.verticalCenter: parent.verticalCenter
                         spacing: 5
                         Icon { anchors.verticalCenter: parent.verticalCenter; name: page.current?.strong ? "check" : "info"; size: 11; color: page.current?.strong ? Theme.rose : Theme.muted }
                         Text {

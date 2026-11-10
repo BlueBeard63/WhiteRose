@@ -103,7 +103,7 @@ Column {
         SettingRow {
             title: "Lock screen"
             subtitle: "Touch the reader instead of typing your password"
-            Badge { text: page.fingers.length > 0 ? "on" : "add a finger first" }
+            Badge { dot: false; text: page.fingers.length > 0 ? "on" : "add a finger first" }
         }
         SettingRow {
             divider: true
