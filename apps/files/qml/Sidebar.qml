@@ -328,6 +328,8 @@ Rectangle {
             Heading { text: "Drives" }
             // Every drive at once, how full.
             PlaceRow { visible: side.open("Drives"); name: "Clean up"; path: "cleanup:"; glyph: "gauge" }
+            // Only when Docker or Podman is installed.
+            PlaceRow { visible: side.open("Drives") && Fs.hasContainers(); name: "Containers"; path: "containers:"; glyph: "package" }
             PlaceRow { visible: side.open("Drives"); name: "Storage"; path: "drives:"; icon: Fs.icon("drive-multidisk", 20) || Fs.icon("drive-harddisk", 20) }
             Repeater {
                 model: side.open("Drives") ? side.places.drives : []

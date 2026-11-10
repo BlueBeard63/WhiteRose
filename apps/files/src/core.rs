@@ -231,6 +231,25 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openEditor"]
         fn open_editor(self: &Fs, path: &QString, chosen: &QString) -> QString;
+        /// Docker or Podman is installed (the Containers place shows).
+        #[qinvokable]
+        #[cxx_name = "hasContainers"]
+        fn has_containers(self: &Fs) -> bool;
+        /// The kinds of project `dir` is and their scripts (projects.rs):
+        /// {projects: [{kind, file, scripts: [{name, command}]}], why} (why:
+        /// it's somewhere untrusted, so running asks first).
+        #[qinvokable]
+        fn projects(self: &Fs, dir: &QString) -> QString;
+        /// Runs `command` in `dir` in your terminal (it stays open after):
+        /// "" or what went wrong.
+        #[qinvokable]
+        #[cxx_name = "runInTerminal"]
+        fn run_in_terminal(
+            self: &Fs,
+            dir: &QString,
+            command: &QString,
+            chosen: &QString,
+        ) -> QString;
         /// Opens WhiteRose Settings at `page` ("files", "files/search", ...);
         /// "" or what went wrong.
         #[qinvokable]
@@ -300,6 +319,8 @@ const RECENT: &str = "recent:";
 const START: &str = "start:";
 /// Clean up (CleanupMode.qml; cleanup.rs looks).
 const CLEANUP: &str = "cleanup:";
+/// Docker / Podman containers (ContainersMode.qml; containers.rs).
+const CONTAINERS: &str = "containers:";
 
 #[derive(Default)]
 pub struct FsRust;
@@ -444,7 +465,7 @@ impl qobject::Fs {
                     })
                     .collect()
             })
-        } else if path == START || path == CLEANUP {
+        } else if path == START || path == CLEANUP || path == CONTAINERS {
             Ok(vec![])
         } else if path == RECENT {
             // Recent: opened lately, or changed in the last two weeks.
@@ -608,6 +629,9 @@ impl qobject::Fs {
         }
         if path == START {
             return q(json!([{"name": "Start", "path": START}]));
+        }
+        if path == CONTAINERS {
+            return q(json!([{"name": "Containers", "path": CONTAINERS}]));
         }
         if path == CLEANUP {
             return q(
@@ -841,7 +865,7 @@ impl qobject::Fs {
         if t.trim_end_matches('/') == DRIVES {
             return QString::from(DRIVES);
         }
-        for special in [RECENT, START, CLEANUP] {
+        for special in [RECENT, START, CLEANUP, CONTAINERS] {
             if t.trim_end_matches('/') == special {
                 return QString::from(special);
             }
@@ -885,6 +909,9 @@ impl qobject::Fs {
                 }
                 if a.starts_with(CLEANUP) {
                     return PathBuf::from(CLEANUP);
+                }
+                if a.starts_with(CONTAINERS) {
+                    return PathBuf::from(CONTAINERS);
                 }
                 if a.starts_with(crate::archive::PREFIX) {
                     return PathBuf::from(&a);
@@ -1215,24 +1242,44 @@ impl qobject::Fs {
         let why = if kind == crate::run::Kind::None {
             String::new()
         } else {
-            let home = places::home();
-            let downloads = places::user_dirs(
-                &std::fs::read_to_string(places::config_dir().join("user-dirs.dirs"))
-                    .unwrap_or_default(),
-                &home,
-            )
-            .into_iter()
-            .find(|(k, _)| k == "DOWNLOAD")
-            .map(|(_, p)| p)
-            .unwrap_or_else(|| home.join("Downloads"));
-            let removable: Vec<String> = places::drives()
-                .into_iter()
-                .filter(|d| d.removable)
-                .map(|d| d.path)
-                .collect();
-            crate::run::untrusted(&p, &home, Some(&downloads), &removable)
+            untrusted_why(&p)
         };
         q(json!({"kind": kind, "why": why}))
+    }
+
+    pub fn has_containers(&self) -> bool {
+        crate::containers::engine(&launch::installed).is_some()
+    }
+
+    pub fn projects(&self, dir: &QString) -> QString {
+        let d = dir.to_string();
+        if !d.starts_with('/') {
+            return q(json!({"projects": [], "why": ""}));
+        }
+        let p = crate::projects::detect(Path::new(&d));
+        let why = if p.is_empty() {
+            String::new()
+        } else {
+            untrusted_why(&d)
+        };
+        q(json!({"projects": p, "why": why}))
+    }
+
+    pub fn run_in_terminal(&self, dir: &QString, command: &QString, chosen: &QString) -> QString {
+        let (dir, command) = (dir.to_string(), command.to_string());
+        let Some(t) = launch::pick(launch::TERMINALS, &chosen.to_string(), launch::installed)
+        else {
+            return QString::from("no terminal is installed");
+        };
+        crate::log::info(&format!("ran `{command}` in {dir}"));
+        let args =
+            crate::projects::terminal_run_args(t.id, &dir, &crate::projects::wrapped(&command));
+        QString::from(
+            launch::spawn(t.id, &args, &dir)
+                .err()
+                .unwrap_or_default()
+                .as_str(),
+        )
     }
 
     pub fn run_program(&self, path: &QString) -> QString {
@@ -1461,4 +1508,23 @@ fn group_name(gid: u32) -> String {
             .to_string_lossy()
             .into_owned()
     }
+}
+
+/// Why `p` is somewhere untrusted (run.rs), "" if it isn't.
+fn untrusted_why(p: impl AsRef<Path>) -> String {
+    let home = places::home();
+    let downloads = places::user_dirs(
+        &std::fs::read_to_string(places::config_dir().join("user-dirs.dirs")).unwrap_or_default(),
+        &home,
+    )
+    .into_iter()
+    .find(|(k, _)| k == "DOWNLOAD")
+    .map(|(_, p)| p)
+    .unwrap_or_else(|| home.join("Downloads"));
+    let removable: Vec<String> = places::drives()
+        .into_iter()
+        .filter(|d| d.removable)
+        .map(|d| d.path)
+        .collect();
+    crate::run::untrusted(p.as_ref(), &home, Some(&downloads), &removable)
 }

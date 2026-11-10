@@ -83,7 +83,16 @@ pub fn clean(s: Session, home: &Path) -> Session {
 /// Places that aren't folders on disk: the Trash, Start, Recent, the
 /// Storage page, a tag's files.
 fn special(p: &str) -> bool {
-    ["trash:", "start:", "recent:", "drives:", "cleanup:"].contains(&p) || p.starts_with("tag:")
+    [
+        "trash:",
+        "start:",
+        "recent:",
+        "drives:",
+        "cleanup:",
+        "containers:",
+    ]
+    .contains(&p)
+        || p.starts_with("tag:")
 }
 
 fn clean_tab(t: Tab, home: &Path, outer: bool) -> Tab {

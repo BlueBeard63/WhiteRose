@@ -41,7 +41,11 @@ FocusScope {
     readonly property string archiveFile: inArchive ? path.slice(8, path.indexOf("!/") >= 0 ? path.indexOf("!/") : undefined) : ""
     // Clean up ("cleanup:"): CleanupMode draws it.
     readonly property bool inCleanup: path === "cleanup:"
-    readonly property bool special: inTrash || inDrives || inStart || inCleanup
+    // Containers ("containers:"): ContainersMode draws it.
+    readonly property bool inContainers: path === "containers:"
+    // Places drawn by their own view, with no files of their own.
+    readonly property bool ownView: inStart || inCleanup || inContainers
+    readonly property bool special: inTrash || inDrives || inStart || inCleanup || inContainers
     // A tag's files ("tag:Name"): real files, but nothing can be made or
     // pasted here; dropping things here tags them.
     readonly property bool inTag: path.startsWith("tag:")
@@ -94,7 +98,7 @@ FocusScope {
     // Folder sizes as they're worked out ({path: {bytes, items}}).
     property var sizes: ({})
     property var sizesSoon: ({})
-    readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash" : inRecent ? "Recent" : inStart ? "Start" : inCleanup ? "Clean up"
+    readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash" : inRecent ? "Recent" : inStart ? "Start" : inCleanup ? "Clean up" : inContainers ? "Containers"
         : JSON.parse(Fs.crumbs(path)).slice(-1)[0]?.name ?? path.substring(path.lastIndexOf("/") + 1)
     // Searching (Search.qml asks, its hits replace the listing): {text,
     // scope, kind, size, modified}; null when not.
@@ -218,7 +222,7 @@ FocusScope {
     function load() {
         // Searching: the same search again (things may have changed).
         if (pane.searching) { pane.find({}); return }
-        if (pane.inStart || pane.inCleanup) { pane.error = ""; pane.entries = []; pane.stamp = 0; return }
+        if (pane.ownView) { pane.error = ""; pane.entries = []; pane.stamp = 0; return }
         if (pane.inDrives) {
             const text = Fs.storage();
             pane.error = "";
@@ -354,7 +358,7 @@ FocusScope {
         anchors.fill: parent
         focus: true
         // Search results come as a list (where each is matters).
-        sourceComponent: pane.inStart ? startView : pane.inCleanup ? cleanupView : pane.inDrives ? drivesView
+        sourceComponent: pane.inStart ? startView : pane.inCleanup ? cleanupView : pane.inContainers ? containersView : pane.inDrives ? drivesView
             : pane.mode === "list" || pane.searching ? listView
             : pane.grouped && pane.mode === "grid" ? groupedGridView
             : pane.grouped && pane.mode === "cards" ? groupedCardsView
@@ -367,6 +371,7 @@ FocusScope {
     Component { id: drivesView; DrivesMode { pane: view.parent } }
     Component { id: startView; StartMode { pane: view.parent } }
     Component { id: cleanupView; CleanupMode { pane: view.parent } }
+    Component { id: containersView; ContainersMode { pane: view.parent } }
     Component { id: groupedGridView; GroupedGrid { pane: view.parent } }
     Component { id: groupedCardsView; GroupedGrid { pane: view.parent; cards: true } }
     Component { id: galleryView; GalleryMode { pane: view.parent } }
@@ -398,7 +403,8 @@ FocusScope {
     // Typing filters the folder by name (Backspace takes letters off, Esc
     // clears); Space starts nothing until something's typed.
     Keys.onPressed: e => {
-        if (pane.searching) return;
+        // (Places with their own view have no files to filter.)
+        if (pane.searching || pane.ownView) return;
         const mods = e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier);
         if (e.key === Qt.Key_Escape && pane.filter !== "") { pane.filter = ""; e.accepted = true; return }
         if (e.key === Qt.Key_Backspace && pane.filter !== "") { pane.filter = pane.filter.slice(0, -1); e.accepted = true; return }
@@ -438,7 +444,7 @@ FocusScope {
     // Empty, or can't be opened.
     Column {
         anchors.centerIn: parent
-        visible: !pane.inStart && !pane.inCleanup && (pane.error !== "" || (pane.shownEntries.length === 0 && (pane.mode !== "columns" || pane.searching)))
+        visible: !pane.ownView && (pane.error !== "" || (pane.shownEntries.length === 0 && (pane.mode !== "columns" || pane.searching)))
         spacing: 8
         Icon {
             anchors.horizontalCenter: parent.horizontalCenter

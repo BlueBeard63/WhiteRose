@@ -1,5 +1,8 @@
 // Beside the folder (Alt+P): the selected file previewed, with what it is.
-// Several selected: how many and their size; none: the folder itself.
+// Several selected: how many and their size; none: the folder itself, and
+// if it's a project (Cargo, npm, Go, Make…), its scripts to run in your
+// terminal (projects.rs). In an untrusted place (Downloads…) running asks
+// first: a project's scripts run whatever it says.
 import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
@@ -12,6 +15,17 @@ Rectangle {
     readonly property var sel: root.pane?.selection ?? []
     readonly property var entry: root.sel.length === 1 ? root.sel[0] : null
     readonly property real now: Date.now()
+    // A script to run: Main runs it in the chosen terminal.
+    signal runScript(string dir, string command)
+    // The folder's projects (looked at when it changes).
+    property var projects: ({ projects: [], why: "" })
+    property bool trusted: false
+    function lookAtProjects() {
+        root.trusted = false;
+        root.projects = root.pane && root.pane.path.startsWith("/") && !root.pane.special ? JSON.parse(Fs.projects(root.pane.path)) : { projects: [], why: "" };
+    }
+    Connections { target: root.pane; function onPathChanged() { root.lookAtProjects() } }
+    onPaneChanged: lookAtProjects()
     color: Theme.bg
     Rectangle { width: 1; height: parent.height; color: Theme.surface1 }
 
@@ -135,6 +149,71 @@ Rectangle {
                 Fact {
                     label: "Contains"
                     value: root.sel.length === 0 && root.pane ? root.pane.shownEntries.length + (root.pane.shownEntries.length === 1 ? " item" : " items") : ""
+                }
+                // ---- a project's scripts ----
+                Column {
+                    visible: root.sel.length === 0 && root.projects.projects.length > 0
+                    width: parent.width
+                    spacing: 6
+                    Text { text: "Scripts"; color: Theme.faint; font { family: Theme.font; pointSize: Theme.pt(10.5); weight: Font.Medium; capitalization: Font.AllUppercase; letterSpacing: 0.6 } }
+                    // Somewhere untrusted: asked first.
+                    Rectangle {
+                        visible: root.projects.why !== "" && !root.trusted
+                        width: parent.width
+                        height: warn.implicitHeight + trust.height + 26
+                        radius: 10
+                        color: Theme.surface1
+                        border { width: 1; color: Theme.rose }
+                        Text {
+                            id: warn
+                            x: 10; y: 10; width: parent.width - 20
+                            wrapMode: Text.Wrap
+                            text: root.projects.why + " Its scripts run whatever the project says, so only run them if you trust where it came from."
+                            color: Theme.text
+                            font { family: Theme.font; pointSize: Theme.pt(11) }
+                        }
+                        Button { id: trust; x: 10; y: warn.y + warn.height + 6; text: "I trust this project"; kind: "danger"; onClicked: root.trusted = true }
+                    }
+                    Repeater {
+                        model: root.projects.projects
+                        delegate: Column {
+                            id: proj
+                            required property var modelData
+                            width: parent.width
+                            spacing: 2
+                            Text { text: proj.modelData.kind + "  ·  " + proj.modelData.file; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11); weight: Font.Medium } }
+                            Repeater {
+                                model: proj.modelData.scripts
+                                delegate: Rectangle {
+                                    id: sc
+                                    required property var modelData
+                                    readonly property bool can: root.projects.why === "" || root.trusted
+                                    width: parent.width; height: 30; radius: 8
+                                    color: scArea.containsMouse && sc.can ? Theme.surface1 : "transparent"
+                                    Icon { x: 6; anchors.verticalCenter: parent.verticalCenter; name: "play"; size: 11; color: sc.can ? Theme.rose : Theme.faint }
+                                    Text {
+                                        x: 24; anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - 30
+                                        elide: Text.ElideRight
+                                        text: sc.modelData.name
+                                        color: sc.can ? Theme.text : Theme.faint
+                                        font { family: Theme.font; pointSize: Theme.pt(11.5) }
+                                    }
+                                    MouseArea {
+                                        id: scArea
+                                        anchors.fill: parent
+                                        enabled: sc.can
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.runScript(root.pane.path, sc.modelData.command)
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.delay: 500
+                                        ToolTip.text: "Runs “" + sc.modelData.command + "” in your terminal"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

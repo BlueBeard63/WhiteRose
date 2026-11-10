@@ -504,7 +504,7 @@ AppWindow {
         Segmented {
             id: views
             // (Nothing to show differently on the Start page.)
-            visible: !(win.current?.inStart ?? false) && !(win.current?.inCleanup ?? false)
+            visible: !(win.current?.ownView ?? false)
             anchors { right: searchButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
             options: [{ icon: "grid", label: "Grid (Ctrl+1)", value: "grid" }, { icon: "viewList", label: "List (Ctrl+2)", value: "list" },
@@ -745,10 +745,14 @@ AppWindow {
     DetailsPanel {
         id: details
         // (Nothing to show beside Start or Clean up.)
-        visible: Session.details && win.width > 760 && !(win.current?.inStart ?? false) && !(win.current?.inCleanup ?? false)
+        visible: Session.details && win.width > 760 && !(win.current?.ownView ?? false)
         anchors { right: parent.right; top: searchRow.bottom; bottom: status.top }
         width: Math.min(320, Math.max(240, win.width * 0.26))
         pane: win.current
+        onRunScript: (dir, command) => {
+            const err = Fs.runInTerminal(dir, command, win.choice("apps.terminal"));
+            if (err) win.notice = err; else win.info = "Running “" + command + "” in the terminal";
+        }
     }
     QuickLook {
         id: quick
@@ -902,7 +906,7 @@ AppWindow {
                 if (win.notice !== "") return win.notice;
                 if (win.info !== "") return win.info;
                 const p = win.current;
-                if (!p || p.inStart || p.inCleanup) return "";
+                if (!p || p.ownView) return "";
                 if (p.searching) {
                     const n = p.results.length;
                     return (n === 1 ? "1 result" : n + " results") + (p.searchDone ? "" : " · looking…");

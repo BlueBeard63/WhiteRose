@@ -171,6 +171,33 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "cloudSetupStep"]
         fn cloud_setup_step(self: Pin<&mut Ops>, id: i32, result: QString);
+        /// Docker or Podman containers (containers.rs), in the background:
+        /// `containersFound` brings {engine, containers: [...]} or {engine,
+        /// error} ("" engine: neither is installed).
+        #[qinvokable]
+        #[cxx_name = "askContainers"]
+        fn ask_containers(self: &Ops);
+        #[qsignal]
+        #[cxx_name = "containersFound"]
+        fn containers_found(self: Pin<&mut Ops>, result: QString);
+        /// Something done to a container, in the background: `request`
+        /// {what: start|stop|restart|pause|unpause|remove, id} or
+        /// {what: compose, action: up|down|restart|pull, workdir} or
+        /// {what: copy, id, path, dest}. `containerDone` brings {ok, error?, path?}.
+        #[qinvokable]
+        #[cxx_name = "containerDo"]
+        fn container_do(self: Pin<&mut Ops>, request: &QString) -> i32;
+        #[qsignal]
+        #[cxx_name = "containerDone"]
+        fn container_done(self: Pin<&mut Ops>, id: i32, result: QString);
+        /// What's in `path` inside a running container: {entries} or {error}.
+        #[qinvokable]
+        #[cxx_name = "containerLs"]
+        fn container_ls(self: &Ops, id: &QString, path: &QString) -> QString;
+        /// The terminal command for a container's logs or a shell ("" if not).
+        #[qinvokable]
+        #[cxx_name = "containerCommand"]
+        fn container_command(self: &Ops, what: &QString, id: &QString) -> QString;
         /// Hosts named in ~/.ssh/config (JSON [name]).
         #[qinvokable]
         #[cxx_name = "sshHosts"]
@@ -1513,6 +1540,79 @@ impl qobject::Ops {
             send(json!(step));
         });
         id
+    }
+
+    pub fn ask_containers(&self) {
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let engine = crate::containers::engine(&crate::launch::installed).unwrap_or("");
+            let v = if engine.is_empty() {
+                json!({"engine": "", "containers": []})
+            } else {
+                match crate::containers::list(engine) {
+                    Ok(c) => json!({"engine": engine, "containers": c}),
+                    Err(e) => json!({"engine": engine, "error": e, "containers": []}),
+                }
+            };
+            let r = v.to_string();
+            let _ = thread
+                .queue(move |mut obj| obj.as_mut().containers_found(QString::from(r.as_str())));
+        });
+    }
+
+    pub fn container_do(mut self: Pin<&mut Self>, request: &QString) -> i32 {
+        use crate::containers as c;
+        let req: Value = serde_json::from_str(&request.to_string()).unwrap_or(Value::Null);
+        self.as_mut().rust_mut().next += 1;
+        let job = self.next;
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let s = |k: &str| req.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            let r: Result<Value, String> = match c::engine(&crate::launch::installed) {
+                None => Err("Neither Docker nor Podman is installed".into()),
+                Some(engine) => match s("what").as_str() {
+                    "compose" => c::compose(engine, &s("action"), Path::new(&s("workdir")))
+                        .map(|_| json!({})),
+                    "copy" => c::copy_out(engine, &s("id"), &s("path"), Path::new(&s("dest")))
+                        .map(|p| json!({"path": p})),
+                    what => c::act(engine, what, &s("id")).map(|_| json!({})),
+                },
+            };
+            let v = match r {
+                Ok(mut v) => {
+                    v["ok"] = json!(true);
+                    v
+                }
+                Err(e) => json!({"ok": false, "error": e}),
+            };
+            let out = v.to_string();
+            let _ = thread.queue(move |mut obj| {
+                obj.as_mut()
+                    .container_done(job, QString::from(out.as_str()))
+            });
+        });
+        job
+    }
+
+    pub fn container_ls(&self, id: &QString, path: &QString) -> QString {
+        let Some(engine) = crate::containers::engine(&crate::launch::installed) else {
+            return q(json!({"error": "Neither Docker nor Podman is installed"}));
+        };
+        match crate::containers::ls(engine, &id.to_string(), &path.to_string()) {
+            Ok(e) => q(json!({"entries": e})),
+            Err(e) => q(json!({"error": e})),
+        }
+    }
+
+    pub fn container_command(&self, what: &QString, id: &QString) -> QString {
+        let Some(engine) = crate::containers::engine(&crate::launch::installed) else {
+            return QString::from("");
+        };
+        QString::from(
+            crate::containers::terminal_command(engine, &what.to_string(), &id.to_string())
+                .unwrap_or_default()
+                .as_str(),
+        )
     }
 
     pub fn ssh_hosts(&self) -> QString {

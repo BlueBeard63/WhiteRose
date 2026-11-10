@@ -87,15 +87,15 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 ## 7. Developer tools & automation
 - [x] Git status badges beside files (Next) — modified, new, untracked, conflict; folders show the worst inside; ignored dimmed
 - [x] Current Git branch in path/navigation bar (Next) — in the status bar, with ahead / behind
-- [ ] Git clone, init, fetch, pull, push and sync (Advanced)
-- [ ] Git branch switching and repository operations (Advanced)
-- [ ] Project type recognition / script discovery (Advanced)
-- [ ] Run project scripts from an inspector (Advanced)
+- [x] Git clone, init, fetch, pull, push and sync (Advanced) — ☰ › This folder › Start a git repository / Clone a repository here (with progress); the status bar's branch: fetch, pull, push (publish a new branch), sync; your git, credential helper and SSH keys; failures said plainly
+- [x] Git branch switching and repository operations (Advanced) — switch to local or remote branches, make new ones; right-click › Git: stage, unstage, commit, throw away changes (what you had goes to the Trash)
+- [x] Project type recognition / script discovery (Advanced) — Rust, Node (npm/pnpm/yarn/bun scripts), Go, Python (pyproject scripts, uv), Make and just targets, CMake, Compose
+- [x] Run project scripts from an inspector (Advanced) — the details panel's Scripts: each runs in your terminal and stays open with how it ended; in untrusted places only after "I trust this project"
 - [x] Open folders in terminal (MVP) — F4 or right-click; terminal chosen in Settings › Apps
 - [x] Open current folder or repo in preferred code editor (MVP) — and text files; "Open repository in …" from inside a git repo
 - [-] Built-in terminal integration (Next) — not doing: Open in terminal (F4) instead
-- [ ] Docker/Podman container file browsing (Advanced)
-- [ ] Container lifecycle operations and Compose management (Advanced)
+- [x] Docker/Podman container file browsing (Advanced) — Drives › Containers › Files: a running container's folders, and anything copied out to a folder you choose
+- [x] Container lifecycle operations and Compose management (Advanced) — start, stop, restart, pause, remove (asked); grouped by Compose project with Up / Down / its folder; logs and a shell in your terminal
 - [ ] Command-line launcher and file search (Next)
 
 ## 8. Cloud, remote & network
