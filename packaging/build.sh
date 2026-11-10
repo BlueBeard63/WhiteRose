@@ -38,6 +38,7 @@ qs_bin=$(find "$work/qs/build" -maxdepth 2 -type f -name quickshell -perm -u+x |
 # WhiteRose's own apps (Qt Quick + Rust).
 (cd apps && CARGO_TARGET_DIR="$work/apps-target" cargo build --release --locked)
 (cd daemon && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$work/whiterosed" ./cmd/whiterosed)
+(cd daemon && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$work/whiterose-launch" ./cmd/whiterose-launch)
 
 # ---- the file layout ---------------------------------------------------------
 # Two packages. whiterose-core-<version>: everything that runs, in
@@ -59,6 +60,9 @@ tar -C . --exclude=./shell/tests -cf - shell | tar -C "$v" -xf -
 echo "$VERSION" > "$v/VERSION"
 
 install -Dm755 packaging/files/whiterose-select "$meta/usr/lib/whiterose/select"
+# Picks the version each login and health-checks a new one (going back if
+# it doesn't come up): outside the versions, as it chooses between them.
+install -Dm755 "$work/whiterose-launch" "$meta/usr/lib/whiterose/launch"
 install -Dm755 packaging/files/whiterose-session "$meta/usr/bin/whiterose-session"
 # /usr/bin commands: run the version this session uses.
 for b in whiterose-wm whiterosed whiterose-notepad whiterose-files; do

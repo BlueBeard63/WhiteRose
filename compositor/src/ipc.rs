@@ -188,6 +188,8 @@ pub enum Request {
     },
     /// End the session (Log Out).
     Quit,
+    /// Start the session again (whiterose-launch), e.g. to switch to an update.
+    Restart,
     /// Show each output's number and name on it (Displays page).
     IdentifyOutputs,
     /// Delete a screenshot this compositor saved (the toast's trash button).
@@ -237,6 +239,7 @@ impl Request {
                 Action::NightLight(crate::night_light::NightLight { on, temperature })
             }
             Request::Quit => Action::Quit,
+            Request::Restart => Action::Restart,
             Request::IdentifyOutputs => Action::IdentifyOutputs,
             Request::Capture { region, pointer, save } => {
                 Action::Capture(crate::screenshot::Shot { region, pointer, save })
@@ -448,6 +451,8 @@ impl WhiteRose {
         server.last_focus = Some(focus);
         server.last_windows = Some(windows);
         tracing::info!(id, "shell connected");
+        // Health check (whiterose-launch): the shell is up.
+        crate::ready::mark("shell");
 
         let mut lines = LineBuffer::default();
         let inserted = self.loop_handle.insert_source(
@@ -740,6 +745,7 @@ mod tests {
             Ok(Request::NightLight { on: false, temperature: 6500 })
         );
         assert_eq!(Request::parse(r#"{"cmd":"quit"}"#).map(Request::into_action), Ok(Action::Quit));
+        assert_eq!(Request::parse(r#"{"cmd":"restart"}"#).map(Request::into_action), Ok(Action::Restart));
         assert_eq!(
             Request::parse(r#"{"cmd":"screenshot_copy","path":"/p.png"}"#),
             Ok(Request::ScreenshotCopy { path: "/p.png".into() })

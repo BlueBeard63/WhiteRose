@@ -20,6 +20,7 @@ pub mod monitor_id;
 pub mod night_light;
 pub mod outputs;
 pub mod protocols;
+pub mod ready;
 pub mod render;
 pub mod screenshot;
 pub mod session_lock;

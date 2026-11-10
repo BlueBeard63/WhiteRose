@@ -101,6 +101,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         state.spawn(&cmd);
     }
 
+    // Health check (whiterose-launch): the compositor is up.
+    whiterose_wm::ready::mark("compositor");
     event_loop.run(None, &mut state, |state| state.after_dispatch())?;
+    if state.exit_code != 0 {
+        // The daemon and shell get SIGTERM as we go (PDEATHSIG).
+        std::process::exit(state.exit_code);
+    }
     Ok(())
 }

@@ -16,7 +16,7 @@ WhiteRose is a custom Wayland desktop. It is not built on niri or Hyprland. Its 
 |---|---|---|
 | DRM/KMS, rendering, input, window placement, workspaces, keybindings, screen capture | **Rust** compositor | Must stay fast and small. Holds no settings logic. |
 | Monitor profiles, network, Bluetooth, power, audio, notifications, media, updates, module installs, config validation | **Go** `whiterosed` | All "system controls". Talks to system services over D-Bus. |
-| Session launcher with health check and rollback | **Go** `whiterose-session` | Tiny and rarely changed. |
+| Session launcher with health check and rollback | **Go** `whiterose-launch` (run by `whiterose-session`) | Tiny and rarely changed. |
 | Bar, panels, launcher, switchers, screenshot overlay, Settings window | **QML** (QuickShell) | UI only. No system logic. |
 | Settings modules | **QML page + TOML manifest** | Backed by Go providers. Modules never ship their own processes. |
 
@@ -388,28 +388,34 @@ Figma frames: `Settings - Updates` and `Recovery - Update Failed`.
 - `/usr/lib/whiterose/0.4.2/` is left completely alone.
 - A small `whiterose` package holds what doesn't change between versions: `whiterose-session`, the `/usr/bin` commands, desktop entries, icons, PAM / polkit / portal files, the release key. It depends on its version's core.
 - **Never more than two versions on disk** (`update.Keep`): the newest, plus the one you're running if that's another (after a rollback), else the one before the newest. Anything older is uninstalled when an update installs. Nothing piles up.
-- **Which version runs:** `/usr/lib/whiterose/select` picks `$WHITEROSE_DIR` (set by `whiterose-session` for the whole session), else `current=` in `~/.local/state/whiterose/version`, else the newest installed. The `/usr/bin` commands are three-line wrappers through it, so a session keeps using its version while a newer one installs.
+- **Which version runs:** `/usr/lib/whiterose/select` picks `$WHITEROSE_DIR` (set by the session launcher for the whole session), else `current=` in `~/.local/state/whiterose/version`, else the newest installed. The `/usr/bin` commands are three-line wrappers through it, so a session keeps using its version while a newer one installs.
 - Installing never changes what runs. Only the session launcher decides which version starts.
 
 ### 3. Switch on the next session start, with a health check
 
-- `whiterose-session` is a tiny launcher that rarely changes. The login screen's session file points at it.
-- It reads `/var/lib/whiterose/state.toml`:
-  ```toml
-  current  = "0.4.2"
-  pending  = "0.5.0"
-  attempts = 0
+- `whiterose-session` (the login screen's session file points at it) sets the session's environment and runs `/usr/lib/whiterose/launch` (`daemon/cmd/whiterose-launch`, logic in `daemon/internal/launch`, tested). It lives outside the versions because it chooses between them. All of it runs as you; nothing needs root.
+- Its state is per user, in `~/.local/state/whiterose/version`:
   ```
-- With `pending` set, it starts that version and waits for the health check: the compositor, `whiterosed` and the shell must each report "ready" within 20 s, and the session must survive 60 s.
-- **Pass:** `pending` becomes `current`, and the old version is kept as the rollback target until the next update.
-- **Fail:** increment `attempts`, restore the config snapshot, and start `current` (0.4.2) instead.
-- After falling back, the shell shows the recovery prompt: **Try again**, **Stay on 0.4.2**, or **View log**.
-- After 2 failed attempts, it stays on the old version automatically and only offers the choice.
+  current=0.4.2      the version that works (what select picks outside a session)
+  pending=0.5.0      a newer one to try
+  attempts=1         tries of it so far (at most 2)
+  failed=0.5.0       the last one that didn't come up, and why (for the prompt)
+  reason=compositor exited during start (signal 11, segmentation fault)
+  snapshot=1762790000
+  ```
+- A newer version installed (by the Updates page, or apt / dnf) becomes `pending`, unless it's the one that already failed and you chose to stay. A pending or current version that's been removed is forgotten.
+- With `pending` set and fewer than two tries, it snapshots the settings and starts that version with `WHITEROSE_DIR`, `PATH` and `WHITEROSE_READY_DIR` set. **Health check:** the compositor (`compositor/src/ready.rs`, before its event loop), `whiterosed serve` (once its socket is up) and the shell (when it connects to the compositor) each write a file in `WHITEROSE_READY_DIR` within 20 s, and the session is still running at 60 s (or ended normally once up: logged out, restarted).
+- **Pass:** it becomes `current`; the version before stays as the rollback target until the next update removes it.
+- **Fail:** the session is stopped (its process group: SIGTERM, then SIGKILL after 5 s), `failed` / `reason` are recorded, `update-<version>.log` gets the reason and the last 200 lines it printed, the settings snapshot is put back, and `current` starts straight away, in the same login.
+- Logging out during the check doesn't count as a try.
+- After falling back, the shell shows the recovery prompt: **Try again** (two more tries), **Stay on 0.4.2** (not tried again until a newer one comes), or **View log**. After 2 failed tries it stays on the old version and only offers the choice.
+- **Restart session now:** IPC `{"cmd":"restart"}` makes the compositor exit with code 42; the launcher runs the decision again and starts a new session (on the pending version, if there is one). Any other exit ends the login.
+- `WHITEROSE_DIR` set when it starts (a build being worked on) runs that directly, no checks.
 
 ### 4. Config safety
 
-- Before an update, snapshot `~/.config/whiterose/` to `~/.local/state/whiterose/snapshots/<version>/`.
-- Config files carry a schema version. Migrations only move forward and run on first start of the new version. Rollback restores the snapshot, so the old version never reads a config format it doesn't understand.
+- Before a try, `~/.config/whiterose/` and the settings database (`~/.local/share/whiterose/settings.db` and its journal) are copied to `~/.local/state/whiterose/snapshot/`. There's one snapshot only; each new try replaces it.
+- Config files carry a schema version. Migrations only move forward and run on first start of the new version. A failed try restores the snapshot, so the old version never reads a config format it doesn't understand.
 
 ### 5. Reboots
 

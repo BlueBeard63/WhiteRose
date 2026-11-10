@@ -131,6 +131,10 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	_ = os.Chmod(sock, 0o600)
+	// Health check (whiterose-launch): the daemon is up.
+	if dir := os.Getenv("WHITEROSE_READY_DIR"); dir != "" {
+		_ = os.WriteFile(filepath.Join(dir, "daemon"), nil, 0o600)
+	}
 
 	// System state: recomputed and pushed whenever something pokes.
 	changed := make(chan struct{}, 1)

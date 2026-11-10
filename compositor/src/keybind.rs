@@ -34,6 +34,9 @@ impl From<&ModifiersState> for Mods {
 }
 
 /// What a shortcut does.
+/// The compositor's exit code asking whiterose-launch to start the session again.
+pub const RESTART_CODE: i32 = 42;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     // Handled by the shell (QuickShell) once IPC exists.
@@ -77,6 +80,9 @@ pub enum Action {
     /// its wire name (e.g. "volume_up").
     Media(&'static str),
     Quit,
+    /// End the session asking the launcher to start it again (an update,
+    /// "Try again"): exit code `RESTART_CODE`.
+    Restart,
 }
 
 impl Action {

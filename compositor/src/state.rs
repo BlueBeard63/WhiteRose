@@ -62,6 +62,8 @@ pub struct WhiteRose {
     pub socket_name: OsString,
     pub display_handle: DisplayHandle,
     pub loop_signal: LoopSignal,
+    /// What the process exits with (RESTART_CODE: start the session again).
+    pub exit_code: i32,
     pub loop_handle: LoopHandle<'static, WhiteRose>,
     /// Shell IPC. None if the socket could not be created.
     pub ipc: Option<ipc::Server>,
@@ -229,6 +231,7 @@ impl WhiteRose {
             socket_name,
             display_handle: dh,
             loop_signal: event_loop.get_signal(),
+            exit_code: 0,
             loop_handle: event_loop.handle(),
             ipc,
             space: Space::default(),
@@ -597,6 +600,10 @@ impl WhiteRose {
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
             Action::Quit => self.loop_signal.stop(),
+            Action::Restart => {
+                self.exit_code = crate::keybind::RESTART_CODE;
+                self.loop_signal.stop();
+            }
             Action::NextLayout => self.next_layout(),
             Action::SwitchVt(vt) => {
                 if let Some(switch) = self.vt_switch.as_mut() {
