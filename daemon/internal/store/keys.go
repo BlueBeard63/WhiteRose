@@ -224,9 +224,12 @@ var Known = map[string]Key{
 	"files.confirmTrash": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	// Each copied file read back from the drive and checked against the original.
 	"files.verifyCopies": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
-	"files.hidden":       {Default: json.RawMessage(`false`), Check: into[bool](nil)},
-	"files.details":      {Default: json.RawMessage(`false`), Check: into[bool](nil)},
-	"files.adaptive":     {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// The search index, visited folders and the operations log, sealed
+	// with a key from the keyring (apps/files/src/secure.rs).
+	"files.encrypt":  {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"files.hidden":   {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"files.details":  {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"files.adaptive": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"files.zoom": {Default: json.RawMessage(`1`), Check: into(func(v float64) error {
 		if v < 0.75 || v > 1.6 {
 			return errors.New("must be 0.75 to 1.6")

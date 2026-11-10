@@ -112,8 +112,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 
 ## 9. Privacy, reliability & extensibility
 - [x] Private/local-first file indexing (MVP) — one file in your cache folder, 0600; hidden folders, node_modules and Go's cache left out
-- [ ] Encrypted local indexes and operation history (Next)
-- [ ] System credential vault for secrets (Next)
+- [x] Encrypted local indexes and operation history (Next) — Settings › Files › Search › Privacy: the search index, visited folders (Jump) and the operations log sealed (AES-256-CTR + HMAC-SHA256, fresh nonce each write) with a key kept in the keyring through whiterosed; nothing written in the clear when the key can't be had; switching either way rewrites what's there
+- [x] System credential vault for secrets (Next) — every secret Files keeps is in the keyring through whiterosed (network share passwords, the sealing key); archive passwords stay in memory for the run; saved servers and exports never hold a password. (rclone keeps its cloud tokens in its own config, as rclone does.)
 - [x] Safe archive extraction and path validation (MVP) — zip and tar (gz/xz/bz2/zst): escaping names refuse the whole archive, links kept inside, no devices or setuid, stops before the drive fills
 - [x] Archive create, extract and in-place browse (Next) — Compress… (zip, 7z, tar.gz/xz/zst), Extract here, and opening an archive like a folder
 - [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the Trash only after "I trust this file"; launchers from there never run

@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -381,6 +383,24 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		}
 		secrets.Delete(id)
 		return nil, nil
+	}
+	// Files' key for sealing its index and history (made the first time;
+	// kept in the keyring when there is one).
+	srv.Ops["files_key"] = func(server.Request) (any, error) {
+		const id = "files:seal-key"
+		if k, err := secrets.Get(id); err == nil && len(k) == 64 {
+			return map[string]string{"key": k}, nil
+		}
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			return nil, err
+		}
+		k := hex.EncodeToString(b)
+		where, err := secrets.Set(id, k)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"key": k, "stored": where}, nil
 	}
 	// Fingerprints (Settings › Users › Fingerprints).
 	for name, op := range prints.ops() {

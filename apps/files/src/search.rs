@@ -18,8 +18,7 @@
 use std::{
     collections::VecDeque,
     fs,
-    io::Write,
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -504,34 +503,27 @@ pub fn build_tagged(
     let table_at = base + body.len() as u64;
     let dir = file.parent().ok_or("no folder")?;
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let tmp = file.with_extension("tmp");
-    let mut out = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&tmp)
-        .map_err(|e| e.to_string())?;
-    out.write_all(&head).map_err(|e| e.to_string())?;
-    out.write_all(&body).map_err(|e| e.to_string())?;
-    let mut table = Vec::with_capacity(folders.len() * 8 + 8);
+    let mut all = head;
+    all.reserve(body.len() + folders.len() * 8 + 8);
+    all.extend_from_slice(&body);
+    drop(body);
     for f in folders {
-        table.extend_from_slice(&(base + f).to_le_bytes());
+        all.extend_from_slice(&(base + f).to_le_bytes());
     }
-    table.extend_from_slice(&table_at.to_le_bytes());
-    out.write_all(&table).map_err(|e| e.to_string())?;
-    drop(out);
-    fs::rename(&tmp, file).map_err(|e| e.to_string())?;
+    all.extend_from_slice(&table_at.to_le_bytes());
+    // Only yours; sealed when Settings › Files › Privacy says (secure.rs).
+    crate::secure::write(file, &all)?;
     Ok(count)
 }
 
 /// One tree in the index: its records' numbers [start, end) and its top.
 type Tree = (u32, u32, PathBuf);
 
-/// The index file, mapped in.
+/// The index file, mapped in (or, sealed, opened into memory).
 pub struct Index {
     ptr: *mut libc::c_void,
     len: usize,
+    owned: Option<Vec<u8>>,
 }
 
 // SAFETY: a read-only private mapping; only read.
@@ -539,9 +531,11 @@ unsafe impl Send for Index {}
 
 impl Drop for Index {
     fn drop(&mut self) {
-        // SAFETY: unmapping what open() mapped.
-        unsafe {
-            libc::munmap(self.ptr, self.len);
+        if self.owned.is_none() {
+            // SAFETY: unmapping what open() mapped.
+            unsafe {
+                libc::munmap(self.ptr, self.len);
+            }
         }
     }
 }
@@ -563,6 +557,20 @@ impl Index {
         if len < MAGIC.len() + 4 + 8 {
             return None;
         }
+        // Sealed: opened into memory.
+        let mut head = [0u8; 8];
+        if std::io::Read::read_exact(&mut &f, &mut head).is_ok() && crate::secure::is_sealed(&head)
+        {
+            let plain = crate::secure::read(file)?;
+            if plain.len() < MAGIC.len() + 4 + 8 || &plain[..6] != MAGIC {
+                return None;
+            }
+            return Some(Index {
+                ptr: std::ptr::null_mut(),
+                len: plain.len(),
+                owned: Some(plain),
+            });
+        }
         // SAFETY: mapping a file we opened, read-only and private.
         let ptr = unsafe {
             libc::mmap(
@@ -577,11 +585,18 @@ impl Index {
         if ptr == libc::MAP_FAILED {
             return None;
         }
-        let ix = Index { ptr, len };
+        let ix = Index {
+            ptr,
+            len,
+            owned: None,
+        };
         (&ix.bytes()[..6] == MAGIC).then_some(ix)
     }
 
     fn bytes(&self) -> &[u8] {
+        if let Some(o) = &self.owned {
+            return o;
+        }
         // SAFETY: the mapping is `len` bytes and lives as long as self.
         unsafe { std::slice::from_raw_parts(self.ptr as *const u8, self.len) }
     }
@@ -981,6 +996,30 @@ mod tests {
         fs::remove_file(usb.join("Backups/report-old.pdf")).unwrap();
         let (hits, _) = ix.find(&parse("report-old"), &any(), &all, &mime, &stop, 100);
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn a_sealed_index_opens_and_searches() {
+        let d = scratch("sealed");
+        fs::create_dir_all(d.join("Work")).unwrap();
+        fs::write(d.join("Work/bank-statement.pdf"), "x").unwrap();
+        let f = d.join("index");
+        build(std::slice::from_ref(&d), &f, &AtomicBool::new(false)).unwrap();
+        let plain = fs::read(&f).unwrap();
+        crate::secure::set_key_for_tests([3u8; 32]);
+        fs::write(&f, crate::secure::seal_with(&[3u8; 32], &plain)).unwrap();
+        assert!(
+            !fs::read(&f).unwrap().windows(4).any(|w| w == b"bank"),
+            "names aren't readable on disk"
+        );
+        let ix = Index::open(&f).expect("opens sealed");
+        assert_eq!(ix.bytes(), &plain[..]);
+        // Tampered with: not opened.
+        let mut bad = fs::read(&f).unwrap();
+        let n = bad.len();
+        bad[n - 5] ^= 1;
+        fs::write(&f, bad).unwrap();
+        assert!(Index::open(&f).is_none());
     }
 
     #[test]

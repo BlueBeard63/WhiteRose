@@ -1388,12 +1388,15 @@ dependencies = [
 name = "whiterose-files"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "bzip2 0.4.4",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
  "flate2",
+ "getrandom 0.2.17",
+ "hmac",
  "json5",
  "libc",
  "md-5",

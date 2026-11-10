@@ -83,6 +83,16 @@ Column {
         }
     }
 
+    Section { text: "Privacy" }
+    Card {
+        SettingRow {
+            divider: false
+            title: "Encrypt the index and history"
+            subtitle: "The search index (every file name), the folders you've visited and the log of what was copied, moved and deleted, sealed with a key kept in your keyring. Not needed on an encrypted disk; searching then reads the index into memory."
+            Toggle { checked: Daemon.setting("files.encrypt", false); onToggled: on => Daemon.set("files.encrypt", on) }
+        }
+    }
+
     FolderDialog {
         id: folderDialog
         title: "A folder to leave out of the index"

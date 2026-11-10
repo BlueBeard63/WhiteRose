@@ -58,6 +58,18 @@ pub fn write_to(file: &Path, level: &str, msg: &str) {
         level,
         msg.replace(['\n', '\r'], " ")
     );
+    // Sealed (secure.rs): the whole log is opened, added to and sealed
+    // again (it's small, and written once per operation).
+    let sealed = crate::secure::on()
+        || fs::read(file)
+            .map(|b| crate::secure::is_sealed(&b))
+            .unwrap_or(false);
+    if sealed {
+        let mut all = crate::secure::read(file).unwrap_or_default();
+        all.extend_from_slice(line.as_bytes());
+        let _ = crate::secure::write(file, &all);
+        return;
+    }
     if let Ok(mut f) = OpenOptions::new()
         .create(true)
         .append(true)
@@ -82,13 +94,13 @@ pub fn error(msg: &str) {
 
 /// The last `n` lines (from the older file too if need be).
 pub fn tail_of(file: &Path, n: usize) -> Vec<String> {
-    let mut lines: Vec<String> = fs::read_to_string(file)
+    let mut lines: Vec<String> = crate::secure::read_string(file)
         .unwrap_or_default()
         .lines()
         .map(str::to_string)
         .collect();
     if lines.len() < n {
-        let older: Vec<String> = fs::read_to_string(file.with_extension("log.1"))
+        let older: Vec<String> = crate::secure::read_string(&file.with_extension("log.1"))
             .unwrap_or_default()
             .lines()
             .map(str::to_string)

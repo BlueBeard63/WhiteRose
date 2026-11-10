@@ -34,6 +34,9 @@ QtObject {
     // Recent files kept (Settings › Privacy): Recent shows in the sidebar.
     property bool recentFiles: session.setting("privacy.recentFiles", true)
     onVerifyCopiesChanged: Ops.setVerify(session.verifyCopies)
+    property bool encrypt: session.setting("files.encrypt", false)
+    onEncryptChanged: Ops.setEncrypt(session.encrypt)
+    Component.onCompleted: if (session.encrypt) Ops.setEncrypt(true)
     // Git badges and the branch (Settings › Files › General).
     property bool git: session.setting("files.git", true)
     // The sidebar: shown or hidden (Ctrl+B), and its sections folded away.
@@ -92,6 +95,7 @@ QtObject {
         session.openWith = v("files.openWith", "double");
         session.confirmTrash = v("files.confirmTrash", false);
         session.verifyCopies = v("files.verifyCopies", false);
+        session.encrypt = v("files.encrypt", false);
         session.recentFiles = v("privacy.recentFiles", true);
         session.tagDefs = v("files.tags", []);
         session.sidebar = v("files.sidebar", true);

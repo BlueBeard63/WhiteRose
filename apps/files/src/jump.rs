@@ -30,8 +30,7 @@ pub fn file() -> PathBuf {
 }
 
 pub fn load(file: &Path) -> HashMap<String, Visit> {
-    fs::read_to_string(file)
-        .ok()
+    crate::secure::read_string(file)
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
 }
@@ -71,10 +70,10 @@ pub fn record(file: &Path, path: &str, now: i64) {
     if let Some(d) = file.parent() {
         let _ = fs::create_dir_all(d);
     }
-    let tmp = file.with_extension("json.tmp");
-    if fs::write(&tmp, serde_json::to_string(&all).unwrap_or_default()).is_ok() {
-        let _ = fs::rename(&tmp, file);
-    }
+    let _ = crate::secure::write(
+        file,
+        serde_json::to_string(&all).unwrap_or_default().as_bytes(),
+    );
 }
 
 /// How well `words` fit `path` (None: they don't). Every word's letters

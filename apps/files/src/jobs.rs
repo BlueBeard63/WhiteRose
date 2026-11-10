@@ -198,6 +198,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "containerCommand"]
         fn container_command(self: &Ops, what: &QString, id: &QString) -> QString;
+        /// Settings › Files › Encrypt search index and history (secure.rs):
+        /// switched, and what's already there rewritten the new way (in the
+        /// background).
+        #[qinvokable]
+        #[cxx_name = "setEncrypt"]
+        fn set_encrypt(self: &Ops, on: bool);
         /// Copies and moves that didn't finish last time (journal.rs):
         /// [{key, kind, dest, started, remaining: [path]}].
         #[qinvokable]
@@ -1665,6 +1671,31 @@ impl qobject::Ops {
                 .unwrap_or_default()
                 .as_str(),
         )
+    }
+
+    pub fn set_encrypt(&self, on: bool) {
+        let was = crate::secure::on();
+        crate::secure::set_on(on);
+        if was == on && !on {
+            return;
+        }
+        std::thread::spawn(|| {
+            crate::finder::background();
+            let log = crate::log::file();
+            for f in [
+                crate::jump::file(),
+                log.with_extension("log.1"),
+                log,
+                crate::search::index_file(),
+            ] {
+                if !crate::secure::convert(&f) {
+                    crate::log::warn(&format!(
+                        "couldn't rewrite {} (no key from the keyring?)",
+                        f.display()
+                    ));
+                }
+            }
+        });
     }
 
     pub fn interrupted(&self) -> QString {

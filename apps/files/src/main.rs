@@ -32,6 +32,7 @@ mod projects;
 mod recent;
 mod run;
 mod search;
+mod secure;
 mod session;
 mod shares;
 mod tags;
