@@ -1,5 +1,6 @@
 // A modal card over the window (Figma: the network settings dialog).
-// Esc or a click outside closes it.
+// Esc or a click outside closes it. Content taller than the window scrolls
+// between the fixed header and footer.
 import QtQuick
 import QtQuick.Controls
 import qs
@@ -44,7 +45,19 @@ Popup {
                 onClicked: root.close()
             }
         }
-        Column { id: body; x: 18; width: root.width - 36; spacing: 12; bottomPadding: 16 }
+        Flickable {
+            id: scroller
+            width: root.width
+            // Room left in the window for the body (header 72, footer 59, 24 margin each side).
+            readonly property real room: (root.Overlay.overlay?.height ?? 10000) - 72 - (foot.children.length > 0 ? 59 : 0) - 48
+            height: Math.min(body.implicitHeight, Math.max(120, room))
+            contentHeight: body.implicitHeight
+            clip: contentHeight > height
+            interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: scroller.interactive ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+            Column { id: body; x: 18; width: root.width - 36; spacing: 12; bottomPadding: 16 }
+        }
         Rectangle { width: root.width; height: 1; color: Theme.surface2; visible: foot.children.length > 0 }
         Item {
             visible: foot.children.length > 0

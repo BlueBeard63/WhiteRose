@@ -34,6 +34,7 @@ Column {
     }
     function join(n) {
         if (n.known || !secure(n)) n.connect();
+        else if (securityName(n) === "Enterprise") { enterpriseDialog.network = n; enterpriseDialog.open(); }
         else { passwordDialog.network = n; passwordDialog.open(); }
     }
 
@@ -209,6 +210,42 @@ Column {
                 id: connectBtn; text: "Connect"; kind: "primary"
                 enabled: pw.text.length >= 8
                 onClicked: { passwordDialog.network.connectWithPsk(pw.text); passwordDialog.close() }
+            }
+        ]
+    }
+    // Enterprise networks: your own sign-in instead of one password.
+    Dialog {
+        id: enterpriseDialog
+        property var network: null
+        property string error: ""
+        property bool busy: false
+        title: network?.name ?? ""
+        subtitle: "Enterprise · sign in with your account"
+        icon: "lock"
+        width: 560
+        onOpened: { error = ""; busy = false; joinForm.load(null) }
+        EnterpriseForm { id: joinForm; joining: true }
+        Text {
+            visible: enterpriseDialog.error !== ""
+            width: parent.width; wrapMode: Text.Wrap
+            text: enterpriseDialog.error
+            color: Theme.rose; font { family: Theme.font; pointSize: Theme.pt(11.5) }
+        }
+        footer: [
+            Item { width: parent.width - eCancel.width - eConnect.width - 16; height: 1 },
+            Button { id: eCancel; text: "Cancel"; onClicked: enterpriseDialog.close() },
+            Button {
+                id: eConnect; text: enterpriseDialog.busy ? "Connecting…" : "Connect"; kind: "primary"
+                enabled: joinForm.complete && !enterpriseDialog.busy
+                onClicked: {
+                    enterpriseDialog.busy = true;
+                    enterpriseDialog.error = "";
+                    Daemon.request({ op: "network_join_enterprise", args: { ssid: enterpriseDialog.network.name, eap: joinForm.build() } }, (v, err) => {
+                        enterpriseDialog.busy = false;
+                        if (err) enterpriseDialog.error = String(err);
+                        else enterpriseDialog.close();
+                    });
+                }
             }
         ]
     }

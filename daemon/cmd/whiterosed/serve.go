@@ -241,6 +241,22 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			defer conn.Close()
 			return nil, netconf.Update(conn, r.UUID, ch)
 		},
+		// Joining an Enterprise (802.1X) network: args {ssid, eap}.
+		"network_join_enterprise": func(r server.Request) (any, error) {
+			var x struct {
+				SSID string            `json:"ssid"`
+				EAP  netconf.EAPChange `json:"eap"`
+			}
+			if err := json.Unmarshal(r.Args, &x); err != nil {
+				return nil, fmt.Errorf("bad request: %w", err)
+			}
+			conn, err := dbus.ConnectSystemBus()
+			if err != nil {
+				return nil, err
+			}
+			defer conn.Close()
+			return nil, netconf.JoinEnterprise(conn, x.SSID, x.EAP)
+		},
 		// App setup (Settings > Apps, and the first-run prompt).
 		"apps": func(server.Request) (any, error) { return setup.status() },
 		"apps_install": func(r server.Request) (any, error) {

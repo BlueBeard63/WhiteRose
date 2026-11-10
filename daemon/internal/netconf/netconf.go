@@ -45,8 +45,10 @@ type Profile struct {
 	Security string `json:"security,omitempty"` // none | wpa-psk | sae | wpa-eap | owe | enhanced-open
 	MAC      string `json:"mac,omitempty"`      // cloned MAC policy: default | permanent | random | stable
 	PMF      string `json:"pmf,omitempty"`      // default | disable | optional | required
-	IPv4     IP     `json:"ipv4"`
-	IPv6     IP     `json:"ipv6"`
+	// Enterprise (wpa-eap) sign-in.
+	EAP  *EAP `json:"eap,omitempty"`
+	IPv4 IP   `json:"ipv4"`
+	IPv6 IP   `json:"ipv6"`
 }
 
 // Changes are the fields the dialog edited (nil = unchanged).
@@ -59,8 +61,11 @@ type Changes struct {
 	Password    *string `json:"password"`
 	MAC         *string `json:"mac"`
 	PMF         *string `json:"pmf"`
-	IPv4        *IP     `json:"ipv4"`
-	IPv6        *IP     `json:"ipv6"`
+	// Enterprise sign-in (with Security "wpa-eap", or on its own for a
+	// profile that already is one).
+	EAP  *EAPChange `json:"eap"`
+	IPv4 *IP        `json:"ipv4"`
+	IPv6 *IP        `json:"ipv6"`
 }
 
 func get[T any](s Settings, group, key string, def T) T {
@@ -175,6 +180,12 @@ func Read(s Settings) Profile {
 		if _, ok := s["802-11-wireless-security"]; ok {
 			p.Security = get(s, "802-11-wireless-security", "key-mgmt", "none")
 			p.PMF = pmfNames[get(s, "802-11-wireless-security", "pmf", int32(0))]
+			if p.Security == "wpa-eap" {
+				p.EAP = readEAP(s)
+				if p.EAP == nil {
+					p.EAP = &EAP{Method: "peap", Phase2: "mschapv2"}
+				}
+			}
 		} else {
 			p.Security = "none"
 			p.PMF = "default"
@@ -276,7 +287,7 @@ func Apply(s Settings, c Changes) error {
 		}
 	}
 	wifi := get(s, "connection", "type", "") == "802-11-wireless"
-	if (c.Security != nil || c.Password != nil || c.MAC != nil || c.PMF != nil) && !wifi {
+	if (c.Security != nil || c.Password != nil || c.MAC != nil || c.PMF != nil || c.EAP != nil) && !wifi {
 		return errors.New("security and MAC settings are for Wi-Fi profiles")
 	}
 	if c.MAC != nil {
@@ -299,8 +310,18 @@ func Apply(s Settings, c Changes) error {
 		case "wpa-psk", "sae", "owe":
 			set(s, "802-11-wireless-security", "key-mgmt", *c.Security)
 			set(s, "802-11-wireless", "security", "802-11-wireless-security")
+			delete(s, "802-1x")
+		case "wpa-eap":
+			if c.EAP == nil && s["802-1x"] == nil {
+				return errors.New("an Enterprise network needs its sign-in details")
+			}
 		default:
 			return fmt.Errorf("security %q can't be set here", *c.Security)
+		}
+	}
+	if c.EAP != nil {
+		if err := applyEAP(s, *c.EAP); err != nil {
+			return err
 		}
 	}
 	if c.PMF != nil {

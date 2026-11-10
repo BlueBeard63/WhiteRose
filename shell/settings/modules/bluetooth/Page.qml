@@ -1,6 +1,9 @@
 // Bluetooth: the adapter, your paired devices (connect, disconnect, forget,
 // battery), and new ones nearby to pair. Searching runs only while this page
-// is open.
+// is open. Nearby lists only devices that say their name (most unnamed ones
+// are beacons, trackers and other people's gadgets that can't be paired):
+// accessories (headphones, keyboards, phones...) are shown; computers and
+// devices that don't say what they are wait behind "Show others".
 import QtQuick
 import Quickshell
 import Quickshell.Bluetooth
@@ -15,7 +18,24 @@ Column {
     readonly property bool on: adapter?.enabled ?? false
     readonly property var devices: adapter?.devices.values ?? []
     readonly property var paired: devices.filter(d => d.paired || d.bonded).sort((a, b) => (b.connected - a.connected) || a.name.localeCompare(b.name))
-    readonly property var nearby: devices.filter(d => !d.paired && !d.bonded && d.name !== "" && d.name !== d.address)
+    // Named, unpaired, not blocked: what's worth offering to pair.
+    readonly property var named: devices.filter(d => !d.paired && !d.bonded && !d.blocked && (d.deviceName ?? "") !== "")
+    // Accessories you'd pair (BlueZ's icon, from its device class or
+    // appearance): sound, input, phones, cameras, printers. Computers
+    // (other people's laptops, mostly) and ones that don't say are "others".
+    function known(d) { return /^(audio|input|phone|camera|printer)/.test(d.icon ?? "") }
+    readonly property var nearby: named.filter(d => known(d)).sort((a, b) => a.name.localeCompare(b.name))
+    readonly property var others: named.filter(d => !known(d)).sort((a, b) => a.name.localeCompare(b.name))
+    property bool showOthers: false
+    readonly property var shown: nearby.concat(showOthers ? others : [])
+    // What it is, from BlueZ's icon name ("audio-headphones", "input-mouse"...).
+    function kind(d) {
+        const i = d.icon ?? "";
+        const names = [["audio-headset", "Headset"], ["audio-headphones", "Headphones"], ["audio", "Speaker"],
+            ["input-keyboard", "Keyboard"], ["input-mouse", "Mouse"], ["input-tablet", "Tablet"], ["input-gaming", "Game controller"],
+            ["input", "Input device"], ["phone", "Phone"], ["computer", "Computer"], ["camera", "Camera"], ["printer", "Printer"]];
+        return (names.find(n => i.startsWith(n[0])) ?? ["", ""])[1];
+    }
 
     function searching(on) { if (page.adapter && page.adapter.enabled) page.adapter.discovering = on }
     Component.onCompleted: searching(true)
@@ -93,26 +113,32 @@ Column {
     Card {
         visible: page.on
         SettingRow {
-            visible: page.nearby.length === 0
+            visible: page.shown.length === 0
             divider: false
             title: "Searching…"
             subtitle: "Put the device in pairing mode to see it here."
         }
         Repeater {
-            model: page.nearby
+            model: page.shown
             delegate: SettingRow {
                 id: near
                 required property var modelData
                 required property int index
                 divider: index > 0
                 title: modelData.name
-                subtitle: modelData.pairing ? "Pairing… confirm on the device if it asks" : ""
+                subtitle: modelData.pairing ? "Pairing… confirm on the device if it asks" : page.kind(modelData)
                 Button {
                     text: near.modelData.pairing ? "Cancel" : "Pair"
                     kind: near.modelData.pairing ? "ghost" : "primary"
                     onClicked: near.modelData.pairing ? near.modelData.cancelPair() : near.modelData.pair()
                 }
             }
+        }
+        SettingRow {
+            visible: page.others.length > 0
+            title: page.showOthers ? "Hide other devices" : "Show " + page.others.length + " other device" + (page.others.length === 1 ? "" : "s")
+            subtitle: page.showOthers ? "" : "Computers, and devices that don't say what they are"
+            Button { text: page.showOthers ? "Hide" : "Show"; kind: "ghost"; onClicked: page.showOthers = !page.showOthers }
         }
     }
 }

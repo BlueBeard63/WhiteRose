@@ -126,6 +126,15 @@ func Update(conn *dbus.Conn, uuid string, ch Changes) error {
 			return errors.New("couldn't read the saved password, so nothing was changed (type it again to save)")
 		}
 	}
+	// And an Enterprise network's (its password, or its key's password).
+	if _, eap := s["802-1x"]; eap {
+		var secrets Settings
+		if err := c.Call(nmConn+".GetSecrets", 0, "802-1x").Store(&secrets); err == nil {
+			for k, v := range secrets["802-1x"] {
+				s["802-1x"][k] = v
+			}
+		}
+	}
 	// The deprecated forms of addresses and routes duplicate address-data
 	// and route-data (which NetworkManager always sends too), and their
 	// struct types don't survive the round trip when empty.
@@ -148,4 +157,30 @@ func Update(conn *dbus.Conn, uuid string, ch Changes) error {
 		}
 	}
 	return nil
+}
+
+// JoinEnterprise saves and connects to an Enterprise network on the Wi-Fi
+// device (the first one, if there are several).
+func JoinEnterprise(conn *dbus.Conn, ssid string, c EAPChange) error {
+	s, err := NewEnterprise(ssid, c)
+	if err != nil {
+		return err
+	}
+	root := conn.Object(nm, "/org/freedesktop/NetworkManager")
+	var devs []dbus.ObjectPath
+	if err := root.Call(nm+".GetDevices", 0).Store(&devs); err != nil {
+		return err
+	}
+	var wifi dbus.ObjectPath
+	for _, d := range devs {
+		if prop(conn.Object(nm, d), nm+".Device", "DeviceType", uint32(0)) == 2 { // NM_DEVICE_TYPE_WIFI
+			wifi = d
+			break
+		}
+	}
+	if wifi == "" {
+		return errors.New("no Wi-Fi device")
+	}
+	var path, active dbus.ObjectPath
+	return root.Call(nm+".AddAndActivateConnection", 0, s, wifi, dbus.ObjectPath("/")).Store(&path, &active)
 }

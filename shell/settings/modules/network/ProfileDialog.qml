@@ -58,6 +58,7 @@ Dialog {
         for (const k of ["name", "autoconnect", "metered", "security", "mac", "pmf", "ipv4", "ipv6"])
             if (edit[k] !== undefined) ch[k] = edit[k];
         if ((edit.password ?? "") !== "") ch.password = edit.password;
+        if (eapForm.value) ch.eap = eapForm.value;
         if (Object.keys(ch).length === 0) { dlg.close(); return; }
         dlg.saving = true;
         dlg.error = "";
@@ -159,8 +160,13 @@ Dialog {
         Text {
             visible: dlg.p.security === "wpa-eap"
             width: parent.width; wrapMode: Text.Wrap
-            text: "This is an Enterprise (802.1X) network. Its sign-in and certificates can't be edited here yet."
+            text: "Enterprise (802.1X): you sign in with your own account, not a shared password."
             color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) }
+        }
+        EnterpriseForm {
+            id: eapForm
+            visible: dlg.p.security === "wpa-eap"
+            eap: dlg.profile?.eap ?? null
         }
         Column {
             visible: ["sae", "wpa-psk"].includes(dlg.val("security", dlg.p.security))
