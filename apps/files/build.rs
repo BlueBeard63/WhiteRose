@@ -48,6 +48,7 @@ fn main() {
             "qml/CloudAccountDialog.qml",
             "qml/GitDialog.qml",
             "qml/ContainersMode.qml",
+            "qml/ShelfBar.qml",
             "qml/ArchivePassword.qml",
         ]
         .map(QmlFile::from),

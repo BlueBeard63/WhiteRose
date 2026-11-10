@@ -231,6 +231,19 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openEditor"]
         fn open_editor(self: &Fs, path: &QString, chosen: &QString) -> QString;
+        /// The shelf (shelf.rs): [{path, name, dir, icon}].
+        #[qinvokable]
+        fn shelf(self: &Fs) -> QString;
+        /// Puts paths (JSON) on the shelf: how many went on.
+        #[qinvokable]
+        #[cxx_name = "shelfAdd"]
+        fn shelf_add(self: &Fs, paths: &QString) -> i32;
+        #[qinvokable]
+        #[cxx_name = "shelfRemove"]
+        fn shelf_remove(self: &Fs, paths: &QString);
+        #[qinvokable]
+        #[cxx_name = "shelfClear"]
+        fn shelf_clear(self: &Fs);
         /// Docker or Podman is installed (the Containers place shows).
         #[qinvokable]
         #[cxx_name = "hasContainers"]
@@ -1245,6 +1258,41 @@ impl qobject::Fs {
             untrusted_why(&p)
         };
         q(json!({"kind": kind, "why": why}))
+    }
+
+    pub fn shelf(&self) -> QString {
+        let ic = whiterose_kit::icons::shared();
+        let v: Vec<Value> = crate::shelf::load(&crate::shelf::file())
+            .into_iter()
+            .map(|p| {
+                let path = Path::new(&p);
+                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.clone());
+                let dir = path.is_dir();
+                let icon = if dir {
+                    ic.lookup("folder", 48, 1)
+                } else {
+                    ic.mime.icon_names(ic.mime.type_of(&name)).iter().find_map(|n| ic.lookup(n, 48, 1))
+                };
+                json!({"path": p, "name": name, "dir": dir, "icon": icon.map(|i| i.to_string_lossy().into_owned()).unwrap_or_default()})
+            })
+            .collect();
+        q(json!(v))
+    }
+
+    pub fn shelf_add(&self, paths: &QString) -> i32 {
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        crate::shelf::add(&crate::shelf::file(), &paths)
+            .map(|n| n as i32)
+            .unwrap_or(0)
+    }
+
+    pub fn shelf_remove(&self, paths: &QString) {
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let _ = crate::shelf::remove(&crate::shelf::file(), &paths);
+    }
+
+    pub fn shelf_clear(&self) {
+        let _ = crate::shelf::clear(&crate::shelf::file());
     }
 
     pub fn has_containers(&self) -> bool {

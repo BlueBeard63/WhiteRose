@@ -43,7 +43,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [-] Persistent undo/redo operation history (Advanced) — not doing for now
 - [x] Batch rename with regex, numbering, case and preview (Next) — Rename… (F2) with several selected: find and replace (text or regex with $1 groups, case, first only), case, text before/after, numbering in view order (position, start, step, digits, separator), extension kept/lowercased/changed; live preview with clashes and taken names shown and skipped; swaps and shifts (1→2, 2→3) handled
 - [x] Create folder from selected files (Next) — "New folder with selection…", named from what the files share
-- [ ] File shelf / staging area for collecting items (Next)
+- [x] File shelf / staging area for collecting items (Next) — Put on the shelf (Ctrl+Shift+S, right-click, or drop on Shelf in the sidebar or on the strip); it sits along the bottom while anything's on it, shared by every window and kept between runs: drag items (or all) off it anywhere, or Copy here / Move here, Clear
 - [x] Recycle Bin/Trash integration and restore (MVP) — every Trash (home and drives) in one view: where from, when; restore (folder remade, renamed if taken), delete for good, empty
 - [x] File and folder properties, permissions and attributes (MVP) — kind, location, size (folders counted live), dates, owner and group, read / change / run for you, group and everyone
 - [x] Copy file paths, quoted paths and shortcuts (Next) — Copy path › path, quoted for a terminal, file:// links, names; and this folder's path

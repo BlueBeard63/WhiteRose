@@ -35,6 +35,7 @@ mod search;
 mod secure;
 mod session;
 mod shares;
+mod shelf;
 mod tags;
 mod trash;
 mod views;

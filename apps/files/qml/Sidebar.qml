@@ -84,6 +84,9 @@ Rectangle {
     signal openServer(var server)
     signal connectServer()
     signal addCloud()
+    // The shelf: how much is on it, and its row clicked.
+    property int shelfCount: -1
+    signal shelfClicked()
     signal serverMenu(var server, real x, real y)
     // A plugged-in drive clicked (not mounted yet), or its eject button.
     signal mountDrive(string device)
@@ -289,6 +292,8 @@ Rectangle {
             PlaceRow { visible: side.open("Places"); tree: true; name: "Start"; path: "start:"; icon: "qrc:/qt/qml/WhiteRose/Files/images/whiterose.png" }
             // Opened or changed lately (off with Settings › Privacy › Recent files).
             PlaceRow { visible: side.open("Places") && Session.recentFiles; tree: true; name: "Recent"; path: "recent:"; icon: Fs.icon("document-open-recent", 20) || Fs.icon("folder-recent", 20) }
+            // Drop files here to gather them (the shelf along the bottom).
+            PlaceRow { visible: side.open("Places"); tree: true; name: "Shelf"; path: "shelf:"; glyph: "briefcase"; count: side.shelfCount; clickInstead: () => side.shelfClicked() }
             Repeater {
                 model: side.open("Places") ? side.withTree(side.places.folders) : []
                 delegate: PlaceRow { required property var modelData; tree: true; depth: modelData.depth; more: modelData.more; name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null }

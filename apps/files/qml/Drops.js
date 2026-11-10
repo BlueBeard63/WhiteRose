@@ -48,5 +48,7 @@ function plan(paths, dest, ctrl, shift, sameDrive) {
 function accepts(paths, dest) {
     if (!dest || paths.length === 0 || dest.startsWith("archive:")) return false;
     if (paths.some(p => p.startsWith("archive:"))) return dest.startsWith("/");
+    // The shelf gathers anything (it only keeps where each is).
+    if (dest === "shelf:") return true;
     return dest === "trash:" || paths.some(p => p !== dest && !dest.startsWith(p + "/"));
 }

@@ -412,6 +412,7 @@ AppWindow {
         }
         onConnectServer: connectDialog.show(null)
         onAddCloud: cloudDialog.show()
+        onShelfClicked: win.info = shelfBar.items.length === 0 ? "Drop files on Shelf (or Ctrl+Shift+S) to gather them" : ""
         onServerMenu: (server, x, y) => { serverMenu.server = server; serverMenu.openAt(x, y) }
         onEjectDrive: device => { win.info = "Ejecting…"; Ops.eject(device) }
         Menu {
@@ -760,7 +761,7 @@ AppWindow {
         id: details
         // (Nothing to show beside Start or Clean up.)
         visible: Session.details && win.width > 760 && !(win.current?.ownView ?? false)
-        anchors { right: parent.right; top: searchRow.bottom; bottom: status.top }
+        anchors { right: parent.right; top: searchRow.bottom; bottom: shelfBar.top }
         width: Math.min(320, Math.max(240, win.width * 0.26))
         pane: win.current
         onRunScript: (dir, command) => {
@@ -792,7 +793,7 @@ AppWindow {
     // ---- the folder -----------------------------------------------------------------------
     Item {
         id: stack
-        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom; bottom: status.top }
+        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom; bottom: shelfBar.top }
 
         // Right-click on files (`entry` set) or on the folder's empty space.
         Menu {
@@ -875,6 +876,7 @@ AppWindow {
                 { label: itemMenu.many ? "Rename " + itemMenu.sel.length + " items…" : "Rename…", shortcut: "F2", run: () => win.askName("rename") },
                 ...(win.current?.searching || win.current?.inCollection ? [] : [{ label: "New folder with selection…", run: () => win.askName("group") }]),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
+                ...(win.current?.inArchive ? [] : [{ label: "Put on the shelf", shortcut: "Ctrl+Shift+S", run: () => win.toShelf() }]),
                 { label: "Tags", items: win.tagItems(itemMenu.sel.map(e => e.path)) },
                 // In a git repository.
                 ...(win.current?.git.root ? [{ label: "Git", items: [
@@ -957,6 +959,21 @@ AppWindow {
                 }
             }
         }
+    }
+
+    // ---- the shelf ------------------------------------------------------------------------
+    ShelfBar {
+        id: shelfBar
+        anchors { left: sidebar.right; right: parent.right; bottom: status.top }
+        here: (win.current && win.current.path.startsWith("/") && !win.current.readOnly) ? win.current.path : ""
+        onItemsChanged: sidebar.shelfCount = items.length > 0 ? items.length : -1
+        onSaid: text => win.info = text
+        onCopyHere: paths => win.run("copy", paths, win.current.path)
+        onMoveHere: paths => win.run("move", paths, win.current.path)
+    }
+    function toShelf() {
+        const sel = win.current?.selection ?? [];
+        if (sel.length > 0 && !win.current.inArchive) shelfBar.add(sel.map(e => e.path));
     }
 
     // ---- status bar ------------------------------------------------------------------------
@@ -1054,6 +1071,8 @@ AppWindow {
     }
     // Files dropped on folder `dest` (Drops.plan: copy or move, or trash).
     function drop(paths, dest) {
+        // On the shelf: gathered there.
+        if (dest === "shelf:") { shelfBar.add(paths); return }
         // On a tag: tagged with it.
         if (dest.startsWith("tag:")) { win.tag(paths, dest.slice(4), true); return }
         const mods = Ops.modifiers();
@@ -1619,6 +1638,7 @@ AppWindow {
     Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.readOnly ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
     Shortcut { sequence: win.keys("trash", "Delete"); enabled: !win.typing && !(win.current?.inArchive ?? false); onActivated: win.trash() }
     Shortcut { sequence: win.keys("delete", "Shift+Del"); enabled: !win.typing && !(win.current?.inDrives ?? false) && !(win.current?.inArchive ?? false); onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
+    Shortcut { sequence: win.keys("shelf", "Ctrl+Shift+S"); enabled: !win.typing; onActivated: win.toShelf() }
     Shortcut { sequence: win.keys("rename", "F2"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inArchive ?? false); onActivated: win.askName("rename") }
     Shortcut { sequences: [win.keys("properties", "Alt+Return"), "Alt+Enter"]; enabled: !win.typing; onActivated: win.properties() }
     Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.readOnly ?? false); onActivated: win.askName("folder") }

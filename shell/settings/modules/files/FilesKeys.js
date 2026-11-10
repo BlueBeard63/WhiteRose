@@ -49,4 +49,5 @@ var list = [
     { id: "rename", label: "Rename", keys: "F2" },
     { id: "new-folder", label: "New folder", keys: "Ctrl+Shift+N" },
     { id: "properties", label: "Properties", keys: "Alt+Return" },
+    { id: "shelf", label: "Put on the shelf", keys: "Ctrl+Shift+S" },
 ];
