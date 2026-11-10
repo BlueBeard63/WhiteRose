@@ -46,6 +46,24 @@ pub mod qobject {
         fn crumbs(self: &Fs, path: &QString) -> QString;
         #[qinvokable]
         fn suggest(self: &Fs, typed: &QString, hidden: bool) -> QString;
+        /// Folders that fit a few letters, from anywhere (jump.rs): [{path, name}].
+        #[qinvokable]
+        fn jump(self: &Fs, text: &QString) -> QString;
+        /// A folder was opened (for jump's ranking).
+        #[qinvokable]
+        fn visited(self: &Fs, path: &QString);
+        /// The folders in `path`, for the sidebar's tree: [{name, path, more}]
+        /// (`more`: it has folders in it).
+        #[qinvokable]
+        fn subfolders(self: &Fs, path: &QString, hidden: bool) -> QString;
+        /// Puts a bookmark at position `to` (others keep their order).
+        /// `path` has folders in it (the tree offers to open it).
+        #[qinvokable]
+        #[cxx_name = "hasSubfolders"]
+        fn has_subfolders(self: &Fs, path: &QString, hidden: bool) -> bool;
+        #[qinvokable]
+        #[cxx_name = "moveBookmark"]
+        fn move_bookmark(self: &Fs, path: &QString, to: i32) -> bool;
         /// The icon for a type of file at `size` (a folder's when `dir`), "" if none.
         #[qinvokable]
         #[cxx_name = "typeIcon"]
@@ -236,6 +254,13 @@ fn q(v: Value) -> QString {
 fn icon_path(p: Option<std::path::PathBuf>) -> String {
     p.map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+fn now_s() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// Entries for files from all over (a tag's, Recent): each with the folder
@@ -540,6 +565,36 @@ impl qobject::Fs {
 
     pub fn home(&self) -> QString {
         QString::from(places::home().to_string_lossy().as_ref())
+    }
+
+    pub fn jump(&self, text: &QString) -> QString {
+        let ix = search::Index::open(&search::index_file());
+        q(json!(crate::jump::find(
+            &text.to_string(),
+            &crate::jump::load(&crate::jump::file()),
+            ix.as_ref(),
+            now_s(),
+            8
+        )))
+    }
+
+    pub fn visited(&self, path: &QString) {
+        crate::jump::record(&crate::jump::file(), &path.to_string(), now_s());
+    }
+
+    pub fn subfolders(&self, path: &QString, hidden: bool) -> QString {
+        q(json!(places::subfolders(
+            Path::new(&path.to_string()),
+            hidden
+        )))
+    }
+
+    pub fn has_subfolders(&self, path: &QString, hidden: bool) -> bool {
+        places::has_subfolders(Path::new(&path.to_string()), hidden)
+    }
+
+    pub fn move_bookmark(&self, path: &QString, to: i32) -> bool {
+        places::move_bookmark(&path.to_string(), to.max(0) as usize).is_ok()
     }
 
     pub fn resolve(&self, typed: &QString) -> QString {

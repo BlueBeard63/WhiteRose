@@ -108,7 +108,8 @@ FocusScope {
     signal changed()
     // A folder is shown the way it was last time (or as the folder above
     // it lends, or the default); load() follows.
-    onPathChanged: { pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
+    // (Real folders are remembered for jumping: the address bar's few-letters search.)
+    onPathChanged: { if (pane.path.startsWith("/")) Fs.visited(pane.path); pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
     // Recent starts as a list, newest first, grouped by day (until changed by hand).
     readonly property var baseView: pane.path === "recent:" ? { mode: "list", sortBy: "modified", descending: true, group: "modified" } : Session.defaultView

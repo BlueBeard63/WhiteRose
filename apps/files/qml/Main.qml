@@ -8,7 +8,7 @@
 // closed, Ctrl+Tab / Ctrl+PgUp / Ctrl+PgDn switch, Ctrl+Shift+PgUp / PgDn move.
 // Split: F3 on and off, Tab the other side, F5 / F6 copy / move the
 // selection there (F5 or Ctrl+R reload when not split).
-// Ctrl+L type a path, Alt+Left / Alt+Right back and forward, Alt+Up or
+// Ctrl+L type a path, Ctrl+J jump to a folder by a few letters, Alt+Left / Alt+Right back and forward, Alt+Up or
 // Backspace up, Ctrl+1 / 2 / 3 grid, list, columns, Ctrl+H hidden files,
 // Ctrl+A all, Ctrl+D bookmark this folder. Typing filters the folder;
 // Ctrl+F searches (this folder and below, home, or everywhere). Space looks
@@ -1172,6 +1172,7 @@ AppWindow {
     Shortcut { sequence: win.keys("next-tab-2", "Ctrl+Tab"); onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }
     Shortcut { sequence: win.keys("previous-tab-2", "Ctrl+Shift+Tab"); onActivated: win.show((win.currentIndex - 1 + win.tabs.length) % win.tabs.length) }
     Shortcut { sequence: win.keys("type-path", "Ctrl+L"); onActivated: address.edit() }
+    Shortcut { sequence: win.keys("jump", "Ctrl+J"); onActivated: address.jump() }
     Shortcut { sequence: win.keys("back", "Alt+Left"); onActivated: win.current?.goBack() }
     Shortcut { sequence: win.keys("forward", "Alt+Right"); onActivated: win.current?.goForward() }
     // (Backspace is the type-to-filter's while it has letters.)

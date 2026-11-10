@@ -1,6 +1,8 @@
 // Where you are: breadcrumbs to click, or (Ctrl+L, or a click on the empty
 // part) a path to type, with folders suggested as you go. Tab takes the
-// first suggestion, Enter goes, Esc stops typing.
+// first suggestion, Enter goes, Esc stops typing. Typing without a leading
+// / or ~ jumps: a few letters of a folder from anywhere ("proj wr"),
+// the ones you go to most first.
 import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
@@ -11,7 +13,16 @@ Rectangle {
     property string path
     property bool hidden: false
     property bool editing: false
+    // [{path, name}]: what's typed completed, or folders that fit (jumping).
     property var suggestions: []
+    readonly property bool jumping: bar.editing && input.text !== "" && !/^[\/~]/.test(input.text)
+    function suggest() {
+        const t = input.text;
+        bar.suggestions = /^[\/~]/.test(t)
+            ? JSON.parse(Fs.suggest(t, bar.hidden)).map(p => ({ path: p, name: "" }))
+            : t.trim().length >= 2 ? JSON.parse(Fs.jump(t)) : [];
+        bar.pick = bar.jumping && bar.suggestions.length > 0 ? 0 : -1;
+    }
     property int pick: -1
     signal go(string path)
     // Files dropped on a crumb: into that folder.
@@ -27,10 +38,17 @@ Rectangle {
         input.forceActiveFocus();
         input.selectAll();
     }
+    // Typing from nothing: a few letters of a folder to jump to.
+    function jump() {
+        bar.editing = true;
+        input.text = "";
+        bar.suggestions = [];
+        input.forceActiveFocus();
+    }
     signal done()               // Esc: back to the files
     function stop() { bar.editing = false; bar.suggestions = []; bar.pick = -1 }
     function submit() {
-        const typed = bar.pick >= 0 ? bar.suggestions[bar.pick] : input.text;
+        const typed = bar.pick >= 0 ? bar.suggestions[bar.pick].path : input.text;
         const p = Fs.resolve(typed);
         if (p === "") { shake.restart(); return }
         bar.stop();
@@ -107,7 +125,7 @@ Rectangle {
         selectedTextColor: Theme.text
         clip: true
         font { family: Theme.mono; pointSize: Theme.pt(12.5) }
-        onTextEdited: { bar.suggestions = JSON.parse(Fs.suggest(text, bar.hidden)); bar.pick = -1 }
+        onTextEdited: bar.suggest()
         onActiveFocusChanged: if (!activeFocus && bar.editing) bar.stop()
         Keys.onReturnPressed: bar.submit()
         Keys.onEnterPressed: bar.submit()
@@ -116,7 +134,7 @@ Rectangle {
         Keys.onUpPressed: bar.pick = Math.max(-1, bar.pick - 1)
         Keys.onTabPressed: {
             const s = bar.suggestions[Math.max(0, bar.pick)];
-            if (s) { input.text = s + "/"; bar.suggestions = JSON.parse(Fs.suggest(input.text, bar.hidden)); bar.pick = -1 }
+            if (s) { input.text = s.path + "/"; bar.suggest() }
         }
     }
     SequentialAnimation {
@@ -142,15 +160,27 @@ Rectangle {
             Repeater {
                 model: bar.suggestions
                 delegate: Rectangle {
-                    required property string modelData
+                    required property var modelData
                     required property int index
                     width: sugg.width; height: 28; radius: 7
                     color: index === bar.pick || sArea.containsMouse ? Theme.surface2 : "transparent"
-                    Text {
-                        anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                        text: modelData.replace(Fs.home(), "~")
-                        color: Theme.text
-                        font { family: Theme.mono; pointSize: Theme.pt(12) }
+                    // Jumping: the folder's name, then where it is.
+                    Row {
+                        anchors { left: parent.left; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                        spacing: 10
+                        Text {
+                            visible: modelData.name !== ""
+                            text: modelData.name
+                            color: Theme.text
+                            font { family: Theme.font; pointSize: Theme.pt(12.5); weight: Font.Medium }
+                        }
+                        Text {
+                            width: parent.width - (modelData.name !== "" ? x : 0)
+                            text: modelData.path.replace(Fs.home(), "~")
+                            elide: Text.ElideMiddle
+                            color: modelData.name !== "" ? Theme.faint : Theme.text
+                            font { family: Theme.mono; pointSize: Theme.pt(modelData.name !== "" ? 11 : 12) }
+                        }
                     }
                     MouseArea { id: sArea; anchors.fill: parent; hoverEnabled: true; onPressed: { bar.pick = index; bar.submit() } }
                 }

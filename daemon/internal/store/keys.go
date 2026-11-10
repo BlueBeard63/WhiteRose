@@ -241,10 +241,12 @@ var Known = map[string]Key{
 	// Files' sidebar: shown, and the sections folded away.
 	"files.sidebar":       {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"files.sidebarFolded": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](10))},
-	"files.foldersAt":     {Default: json.RawMessage(`"first"`), Check: into(oneOf("first", "mixed", "last"))},
-	"files.columns":       {Default: json.RawMessage(`["size","modified","kind"]`), Check: into(listColumns)},
-	"files.widths":        {Default: json.RawMessage(`{}`), Check: into(columnWidths)},
-	"files.folderSizes":   {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Folders opened in the sidebar's tree.
+	"files.sidebarOpen": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](50))},
+	"files.foldersAt":   {Default: json.RawMessage(`"first"`), Check: into(oneOf("first", "mixed", "last"))},
+	"files.columns":     {Default: json.RawMessage(`["size","modified","kind"]`), Check: into(listColumns)},
+	"files.widths":      {Default: json.RawMessage(`{}`), Check: into(columnWidths)},
+	"files.folderSizes": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"files.defaultView": {Default: json.RawMessage(`{"mode":"grid","sortBy":"name","descending":false,"group":""}`), Check: into(func(v FilesView) error {
 		if err := oneOf("grid", "list", "columns", "gallery", "cards", "usage")(v.Mode); err != nil {
 			return err

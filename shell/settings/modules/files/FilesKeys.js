@@ -14,6 +14,7 @@ var list = [
     { id: "next-tab-2", label: "Next tab (also)", keys: "Ctrl+Tab" },
     { id: "previous-tab-2", label: "Previous tab (also)", keys: "Ctrl+Shift+Tab" },
     { id: "type-path", label: "Type a location", keys: "Ctrl+L" },
+    { id: "jump", label: "Jump to a folder by a few letters", keys: "Ctrl+J" },
     { id: "back", label: "Back", keys: "Alt+Left" },
     { id: "forward", label: "Forward", keys: "Alt+Right" },
     { id: "up", label: "Up a folder", keys: "Alt+Up" },

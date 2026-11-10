@@ -39,6 +39,13 @@ QtObject {
     // The sidebar: shown or hidden (Ctrl+B), and its sections folded away.
     property bool sidebar: session.setting("files.sidebar", true)
     property var sidebarFolded: session.setting("files.sidebarFolded", [])
+    // Folders opened in the sidebar's tree.
+    property var sidebarOpen: session.setting("files.sidebarOpen", [])
+    function toggleSidebarOpen(path) {
+        const next = session.sidebarOpen.includes(path) ? session.sidebarOpen.filter(x => x !== path && !x.startsWith(path + "/")) : session.sidebarOpen.concat([path]).slice(-50);
+        session.sidebarOpen = next;
+        session.set("files.sidebarOpen", next);
+    }
     function setSidebar(on) { session.sidebar = on; session.set("files.sidebar", on) }
     function foldSidebar(section) {
         const next = session.sidebarFolded.includes(section) ? session.sidebarFolded.filter(x => x !== section) : session.sidebarFolded.concat([section]);
@@ -90,6 +97,7 @@ QtObject {
         session.sidebar = v("files.sidebar", true);
         session.git = v("files.git", true);
         session.sidebarFolded = v("files.sidebarFolded", []);
+        session.sidebarOpen = v("files.sidebarOpen", []);
         session.defaultView = v("files.defaultView", session.defaultView);
         session.reload(true);
     }
@@ -119,6 +127,7 @@ QtObject {
             case "files.git": session.git = v(key, true); break;
             case "files.sidebar": session.sidebar = v(key, true); break;
             case "files.sidebarFolded": session.sidebarFolded = v(key, []); break;
+            case "files.sidebarOpen": session.sidebarOpen = v(key, []); break;
             case "files.tags": session.tagDefs = v(key, []); session.reload(false); break;
             case "files.defaultView": session.defaultView = v(key, session.defaultView); session.reload(true); break;
             case "files.reindex": Search.keepFresh(JSON.stringify(session.indexOpts), v(key, 0)); break;

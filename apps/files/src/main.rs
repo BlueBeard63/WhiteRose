@@ -8,6 +8,7 @@ mod finder;
 mod git;
 mod hash;
 mod jobs;
+mod jump;
 mod launch;
 mod listing;
 mod log;

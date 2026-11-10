@@ -162,6 +162,77 @@ pub fn set_bookmark(path: &str, on: bool) -> Result<(), String> {
     fs::write(&file, lines.join("\n") + "\n").map_err(|e| e.to_string())
 }
 
+/// Moves a bookmark to position `to` (labels and the others kept).
+pub fn move_bookmark(path: &str, to: usize) -> Result<(), String> {
+    let file = bookmarks_file();
+    let text = fs::read_to_string(&file).map_err(|e| e.to_string())?;
+    let lines = reorder(&text, &format!("file://{}", percent_encode(path)), to);
+    fs::write(&file, lines.join("\n") + "\n").map_err(|e| e.to_string())
+}
+
+/// The bookmark lines with `uri`'s moved to `to`.
+fn reorder(text: &str, uri: &str, to: usize) -> Vec<String> {
+    let mut lines: Vec<String> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(String::from)
+        .collect();
+    if let Some(i) = lines.iter().position(|l| l.split(' ').next() == Some(uri)) {
+        let l = lines.remove(i);
+        lines.insert(to.min(lines.len()), l);
+    }
+    lines
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct Sub {
+    pub name: String,
+    pub path: String,
+    /// It has folders in it (the tree shows an arrow).
+    pub more: bool,
+}
+
+/// `dir` has a folder in it (stops at the first one: cheap).
+pub fn has_subfolders(dir: &Path, hidden: bool) -> bool {
+    fs::read_dir(dir)
+        .map(|mut r| {
+            r.any(|c| {
+                c.map(|c| {
+                    c.path().is_dir()
+                        && (hidden || !c.file_name().to_string_lossy().starts_with('.'))
+                })
+                .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// The folders in `dir`, in natural order, for the sidebar's tree.
+pub fn subfolders(dir: &Path, hidden: bool) -> Vec<Sub> {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return vec![];
+    };
+    let mut v: Vec<Sub> = rd
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if !hidden && name.starts_with('.') {
+                return None;
+            }
+            let p = e.path();
+            let more = has_subfolders(&p, hidden);
+            Some(Sub {
+                name,
+                path: p.to_string_lossy().into_owned(),
+                more,
+            })
+        })
+        .collect();
+    v.sort_by(|a, b| crate::listing::natural_cmp(&a.name, &b.name));
+    v
+}
+
 pub fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
@@ -513,6 +584,33 @@ mod tests {
             ],
             "a folder set to $HOME itself means 'none'"
         );
+    }
+
+    #[test]
+    fn reordering_bookmarks_and_listing_subfolders() {
+        let text = "file:///a A\nfile:///b\n\nfile:///c Cee\n";
+        assert_eq!(
+            reorder(text, "file:///c", 0),
+            vec!["file:///c Cee", "file:///a A", "file:///b"]
+        );
+        assert_eq!(
+            reorder(text, "file:///a", 9),
+            vec!["file:///b", "file:///c Cee", "file:///a A"]
+        );
+        assert_eq!(reorder(text, "file:///zzz", 0).len(), 3);
+        let d = std::env::temp_dir().join(format!("wr-sub-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        for p in ["Music/x", "docs", ".hidden", "file10", "file9"] {
+            fs::create_dir_all(d.join(p)).unwrap();
+        }
+        fs::write(d.join("note.txt"), "").unwrap();
+        let s = subfolders(&d, false);
+        let names: Vec<_> = s.iter().map(|x| x.name.as_str()).collect();
+        assert_eq!(names, vec!["docs", "file9", "file10", "Music"]);
+        assert!(s.iter().find(|x| x.name == "Music").unwrap().more);
+        assert!(!s.iter().find(|x| x.name == "docs").unwrap().more);
+        assert_eq!(subfolders(&d, true).len(), 5);
+        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

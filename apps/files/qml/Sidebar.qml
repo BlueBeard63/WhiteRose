@@ -13,10 +13,49 @@ Rectangle {
     signal chosen(string path)
     // Files dropped on a place (the Trash trashes them).
     signal dropped(var paths, string dest)
-    function refresh() { side.places = JSON.parse(Fs.places()); side.counts = JSON.parse(Fs.tagCounts()) }
+    function refresh() {
+        side.places = JSON.parse(Fs.places());
+        side.counts = JSON.parse(Fs.tagCounts());
+        side.loadKids();
+    }
+    // ---- the tree: folders opened in the sidebar, with their folders ------------------
+    // {path: [{name, path, more}]} for each open folder (and whether a place has folders).
+    property var kids: ({})
+    // {path: true} for places with folders in them.
+    property var hasKids: ({})
+    function loadKids() {
+        const k = {};
+        for (const p of Session.sidebarOpen) k[p] = JSON.parse(Fs.subfolders(p, Session.hidden));
+        side.kids = k;
+        const h = {};
+        for (const p of side.places.folders.concat(side.places.bookmarks))
+            if (p.path.startsWith("/")) h[p.path] = Fs.hasSubfolders(p.path, Session.hidden);
+        side.hasKids = h;
+    }
+    Connections { target: Session; function onSidebarOpenChanged() { side.loadKids() } }
+    // A section's places with the folders opened under them, as one list:
+    // [{name, path, icon, look, depth, more}].
+    function withTree(list) {
+        const out = [];
+        const add = (path, depth) => {
+            for (const c of side.kids[path] ?? []) {
+                out.push({ name: c.name, path: c.path, icon: side.folderIcon, depth: depth, more: c.more });
+                if (Session.sidebarOpen.includes(c.path)) add(c.path, depth + 1);
+            }
+        };
+        for (const p of list) {
+            out.push(Object.assign({ depth: 0, more: side.hasKids[p.path] === true }, p));
+            if (Session.sidebarOpen.includes(p.path)) add(p.path, 1);
+        }
+        return out;
+    }
+    readonly property string folderIcon: Fs.icon("folder", 20)
     // How many files have each tag; the tags shown: Files' own, then any
     // found on files (from other apps).
     property var counts: ({})
+    // A bookmark being dragged to a new place: which, and by how many rows.
+    property string dragging: ""
+    property int dragShift: 0
     readonly property var tagList: Session.tagDefs.map(t => t.name).concat(Object.keys(side.counts).filter(n => !Session.tagDefs.some(d => d.name === n)))
     // Right-click on a tag.
     signal tagMenu(string name, real x, real y)
@@ -57,6 +96,14 @@ Rectangle {
         property string path
         property string icon
         property var look: null
+        // In the tree: how deep, and whether it has folders to open (-1: not a tree row).
+        property int depth: 0
+        property bool more: false
+        property bool tree: false
+        readonly property bool open: Session.sidebarOpen.includes(pr.path)
+        // A bookmark: dragged up or down to reorder (index in its list).
+        property int order: -1
+        signal reordered(int to)
         // A tag: its colour (a dot for an icon) and how many files have it.
         property color dot: "transparent"
         property int count: -1
@@ -70,9 +117,21 @@ Rectangle {
         height: total > 0 ? 44 : 32
         radius: 9
         color: on || prDrop.over ? Theme.surface1 : prArea.containsMouse ? Qt.rgba(Theme.surface1.r, Theme.surface1.g, Theme.surface1.b, 0.6) : "transparent"
+        // Open or close the folders under it.
+        Item {
+            visible: pr.tree && pr.more
+            x: 2 + pr.depth * 14; width: 16; height: pr.height
+            Icon {
+                anchors.centerIn: parent
+                visible: prArea.containsMouse || pr.open || chevArea.containsMouse
+                name: pr.open ? "chevDown" : "chevR"; size: 10
+                color: chevArea.containsMouse ? Theme.text : Theme.faint
+            }
+            MouseArea { id: chevArea; anchors.fill: parent; hoverEnabled: true; z: 2; onClicked: Session.toggleSidebarOpen(pr.path) }
+        }
         Image {
             id: prIcon
-            x: 10; y: pr.total > 0 ? 8 : (pr.height - height) / 2
+            x: (pr.tree ? 20 : 10) + pr.depth * 14; y: pr.total > 0 ? 8 : (pr.height - height) / 2
             width: 18; height: 18
             sourceSize: Qt.size(36, 36)
             source: pr.icon ? "file://" + pr.icon : ""
@@ -120,7 +179,27 @@ Rectangle {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: m => m.button === Qt.RightButton ? pr.secondary() : pr.clickInstead ? pr.clickInstead() : side.chosen(pr.path)
+            // Dragging a bookmark up or down moves it (rows of this height).
+            property real startY: 0
+            property bool moving: false
+            onPressed: m => { startY = m.y; moving = false }
+            onPositionChanged: m => {
+                if (!pressed || pr.order < 0) return;
+                if (!moving && Math.abs(m.y - startY) > 8) moving = true;
+                if (moving) side.dragShift = Math.round((m.y - startY) / pr.height);
+            }
+            onReleased: {
+                if (moving) { pr.reordered(Math.max(0, pr.order + side.dragShift)); side.dragShift = 0; side.dragging = "" }
+            }
+            onMovingChanged: if (moving) side.dragging = pr.path
+            onClicked: m => { if (moving) return; m.button === Qt.RightButton ? pr.secondary() : pr.clickInstead ? pr.clickInstead() : side.chosen(pr.path) }
+        }
+        // Where a dragged bookmark would land.
+        Rectangle {
+            visible: side.dragging === pr.path && side.dragShift !== 0
+            x: 6; width: parent.width - 12; height: 2; radius: 1
+            y: side.dragShift > 0 ? pr.height * (side.dragShift + 1) - 1 : pr.height * side.dragShift - 1
+            color: Theme.rose
         }
         ToolTip.visible: prArea.containsMouse && pr.total > 0
         ToolTip.delay: 600
@@ -138,16 +217,20 @@ Rectangle {
             spacing: 2
             Heading { text: "Places" }
             // Opened or changed lately (off with Settings › Privacy › Recent files).
-            PlaceRow { visible: side.open("Places") && Session.recentFiles; name: "Recent"; path: "recent:"; icon: Fs.icon("document-open-recent", 20) || Fs.icon("folder-recent", 20) }
+            PlaceRow { visible: side.open("Places") && Session.recentFiles; tree: true; name: "Recent"; path: "recent:"; icon: Fs.icon("document-open-recent", 20) || Fs.icon("folder-recent", 20) }
             Repeater {
-                model: side.open("Places") ? side.places.folders : []
-                delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null }
+                model: side.open("Places") ? side.withTree(side.places.folders) : []
+                delegate: PlaceRow { required property var modelData; tree: true; depth: modelData.depth; more: modelData.more; name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null }
             }
             Heading { visible: side.places.bookmarks.length > 0; text: "Bookmarks" }
             Repeater {
-                model: side.open("Bookmarks") ? side.places.bookmarks : []
+                model: side.open("Bookmarks") ? side.withTree(side.places.bookmarks) : []
                 delegate: PlaceRow {
                     required property var modelData
+                    tree: true; depth: modelData.depth; more: modelData.more
+                    // Only the bookmarks themselves move (not folders opened under them).
+                    order: modelData.depth === 0 ? side.places.bookmarks.findIndex(b => b.path === modelData.path) : -1
+                    onReordered: to => { Fs.moveBookmark(modelData.path, to); side.refresh() }
                     name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null
                     onSecondary: bookmarkMenu.openAt(24, height - 2)
                     Menu {

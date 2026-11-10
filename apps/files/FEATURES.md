@@ -16,8 +16,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Cards view and adaptive views (added) — cards with kind, size and date; folders without a view of their own get one to suit them
 - [x] Breadcrumb address bar with path suggestions (MVP) — "… > Folder" when long; click "…" for the full path to copy
 - [x] Navigation history, back, forward and parent directory (MVP)
-- [~] Customisable sidebar with pinned folders and drives (MVP) — places, GTK bookmarks (add/remove), mounted drives; no reordering yet
-- [ ] Expandable directory tree in sidebar (Next)
+- [x] Customisable sidebar with pinned folders and drives (MVP) — places, bookmarks (add, remove, drag to reorder; shared with GTK file choosers), drives, a tree under each, sections that fold
+- [x] Expandable directory tree in sidebar (Next) — a chevron on each place and bookmark opens its folders, as deep as you like; what's open is remembered
 - [ ] Workspaces saving tabs, panes and view settings (Next)
 - [ ] Home dashboard with drives, recents and shortcuts (Next)
 
@@ -28,7 +28,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Search by file type, extension, size and date (MVP) — type, size and modified filters; `*.pdf` / `ext:pdf`
 - [x] Regular expressions and case-sensitive search (Next) — "Aa" and ".*" in the search row; a pattern that doesn't parse says why
 - [ ] Metadata and file-content search (Advanced)
-- [ ] Path autocomplete and fuzzy folder navigation (Next)
+- [x] Path autocomplete and fuzzy folder navigation (Next) — paths complete as you type; without a leading / or ~ (or Ctrl+J) a few letters jump to a folder from anywhere, the ones you visit most first
 - [x] Recently modified files collection (Next) — Recent in the sidebar: files apps opened (the shared recently-used list) and files changed in the last two weeks (from the index), newest first, grouped by day; hidden with Settings › Privacy › Recent files
 
 ## 3. File operations & organisation
