@@ -49,7 +49,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Copy file paths, quoted paths and shortcuts (Next) — Copy path › path, quoted for a terminal, file:// links, names; and this folder's path
 - [x] Custom file tags with colours and multiple labels (Next) — on the file itself (user.xdg.tags, as Dolphin), dots in every view, a Tags column, Sidebar section, tag: search, group by tag, drop onto a tag
 - [x] File hashing with MD5, SHA-1 and SHA-256 (Next) — Properties › Checksums (one read for all three), copy each, paste one to compare
-- [ ] Password-protected ZIP/7z and split archives (Advanced)
+- [x] Password-protected ZIP/7z and split archives (Advanced) — Compress… makes zip or 7z with an AES-256 password and splits any archive into parts (100 MB, 700 MB, 4 GB); extracting asks for the password (memory only) and takes split parts from the .001
 
 ## 4. Previews & file inspection
 - [x] Integrated preview/details pane (MVP) — Alt+P: preview plus kind, size, dates, dimensions / length / pages
@@ -115,7 +115,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Encrypted local indexes and operation history (Next)
 - [ ] System credential vault for secrets (Next)
 - [x] Safe archive extraction and path validation (MVP) — zip and tar (gz/xz/bz2/zst): escaping names refuse the whole archive, links kept inside, no devices or setuid, stops before the drive fills
-- [~] Archive create, extract and in-place browse (Next) — extract here; creating and browsing later
+- [~] Archive create, extract and in-place browse (Next) — Compress… (zip, 7z, tar.gz/xz/zst) and Extract here (also 7z, bz2, split parts); browsing inside next
 - [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the Trash only after "I trust this file"; launchers from there never run
 - [ ] Recovery after interrupted file transfers (Next)
 - [x] Application logging and diagnostics (MVP) — files.log (0600, rolled at 1 MB); ☰ › Help › Copy diagnostics / Open the log

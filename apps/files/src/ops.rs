@@ -30,6 +30,8 @@ pub enum Kind {
     Purge,
     /// Archives unpacked, each into a new folder (archive.rs).
     Extract,
+    /// An archive made of the sources (`dest`: the archive; options in Control).
+    Compress,
 }
 
 impl Kind {
@@ -71,6 +73,8 @@ pub static VERIFY: AtomicBool = AtomicBool::new(false);
 pub struct Control {
     pub cancel: AtomicBool,
     pub pause: AtomicBool,
+    /// Making an archive: its password and part size (0: whole).
+    pub archive: std::sync::Mutex<(Option<String>, u64)>,
 }
 
 impl Control {
@@ -547,6 +551,43 @@ pub fn run<R: Report>(
         out: Outcome::default(),
     };
     run.report.progress(&run.prog);
+    if kind == Kind::Compress {
+        struct Along<'b, 'a, R: Report> {
+            run: &'b mut Run<'a, R>,
+        }
+        impl<R: Report> crate::archive::Progress for Along<'_, '_, R> {
+            fn at(&mut self, done: u64, _total: u64, entry: &str) {
+                self.run.prog.bytes_done = done;
+                self.run.prog.current = entry
+                    .rsplit('/')
+                    .find(|p| !p.is_empty())
+                    .unwrap_or(entry)
+                    .to_string();
+                self.run.report.progress(&self.run.prog);
+            }
+            fn go_on(&mut self) -> bool {
+                self.run.ctl.go_on()
+            }
+        }
+        let (pw, split) = ctl.archive.lock().unwrap().clone();
+        let Some(dest) = dest else {
+            return run.out;
+        };
+        match crate::archive::compress(
+            sources,
+            dest,
+            pw.as_deref(),
+            split,
+            &mut Along { run: &mut run },
+        ) {
+            Ok(Some(made)) => run.out.done.push(made.to_string_lossy().into_owned()),
+            Ok(None) => run.out.cancelled = true,
+            Err(e) => run.fail(dest, e),
+        }
+        run.prog.items_done = run.prog.items_total;
+        run.report.progress(&run.prog);
+        return run.out;
+    }
     for src in sources {
         if !ctl.go_on() {
             run.out.cancelled = true;
@@ -622,6 +663,8 @@ pub fn run<R: Report>(
                     }
                 }
             }
+            // (Made whole above.)
+            Kind::Compress => {}
             Kind::Extract => {
                 run.tell(src);
                 // Progress is the archive's bytes read; it starts from what's

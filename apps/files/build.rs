@@ -39,6 +39,8 @@ fn main() {
             "qml/SearchOption.qml",
             "qml/StartMode.qml",
             "qml/CleanupMode.qml",
+            "qml/CompressDialog.qml",
+            "qml/ArchivePassword.qml",
         ]
         .map(QmlFile::from),
     );

@@ -193,6 +193,9 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "isArchive"]
         fn is_archive(self: &Fs, name: &QString) -> bool;
+        /// Something is at `path` (a file, folder or link).
+        #[qinvokable]
+        fn exists(self: &Fs, path: &QString) -> bool;
         /// A line in Files' log (level: info | warn | error).
         #[qinvokable]
         fn log(self: &Fs, level: &QString, message: &QString);
@@ -1166,6 +1169,10 @@ impl qobject::Fs {
             crate::log::warn(&format!("couldn't run {p}: {e}"));
         }
         QString::from(r.err().unwrap_or_default().as_str())
+    }
+
+    pub fn exists(&self, path: &QString) -> bool {
+        std::fs::symlink_metadata(path.to_string()).is_ok()
     }
 
     pub fn is_archive(&self, name: &QString) -> bool {

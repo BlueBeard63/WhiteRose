@@ -48,6 +48,22 @@ pub mod qobject {
         /// choice: replace | keep | skip; `all`: the same for later clashes.
         #[qinvokable]
         fn answer(self: &Ops, id: i32, choice: &QString, all: bool);
+        /// Makes the archive `dest` (zip, 7z, tar.gz, tar.xz, tar.zst, tar.bz2:
+        /// from its name) of `sources` (JSON [path]); a password for zip and
+        /// 7z ("" none), split into parts of `split` bytes (0: whole). A job.
+        #[qinvokable]
+        fn compress(
+            self: Pin<&mut Ops>,
+            sources: &QString,
+            dest: &QString,
+            password: &QString,
+            split: f64,
+        ) -> i32;
+        /// The password for an archive (kept in memory this run; extracting
+        /// says archive::NEEDS_PASSWORD when it's wanted).
+        #[qinvokable]
+        #[cxx_name = "setArchivePassword"]
+        fn set_archive_password(self: &Ops, archive: &QString, password: &QString);
         /// Takes a finished job off the list.
         #[qinvokable]
         fn dismiss(self: Pin<&mut Ops>, id: i32);
@@ -282,6 +298,7 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Delete => "delete",
         Kind::Purge => "purge",
         Kind::Extract => "extract",
+        Kind::Compress => "compress",
     }
 }
 
@@ -305,6 +322,7 @@ fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Delete => format!("Deleting {what}"),
         Kind::Purge => format!("Deleting {what} for good"),
         Kind::Extract => format!("Extracting {what}"),
+        Kind::Compress => format!("Compressing {what} into {to}"),
     }
 }
 
@@ -395,16 +413,39 @@ impl qobject::Ops {
         self.set_jobs(QString::from(text.as_str()));
     }
 
-    pub fn start(
-        mut self: Pin<&mut Self>,
-        kind: &QString,
-        sources: &QString,
-        dest: &QString,
-    ) -> i32 {
+    pub fn start(self: Pin<&mut Self>, kind: &QString, sources: &QString, dest: &QString) -> i32 {
         let kind_text = kind.to_string();
         let Some(kind) = Kind::parse(&kind_text) else {
             return -1;
         };
+        self.launch(kind, &kind_text, sources, dest, Control::default())
+    }
+
+    pub fn compress(
+        self: Pin<&mut Self>,
+        sources: &QString,
+        dest: &QString,
+        password: &QString,
+        split: f64,
+    ) -> i32 {
+        let pw = password.to_string();
+        let control = Control::default();
+        *control.archive.lock().unwrap() = ((!pw.is_empty()).then_some(pw), split.max(0.0) as u64);
+        self.launch(Kind::Compress, "compress", sources, dest, control)
+    }
+
+    pub fn set_archive_password(&self, archive: &QString, password: &QString) {
+        crate::archive::set_password(Path::new(&archive.to_string()), &password.to_string());
+    }
+
+    fn launch(
+        mut self: Pin<&mut Self>,
+        kind: Kind,
+        kind_text: &str,
+        sources: &QString,
+        dest: &QString,
+        control: Control,
+    ) -> i32 {
         let sources: Vec<PathBuf> = serde_json::from_str::<Vec<String>>(&sources.to_string())
             .unwrap_or_default()
             .into_iter()
@@ -417,7 +458,7 @@ impl qobject::Ops {
         let dest = Some(PathBuf::from(dest.to_string())).filter(|d| d.is_absolute());
         self.as_mut().rust_mut().next += 1;
         let id = self.next;
-        let control = Arc::new(Control::default());
+        let control = Arc::new(control);
         let queued = matches!(kind, Kind::Copy | Kind::Move);
         self.list.lock().unwrap().push(Job {
             id,

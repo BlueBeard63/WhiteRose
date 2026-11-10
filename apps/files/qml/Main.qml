@@ -803,6 +803,7 @@ AppWindow {
                 ] },
                 ...(itemMenu.sel.length > 0 && itemMenu.sel.every(e => !e.dir && Fs.isArchive(e.name)) && !win.current?.inTrash
                     ? [{ label: "Extract here", run: () => win.run("extract", itemMenu.sel.map(e => e.path), win.current.path) }] : []),
+                ...(win.current?.inTrash || win.current?.inCollection || win.current?.searching ? [] : [{ label: "Compress…", run: () => compressDialog.show(itemMenu.sel.map(e => e.path), win.current.path) }]),
                 ...(win.tab?.other ? [
                     { label: "Copy to other side", shortcut: "F5", run: () => win.toOther("copy") },
                     { label: "Move to other side", shortcut: "F6", run: () => win.toOther("move") },
@@ -902,6 +903,7 @@ AppWindow {
     function run(kind, paths, dest) {
         if (paths.length === 0) return;
         const id = Ops.start(kind, JSON.stringify(paths), dest ?? "");
+        if (kind === "extract" && id >= 0) { const e = Object.assign({}, win.extracting); e[id] = dest ?? ""; win.extracting = e }
         // The side showing where they went selects them when they're there.
         const shows = (win.tab?.panes ?? []).find(p => p.path === dest);
         if (id >= 0 && dest && shows) {
@@ -1100,6 +1102,30 @@ AppWindow {
             if (win.tabs.some(t => t.panes.includes(pane))) pane.selectPaths(r.done);
         }
     }
+    // Extracting needed a password (or the one given was wrong): ask, and try again.
+    Connections {
+        target: Ops
+        function onFinished(id, result) {
+            const r = JSON.parse(result);
+            if (r.kind !== "extract" || win.extracting[id] === undefined) return;
+            const dest = win.extracting[id];
+            const e = Object.assign({}, win.extracting);
+            delete e[id];
+            win.extracting = e;
+            const asked = r.failed.find(f => /protected with a password|password isn't right/.test(f[1]));
+            if (asked) archivePassword.ask(asked[0], dest, /isn't right/.test(asked[1]));
+        }
+    }
+    // Extract jobs running (id: where to), for asking a password and trying again.
+    property var extracting: ({})
+    CompressDialog {
+        id: compressDialog
+        onMade: id => {
+            const shows = (win.tab?.panes ?? []).find(p => p.path === compressDialog.dir);
+            if (shows) { const w = Object.assign({}, win.waiting); w[id] = shows; win.waiting = w }
+        }
+    }
+    ArchivePassword { id: archivePassword; onRetry: (archive, dest) => win.run("extract", [archive], dest) }
 
     // Name for a rename, a new folder or a new file.
     Popup {
