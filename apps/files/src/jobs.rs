@@ -230,6 +230,30 @@ pub mod qobject {
         #[cxx_name = "cloudAct"]
         fn cloud_act(self: &Ops, what: &QString, paths: &QString) -> QString;
 
+        /// The branches of the repository `dir` is in (gitops.rs): [{name,
+        /// upstream, current, remote}], or {error}.
+        #[qinvokable]
+        #[cxx_name = "gitBranches"]
+        fn git_branches(self: &Ops, dir: &QString) -> QString;
+        /// A git operation in the background (gitops::args_for: fetch, pull,
+        /// push, publish, sync, switch, switch-remote, branch, stage,
+        /// unstage, commit, commit-all, init; clone: `arg` the address,
+        /// `dir` where; discard: `paths` tracked, `arg` JSON untracked).
+        /// `gitDone` brings {done: false, percent, what} as it goes, then
+        /// {done: true, ok, error?, path?}. Stopped with stopCleanup.
+        #[qinvokable]
+        #[cxx_name = "gitDo"]
+        fn git_do(
+            self: Pin<&mut Ops>,
+            dir: &QString,
+            what: &QString,
+            arg: &QString,
+            paths: &QString,
+        ) -> i32;
+        #[qsignal]
+        #[cxx_name = "gitDone"]
+        fn git_done(self: Pin<&mut Ops>, id: i32, result: QString);
+
         /// Git status of `dir` in the background; `gitStatus` brings
         /// {root, branch, ahead, behind, ignored, entries: {name: state}}.
         #[qinvokable]
@@ -973,6 +997,116 @@ impl qobject::Ops {
             Ok(()) => QString::from(""),
             Err(e) => QString::from(e.as_str()),
         }
+    }
+
+    pub fn git_branches(&self, dir: &QString) -> QString {
+        match crate::gitops::branches(Path::new(&dir.to_string())) {
+            Ok(b) => q(json!(b)),
+            Err(e) => q(json!({"error": e})),
+        }
+    }
+
+    pub fn git_do(
+        mut self: Pin<&mut Self>,
+        dir: &QString,
+        what: &QString,
+        arg: &QString,
+        paths: &QString,
+    ) -> i32 {
+        use crate::gitops;
+        let (dir, what, arg) = (
+            PathBuf::from(dir.to_string()),
+            what.to_string(),
+            arg.to_string(),
+        );
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        self.as_mut().rust_mut().next += 1;
+        let id = self.next;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.measuring.lock().unwrap().insert(id, stop.clone());
+        let measuring = self.measuring.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let send = |v: Value| {
+                let r = v.to_string();
+                let _ = thread
+                    .queue(move |mut obj| obj.as_mut().git_done(id, QString::from(r.as_str())));
+            };
+            let mut last = Instant::now() - Duration::from_secs(1);
+            let mut progress = |pct: u32, w: String| {
+                if last.elapsed() > Duration::from_millis(200) {
+                    last = Instant::now();
+                    send(json!({"done": false, "percent": pct, "what": w}));
+                }
+            };
+            // Paths are given whole; git wants them from the repository's top.
+            let root = crate::git::root_of(&dir).unwrap_or_else(|| dir.clone());
+            let rel = |p: &str| {
+                Path::new(p)
+                    .strip_prefix(&root)
+                    .map(|r| r.to_string_lossy().into_owned())
+                    .unwrap_or_else(|_| p.to_string())
+            };
+            let rel_paths: Vec<String> = paths.iter().map(|p| rel(p)).collect();
+            let result: Result<Value, String> = match what.as_str() {
+                "clone" => gitops::clone_target(&arg, &dir).and_then(|target| {
+                    let t = target.to_string_lossy().into_owned();
+                    gitops::run(
+                        &dir,
+                        &["clone", "--progress", arg.trim(), &t],
+                        Duration::from_secs(3600),
+                        &stop,
+                        &mut progress,
+                    )
+                    .map(|_| json!({"path": target}))
+                }),
+                "discard" => {
+                    let untracked: Vec<String> = serde_json::from_str::<Vec<String>>(&arg)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|p| rel(p))
+                        .collect();
+                    let failed = gitops::discard(&root, &rel_paths, &untracked, &|p| {
+                        crate::trash::put(p).map(|_| ())
+                    });
+                    if failed.is_empty() {
+                        Ok(json!({}))
+                    } else {
+                        Err(failed
+                            .iter()
+                            .map(|(p, e)| {
+                                if p.is_empty() {
+                                    e.clone()
+                                } else {
+                                    format!("{p}: {e}")
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"))
+                    }
+                }
+                _ => gitops::args_for(&what, &arg, &rel_paths).and_then(|a| {
+                    let refs: Vec<&str> = a.iter().map(String::as_str).collect();
+                    let at = if what == "init" {
+                        dir.as_path()
+                    } else {
+                        root.as_path()
+                    };
+                    gitops::run(at, &refs, Duration::from_secs(600), &stop, &mut progress)
+                        .map(|_| json!({}))
+                }),
+            };
+            measuring.lock().unwrap().remove(&id);
+            send(match result {
+                Ok(mut v) => {
+                    v["done"] = json!(true);
+                    v["ok"] = json!(true);
+                    v
+                }
+                Err(e) => json!({"done": true, "ok": false, "error": e}),
+            });
+        });
+        id
     }
 
     pub fn ask_git(&self, dir: &QString) {

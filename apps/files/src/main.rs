@@ -13,6 +13,7 @@ mod core;
 mod diff;
 mod finder;
 mod git;
+mod gitops;
 mod hash;
 mod jobs;
 mod json_view;

@@ -576,6 +576,12 @@ AppWindow {
                     { label: "This folder", items: [
                         { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark it", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                         { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => looks.show(win.current.path, win.current.title) },
+                        ...(win.current?.special || !win.current?.path.startsWith("/") ? [] : win.current.git.root ? [
+                            { label: "Commit…", run: () => gitDialog.show("commit", win.current.path, win.stagedCount()) },
+                        ] : [
+                            { label: "Start a git repository here", run: () => win.gitRun("init", "", [], "A git repository now") },
+                            { label: "Clone a repository here…", run: () => gitDialog.show("clone", win.current.path) },
+                        ]),
                         { label: win.tab?.other && !win.tab.other.special && !win.tab.other.inArchive ? "Compare with the other side…" : "Compare with…",
                           enabled: !(win.current?.special ?? true) && !(win.current?.inArchive ?? false), run: () => win.compare() },
                         { separator: true },
@@ -852,6 +858,14 @@ AppWindow {
                 ...(win.current?.searching || win.current?.inCollection ? [] : [{ label: "New folder with selection…", run: () => win.askName("group") }]),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
                 { label: "Tags", items: win.tagItems(itemMenu.sel.map(e => e.path)) },
+                // In a git repository.
+                ...(win.current?.git.root ? [{ label: "Git", items: [
+                    { label: "Stage", run: () => win.gitRun("stage", "", itemMenu.sel.map(e => e.path), "Staged") },
+                    { label: "Unstage", run: () => win.gitRun("unstage", "", itemMenu.sel.map(e => e.path), "Unstaged") },
+                    { label: "Throw away changes…", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path), "discard") },
+                    { separator: true },
+                    { label: "Commit…", run: () => gitDialog.show("commit", win.current.path, win.stagedCount()) },
+                ] }] : []),
                 // In a folder a sync client keeps (Nextcloud, ownCloud).
                 ...(win.current?.cloud.client ? [{ label: win.current.cloud.client, items: [
                     { label: "Keep on this device", run: () => win.cloudAct("local") },
@@ -905,6 +919,7 @@ AppWindow {
         // The git branch of the repository this is in, and how far ahead of
         // / behind its remote.
         Row {
+            id: branchRow
             readonly property var git: win.current?.git ?? ({ root: "" })
             visible: git.root !== "" && git.branch !== ""
             anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
@@ -923,6 +938,14 @@ AppWindow {
                 color: Theme.faint
                 font { family: Theme.mono; pointSize: Theme.pt(10.5) }
             }
+        }
+        // A click on the branch: the branches, and fetch / pull / push / sync.
+        MouseArea {
+            visible: branchRow.visible
+            x: branchRow.x - 6; y: branchRow.y - 4
+            width: branchRow.width + 12; height: branchRow.height + 8
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { const p = branchRow.mapToItem(win.contentItem, 0, 0); win.openBranchMenu(p.x, p.y) }
         }
     }
 
@@ -1194,6 +1217,77 @@ AppWindow {
     }
     // Extract jobs running (id: where to), for asking a password and trying again.
     property var extracting: ({})
+    // ---- git -------------------------------------------------------------------------
+    // Jobs in flight: {id: what}, and what to say when each is done.
+    property var gitJobs: ({})
+    function gitRun(what, arg, paths, said) {
+        const p = win.current;
+        if (!p) return;
+        const id = Ops.gitDo(p.path, what, arg ?? "", JSON.stringify(paths ?? []));
+        const j = Object.assign({}, win.gitJobs);
+        j[id] = said;
+        win.gitJobs = j;
+        win.info = ({ fetch: "Fetching…", pull: "Pulling…", push: "Pushing…", publish: "Publishing…", sync: "Syncing with the remote…" })[what] ?? "";
+    }
+    Connections {
+        target: Ops
+        function onGitDone(id, result) {
+            if (!(id in win.gitJobs)) return;
+            const r = JSON.parse(result);
+            if (!r.done) { win.info = r.what + " · " + r.percent + "%"; return }
+            const said = win.gitJobs[id];
+            const j = Object.assign({}, win.gitJobs);
+            delete j[id];
+            win.gitJobs = j;
+            if (r.ok) { win.info = said; win.notice = "" } else { win.info = ""; win.notice = r.error.split("\n").join(" ") }
+            // Sync: theirs first, then yours up.
+            if (r.ok && said === "Pulled; now pushing…") win.gitRun("push", "", [], "Synced")
+            win.current?.load();
+        }
+    }
+    // The branch menu (from the status bar).
+    function openBranchMenu(x, y) {
+        const p = win.current;
+        if (!p) return;
+        const b = JSON.parse(Ops.gitBranches(p.path));
+        if (b.error) { win.notice = b.error; return }
+        const local = b.filter(x => !x.remote), remote = b.filter(x => x.remote);
+        const cur = local.find(x => x.current);
+        branchMenu.items = [
+            ...local.map(x => ({ label: x.name, checked: x.current, run: () => { if (!x.current) win.gitRun("switch", x.name, [], "On " + x.name) } })),
+            ...(remote.length ? [{ label: "On the remote", items: remote.map(x => ({ label: x.name, run: () => win.gitRun("switch-remote", x.name, [], "On " + x.name.substring(x.name.indexOf("/") + 1)) })) }] : []),
+            { label: "New branch…", run: () => gitDialog.show("branch", p.path) },
+            { separator: true },
+            { label: "Fetch", run: () => win.gitRun("fetch", "", [], "Fetched") },
+            { label: "Pull", run: () => win.gitRun("pull", "", [], "Pulled") },
+            cur && !cur.upstream ? { label: "Publish this branch", run: () => win.gitRun("publish", "", [], "Published") }
+                                 : { label: "Push", run: () => win.gitRun("push", "", [], "Pushed") },
+            { label: "Sync (pull, then push)", run: () => win.gitRun("sync", "", [], "Pulled; now pushing…") },
+            { separator: true },
+            { label: "Commit…", run: () => gitDialog.show("commit", p.path, win.stagedCount()) },
+        ];
+        branchMenu.openAt(Math.max(8, x - 200), y - 8 - 34 * branchMenu.items.length);
+    }
+    function stagedCount() {
+        const e = win.current?.git.entries ?? {};
+        return Object.keys(e).filter(k => e[k] === "added").length;
+    }
+    // Throwing away changes: asked first (what you had goes to the Trash).
+    function gitDiscard(paths) {
+        const e = win.current?.git.entries ?? {};
+        const name = p => p.substring(p.lastIndexOf("/") + 1);
+        const untracked = paths.filter(p => e[name(p)] === "untracked");
+        win.gitRun("discard", JSON.stringify(untracked), paths.filter(p => !untracked.includes(p)), "Changes thrown away (what you had is in the Trash)");
+    }
+    Menu { id: branchMenu }
+    GitDialog {
+        id: gitDialog
+        onDone: (mode, r) => {
+            if (mode === "clone") { win.current?.go(r.path); win.info = "Cloned" }
+            else { win.info = mode === "commit" ? "Committed" : "On the new branch"; win.current?.load() }
+        }
+    }
+
     // ---- network servers -------------------------------------------------------
     property var serverJob: null
     Connections {
@@ -1317,7 +1411,8 @@ AppWindow {
             spacing: 12
             Text {
                 width: 340
-                text: confirm.kind === "empty" ? "Empty the Trash?"
+                text: confirm.kind === "discard" ? (confirm.names.length === 1 ? "Throw away your changes to “" + confirm.names[0] + "”?" : "Throw away your changes to " + confirm.paths.length + " items?")
+                    : confirm.kind === "empty" ? "Empty the Trash?"
                     : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the Trash?" : "Move " + confirm.paths.length + " items to the Trash?")
                     : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” permanently?"
                     : "Delete " + confirm.paths.length + " items permanently?"
@@ -1327,7 +1422,8 @@ AppWindow {
             }
             Text {
                 width: 340
-                text: confirm.kind === "trash" ? "You can bring them back from the Trash."
+                text: confirm.kind === "discard" ? "Each goes back to how it was at the last commit. What you had goes to the Trash, and new files there too."
+                    : confirm.kind === "trash" ? "You can bring them back from the Trash."
                     : confirm.kind === "delete" ? "They won't go to the Trash, so they can't be brought back."
                     : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") is deleted for good."
                     : "They can't be brought back after this."
@@ -1341,12 +1437,12 @@ AppWindow {
                 Button { text: "Cancel"; kind: "ghost"; onClicked: confirm.close() }
                 Button {
                     id: deleteButton
-                    text: confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
+                    text: confirm.kind === "discard" ? "Throw away" : confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
                     kind: confirm.kind === "trash" ? "primary" : "danger"
                     // After the key is handled: closing in the middle of it crashes Qt.
                     Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
                     Keys.onEscapePressed: confirm.close()
-                    onClicked: { win.run(confirm.kind, confirm.paths); confirm.close() }
+                    onClicked: { if (confirm.kind === "discard") win.gitDiscard(confirm.paths); else win.run(confirm.kind, confirm.paths); confirm.close() }
                 }
             }
         }
