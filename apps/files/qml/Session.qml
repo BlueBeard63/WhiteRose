@@ -57,6 +57,10 @@ QtObject {
     }
     // Tags: names and colours, in order ({name, colour}).
     property var tagDefs: session.setting("files.tags", [])
+    // Toolbar & menus (Settings › Files; FilesActions.js).
+    property var toolbar: session.setting("files.toolbar", [])
+    property var menuHide: session.setting("files.menuHide", [])
+    property var actions: session.setting("files.actions", [])
     readonly property var palette: ({
         rose: "#E8A3AE", red: "#E5534B", orange: "#F0883E", yellow: "#E3B341", green: "#57AB5A",
         teal: "#39C5BB", blue: "#539BF5", purple: "#986EE2", pink: "#E275AD", grey: "#8B949E",
@@ -98,6 +102,9 @@ QtObject {
         session.encrypt = v("files.encrypt", false);
         session.recentFiles = v("privacy.recentFiles", true);
         session.tagDefs = v("files.tags", []);
+        session.toolbar = v("files.toolbar", []);
+        session.menuHide = v("files.menuHide", []);
+        session.actions = v("files.actions", []);
         session.sidebar = v("files.sidebar", true);
         session.git = v("files.git", true);
         session.sidebarFolded = v("files.sidebarFolded", []);

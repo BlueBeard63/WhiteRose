@@ -3,6 +3,7 @@ use cxx_qt_build::{CxxQtBuilder, QmlFile, QmlModule};
 fn main() {
     // (files.qrc takes it from the Settings module; a change rebuilds.)
     println!("cargo::rerun-if-changed=../../shell/settings/modules/files/FilesKeys.js");
+    println!("cargo::rerun-if-changed=../../shell/settings/modules/files/FilesActions.js");
     let mut qml: Vec<QmlFile> = vec![QmlFile::from("qml/Session.qml").singleton(true)];
     qml.extend(
         [

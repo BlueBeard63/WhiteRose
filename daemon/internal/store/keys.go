@@ -239,6 +239,12 @@ var Known = map[string]Key{
 	// Tags (Files): their names and colours, in the order shown. The tags
 	// themselves are on the files (user.xdg.tags).
 	"files.tags": {Default: json.RawMessage(`[{"name":"Important","colour":"red"},{"name":"Work","colour":"blue"},{"name":"Personal","colour":"green"}]`), Check: into(tagList)},
+	// Files' toolbar: extra buttons (ids from apps/files/qml/Actions.js), in order.
+	"files.toolbar": {Default: json.RawMessage(`[]`), Check: into(idList)},
+	// Files' right-click menu: built-in entries left out (ids from Actions.js).
+	"files.menuHide": {Default: json.RawMessage(`[]`), Check: into(idList)},
+	// Files' right-click menu: your own actions (a command run on what's chosen).
+	"files.actions": {Default: json.RawMessage(`[]`), Check: into(actionList)},
 	// Git status marks and the branch in Files.
 	"files.git": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Files' sidebar: shown, and the sections folded away.
@@ -568,6 +574,45 @@ func Validate(key string, value json.RawMessage) error {
 	if k, ok := Known[key]; ok && k.Check != nil {
 		if err := k.Check(value); err != nil {
 			return fmt.Errorf("%s: %w", key, err)
+		}
+	}
+	return nil
+}
+
+// An id in a list of Files' buttons or menu entries.
+func idList(ids []string) error {
+	if len(ids) > 64 {
+		return errors.New("too many")
+	}
+	for _, id := range ids {
+		if id == "" || len(id) > 40 || strings.ContainsAny(id, " \t\n") {
+			return fmt.Errorf("%q isn't an id", id)
+		}
+	}
+	return nil
+}
+
+// FilesAction is one of your own actions in Files' right-click menu.
+type FilesAction struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+	// files | folders | any
+	On string `json:"on"`
+	// Extensions it's for ("jpg,png"), "" for any.
+	Types    string `json:"types"`
+	Terminal bool   `json:"terminal"`
+}
+
+func actionList(list []FilesAction) error {
+	if len(list) > 50 {
+		return errors.New("at most 50 actions")
+	}
+	for _, a := range list {
+		if strings.TrimSpace(a.Name) == "" || strings.TrimSpace(a.Command) == "" {
+			return errors.New("an action needs a name and a command")
+		}
+		if a.On != "files" && a.On != "folders" && a.On != "any" {
+			return fmt.Errorf("%q: on must be files, folders or any", a.Name)
 		}
 	}
 	return nil

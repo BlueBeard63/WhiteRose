@@ -23,6 +23,7 @@ import "Format.js" as F
 import "Tabs.js" as Tabs
 import "Drops.js" as Drops
 import "FilesKeys.js" as FilesKeys
+import "FilesActions.js" as Actions
 
 AppWindow {
     id: win
@@ -507,12 +508,30 @@ AppWindow {
             id: views
             // (Nothing to show differently on the Start page.)
             visible: !(win.current?.ownView ?? false)
-            anchors { right: searchButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+            anchors { right: extraTools.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
             options: [{ icon: "grid", label: "Grid (Ctrl+1)", value: "grid" }, { icon: "viewList", label: "List (Ctrl+2)", value: "list" },
                       { icon: "viewColumns", label: "Columns (Ctrl+3)", value: "columns" }, { icon: "viewGallery", label: "Gallery (Ctrl+4)", value: "gallery" },
                       { icon: "viewCards", label: "Cards (Ctrl+5)", value: "cards" }, { icon: "viewUsage", label: "Disk usage (Ctrl+6)", value: "usage" }]
             onPicked: v => { if (win.current) { win.current.setView({ mode: v }); Qt.callLater(() => win.current.focusView()) } }
+        }
+        // Your own toolbar buttons (Settings › Files › Toolbar & menus).
+        Row {
+            id: extraTools
+            anchors { right: searchButton.left; rightMargin: Session.toolbar.length > 0 ? 6 : 0; verticalCenter: parent.verticalCenter }
+            spacing: 2
+            Repeater {
+                model: Session.toolbar.map(id => Actions.toolbar.find(t => t.id === id)).filter(t => !!t)
+                delegate: IconButton {
+                    required property var modelData
+                    width: 32; height: 32; icon: modelData.icon; fill: "transparent"
+                    iconColor: (modelData.id === "hidden" && Session.hidden) || (modelData.id === "details" && Session.details) || (modelData.id === "split" && (win.tab?.split ?? false)) ? Theme.rose : Theme.text
+                    onClicked: win.toolbarDo(modelData.id)
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: modelData.label
+                }
+            }
         }
         IconButton {
             id: searchButton
@@ -806,7 +825,7 @@ AppWindow {
             // Files of one kind: the apps for it (the default marked).
             // (Only while it's open: it reads the installed apps.)
             readonly property var openWith: itemMenu.visible ? win.openWithItems(itemMenu.sel) : []
-            items: win.current?.inArchive ? (!itemMenu.entry ? [
+            items: win.menuFor(itemMenu.entry, win.current?.inArchive ? (!itemMenu.entry ? [
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
                 { label: "Extract everything beside it", run: () => win.run("extract", [win.current.archiveFile], win.current.archiveFile.substring(0, win.current.archiveFile.lastIndexOf("/"))) },
             ] : [
@@ -898,7 +917,7 @@ AppWindow {
                 { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
                 { separator: true },
                 { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
-            ]
+            ])
         }
 
         Transfers {
@@ -1306,6 +1325,47 @@ AppWindow {
     }
     // Extract jobs running (id: where to), for asking a password and trying again.
     property var extracting: ({})
+    // ---- toolbar & menus (Settings › Files › Toolbar & menus) ---------------------------
+    // The right-click menu as set up: what's left out goes, and your own
+    // actions that fit what's chosen come after "Open".
+    function menuFor(entry, items) {
+        let out = Actions.trim(items, Session.menuHide);
+        const sel = win.current?.selection ?? [];
+        if (entry && !win.current?.special && !win.current?.inArchive) {
+            const mine = Session.actions.filter(a => Actions.applies(a, sel)).map(a => ({ label: a.name, run: () => win.runAction(a, sel.map(e => e.path)) }));
+            if (mine.length > 0) {
+                const at = out.findIndex(x => x.separator);
+                out = at < 0 ? out.concat([{ separator: true }], mine) : out.slice(0, at).concat([{ separator: true }], mine, out.slice(at));
+            }
+        }
+        return out;
+    }
+    function runAction(a, paths) {
+        const dir = win.current.path;
+        const cmd = Actions.command(a.command, paths, dir);
+        const err = a.terminal ? Fs.runInTerminal(dir, cmd, win.choice("apps.terminal")) : Fs.runCommand(dir, cmd);
+        if (err) win.notice = err; else win.info = "Ran “" + a.name + "”";
+    }
+    // A toolbar button pressed.
+    function toolbarDo(id) {
+        const p = win.current;
+        if (!p) return;
+        const sel = p.selection;
+        switch (id) {
+        case "new-folder": if (!p.readOnly && !p.special) win.askName("folder"); break;
+        case "refresh": p.load(); break;
+        case "terminal": if (p.path.startsWith("/")) win.openTerminal(p.path); break;
+        case "editor": if (p.path.startsWith("/")) win.openEditor(p.path); break;
+        case "split": win.tab.setSplit(!win.tab.split); break;
+        case "hidden": Session.setHidden(!Session.hidden); break;
+        case "details": Session.setDetails(!Session.details); break;
+        case "shelf": win.toShelf(); break;
+        case "compress": if (sel.length > 0 && !p.special) compressDialog.show(sel.map(e => e.path), p.path); break;
+        case "compare": if (!p.special && !p.inArchive) win.compare(); break;
+        case "new-tab": win.newTab({ path: p.path }); break;
+        }
+    }
+
     // ---- reliability ---------------------------------------------------------------
     // Interrupted transfers (looked at once, shortly after starting).
     property var unfinished: []

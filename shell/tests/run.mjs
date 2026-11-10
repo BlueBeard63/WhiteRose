@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js and Reorder.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js and FilesActions.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,7 @@ const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", 
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
 const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
+const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "command", "quote", "menu", "toolbar"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
@@ -441,6 +442,26 @@ test("a dragged bookmark lands before the first row whose middle is below the po
     assert.equal(Reorder.slot(others, 20), 1, "past the first one's middle");
     assert.equal(Reorder.slot(others, 110), 2, "over the open folder: after its bookmark");
     assert.equal(Reorder.slot(others, 400), 3, "below everything: last");
+});
+
+test("Files' menus: entries left out, separators tidied, your actions applied", () => {
+    const items = [{ label: "Open" }, { label: "Quick look" }, { separator: true }, { label: "Duplicate" }, { label: "Copy path", items: [] }, { separator: true },
+                   { label: "Tags", items: [] }, { label: "Move to other side" }, { separator: true }, { label: "Delete permanently…" }];
+    assert.deepEqual(Act.trim(items, ["quick-look", "duplicate", "copy-path", "tags", "other-side", "delete"]).map(i => i.label ?? "—"), ["Open"]);
+    assert.deepEqual(Act.trim(items, ["duplicate"]).map(i => i.label ?? "—"), ["Open", "Quick look", "—", "Copy path", "—", "Tags", "Move to other side", "—", "Delete permanently…"]);
+    assert.equal(Act.trim(items, []), items);
+    // Applies to: files / folders / types.
+    const a = { on: "files", types: "jpg, .PNG" };
+    assert.ok(Act.applies(a, [{ name: "a.jpg", dir: false }, { name: "b.png", dir: false }]));
+    assert.ok(!Act.applies(a, [{ name: "a.jpg", dir: false }, { name: "c.txt", dir: false }]));
+    assert.ok(!Act.applies({ on: "folders", types: "" }, [{ name: "x", dir: false }]));
+    assert.ok(Act.applies({ on: "any", types: "" }, [{ name: "x", dir: true }]));
+    // Commands: quoted paths in place, or on the end.
+    assert.equal(Act.command("convert %f -resize 50% out.png", ["/a b/it's.jpg"], "/a b"), "convert '/a b/it'\\''s.jpg' -resize 50% out.png");
+    assert.equal(Act.command("gimp", ["/x/1.png", "/x/2.png"], "/x"), "gimp '/x/1.png' '/x/2.png'");
+    assert.equal(Act.command("cd %d && zip out.zip %n", ["/p/a.txt"], "/p"), "cd '/p' && zip out.zip 'a.txt'");
+    // Every id is unique.
+    for (const list of [Act.menu, Act.toolbar]) assert.equal(new Set(list.map(x => x.id)).size, list.length);
 });
 
 // ---- Keys (Keyboard & Shortcuts) -------------------------------------------

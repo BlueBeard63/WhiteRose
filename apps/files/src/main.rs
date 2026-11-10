@@ -1,4 +1,5 @@
-//! WhiteRose Files: `whiterose-files [FOLDER...]`.
+//! WhiteRose Files: `whiterose-files [FOLDER...]`, or `whiterose-files
+//! --find …` to search from a terminal (cli.rs).
 
 extern crate whiterose_kit;
 
@@ -6,6 +7,7 @@ mod apps;
 mod archive;
 mod bulk_rename;
 mod cleanup;
+mod cli;
 mod cloudremotes;
 mod cloudsync;
 mod compare;
@@ -44,6 +46,23 @@ mod workspaces;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
 fn main() {
+    // From a terminal: search, print, and done (no window).
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("--find") => std::process::exit(cli::main(
+            &args[1..],
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr(),
+        )),
+        Some("--help") | Some("-h") => {
+            println!(
+                "whiterose-files [FOLDER…]   open folders in Files\n{}",
+                cli::HELP
+            );
+            return;
+        }
+        _ => {}
+    }
     let mut app = QGuiApplication::new();
     if let Some(mut a) = app.as_mut() {
         a.as_mut()

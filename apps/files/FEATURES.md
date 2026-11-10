@@ -76,8 +76,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Native light, dark and system modes (MVP) — follows the desktop theme via the kit
 - [-] Per-folder background images (Next) — not doing (decided against)
 - [x] Folder colours and icons (added) — a colour, a symbol, or a picture; follows renames, moves and the Trash
-- [ ] Custom toolbar buttons and layouts (Next)
-- [ ] Customisable right-click context menus (Next)
+- [x] Custom toolbar buttons and layouts (Next) — Settings › Files › Toolbar & menus: new folder, look again, terminal, code editor, split, hidden files, details, shelf, compress, compare & sync, new tab beside the views
+- [x] Customisable right-click context menus (Next) — leave out built-in entries; add your own actions (a command on what's chosen: %f paths, %n names, %d folder; for files, folders or either, chosen types; in a terminal or not), edited in place in Settings
 - [x] Fully remappable keyboard shortcuts (MVP) — ☰ › Keyboard shortcuts…: every shortcut, press new keys, clashes refused, reset
 - [x] Custom view columns and sorting preferences (Next) — view, sort and grouping per folder (lent to subfolders, or everywhere); list columns chosen and resized; folders first / mixed / last
 - [x] Group by (added) — kind, date modified, size or name, with headings that fold, in list, grid and cards
@@ -96,7 +96,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [-] Built-in terminal integration (Next) — not doing: Open in terminal (F4) instead
 - [x] Docker/Podman container file browsing (Advanced) — Drives › Containers › Files: a running container's folders, and anything copied out to a folder you choose
 - [x] Container lifecycle operations and Compose management (Advanced) — start, stop, restart, pause, remove (asked); grouped by Compose project with Up / Down / its folder; logs and a shell in your terminal
-- [ ] Command-line launcher and file search (Next)
+- [x] Command-line launcher and file search (Next) — `whiterose-files FOLDER…` opens them; `whiterose-files --find [--in DIR | --everywhere] [--inside TEXT] [--type …] [--changed …] [--case] [--regex] [--json] WORDS` prints matches from the same search (exit 1 when none)
 
 ## 8. Cloud, remote & network
 - [x] Local drives and removable media (MVP) — plugged-in drives listed, a click mounts (udisks), eject unmounts and powers off

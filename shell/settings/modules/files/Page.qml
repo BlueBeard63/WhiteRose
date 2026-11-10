@@ -1,4 +1,4 @@
-// Files: the file manager's settings, in five parts (the sub-pages under
+// Files: the file manager's settings, in six parts (the sub-pages under
 // Files in the sidebar). This page points to each.
 import QtQuick
 import qs
@@ -12,6 +12,7 @@ Column {
         { id: "views", icon: "grid", name: "Views & lists", text: "How folders look until you choose: view, sort, groups, sizes, columns" },
         { id: "search", icon: "search", name: "Search", text: "What the search index covers, and making it again" },
         { id: "apps", icon: "terminal", name: "Open with", text: "The terminal and code editor for “Open in…”" },
+        { id: "menus", icon: "menu", name: "Toolbar & menus", text: "Extra toolbar buttons, what the right-click menu shows, and your own actions" },
         { id: "shortcuts", icon: "keyboard", name: "Shortcuts", text: "Every Files shortcut, and changing them" },
     ]
 

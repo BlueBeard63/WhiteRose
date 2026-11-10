@@ -231,6 +231,11 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openEditor"]
         fn open_editor(self: &Fs, path: &QString, chosen: &QString) -> QString;
+        /// Runs one of your own actions' shell command in `dir`, on its own
+        /// (it outlives Files): "" or why not.
+        #[qinvokable]
+        #[cxx_name = "runCommand"]
+        fn run_command(self: &Fs, dir: &QString, command: &QString) -> QString;
         /// The shelf (shelf.rs): [{path, name, dir, icon}].
         #[qinvokable]
         fn shelf(self: &Fs) -> QString;
@@ -1258,6 +1263,13 @@ impl qobject::Fs {
             untrusted_why(&p)
         };
         q(json!({"kind": kind, "why": why}))
+    }
+
+    pub fn run_command(&self, dir: &QString, command: &QString) -> QString {
+        let (dir, command) = (dir.to_string(), command.to_string());
+        crate::log::info(&format!("ran your action `{command}` in {dir}"));
+        let r = launch::spawn("sh", &["-c".to_string(), command], &dir);
+        QString::from(r.err().unwrap_or_default().as_str())
     }
 
     pub fn shelf(&self) -> QString {
