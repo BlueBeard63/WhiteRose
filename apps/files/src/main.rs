@@ -26,6 +26,7 @@ mod recent;
 mod run;
 mod search;
 mod session;
+mod shares;
 mod tags;
 mod trash;
 mod views;

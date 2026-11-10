@@ -401,7 +401,29 @@ AppWindow {
         onDropped: (paths, dest) => win.drop(paths, dest)
         onTagMenu: (name, x, y) => { tagMenu.tag = name; tagMenu.openAt(x, y) }
         onMountDrive: device => { win.info = "Opening the drive…"; Ops.mount(device) }
+        // A saved server: connect with its saved password; the dialog if
+        // it needs anything more.
+        onOpenServer: server => {
+            win.info = "Connecting to " + server.name + "…";
+            win.serverJob = { id: Ops.connectServer(JSON.stringify({ address: server.uri, user: server.user, domain: server.domain })), server: server };
+        }
+        onConnectServer: connectDialog.show(null)
+        onServerMenu: (server, x, y) => { serverMenu.server = server; serverMenu.openAt(x, y) }
         onEjectDrive: device => { win.info = "Ejecting…"; Ops.eject(device) }
+        Menu {
+            id: serverMenu
+            property var server: ({ name: "", uri: "", path: "", saved: false })
+            items: [
+                ...(serverMenu.server.path ? [{ label: "Disconnect", run: () => { const e = Ops.disconnectServer(serverMenu.server.uri); if (e) win.notice = e; sidebar.refreshServers() } }]
+                                           : [{ label: "Connect", run: () => sidebar.openServer(serverMenu.server) }]),
+                { label: "Copy address", run: () => { Ops.setClipboardText(serverMenu.server.uri); win.info = "Copied" } },
+                ...(serverMenu.server.saved ? [{ separator: true }, { label: "Remove from the sidebar", danger: true, run: () => {
+                    if (serverMenu.server.path) Ops.disconnectServer(serverMenu.server.uri);
+                    Ops.forgetServer(serverMenu.server.uri);
+                    sidebar.refreshServers();
+                } }] : []),
+            ]
+        }
         Menu {
             id: tagMenu
             property string tag
@@ -546,6 +568,7 @@ AppWindow {
                         { label: "Tag", checked: win.current?.group === "tag", run: () => win.current.setView({ group: "tag" }) },
                     ] },
                     { label: "Workspaces", items: win.workspaceMenu },
+                    { label: "Connect to server…", run: () => connectDialog.show(null) },
                     { label: "This folder", items: [
                         { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark it", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                         { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => looks.show(win.current.path, win.current.title) },
@@ -1150,6 +1173,25 @@ AppWindow {
     }
     // Extract jobs running (id: where to), for asking a password and trying again.
     property var extracting: ({})
+    // ---- network servers -------------------------------------------------------
+    property var serverJob: null
+    Connections {
+        target: Ops
+        function onServerConnected(id, result) {
+            if (!win.serverJob || id !== win.serverJob.id) return;
+            const r = JSON.parse(result), server = win.serverJob.server;
+            win.serverJob = null;
+            win.info = "";
+            sidebar.refreshServers();
+            if (r.result === "ok") { win.current?.go(r.path); win.current?.focusView() }
+            else { connectDialog.show(server); connectDialog.error = r.result === "failed" ? r.error : r.result === "question" ? "" : "This server needs a password"; connectDialog.question = r.result === "question" ? r.text : "" }
+        }
+    }
+    ConnectDialog {
+        id: connectDialog
+        onChanged: sidebar.refreshServers()
+        onOpened_: path => { win.current?.go(path); win.current?.focusView() }
+    }
     // (A sync shows in Transfers like any copy.)
     CompareDialog { id: compareDialog }
     BulkRename {

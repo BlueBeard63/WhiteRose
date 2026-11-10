@@ -99,3 +99,16 @@ func TestUnknownCommand(t *testing.T) {
 		t.Errorf("no args: exit %d, want 2", code)
 	}
 }
+
+func TestShareSecretIDsStayInTheirNamespace(t *testing.T) {
+	for _, ok := range []string{`{"id":"share:smb://nas/photos#jack"}`} {
+		if _, err := shareSecretID(json.RawMessage(ok)); err != nil {
+			t.Errorf("%s refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{`{"id":"calendar-abc"}`, `{"id":"share:"}`, `{}`, `{"id":"xshare:abcdef"}`} {
+		if _, err := shareSecretID(json.RawMessage(bad)); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}

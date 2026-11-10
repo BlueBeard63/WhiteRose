@@ -1,5 +1,6 @@
 // Places: your folders, bookmarks (shared with other apps' file choosers),
-// and drives with how full they are. Right-click a bookmark to remove it.
+// drives with how full they are, and network servers (saved, and any
+// share mounted now). Right-click a bookmark to remove it.
 import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
@@ -74,10 +75,19 @@ Rectangle {
     readonly property var tagList: Session.tagDefs.map(t => t.name).concat(Object.keys(side.counts).filter(n => !Session.tagDefs.some(d => d.name === n)))
     // Right-click on a tag.
     signal tagMenu(string name, real x, real y)
+    // Network servers: saved ones and shares mounted now (shares.rs), looked
+    // at less often than drives (it asks GVfs).
+    property var servers: []
+    function refreshServers() { side.servers = JSON.parse(Ops.servers()) }
+    Timer { interval: 15000; repeat: true; running: Qt.application.state === Qt.ApplicationActive; onTriggered: side.refreshServers() }
+    // A server clicked (not mounted), Connect to server…, a right-click.
+    signal openServer(var server)
+    signal connectServer()
+    signal serverMenu(var server, real x, real y)
     // A plugged-in drive clicked (not mounted yet), or its eject button.
     signal mountDrive(string device)
     signal ejectDrive(string device)
-    Component.onCompleted: refresh()
+    Component.onCompleted: { refresh(); refreshServers() }
     // Drives come and go (a USB stick): look again every few seconds.
     Timer { interval: 4000; repeat: true; running: Qt.application.state === Qt.ApplicationActive; onTriggered: side.refresh() }
     color: Theme.sidebar
@@ -335,6 +345,28 @@ Rectangle {
                     }
                 }
             }
+            Heading { text: "Network" }
+            Repeater {
+                model: side.open("Network") ? side.servers : []
+                delegate: PlaceRow {
+                    id: serverRow
+                    required property var modelData
+                    name: modelData.name
+                    // Mounted: its folder; else its address (a click connects).
+                    path: modelData.path || modelData.uri
+                    glyph: modelData.uri.startsWith("sftp") ? "terminal" : modelData.uri.startsWith("dav") ? "cloud" : "globe"
+                    opacity: modelData.path ? 1 : 0.6
+                    clickInstead: modelData.path ? null : () => side.openServer(serverRow.modelData)
+                    onSecondary: { const p = serverRow.mapToItem(side, 24, serverRow.height - 2); side.serverMenu(serverRow.modelData, p.x, p.y) }
+                    IconButton {
+                        visible: !!serverRow.modelData.path
+                        anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
+                        width: 24; height: 24; icon: "eject"; iconSize: 12; fill: "transparent"
+                        onClicked: { Ops.disconnectServer(serverRow.modelData.uri); side.refreshServers() }
+                    }
+                }
+            }
+            PlaceRow { visible: side.open("Network"); name: "Connect to server…"; path: "connect:"; glyph: "plus"; clickInstead: () => side.connectServer() }
         }
     }
 }

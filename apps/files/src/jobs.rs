@@ -135,6 +135,30 @@ pub mod qobject {
         #[cxx_name = "cleanupFound"]
         fn cleanup_found(self: Pin<&mut Ops>, id: i32, result: QString);
 
+        /// Connects to a network share (shares.rs) in the background:
+        /// `request` {address, user, domain, password, remember, save,
+        /// accept}. `connected` brings {result: ok, path, uri, name} |
+        /// password {wrong} | question {text} | failed {error}.
+        #[qinvokable]
+        #[cxx_name = "connectServer"]
+        fn connect(self: Pin<&mut Ops>, request: &QString) -> i32;
+        #[qsignal]
+        #[cxx_name = "serverConnected"]
+        fn connected(self: Pin<&mut Ops>, id: i32, result: QString);
+        /// (Cancel a connection with stopCleanup.)
+        /// Unmounts a share: "" or why not.
+        #[qinvokable]
+        #[cxx_name = "disconnectServer"]
+        fn disconnect(self: &Ops, uri: &QString) -> QString;
+        /// Saved servers and shares mounted now: [{name, uri, user,
+        /// remembered, saved, path}] (path: "" if not mounted).
+        #[qinvokable]
+        fn servers(self: &Ops) -> QString;
+        /// Takes a server off the list (and its password out of the keyring).
+        #[qinvokable]
+        #[cxx_name = "forgetServer"]
+        fn forget_server(self: &Ops, uri: &QString);
+
         /// Compares two folders in the background (compare.rs), byte by
         /// byte when `content`. `compared` brings {done: false, scanned} as
         /// it goes, then {done: true, entries}. Returns its id; stopped with
@@ -1009,6 +1033,176 @@ impl qobject::Ops {
             measuring.lock().unwrap().remove(&id);
         });
         id
+    }
+
+    pub fn connect(mut self: Pin<&mut Self>, request: &QString) -> i32 {
+        use crate::shares;
+        let req: Value = serde_json::from_str(&request.to_string()).unwrap_or(Value::Null);
+        let text = |k: &str| req.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let flag = |k: &str| req.get(k).and_then(Value::as_bool).unwrap_or(false);
+        let (address, mut user, domain, password) = (
+            text("address"),
+            text("user"),
+            text("domain"),
+            text("password"),
+        );
+        let (remember, save, accept) = (flag("remember"), flag("save"), flag("accept"));
+        self.as_mut().rust_mut().next += 1;
+        let id = self.next;
+        // Stopped with stopCleanup (Cancel while connecting).
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.measuring.lock().unwrap().insert(id, stop.clone());
+        let measuring = self.measuring.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let send = |v: Value| {
+                measuring.lock().unwrap().remove(&id);
+                let r = v.to_string();
+                let _ = thread
+                    .queue(move |mut obj| obj.as_mut().connected(id, QString::from(r.as_str())));
+            };
+            let a = match shares::parse(&address) {
+                Ok(a) => a,
+                Err(e) => return send(json!({"result": "failed", "error": e})),
+            };
+            if user.is_empty() {
+                user = a.user.clone();
+            }
+            // The address without the user (that's kept separately).
+            let uri = shares::Address {
+                user: String::new(),
+                ..a.clone()
+            }
+            .uri();
+            let file = shares::servers_file();
+            let mut list = shares::load(&file);
+            // A saved password, if none was typed.
+            let mut password = password;
+            if password.is_empty() && list.iter().any(|s| s.uri == uri && s.remembered) {
+                if let Ok(v) = whiterose_kit::daemon::request(
+                    json!({"op": "share_secret_get", "args": {"id": shares::secret_id(&uri, &user)}}),
+                    Duration::from_secs(5),
+                ) {
+                    password = v.as_str().unwrap_or("").to_string();
+                }
+            }
+            let gio_uri = if user.is_empty() {
+                uri.clone()
+            } else {
+                shares::Address {
+                    user: user.clone(),
+                    ..a.clone()
+                }
+                .uri()
+            };
+            let r = shares::mount(
+                "gio",
+                &gio_uri,
+                &user,
+                &domain,
+                &password,
+                accept,
+                Duration::from_secs(60),
+                &stop,
+            );
+            let mut v = json!(r);
+            if let shares::Mounted::Ok { .. } = r {
+                let mut stored = String::new();
+                if remember && !password.is_empty() {
+                    match whiterose_kit::daemon::request(
+                        json!({"op": "share_secret_set", "args": {"id": shares::secret_id(&uri, &user), "value": password}}),
+                        Duration::from_secs(5),
+                    ) {
+                        Ok(w) => stored = w["stored"].as_str().unwrap_or("").to_string(),
+                        Err(e) => v["warning"] = json!(format!("The password wasn't saved: {e}")),
+                    }
+                }
+                if save || list.iter().any(|s| s.uri == uri) {
+                    let was = list
+                        .iter()
+                        .find(|s| s.uri == uri)
+                        .map(|s| s.remembered)
+                        .unwrap_or(false);
+                    shares::remember(
+                        &mut list,
+                        shares::Server {
+                            name: a.name(),
+                            uri: uri.clone(),
+                            user: user.clone(),
+                            domain: domain.clone(),
+                            remembered: was || !stored.is_empty(),
+                        },
+                    );
+                    let _ = shares::save(&file, &list);
+                }
+                v["stored"] = json!(stored);
+            }
+            v["uri"] = json!(uri);
+            v["name"] = json!(a.name());
+            send(v);
+        });
+        id
+    }
+
+    pub fn disconnect(&self, uri: &QString) -> QString {
+        match crate::shares::unmount("gio", &uri.to_string()) {
+            Ok(()) => QString::from(""),
+            Err(e) => QString::from(e.as_str()),
+        }
+    }
+
+    pub fn servers(&self) -> QString {
+        use crate::shares;
+        let saved = shares::load(&shares::servers_file());
+        let now = shares::mounted("gio");
+        // A mount's address may carry the user (sftp://jack@build).
+        let bare = |u: &str| match shares::parse(u) {
+            Ok(a) => shares::Address {
+                user: String::new(),
+                ..a
+            }
+            .uri(),
+            Err(_) => u.to_string(),
+        };
+        let path_of = |uri: &str| -> String {
+            match now.iter().find(|(u, _)| bare(u) == uri) {
+                Some((u, _)) => shares::local_path("gio", u)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                None => String::new(),
+            }
+        };
+        let mut out: Vec<Value> = saved
+            .iter()
+            .map(|s| json!({"name": s.name, "uri": s.uri, "user": s.user, "domain": s.domain, "remembered": s.remembered, "saved": true, "path": path_of(&s.uri)}))
+            .collect();
+        for (u, name) in &now {
+            let b = bare(u);
+            if !saved.iter().any(|s| s.uri == b) {
+                let path = shares::local_path("gio", u)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                out.push(json!({"name": name, "uri": u, "user": "", "domain": "", "remembered": false, "saved": false, "path": path}));
+            }
+        }
+        q(json!(out))
+    }
+
+    pub fn forget_server(&self, uri: &QString) {
+        use crate::shares;
+        let file = shares::servers_file();
+        let mut list = shares::load(&file);
+        let uri = uri.to_string();
+        if let Some(s) = list.iter().find(|s| s.uri == uri) {
+            if s.remembered {
+                let _ = whiterose_kit::daemon::request(
+                    json!({"op": "share_secret_delete", "args": {"id": shares::secret_id(&s.uri, &s.user)}}),
+                    Duration::from_secs(5),
+                );
+            }
+        }
+        list.retain(|s| s.uri != uri);
+        let _ = shares::save(&file, &list);
     }
 
     pub fn compare(

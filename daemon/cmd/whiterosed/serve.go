@@ -348,6 +348,40 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	srv.Ops["audio_use"] = func(r server.Request) (any, error) {
 		return nil, audio.Use(audio.Exec, r.Key, 3*time.Second)
 	}
+	// Network share passwords (Files › Connect to server): kept in the
+	// keyring under their own ids ("share:..."), so these requests can't
+	// read or change any other secret.
+	shareID := func(r server.Request) (string, error) { return shareSecretID(r.Args) }
+	srv.Ops["share_secret_get"] = func(r server.Request) (any, error) {
+		id, err := shareID(r)
+		if err != nil {
+			return nil, err
+		}
+		return secrets.Get(id)
+	}
+	srv.Ops["share_secret_set"] = func(r server.Request) (any, error) {
+		id, err := shareID(r)
+		if err != nil {
+			return nil, err
+		}
+		var x struct {
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(r.Args, &x); err != nil || x.Value == "" {
+			return nil, errors.New("no password")
+		}
+		// Where it went: "keyring", or the settings database without one.
+		where, err := secrets.Set(id, x.Value)
+		return map[string]string{"stored": where}, err
+	}
+	srv.Ops["share_secret_delete"] = func(r server.Request) (any, error) {
+		id, err := shareID(r)
+		if err != nil {
+			return nil, err
+		}
+		secrets.Delete(id)
+		return nil, nil
+	}
 	// Fingerprints (Settings › Users › Fingerprints).
 	for name, op := range prints.ops() {
 		srv.Ops[name] = op
@@ -552,4 +586,17 @@ func withAccounts(fn func(*accounts.Service, server.Request) (any, error)) func(
 		defer a.Close()
 		return fn(a, r)
 	}
+}
+
+// shareSecretID is a network share password's id from a request's args:
+// only ids starting "share:" (so these requests reach no other secret).
+func shareSecretID(args json.RawMessage) (string, error) {
+	var x struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(args, &x)
+	if !strings.HasPrefix(x.ID, "share:") || len(x.ID) < 8 || len(x.ID) > 200 {
+		return "", errors.New("share secrets have ids starting share:")
+	}
+	return x.ID, nil
 }

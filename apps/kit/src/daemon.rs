@@ -32,6 +32,32 @@ pub fn socket_path() -> PathBuf {
     runtime.join("whiterosed.sock")
 }
 
+/// One request on its own connection (e.g. a secret), waiting up to
+/// `wait` for the reply: its value, or the daemon's error.
+pub fn request(mut req: Value, wait: Duration) -> Result<Value, String> {
+    let mut s =
+        UnixStream::connect(socket_path()).map_err(|_| "whiterosed isn't running".to_string())?;
+    s.set_read_timeout(Some(wait)).map_err(|e| e.to_string())?;
+    req["id"] = json!(1);
+    s.write_all(format!("{req}\n").as_bytes())
+        .map_err(|e| e.to_string())?;
+    // The daemon sends every setting first; the reply is the line with our id.
+    for line in BufReader::new(s).lines() {
+        let line = line.map_err(|_| "whiterosed didn't answer".to_string())?;
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if v.get("reply") != Some(&json!(1)) {
+            continue;
+        }
+        if let Some(e) = v.get("error").and_then(Value::as_str) {
+            return Err(e.to_string());
+        }
+        return Ok(v.get("value").cloned().unwrap_or(Value::Null));
+    }
+    Err("whiterosed closed the connection".into())
+}
+
 /// Reads one daemon line into a change (None for replies and other events).
 pub fn parse(line: &str) -> Option<Change> {
     let v: Value = serde_json::from_str(line).ok()?;

@@ -100,12 +100,12 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 
 ## 8. Cloud, remote & network
 - [x] Local drives and removable media (MVP) — plugged-in drives listed, a click mounts (udisks), eject unmounts and powers off
-- [ ] SMB and other network share browsing (Next)
+- [x] SMB and other network share browsing (Next) — Connect to server… (☰ or the sidebar's Network): smb:// or \\server\share, ftp://, davs:// (WebDAV), nfs:// through GVfs, browsed as ordinary folders; saved servers and any share mounted now in the sidebar (eject, right-click to forget); passwords in the keyring through whiterosed
 - [ ] Cloud-synced folders and sync-state badges (Next)
 - [ ] OneDrive, Google Drive and iCloud integration (Next)
 - [ ] Cloud offline/download/evict actions (Advanced)
 - [ ] FTP server support (Next)
-- [ ] SFTP and SSH server browsing (Next)
+- [x] SFTP and SSH server browsing (Next) — sftp://user@host (SSH keys and the agent work as with ssh; or a password); a host key not seen before is shown and only trusted when you say so
 - [ ] S3-compatible object storage browsing (Advanced)
 - [ ] Remote upload/download/copy/move/delete (Next)
 - [ ] SSH config, agent and keychain/credential integration (Advanced)

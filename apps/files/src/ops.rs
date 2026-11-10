@@ -1048,7 +1048,7 @@ mod tests {
     #[test]
     fn merging_skips_identical_files_and_keeps_newer() {
         use std::time::{Duration, SystemTime};
-        let d = scratch("merge");
+        let d = scratch("merge-newer");
         let age = |p: &Path, secs: u64| {
             fs::File::options()
                 .write(true)
