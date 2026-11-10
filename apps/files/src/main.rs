@@ -4,6 +4,7 @@ extern crate whiterose_kit;
 
 mod apps;
 mod archive;
+mod bulk_rename;
 mod cleanup;
 mod core;
 mod finder;

@@ -41,7 +41,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [~] Merge directories intelligently (Next) — folder onto folder merges, asking about each clash inside
 - [x] Optional checksum verification of copies (Next) — Settings › Files › Verify copies: each file is read back from the drive (cache dropped) and checked; a mismatch keeps nothing
 - [-] Persistent undo/redo operation history (Advanced) — not doing for now
-- [ ] Batch rename with regex, numbering, case and preview (Next)
+- [x] Batch rename with regex, numbering, case and preview (Next) — Rename… (F2) with several selected: find and replace (text or regex with $1 groups, case, first only), case, text before/after, numbering in view order (position, start, step, digits, separator), extension kept/lowercased/changed; live preview with clashes and taken names shown and skipped; swaps and shifts (1→2, 2→3) handled
 - [x] Create folder from selected files (Next) — "New folder with selection…", named from what the files share
 - [ ] File shelf / staging area for collecting items (Next)
 - [x] Recycle Bin/Trash integration and restore (MVP) — every Trash (home and drives) in one view: where from, when; restore (folder remade, renamed if taken), delete for good, empty

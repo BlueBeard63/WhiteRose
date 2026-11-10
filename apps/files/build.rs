@@ -40,6 +40,7 @@ fn main() {
             "qml/StartMode.qml",
             "qml/CleanupMode.qml",
             "qml/CompressDialog.qml",
+            "qml/BulkRename.qml",
             "qml/ArchivePassword.qml",
         ]
         .map(QmlFile::from),

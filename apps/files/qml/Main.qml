@@ -819,7 +819,7 @@ AppWindow {
                     { label: "Move to other side", shortcut: "F6", run: () => win.toOther("move") },
                 ] : []),
                 { separator: true },
-                { label: "Rename…", shortcut: "F2", enabled: !itemMenu.many, run: () => win.askName("rename") },
+                { label: itemMenu.many ? "Rename " + itemMenu.sel.length + " items…" : "Rename…", shortcut: "F2", run: () => win.askName("rename") },
                 ...(win.current?.searching || win.current?.inCollection ? [] : [{ label: "New folder with selection…", run: () => win.askName("group") }]),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
                 { label: "Tags", items: win.tagItems(itemMenu.sel.map(e => e.path)) },
@@ -1081,6 +1081,8 @@ AppWindow {
     function askName(what) {
         const p = win.current;
         if (!p) return;
+        // Several selected: rename them all at once.
+        if (what === "rename" && p.selection.length > 1) { bulkRename.show(p.selection.map(e => ({ path: e.path, name: e.name, dir: e.dir }))); return }
         const e = what === "rename" ? p.selection[0] : null;
         if (what === "rename" && !e) return;
         nameDialog.what = what;
@@ -1141,6 +1143,17 @@ AppWindow {
     }
     // Extract jobs running (id: where to), for asking a password and trying again.
     property var extracting: ({})
+    BulkRename {
+        id: bulkRename
+        onRenamed: paths => {
+            const p = win.current;
+            if (!p) return;
+            p.selectPaths(paths);
+            p.focusView();
+            if (paths.length > 0) win.info = "Renamed " + paths.length + (paths.length === 1 ? " item" : " items");
+        }
+        onFailed: message => win.notice = message
+    }
     CompressDialog {
         id: compressDialog
         onMade: id => {

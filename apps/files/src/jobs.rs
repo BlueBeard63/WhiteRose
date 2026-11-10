@@ -71,6 +71,18 @@ pub mod qobject {
         /// {ok, path} or {ok: false, error}.
         #[qinvokable]
         fn rename(self: &Ops, path: &QString, name: &QString) -> QString;
+        /// Rename… with several: every new name under the rules
+        /// (bulk_rename::Rules, JSON), in the order given, with problems:
+        /// {ok, items: [{from, to, problem}]} or {ok: false, error}.
+        /// `dirs`: which paths are folders (JSON bools).
+        #[qinvokable]
+        #[cxx_name = "renamePreview"]
+        fn rename_preview(self: &Ops, paths: &QString, dirs: &QString, rules: &QString) -> QString;
+        /// Renames them (worked out again now, never from an old preview):
+        /// {done: [[from, to]], failed: [[from, error]]}.
+        #[qinvokable]
+        #[cxx_name = "renameMany"]
+        fn rename_many(self: &Ops, paths: &QString, dirs: &QString, rules: &QString) -> QString;
         /// A new folder (or empty file) in `dir`: {ok, path} or {ok: false, error}.
         #[qinvokable]
         fn create(self: &Ops, dir: &QString, name: &QString, file: bool) -> QString;
@@ -607,6 +619,27 @@ impl qobject::Ops {
         }
     }
 
+    pub fn rename_preview(&self, paths: &QString, dirs: &QString, rules: &QString) -> QString {
+        match bulk_plan(paths, dirs, rules) {
+            Ok(items) => q(json!({"ok": true, "items": items})),
+            Err(e) => q(json!({"ok": false, "error": e})),
+        }
+    }
+
+    pub fn rename_many(&self, paths: &QString, dirs: &QString, rules: &QString) -> QString {
+        let plan = match bulk_plan(paths, dirs, rules) {
+            Ok(p) => p,
+            Err(e) => return q(json!({"done": [], "failed": [["", e]]})),
+        };
+        let (done, failed) = crate::bulk_rename::apply(&plan);
+        // Colours, icons and tags follow the files.
+        for (from, to) in &done {
+            crate::looks::change(|l| l.moved(from, to));
+            crate::tags::change(|r| r.moved(from, to));
+        }
+        q(json!({"done": done, "failed": failed}))
+    }
+
     pub fn create(&self, dir: &QString, name: &QString, file: bool) -> QString {
         match ops::create(Path::new(&dir.to_string()), &name.to_string(), file) {
             Ok(p) => q(json!({"ok": true, "path": p})),
@@ -1036,6 +1069,20 @@ impl qobject::Ops {
             }
         });
     }
+}
+
+fn bulk_plan(
+    paths: &QString,
+    dirs: &QString,
+    rules: &QString,
+) -> Result<Vec<crate::bulk_rename::Outcome>, String> {
+    let paths: Vec<String> = serde_json::from_str(&paths.to_string()).map_err(|e| e.to_string())?;
+    let dirs: Vec<bool> = serde_json::from_str(&dirs.to_string()).unwrap_or_default();
+    let rules: crate::bulk_rename::Rules =
+        serde_json::from_str(&rules.to_string()).map_err(|e| e.to_string())?;
+    crate::bulk_rename::preview(&paths, &dirs, &rules, &|p| {
+        std::fs::symlink_metadata(p).is_ok()
+    })
 }
 
 #[cfg(test)]
