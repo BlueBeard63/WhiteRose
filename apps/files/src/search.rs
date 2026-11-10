@@ -49,6 +49,9 @@ pub struct Ask {
     /// Text the file must have inside it (its contents, a PDF's text, or
     /// its comment); "" for names only. Same case and regex rules.
     pub content: String,
+    /// With content: a file is found by its name *or* what's inside it
+    /// (the search box's words looked for in both), not both at once.
+    pub either: bool,
 }
 
 // ---- inside files ---------------------------------------------------------------------
@@ -429,6 +432,8 @@ pub struct Look<'a> {
     pub mime: &'a dyn Fn(&str) -> String,
     /// Searching inside files too.
     pub inside: Option<&'a Inside>,
+    /// With `inside`: the name or the inside will do (else both must match).
+    pub either: bool,
 }
 
 pub fn walk(
@@ -459,22 +464,32 @@ pub fn walk(
             if is_dir && !skip_dir(&name, hidden) {
                 queue.push_back(e.path());
             }
-            let Some(s) = score(&name, q) else { continue };
+            let named = score(&name, q);
+            let either = look.either && look.inside.is_some();
+            if named.is_none() && !either {
+                continue;
+            }
             if !f.pass(|| mime(&name), is_dir, m.len(), m.mtime()) || !q.tagged(&e.path()) {
                 continue;
             }
             let found = match look.inside {
                 Some(inside) => {
-                    if is_dir || !m.is_file() {
-                        continue;
-                    }
-                    match inside.find(&e.path(), m.len(), &mime(&name)) {
-                        Some(f) => f,
-                        None => continue,
+                    let inside = if is_dir || !m.is_file() {
+                        None
+                    } else {
+                        inside.find(&e.path(), m.len(), &mime(&name))
+                    };
+                    match (inside, named.is_some() && either) {
+                        (Some(f), _) => f,
+                        // Either will do: found by its name alone.
+                        (None, true) => String::new(),
+                        (None, false) => continue,
                     }
                 }
                 None => String::new(),
             };
+            // (Found only inside: after the names that match.)
+            let s = named.unwrap_or(0);
             hits.push(Hit {
                 found,
                 path: e.path().to_string_lossy().into_owned(),
@@ -1036,6 +1051,7 @@ mod tests {
                 hidden: false,
                 mime: &mime,
                 inside: None,
+                either: false,
             },
             &stop,
             100,
@@ -1114,6 +1130,37 @@ mod tests {
     }
 
     #[test]
+    fn finds_by_name_or_inside() {
+        let d = scratch("either");
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("invoice-0412.pdf.txt"), "x").unwrap();
+        fs::write(d.join("timesheet.md"), "Sent the invoice to Sam").unwrap();
+        fs::write(d.join("other.txt"), "nothing").unwrap();
+        let inside = Inside::new("invoice", false, false).unwrap();
+        let (q, f) = (parse("invoice"), any());
+        let run = |either: bool| {
+            let mut got = vec![];
+            walk(
+                &d,
+                &Look { query: &q, filters: &f, hidden: false, mime: &mime, inside: Some(&inside), either },
+                &AtomicBool::new(false),
+                100,
+                &mut |h, _, done| {
+                    if done {
+                        got = h.iter().map(|x| x.name.clone()).collect();
+                    }
+                },
+            );
+            got
+        };
+        // Either: the name match first, then what has it inside.
+        assert_eq!(run(true), ["invoice-0412.pdf.txt", "timesheet.md"]);
+        // Both at once: neither has both.
+        assert!(run(false).is_empty());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
     fn searches_inside_files() {
         let d = scratch("inside");
         fs::create_dir_all(d.join("notes")).unwrap();
@@ -1139,6 +1186,7 @@ mod tests {
                 hidden: false,
                 mime: &mime,
                 inside: Some(&inside),
+                either: false,
             },
             &AtomicBool::new(false),
             100,

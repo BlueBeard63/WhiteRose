@@ -23,11 +23,11 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 
 ## 2. Search, filtering & discovery
 - [x] Instant indexed filename search (MVP) — home and drives; built in the background at idle priority, read from disk when searching (no memory held)
-- [x] Search across multiple locations (MVP) — this folder and below (live), home, or everywhere (home and drives)
+- [x] Search across multiple locations (MVP) — Here and below (this folder's whole tree, live), Home, or Everywhere (home and drives)
 - [x] Inline folder filtering as you type (MVP) — type in any folder; Esc clears; take it to subfolders or everywhere
 - [x] Search by file type, extension, size and date (MVP) — type, size and modified filters; `*.pdf` / `ext:pdf`
-- [x] Regular expressions and case-sensitive search (Next) — "Aa" and ".*" in the search row; a pattern that doesn't parse says why
-- [x] Metadata and file-content search (Advanced) — the search row's "Text inside files…": text files, PDFs (with pdftotext), and files' comments, in this folder, home, or home and the drives; with name, type, size and date filters, match case and regex; each result shows the line it was found on
+- [x] Regular expressions and case-sensitive search (Next) — Match case and Pattern switches in the search bar; a pattern that doesn't parse says why
+- [x] Metadata and file-content search (Advanced) — the search bar's Inside files switch: the search words found in names or inside (or, typed differently in its box, a name and text that must both match): text files, PDFs (with pdftotext), and files' comments, in this folder, home, or home and the drives; with name, type, size and date filters, match case and regex; each result shows the line it was found on
 - [x] Path autocomplete and fuzzy folder navigation (Next) — paths complete as you type; without a leading / or ~ (or Ctrl+J) a few letters jump to a folder from anywhere, the ones you visit most first
 - [x] Recently modified files collection (Next) — Recent in the sidebar: files apps opened (the shared recently-used list) and files changed in the last two weeks (from the index), newest first, grouped by day; hidden with Settings › Privacy › Recent files
 

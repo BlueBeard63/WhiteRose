@@ -490,10 +490,10 @@ AppWindow {
             width: 0; height: 34
             placeholder: "Search"
             onTextChanged: if (searchField.visible && searchField.text !== (win.current?.search?.text ?? "")) searchSoon.restart()
-            onAccepted: { searchSoon.stop(); win.current?.find({ text: searchField.text }); win.current?.focusView() }
+            onAccepted: { searchSoon.stop(); win.searchFor(searchField.text); win.current?.focusView() }
             Keys.onEscapePressed: win.closeSearch()
             Keys.onDownPressed: win.current?.focusView()
-            Timer { id: searchSoon; interval: 180; onTriggered: win.current?.find({ text: searchField.text }) }
+            Timer { id: searchSoon; interval: 180; onTriggered: win.searchFor(searchField.text) }
         }
         Button {
             id: emptyTrash
@@ -637,22 +637,59 @@ AppWindow {
         sidebar.refresh();
     }
 
+    // A switch and its name (match case, pattern, inside files).
+    component SearchSwitch: Row {
+        id: ss
+        property string text
+        property string tip
+        property bool on: false
+        signal toggled(bool on)
+        spacing: 7
+        height: 30
+        Toggle { anchors.verticalCenter: parent.verticalCenter; checked: ss.on; onToggled: v => ss.toggled(v) }
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: ss.text
+            color: ss.on ? Theme.text : Theme.muted
+            font { family: Theme.font; pointSize: Theme.pt(11.5) }
+            MouseArea { id: ssMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ss.toggled(!ss.on) }
+            ToolTip.visible: ssMouse.containsMouse && ss.tip !== ""
+            ToolTip.text: ss.tip
+            ToolTip.delay: 500
+        }
+    }
+    // The search box's words: with Inside files following them (the same
+    // words), inside too.
+    function searchFor(text) {
+        const a = win.current?.search ?? {};
+        if (searchRow.inside && (a.either ?? false)) { insideField.text = text; win.current?.find({ text: text, content: text }) }
+        else win.current?.find({ text: text });
+    }
     // ---- searching: where and what ------------------------------------------------------------
     Item {
         id: searchRow
         visible: win.current?.searching ?? false
         anchors { left: sidebar.right; right: parent.right; top: nav.bottom }
-        height: searchRow.visible ? 46 : 0
+        height: searchRow.visible ? filters.height + 16 : 0
         readonly property var ask: win.current?.search ?? ({})
-        Row {
-            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
-            spacing: 8
+        // Inside files: on shows the box for the text (it can differ from the name).
+        property bool inside: (searchRow.ask.content ?? "") !== ""
+        onAskChanged: searchRow.inside = (searchRow.ask.content ?? "") !== "" || insideField.editing
+        // (Narrow: what doesn't fit goes on a second line.)
+        Flow {
+            id: filters
+            x: 14; y: 8
+            width: (indexRow.visible ? indexRow.x : parent.width) - 24
+            spacing: 10
             Segmented {
+                anchors.verticalCenter: undefined
                 value: searchRow.ask.scope ?? "here"
-                options: [{ label: "This folder", value: "here" }, { label: "Home", value: "home" }, { label: "Everywhere", value: "everywhere" }]
+                // (Here: this folder and every folder in it, all the way down.)
+                options: [{ label: "Here and below", value: "here" }, { label: "Home", value: "home" }, { label: "Everywhere", value: "everywhere" }]
                 onPicked: v => win.current?.find({ scope: v })
             }
             Choice {
+                anchors.verticalCenter: undefined
                 value: searchRow.ask.kind ?? ""
                 options: [{ label: "Any type", value: "" }, { label: "Folders", value: "folder" }, { label: "Documents", value: "document" },
                           { label: "Images", value: "image" }, { label: "Audio", value: "audio" }, { label: "Video", value: "video" },
@@ -660,34 +697,50 @@ AppWindow {
                 onPicked: v => win.current?.find({ kind: v })
             }
             Choice {
+                anchors.verticalCenter: undefined
                 value: searchRow.ask.size ?? ""
                 options: [{ label: "Any size", value: "" }, { label: "Under 1 MB", value: "small" }, { label: "1–100 MB", value: "medium" },
                           { label: "100 MB–1 GB", value: "large" }, { label: "Over 1 GB", value: "huge" }]
                 onPicked: v => win.current?.find({ size: v })
             }
-            // Match case, and the text as a regular expression.
-            SearchOption { text: "Aa"; tip: "Match case"; on: searchRow.ask.case ?? false; onToggled: v => win.current?.find({ case: v }) }
-            SearchOption { text: ".*"; tip: "Regular expression"; on: searchRow.ask.regex ?? false; onToggled: v => win.current?.find({ regex: v }) }
-            // Text inside the files (their contents, a PDF's text, or a comment).
-            Field {
-                id: insideField
-                width: 190
-                anchors.verticalCenter: parent.verticalCenter
-                placeholder: "Text inside files…"
-                text: searchRow.ask.content ?? ""
-                onAccepted: win.current?.find({ content: text })
-                onTextChanged: insideTimer.restart()
-                Timer { id: insideTimer; interval: 450; onTriggered: if (insideField.text !== (searchRow.ask.content ?? "")) win.current?.find({ content: insideField.text }) }
-            }
             Choice {
+                anchors.verticalCenter: undefined
                 value: searchRow.ask.modified ?? ""
                 options: [{ label: "Any time", value: "" }, { label: "Today", value: "today" }, { label: "Past week", value: "week" },
                           { label: "Past month", value: "month" }, { label: "Past year", value: "year" }]
                 onPicked: v => win.current?.find({ modified: v })
             }
+            Item { width: 1; height: 30; Rectangle { y: 6; width: 1; height: 18; color: Theme.surface2 } }
+            SearchSwitch { text: "Match case"; on: searchRow.ask.case ?? false; onToggled: v => win.current?.find({ case: v }) }
+            SearchSwitch { text: "Pattern"; tip: "The words are a regular expression"; on: searchRow.ask.regex ?? false; onToggled: v => win.current?.find({ regex: v }) }
+            // Text inside the files (their contents, a PDF's text, or a comment).
+            SearchSwitch {
+                text: "Inside files"
+                tip: "Look for text inside the files too (their contents, a PDF's text, a comment)"
+                on: searchRow.inside
+                // On: the search box's words, looked for in names or inside
+                // (the box beside it can make the inside text different).
+                onToggled: v => {
+                    searchRow.inside = v;
+                    if (v) { insideField.text = searchField.text; if (searchField.text.trim() !== "") win.current?.find({ content: searchField.text, either: true }) }
+                    else win.current?.find({ content: "", either: false });
+                }
+            }
+            Field {
+                id: insideField
+                visible: searchRow.inside
+                width: 180; height: 30
+                placeholder: "Text inside…"
+                text: searchRow.ask.content ?? ""
+                // The same words as the search box: names or inside; others: both.
+                onAccepted: win.current?.find({ content: text, either: text === searchField.text })
+                onTextChanged: insideTimer.restart()
+                Timer { id: insideTimer; interval: 450; onTriggered: if (insideField.text !== (searchRow.ask.content ?? "")) win.current?.find({ content: insideField.text, either: insideField.text === searchField.text }) }
+            }
         }
         // The index (home and drives): how fresh, and freshen it.
         Row {
+            id: indexRow
             visible: (searchRow.ask.scope ?? "here") !== "here"
             anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
             spacing: 4

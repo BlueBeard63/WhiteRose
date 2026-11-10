@@ -180,7 +180,7 @@ FocusScope {
     // merged with what was.
     function find(ask) {
         pane.activated();
-        pane.search = Object.assign({ text: "", scope: "here", kind: "", size: "", modified: "", case: false, regex: false, content: "" }, pane.search ?? {}, ask);
+        pane.search = Object.assign({ text: "", scope: "here", kind: "", size: "", modified: "", case: false, regex: false, content: "", either: false }, pane.search ?? {}, ask);
         pane.searchError = "";
         pane.filter = "";
         pane.selected = {};

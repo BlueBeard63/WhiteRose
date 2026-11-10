@@ -34,7 +34,6 @@ fn main() {
             "qml/TagDots.qml",
             "qml/TagDialog.qml",
             "qml/RunDialog.qml",
-            "qml/SearchOption.qml",
             "qml/StartMode.qml",
             "qml/CleanupMode.qml",
             "qml/CompressDialog.qml",

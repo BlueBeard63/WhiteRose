@@ -182,6 +182,7 @@ impl qobject::Search {
                     hidden: ask.hidden,
                     mime: &mime,
                     inside: Some(&inside),
+                    either: ask.either,
                 };
                 let roots: Vec<PathBuf> = match ask.scope.as_str() {
                     "home" => vec![places::home()],
@@ -224,6 +225,7 @@ impl qobject::Search {
                     hidden: ask.hidden,
                     mime: &mime,
                     inside: None,
+                    either: false,
                 };
                 search::walk(Path::new(&ask.here), &look, &stop, KEEP, &mut send);
                 return;

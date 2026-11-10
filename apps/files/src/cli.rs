@@ -156,6 +156,7 @@ pub fn find(
         hidden: a.ask.hidden,
         mime,
         inside: inside.as_ref(),
+        either: false,
     };
     let mut all = vec![];
     for r in roots {
