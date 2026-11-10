@@ -36,8 +36,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Multi-selection, drag and drop, clipboard integration (MVP) — drag to folders, the empty space, sidebar places, the Trash, breadcrumbs and tabs (held over a tab opens it); to and from other apps; same drive moves, another copies, Ctrl copies, Shift moves
 - [x] Background transfer queue with progress (MVP)
 - [x] Pause, resume and cancel transfers (Next)
-- [x] Side-by-side conflict resolution (Next) — size and date of both, replace / keep both / skip, same for the rest
-- [x] Text diffs when resolving overwrites (Advanced) — a clash between two text files (up to 1 MB) offers Show changes: a line-by-line diff (Myers, as git) of what's there against what's coming, with Skip / Keep both / Replace right there
+- [x] Side-by-side conflict resolution (Next) — in the Activity drawer along the bottom (no window): size and date of both, replace / keep both / keep newer / skip, same for the rest
+- [x] Text diffs when resolving overwrites (Advanced) — a clash between two text files (up to 1 MB) shows its changes in its card: a line-by-line diff (Myers, as git) of what's there against what's coming, with Skip / Keep both / Replace right there
 - [x] Merge directories intelligently (Next) — folder onto folder merges; files already there and the same (same bytes; over 64 MB, same size and time) are skipped without asking (a move lets the original go); Keep newer / Merge, keep newer replaces only older files
 - [x] Optional checksum verification of copies (Next) — Settings › Files › Verify copies: each file is read back from the drive (cache dropped) and checked; a mismatch keeps nothing
 - [-] Persistent undo/redo operation history (Advanced) — not doing for now
@@ -69,7 +69,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Largest files browser (Next) — Clean up › Largest files: the 200 largest under home, a drive or a folder (hidden ones too), on its own drive
 - [x] Duplicate file finder (Next) — Clean up › Duplicates: same size, same start, then same contents (SHA-256); hard links aren't copies; "Keep the oldest of each"
 - [x] Disk capacity and free-space dashboard (MVP) — Storage page (sidebar › Drives): every drive, how full, free of total
-- [x] Safe deletion/cleanup with confirmation and recovery (Next) — Clean up moves to the Trash by default (recoverable); deleting asks first
+- [x] Safe deletion/cleanup with confirmation and recovery (Next) — Clean up moves to the Trash by default (recoverable); deleting asks first, in a strip above the files (Enter deletes, Esc keeps it)
 - [x] Project build-cache and dependency cleanup (Advanced) — Clean up › Build caches: node_modules, Rust target, virtualenvs, __pycache__, JS/Gradle/Zig/.NET build output (each only beside its project file), and home's download caches (pip, npm, Cargo, Go, Gradle, Maven...)
 
 ## 6. Appearance & personalisation

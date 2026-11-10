@@ -774,7 +774,7 @@ AppWindow {
         id: details
         // (Nothing to show beside Start or Clean up.)
         visible: Session.details && win.width > 760 && !(win.current?.ownView ?? false)
-        anchors { right: parent.right; top: searchRow.bottom; bottom: shelfBar.top }
+        anchors { right: parent.right; top: searchRow.bottom; bottom: activity.top }
         width: Math.min(340, Math.max(260, win.width * 0.27))
         pane: win.current
         onRunScript: (dir, command) => {
@@ -816,7 +816,7 @@ AppWindow {
     // ---- the folder -----------------------------------------------------------------------
     Item {
         id: stack
-        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom; bottom: shelfBar.top }
+        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: confirm.bottom; bottom: activity.top }
 
         // Right-click on files (`entry` set) or on the folder's empty space.
         Menu {
@@ -916,63 +916,19 @@ AppWindow {
             ])
         }
 
-        Transfers {
-            id: transfers
-            anchors { right: parent.right; bottom: parent.bottom; margins: 14 }
-            z: 20
-            onDeleteInstead: paths => win.askDelete(paths)
-        }
-        // Copies and moves that didn't finish last time (Files closed, or
-        // the computer went off part way): carry on, or forget them.
-        Column {
-            anchors { right: parent.right; bottom: transfers.top; margins: 14; bottomMargin: 8 }
-            width: 360
-            spacing: 8
-            z: 21
-            Repeater {
-                model: win.unfinished
-                delegate: Rectangle {
-                    id: uf
-                    required property var modelData
-                    width: 360; height: ufCol.implicitHeight + 28
-                    radius: 14
-                    color: Theme.surface1
-                    border { width: 1; color: Theme.surface2 }
-                    Column {
-                        id: ufCol
-                        x: 14; y: 14; width: parent.width - 28
-                        spacing: 8
-                        Text {
-                            width: parent.width
-                            wrapMode: Text.Wrap
-                            text: (uf.modelData.kind === "move" ? "Moving " : "Copying ") + uf.modelData.remaining.length + (uf.modelData.remaining.length === 1 ? " item" : " items")
-                                + " to " + uf.modelData.dest.substring(uf.modelData.dest.lastIndexOf("/") + 1) + " didn't finish"
-                            color: Theme.text
-                            font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
-                        }
-                        Text {
-                            width: parent.width
-                            wrapMode: Text.Wrap
-                            text: "Started " + F.date(uf.modelData.started * 1000, Date.now()) + ". Carrying on skips what's already there and finishes the rest."
-                            color: Theme.muted
-                            font { family: Theme.font; pointSize: Theme.pt(11) }
-                        }
-                        Row {
-                            anchors.right: parent.right
-                            spacing: 6
-                            Button { text: "Forget it"; kind: "ghost"; onClicked: { Ops.forgetTransfer(uf.modelData.key); win.unfinished = win.unfinished.filter(x => x.key !== uf.modelData.key) } }
-                            Button {
-                                text: "Carry on"; kind: "primary"
-                                onClicked: {
-                                    const id = Ops.resumeTransfer(uf.modelData.key);
-                                    if (id < 0) win.info = "Nothing was left to do";
-                                    win.unfinished = win.unfinished.filter(x => x.key !== uf.modelData.key);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    }
+
+    // ---- the Activity drawer (transfers, clashes, what didn't finish) ----------------------
+    Activity {
+        id: activity
+        anchors { left: sidebar.right; right: parent.right; bottom: shelfBar.top }
+        unfinished: win.unfinished
+        onDeleteInstead: paths => win.askDelete(paths)
+        onForget: key => { Ops.forgetTransfer(key); win.unfinished = win.unfinished.filter(x => x.key !== key) }
+        onCarryOn: key => {
+            const id = Ops.resumeTransfer(key);
+            if (id < 0) win.info = "Nothing was left to do";
+            win.unfinished = win.unfinished.filter(x => x.key !== key);
         }
     }
 
@@ -1049,7 +1005,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: tagDialog.visible || keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.visible || details.typing || searchField.editing || quick.visible
+    readonly property bool typing: tagDialog.visible || keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.asking || details.typing || searchField.editing || quick.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -1414,7 +1370,7 @@ AppWindow {
         onChanged: sidebar.refreshServers()
         onOpened_: path => { win.current?.go(path); win.current?.focusView() }
     }
-    // (A sync shows in Transfers like any copy.)
+    // (A sync shows in the Activity drawer like any copy.)
     CompareDialog { id: compareDialog }
     CompressDialog {
         id: compressDialog
@@ -1481,59 +1437,72 @@ AppWindow {
         }
     }
 
-    // Deleting for good.
-    Popup {
+    // Deleting (or trashing, when asked first): asked in a strip right above
+    // the files, not in a window. Enter does it, Esc doesn't.
+    FocusScope {
         id: confirm
         property var paths: []
         property var names: []
         property string kind: "delete"
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: 380
-        modal: true
-        padding: 20
-        background: Rectangle { color: Theme.surface1; radius: 16; border { width: 1; color: Theme.surface2 } }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.35) }
-        onOpened: deleteButton.forceActiveFocus()
-        onClosed: win.current?.focusView()
-        contentItem: Column {
-            spacing: 12
+        property bool asking: false
+        function open() { confirm.asking = true; Qt.callLater(() => deleteButton.forceActiveFocus()) }
+        function close() { if (!confirm.asking) return; confirm.asking = false; win.current?.focusView() }
+        visible: asking
+        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom }
+        height: asking ? 48 : 0
+        z: 5
+        Keys.onEscapePressed: confirm.close()
+        Rectangle {
+            anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 4; bottomMargin: 4 }
+            radius: 10
+            color: confirm.kind === "trash" ? Theme.surface1 : Qt.rgba(0.9, 0.33, 0.29, 0.12)
+            border { width: 1; color: confirm.kind === "trash" ? Theme.surface2 : Qt.rgba(0.9, 0.33, 0.29, 0.45) }
+            Icon {
+                id: confirmIcon
+                x: 12; anchors.verticalCenter: parent.verticalCenter
+                name: "trash"; size: 14; color: confirm.kind === "trash" ? Theme.muted : Theme.rose
+            }
             Text {
-                width: 340
+                id: confirmAsk
+                anchors { left: confirmIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
+                width: Math.min(implicitWidth, confirmButtons.x - x - 12)
+                elide: Text.ElideMiddle
                 text: confirm.kind === "empty" ? "Empty the Trash?"
                     : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the Trash?" : "Move " + confirm.paths.length + " items to the Trash?")
-                    : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” permanently?"
-                    : "Delete " + confirm.paths.length + " items permanently?"
-                wrapMode: Text.Wrap
+                    : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” for good?"
+                    : "Delete " + confirm.paths.length + " items for good?"
                 color: Theme.text
-                font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
+                font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
             }
             Text {
-                width: 340
+                anchors { left: confirmAsk.right; leftMargin: 8; right: confirmButtons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                elide: Text.ElideRight
                 text: confirm.kind === "trash" ? "You can bring them back from the Trash."
-                    : confirm.kind === "delete" ? "They won't go to the Trash, so they can't be brought back."
-                    : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") is deleted for good."
-                    : "They can't be brought back after this."
-                wrapMode: Text.Wrap
+                    : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") goes for good."
+                    : "It won't go to the Trash, so it can't be brought back."
                 color: Theme.muted
-                font { family: Theme.font; pointSize: Theme.pt(12) }
+                font { family: Theme.font; pointSize: Theme.pt(11.5) }
             }
             Row {
-                anchors.right: parent.right
-                spacing: 8
-                Button { text: "Cancel"; kind: "ghost"; onClicked: confirm.close() }
+                id: confirmButtons
+                anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                spacing: 4
+                Button { text: confirm.kind === "trash" ? "Don't" : "Keep it"; kind: "ghost"; onClicked: confirm.close() }
                 Button {
                     id: deleteButton
                     text: confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
                     kind: confirm.kind === "trash" ? "primary" : "danger"
                     // After the key is handled: closing in the middle of it crashes Qt.
                     Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
+                    Keys.onEnterPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
                     Keys.onEscapePressed: confirm.close()
-                    onClicked: { win.run(confirm.kind, confirm.paths); confirm.close() }
+                    onClicked: { const k = confirm.kind, p = confirm.paths; confirm.close(); win.run(k, p) }
                 }
             }
         }
     }
+    // Going somewhere else: not asked any more.
+    Connections { target: win; function onCurrentChanged() { confirm.close() } }
 
     // ---- keys -------------------------------------------------------------------------------
     // Every shortcut, with its default; files.keys ({id: "Ctrl+…"}, set in
