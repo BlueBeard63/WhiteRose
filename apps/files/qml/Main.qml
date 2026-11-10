@@ -752,7 +752,17 @@ AppWindow {
             // Files of one kind: the apps for it (the default marked).
             // (Only while it's open: it reads the installed apps.)
             readonly property var openWith: itemMenu.visible ? win.openWithItems(itemMenu.sel) : []
-            items: win.current?.inDrives ? (!itemMenu.entry ? [{ label: "Clean up…", run: () => win.cleanUp("") }] : [
+            items: win.current?.inArchive ? (!itemMenu.entry ? [
+                { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
+                { label: "Extract everything beside it", run: () => win.run("extract", [win.current.archiveFile], win.current.archiveFile.substring(0, win.current.archiveFile.lastIndexOf("/"))) },
+            ] : [
+                { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
+                { label: "Quick look", shortcut: "Space", enabled: !itemMenu.many && !itemMenu.entry.dir, run: () => win.quickLook() },
+                ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
+                { separator: true },
+                { label: "Extract beside the archive", run: () => win.run("copy", itemMenu.sel.map(e => e.path), win.current.archiveFile.substring(0, win.current.archiveFile.lastIndexOf("/"))) },
+                ...(win.tab?.other && !win.tab.other.special && !win.tab.other.inArchive ? [{ label: "Extract to the other side", shortcut: "F5", run: () => win.run("copy", itemMenu.sel.map(e => e.path), win.tab.other.path) }] : []),
+            ]) : win.current?.inDrives ? (!itemMenu.entry ? [{ label: "Clean up…", run: () => win.cleanUp("") }] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
                 { label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) },
                 { label: "Clean up…", run: () => win.cleanUp(itemMenu.entry.path) },
@@ -1037,6 +1047,19 @@ AppWindow {
 
     // ---- opening files: programs ask first ---------------------------------------------
     function openFile(entry) {
+        // Inside an archive: taken out into a cache first (an archive in
+        // an archive opens as a folder too). Programs from there count as
+        // untrusted (run.rs).
+        if (entry.path.startsWith("archive:")) {
+            const real = Fs.archiveFile(entry.path);
+            if (!real) { win.notice = "Couldn't take “" + entry.name + "” out of the archive"; return }
+            if (Fs.isArchive(entry.name)) { win.current?.go("archive:" + real + "!/"); return }
+            entry = Object.assign({}, entry, { path: real });
+        } else if (Fs.isArchive(entry.name)) {
+            // An archive opens like a folder (Extract here is in the menu).
+            win.current?.go("archive:" + entry.path + "!/");
+            return;
+        }
         const info = JSON.parse(Fs.runInfo(entry.path, entry.mime ?? ""));
         if (info.kind === "none") { Qt.openUrlExternally("file://" + entry.path); return }
         runDialog.ask(entry, info);
@@ -1296,17 +1319,17 @@ AppWindow {
     Shortcut { sequence: win.keys("bookmark", "Ctrl+D"); onActivated: win.toggleBookmark() }
     // F5 / F6 copy / move to the other side of a split tab (reload when there's none).
     Shortcut { sequence: win.keys("copy-other", "F5"); enabled: !win.typing; onActivated: { if (win.tab?.other) win.toOther("copy"); else win.current?.load() } }
-    Shortcut { sequence: win.keys("move-other", "F6"); enabled: !win.typing && !!win.tab?.other; onActivated: win.toOther("move") }
+    Shortcut { sequence: win.keys("move-other", "F6"); enabled: !win.typing && !!win.tab?.other && !(win.current?.inArchive ?? false); onActivated: win.toOther("move") }
     Shortcut { sequence: win.keys("split", "F3"); enabled: !win.typing; onActivated: win.tab?.setSplit(!win.tab.split) }
     // Tab: the other side.
     Shortcut { sequence: win.keys("other-side", "Tab"); enabled: !win.typing && !!win.tab?.other; onActivated: { win.tab.active = 1 - win.tab.active; win.tab.focusView() } }
     Shortcut { sequence: win.keys("reload", "Ctrl+R"); onActivated: win.current?.load() }
-    Shortcut { sequence: win.keys("copy", "Ctrl+C"); enabled: !win.typing; onActivated: win.toClipboard(false) }
-    Shortcut { sequence: win.keys("cut", "Ctrl+X"); enabled: !win.typing; onActivated: win.toClipboard(true) }
-    Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inCollection ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
-    Shortcut { sequence: win.keys("trash", "Delete"); enabled: !win.typing; onActivated: win.trash() }
-    Shortcut { sequence: win.keys("delete", "Shift+Del"); enabled: !win.typing && !(win.current?.inDrives ?? false); onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
-    Shortcut { sequence: win.keys("rename", "F2"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: win.askName("rename") }
+    Shortcut { sequence: win.keys("copy", "Ctrl+C"); enabled: !win.typing && !(win.current?.inArchive ?? false); onActivated: win.toClipboard(false) }
+    Shortcut { sequence: win.keys("cut", "Ctrl+X"); enabled: !win.typing && !(win.current?.inArchive ?? false); onActivated: win.toClipboard(true) }
+    Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.readOnly ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
+    Shortcut { sequence: win.keys("trash", "Delete"); enabled: !win.typing && !(win.current?.inArchive ?? false); onActivated: win.trash() }
+    Shortcut { sequence: win.keys("delete", "Shift+Del"); enabled: !win.typing && !(win.current?.inDrives ?? false) && !(win.current?.inArchive ?? false); onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
+    Shortcut { sequence: win.keys("rename", "F2"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inArchive ?? false); onActivated: win.askName("rename") }
     Shortcut { sequences: [win.keys("properties", "Alt+Return"), "Alt+Enter"]; enabled: !win.typing; onActivated: win.properties() }
-    Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inCollection ?? false); onActivated: win.askName("folder") }
+    Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.readOnly ?? false); onActivated: win.askName("folder") }
 }

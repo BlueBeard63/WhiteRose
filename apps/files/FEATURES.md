@@ -59,7 +59,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Mermaid and LaTeX rendering in Markdown (Advanced) — drawn by mermaid-cli and TeX Live when they're installed (nothing bundled), cached as SVG per theme; otherwise shown as code with what to install
 - [x] Syntax-highlighted source code and config previews (Next) — KDE's syntax-highlighting (about 300 formats), chosen by file name, light and dark
 - [x] JSON/JSONC/JSON5 formatted viewer (Next) — comments, trailing commas, unquoted keys read; shown formatted in its own order; where it's broken if it doesn't parse
-- [ ] Browse and extract individual items from archives (Next)
+- [x] Browse and extract individual items from archives (Next) — an archive opens like a folder (zip, 7z, tar.*, split; a password asked for if its names are hidden); open or preview what's inside; Extract beside it, to the other side, or drag out onto any folder
 - [x] Inspector with editable metadata and default app (Next) — Properties: rename in place, a comment kept on the file (user.xdg.comment), Opens with: the default app for every file of the kind (mimeapps.list, so every app agrees); Open with › any app for it in the menu
 
 ## 5. Storage & cleanup
@@ -115,7 +115,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Encrypted local indexes and operation history (Next)
 - [ ] System credential vault for secrets (Next)
 - [x] Safe archive extraction and path validation (MVP) — zip and tar (gz/xz/bz2/zst): escaping names refuse the whole archive, links kept inside, no devices or setuid, stops before the drive fills
-- [~] Archive create, extract and in-place browse (Next) — Compress… (zip, 7z, tar.gz/xz/zst) and Extract here (also 7z, bz2, split parts); browsing inside next
+- [x] Archive create, extract and in-place browse (Next) — Compress… (zip, 7z, tar.gz/xz/zst), Extract here, and opening an archive like a folder
 - [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the Trash only after "I trust this file"; launchers from there never run
 - [ ] Recovery after interrupted file transfers (Next)
 - [x] Application logging and diagnostics (MVP) — files.log (0600, rolled at 1 MB); ☰ › Help › Copy diagnostics / Open the log

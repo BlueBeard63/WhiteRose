@@ -36,6 +36,9 @@ FocusScope {
     // Not a real folder: nothing can be made, pasted or dropped here.
     // The Start page ("start:"): StartMode draws it.
     readonly property bool inStart: path === "start:"
+    // Inside an archive ("archive:<file>!/<folder>"): looked at, not changed.
+    readonly property bool inArchive: path.startsWith("archive:")
+    readonly property string archiveFile: inArchive ? path.slice(8, path.indexOf("!/") >= 0 ? path.indexOf("!/") : undefined) : ""
     // Clean up ("cleanup:"): CleanupMode draws it.
     readonly property bool inCleanup: path === "cleanup:"
     readonly property bool special: inTrash || inDrives || inStart || inCleanup
@@ -46,10 +49,12 @@ FocusScope {
     readonly property bool inRecent: path === "recent:"
     // Files gathered from many folders: nothing can be made or pasted here.
     readonly property bool inCollection: inTag || inRecent
+    // Nothing can be made, pasted, renamed or deleted here.
+    readonly property bool readOnly: inCollection || inArchive
     // Git (Settings › Files › General): {root, branch, ahead, behind,
     // ignored, entries: {name: state}}; root "" when not in a repository.
     property var git: ({ root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} })
-    readonly property bool wantsGit: Session.git && !pane.special && !pane.inCollection && !pane.searching && pane.path.startsWith("/")
+    readonly property bool wantsGit: Session.git && !pane.special && !pane.readOnly && !pane.searching && pane.path.startsWith("/")
     // An entry's state ("" none; inside an ignored folder: ignored).
     function gitOf(e) {
         if (!pane.wantsGit || pane.git.root === "" || !e) return "";
@@ -429,6 +434,18 @@ FocusScope {
                 : pane.filter !== "" ? "Nothing matches “" + pane.filter + "”" : "This folder is empty")
             color: Theme.muted
             font { family: Theme.font; pointSize: Theme.pt(13) }
+        }
+        // An archive whose contents are hidden behind a password (7z).
+        Row {
+            visible: pane.inArchive && /password/.test(pane.error)
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+            Field {
+                id: archivePw
+                width: 220; secret: true; placeholder: "Password"
+                onAccepted: { Fs.setArchivePassword(pane.archiveFile, text); text = ""; pane.load() }
+            }
+            Button { text: "Open"; kind: "primary"; onClicked: { Fs.setArchivePassword(pane.archiveFile, archivePw.text); archivePw.text = ""; pane.load() } }
         }
     }
 }

@@ -316,6 +316,14 @@ fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
     };
     let to = dest.map(shown_name).unwrap_or_default();
     match kind {
+        // (Copying out of an archive takes things out of it.)
+        Kind::Copy
+            if sources
+                .iter()
+                .all(|s| s.to_string_lossy().starts_with(crate::archive::PREFIX)) =>
+        {
+            format!("Extracting {what} to {to}")
+        }
         Kind::Copy => format!("Copying {what} to {to}"),
         Kind::Move => format!("Moving {what} to {to}"),
         Kind::Trash => format!("Moving {what} to the Trash"),
@@ -450,7 +458,8 @@ impl qobject::Ops {
             .unwrap_or_default()
             .into_iter()
             .map(PathBuf::from)
-            .filter(|p| p.is_absolute())
+            // (Things inside an archive are taken out when copied.)
+            .filter(|p| p.is_absolute() || p.to_string_lossy().starts_with(crate::archive::PREFIX))
             .collect();
         if sources.is_empty() {
             return -1;

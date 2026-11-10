@@ -605,6 +605,19 @@ test("updates page text", () => {
     assert.equal(Up.fraction({ progress: [0, 0] }), 0);
 });
 
+test("files: dragging out of archives", () => {
+    const a = "archive:/home/me/My Trip.zip!/photos/a b.jpg";
+    const u = Drops.uris([a, "/home/me/x y.txt"]);
+    assert.equal(u, "archive:/home/me/My%20Trip.zip!/photos/a%20b.jpg\r\nfile:///home/me/x%20y.txt\r\n");
+    assert.deepEqual(Drops.paths(u.trim().split("\r\n")), [a, "/home/me/x y.txt"]);
+    // Out of an archive: always copied, never into an archive or the Trash.
+    assert.deepEqual(Drops.plan([a], "/home/me/Desktop", false, true, true), { kind: "copy", paths: [a] });
+    assert.equal(Drops.plan([a], "trash:", false, false, false), null);
+    assert.equal(Drops.plan(["/home/me/x"], "archive:/t.zip!/", false, false, false), null);
+    assert.equal(Drops.accepts([a], "/tmp"), true);
+    assert.equal(Drops.accepts(["/home/me/x"], "archive:/t.zip!/"), false);
+});
+
 test("files: checksums, paths as text, group names", () => {
     const sums = { md5: "900150983cd24fb0d6963f7d28e17f72", sha1: "a9993e364706816aba3e25717850c26c9cd0d89d", sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" };
     assert.equal(F.sumMatch(sums, " SHA256:BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD "), "SHA-256");

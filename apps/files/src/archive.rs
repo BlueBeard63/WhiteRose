@@ -402,19 +402,23 @@ fn tar_names(fmt: Format, archive: &Path) -> Result<Vec<String>, String> {
     Ok(v)
 }
 
+/// Which entries to write, and as what (None: not this one).
+type Pick<'a> = &'a dyn Fn(&str) -> Option<String>;
+
 fn unpack(
     fmt: Format,
     archive: &Path,
     into: &Path,
     prog: &mut dyn Progress,
     out: &mut Out,
+    pick: Pick,
 ) -> Result<bool, String> {
     let file = Joined::open(&parts(archive)).map_err(|e| e.to_string())?;
     let total = file.len;
     let read = Arc::new(AtomicU64::new(0));
     let _ = into;
     if fmt == Format::SevenZ {
-        return unpack_7z(archive, file, read, total, prog, out);
+        return unpack_7z(archive, file, read, total, prog, out, pick);
     }
     if fmt == Format::Zip {
         let mut z = zip::ZipArchive::new(Counting {
@@ -430,6 +434,13 @@ fn unpack(
             if !prog.go_on() {
                 return Ok(false);
             }
+            let raw = z
+                .by_index_raw(i)
+                .map(|e| e.name().to_string())
+                .unwrap_or_default();
+            let Some(picked) = pick(&raw) else {
+                continue;
+            };
             let encrypted = z.by_index_raw(i).map(|e| e.encrypted()).unwrap_or(false);
             let pw = password(archive);
             let r = match (encrypted, &pw) {
@@ -443,7 +454,7 @@ fn unpack(
             })?;
             let name = e.name().to_string();
             prog.at(read.load(Ordering::Relaxed), total, &name);
-            let Some(rel) = safe_path(&name)? else {
+            let Some(rel) = safe_path(&picked)? else {
                 continue;
             };
             let mode = e
@@ -479,8 +490,11 @@ fn unpack(
         }
         let mut e = e.map_err(|e| format!("the archive is damaged: {e}"))?;
         let name = String::from_utf8_lossy(&e.path_bytes()).into_owned();
+        let Some(picked) = pick(&name) else {
+            continue;
+        };
         prog.at(read.load(Ordering::Relaxed), total, &name);
-        let Some(rel) = safe_path(&name)? else {
+        let Some(rel) = safe_path(&picked)? else {
             continue;
         };
         let mode = e.header().mode().unwrap_or(0o644);
@@ -525,6 +539,7 @@ fn unpack_7z(
     total: u64,
     prog: &mut dyn Progress,
     out: &mut Out,
+    pick: Pick,
 ) -> Result<bool, String> {
     let pw = sevenz_rust::Password::from(password(archive).unwrap_or_default().as_str());
     let len = file.len;
@@ -552,8 +567,11 @@ fn unpack_7z(
             return Ok(false);
         }
         let name = e.name().to_string();
+        let Some(picked) = pick(&name) else {
+            return Ok(true);
+        };
         prog.at(read.load(Ordering::Relaxed), total, &name);
-        let rel = match safe_path(&name) {
+        let rel = match safe_path(&picked) {
             Ok(Some(r)) => r,
             Ok(None) => return Ok(true),
             Err(why) => {
@@ -612,7 +630,7 @@ pub fn extract(
         written: 0,
         skipped: vec![],
     };
-    let done = unpack(fmt, archive, &dir, prog, &mut out);
+    let done = unpack(fmt, archive, &dir, prog, &mut out, &|n| Some(n.to_string()));
     let skipped = std::mem::take(&mut out.skipped);
     match done {
         Ok(true) => {}
@@ -656,6 +674,296 @@ pub fn extract(
         let _ = fs::remove_dir(&work);
     }
     Ok(Some((target, skipped)))
+}
+
+// ---- looking inside ---------------------------------------------------------------------------
+
+/// An archive's insides as a place: "archive:/home/me/photos.zip!/2024".
+pub const PREFIX: &str = "archive:";
+
+/// "archive:<file>!/<inside>" → (file, inside: "" at the top, no slashes at the ends).
+pub fn split_place(p: &str) -> Option<(PathBuf, String)> {
+    let rest = p.strip_prefix(PREFIX)?;
+    let (file, inside) = rest
+        .split_once("!/")
+        .unwrap_or((rest.trim_end_matches('!'), ""));
+    Some((PathBuf::from(file), inside.trim_matches('/').to_string()))
+}
+
+pub fn place(archive: &Path, inside: &str) -> String {
+    format!(
+        "{PREFIX}{}!/{}",
+        archive.display(),
+        inside.trim_matches('/')
+    )
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq)]
+pub struct Item {
+    /// Its path inside ("photos/2024/a.jpg").
+    pub path: String,
+    pub dir: bool,
+    pub size: u64,
+    /// unix ms (0: unknown)
+    pub modified: i64,
+}
+
+fn tidy(name: &str) -> String {
+    name.trim_start_matches("./").trim_matches('/').to_string()
+}
+
+fn zip_time(t: Option<zip::DateTime>) -> i64 {
+    let Some(t) = t else { return 0 };
+    let (y, m, d) = (t.year() as i64, t.month() as i64, t.day() as i64);
+    let y2 = if m <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    (days * 86_400 + t.hour() as i64 * 3600 + t.minute() as i64 * 60 + t.second() as i64) * 1000
+}
+
+/// Everything in the archive (folders implied by paths included).
+fn read_items(archive: &Path) -> Result<Vec<Item>, String> {
+    let name = archive
+        .file_name()
+        .ok_or("no name")?
+        .to_string_lossy()
+        .into_owned();
+    let fmt = format_of(&name).ok_or("not an archive Files can open")?;
+    let mut v: Vec<Item> = vec![];
+    match fmt {
+        Format::Zip => {
+            let file = Joined::open(&parts(archive)).map_err(|e| e.to_string())?;
+            let mut z =
+                zip::ZipArchive::new(file).map_err(|e| format!("not a readable zip: {e}"))?;
+            for i in 0..z.len() {
+                let e = z
+                    .by_index_raw(i)
+                    .map_err(|e| format!("the archive is damaged: {e}"))?;
+                v.push(Item {
+                    path: tidy(e.name()),
+                    dir: e.is_dir(),
+                    size: e.size(),
+                    modified: zip_time(e.last_modified()),
+                });
+            }
+        }
+        Format::SevenZ => {
+            let file = Joined::open(&parts(archive)).map_err(|e| e.to_string())?;
+            let len = file.len;
+            let pw = sevenz_rust::Password::from(password(archive).unwrap_or_default().as_str());
+            let z = sevenz_rust::SevenZReader::new(file, len, pw).map_err(sevenz_error)?;
+            for e in &z.archive().files {
+                let raw = e.last_modified_date().to_raw() as i64;
+                v.push(Item {
+                    path: tidy(e.name()),
+                    dir: e.is_directory(),
+                    size: e.size(),
+                    modified: if raw > 0 {
+                        raw / 10_000 - 11_644_473_600_000
+                    } else {
+                        0
+                    },
+                });
+            }
+        }
+        tar_fmt => {
+            let f = Counting {
+                inner: Joined::open(&parts(archive)).map_err(|e| e.to_string())?,
+                read: Arc::default(),
+            };
+            let mut t = tar::Archive::new(tar_reader(tar_fmt, f)?);
+            for e in t
+                .entries()
+                .map_err(|e| format!("not a readable archive: {e}"))?
+            {
+                let e = e.map_err(|e| format!("the archive is damaged: {e}"))?;
+                let h = e.header();
+                let kind = h.entry_type();
+                if !(kind.is_file() || kind.is_dir() || kind.is_symlink()) {
+                    continue;
+                }
+                v.push(Item {
+                    path: tidy(&String::from_utf8_lossy(&e.path_bytes())),
+                    dir: kind.is_dir(),
+                    size: h.size().unwrap_or(0),
+                    modified: h.mtime().unwrap_or(0) as i64 * 1000,
+                });
+            }
+        }
+    }
+    // Folders only implied by what's in them.
+    let mut known: std::collections::HashSet<String> = v.iter().map(|i| i.path.clone()).collect();
+    let mut more = vec![];
+    for i in &v {
+        let mut p = i.path.as_str();
+        while let Some((up, _)) = p.rsplit_once('/') {
+            if known.insert(up.to_string()) {
+                more.push(Item {
+                    path: up.to_string(),
+                    dir: true,
+                    size: 0,
+                    modified: i.modified,
+                });
+            }
+            p = up;
+        }
+    }
+    v.extend(more);
+    v.retain(|i| !i.path.is_empty() && safe_path(&i.path).is_ok());
+    Ok(v)
+}
+
+type Listing = (PathBuf, u64, i64, std::sync::Arc<Vec<Item>>);
+static LISTED: std::sync::Mutex<Vec<Listing>> = std::sync::Mutex::new(Vec::new());
+
+/// Everything in the archive, read once while it doesn't change (a big
+/// compressed tar reads all the way through to list).
+pub fn items(archive: &Path) -> Result<std::sync::Arc<Vec<Item>>, String> {
+    let m = fs::metadata(archive).map_err(|e| e.to_string())?;
+    let stamp = (
+        m.len(),
+        m.modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0),
+    );
+    {
+        let l = LISTED.lock().unwrap();
+        if let Some(hit) = l
+            .iter()
+            .find(|x| x.0 == archive && x.1 == stamp.0 && x.2 == stamp.1)
+        {
+            return Ok(hit.3.clone());
+        }
+    }
+    let v = std::sync::Arc::new(read_items(archive)?);
+    let mut l = LISTED.lock().unwrap();
+    l.retain(|x| x.0 != archive);
+    l.push((archive.to_path_buf(), stamp.0, stamp.1, v.clone()));
+    if l.len() > 4 {
+        l.remove(0);
+    }
+    Ok(v)
+}
+
+/// What's directly in `inside` ("" the top).
+pub fn list(archive: &Path, inside: &str) -> Result<Vec<Item>, String> {
+    let all = items(archive)?;
+    let inside = inside.trim_matches('/');
+    Ok(all
+        .iter()
+        .filter(|i| {
+            let parent = i.path.rsplit_once('/').map(|(p, _)| p).unwrap_or("");
+            parent == inside
+        })
+        .cloned()
+        .collect())
+}
+
+/// Takes `chosen` (paths inside, all in one folder of it) out into `into`,
+/// each beside the others as it was: a folder with everything in it.
+/// Names already there get a number. The paths made; None if cancelled.
+pub fn extract_some(
+    archive: &Path,
+    chosen: &[String],
+    into: &Path,
+    prog: &mut dyn Progress,
+) -> Result<Option<Vec<PathBuf>>, String> {
+    let name = archive
+        .file_name()
+        .ok_or("no name")?
+        .to_string_lossy()
+        .into_owned();
+    let fmt = format_of(&name).ok_or("not an archive Files can open")?;
+    let chosen: Vec<String> = chosen
+        .iter()
+        .map(|c| tidy(c))
+        .filter(|c| !c.is_empty())
+        .collect();
+    if chosen.is_empty() {
+        return Ok(Some(vec![]));
+    }
+    let work = crate::ops::free_name(into, &format!(".{}.extracting", stem(&name)));
+    fs::create_dir(&work).map_err(|e| format!("can't make a folder here: {e}"))?;
+    let room = (free_space(into) as f64 * 0.95) as u64;
+    let mut out = Out {
+        root: &work,
+        room,
+        written: 0,
+        skipped: vec![],
+    };
+    let pick = |n: &str| -> Option<String> {
+        let n = tidy(n);
+        chosen.iter().find_map(|c| {
+            (n == *c || n.starts_with(&format!("{c}/"))).then(|| {
+                let parent = c.rsplit_once('/').map(|(p, _)| p.len() + 1).unwrap_or(0);
+                n[parent..].to_string()
+            })
+        })
+    };
+    let r = unpack(fmt, archive, into, prog, &mut out, &pick);
+    let finish = || -> Result<Vec<PathBuf>, String> {
+        let mut made = vec![];
+        for e in fs::read_dir(&work).map_err(|e| e.to_string())?.flatten() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            let target = if fs::symlink_metadata(into.join(&n)).is_ok() {
+                crate::ops::free_name(into, &n)
+            } else {
+                into.join(&n)
+            };
+            fs::rename(e.path(), &target).map_err(|e| e.to_string())?;
+            made.push(target);
+        }
+        Ok(made)
+    };
+    let result = match r {
+        Ok(true) => finish().map(Some),
+        Ok(false) => Ok(None),
+        Err(e) => Err(e),
+    };
+    let _ = fs::remove_dir_all(&work);
+    result
+}
+
+struct Silent;
+impl Progress for Silent {
+    fn at(&mut self, _: u64, _: u64, _: &str) {}
+    fn go_on(&mut self) -> bool {
+        true
+    }
+}
+
+/// One file from inside, as a real file to open or preview: taken out into
+/// ~/.cache/whiterose/files/opened (once while the archive doesn't change).
+pub fn cached_file(archive: &Path, inside: &str) -> Result<PathBuf, String> {
+    use std::hash::{Hash, Hasher};
+    let m = fs::metadata(archive).map_err(|e| e.to_string())?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (archive, m.len(), m.modified().ok()).hash(&mut h);
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| crate::places::home().join(".cache"))
+        .join("whiterose/files/opened")
+        .join(format!("{:016x}", h.finish()));
+    let inside = tidy(inside);
+    let file_name = inside.rsplit('/').next().unwrap_or(&inside).to_string();
+    let dir = base.join(inside.rsplit_once('/').map(|(p, _)| p).unwrap_or(""));
+    let want = dir.join(&file_name);
+    if want.is_file() {
+        return Ok(want);
+    }
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    match extract_some(archive, &[inside], &dir, &mut Silent)? {
+        Some(v) if v.first() == Some(&want) => Ok(want),
+        Some(v) => v
+            .into_iter()
+            .next()
+            .ok_or_else(|| "it isn't in the archive".into()),
+        None => Err("stopped".into()),
+    }
 }
 
 // ---- making archives -------------------------------------------------------------------------
@@ -1017,6 +1325,96 @@ mod tests {
                 .is_none()
         );
         assert!(!out.join("c.zip").exists() && !out.join(".c.zip.wrpart").exists());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn looking_inside_and_taking_out() {
+        assert_eq!(
+            split_place("archive:/a b/x.zip!/docs/2024/"),
+            Some((PathBuf::from("/a b/x.zip"), "docs/2024".into()))
+        );
+        assert_eq!(
+            split_place("archive:/x.zip!/"),
+            Some((PathBuf::from("/x.zip"), String::new()))
+        );
+        assert_eq!(place(Path::new("/x.zip"), "docs/"), "archive:/x.zip!/docs");
+        let d = scratch("inside");
+        let src = d.join("trip");
+        fs::create_dir_all(src.join("photos/day1")).unwrap();
+        fs::write(src.join("notes.txt"), "ferry 09:40").unwrap();
+        fs::write(src.join("photos/day1/a.jpg"), "jpeg").unwrap();
+        fs::write(src.join("photos/b.jpg"), "jpeg2").unwrap();
+        for name in ["t.zip", "t.7z", "t.tar.zst"] {
+            let a = compress(
+                std::slice::from_ref(&src),
+                &d.join(name),
+                None,
+                0,
+                &mut Quiet(0, None),
+            )
+            .unwrap()
+            .unwrap();
+            let names = |v: Vec<Item>| {
+                let mut n: Vec<String> = v
+                    .into_iter()
+                    .map(|i| format!("{}{}", i.path, if i.dir { "/" } else { "" }))
+                    .collect();
+                n.sort();
+                n
+            };
+            assert_eq!(names(list(&a, "").unwrap()), vec!["trip/"], "{name}");
+            assert_eq!(
+                names(list(&a, "trip").unwrap()),
+                vec!["trip/notes.txt", "trip/photos/"],
+                "{name}"
+            );
+            assert_eq!(
+                names(list(&a, "trip/photos/").unwrap()),
+                vec!["trip/photos/b.jpg", "trip/photos/day1/"],
+                "{name}"
+            );
+            // A folder and a file out, twice: the second lot gets numbers.
+            let out = d.join(format!("out-{name}"));
+            fs::create_dir_all(&out).unwrap();
+            let chosen = ["trip/photos".to_string(), "trip/notes.txt".to_string()];
+            let made = extract_some(&a, &chosen, &out, &mut Quiet(0, None))
+                .unwrap()
+                .unwrap();
+            assert_eq!(made.len(), 2, "{name}");
+            assert_eq!(
+                fs::read_to_string(out.join("photos/day1/a.jpg")).unwrap(),
+                "jpeg"
+            );
+            assert_eq!(
+                fs::read_to_string(out.join("notes.txt")).unwrap(),
+                "ferry 09:40"
+            );
+            extract_some(&a, &chosen, &out, &mut Quiet(0, None))
+                .unwrap()
+                .unwrap();
+            assert!(
+                out.join("notes (2).txt").is_file() && out.join("photos (2)/b.jpg").is_file(),
+                "{:?}",
+                fs::read_dir(&out)
+                    .unwrap()
+                    .map(|e| e.unwrap().file_name())
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                !fs::read_dir(&out).unwrap().any(|e| e
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with('.')),
+                "no work folder left"
+            );
+            // One file as a real file (cached).
+            std::env::set_var("XDG_CACHE_HOME", d.join("cache"));
+            let f = cached_file(&a, "trip/photos/b.jpg").unwrap();
+            assert_eq!(fs::read_to_string(&f).unwrap(), "jpeg2");
+            assert_eq!(cached_file(&a, "trip/photos/b.jpg").unwrap(), f);
+        }
         fs::remove_dir_all(&d).unwrap();
     }
 

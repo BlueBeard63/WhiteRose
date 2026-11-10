@@ -19,7 +19,13 @@ Item {
     id: root
     property var entry: null
     property bool big: false
-    readonly property string path: root.entry?.path ?? ""
+    // Inside an archive: the file taken out into a cache (only what can be
+    // shown, and not too big: it's read out of the archive to show it).
+    readonly property bool fromArchive: (root.entry?.path ?? "").startsWith("archive:")
+    readonly property string path: !root.entry ? ""
+        : !root.fromArchive ? root.entry.path
+        : root.entry.dir || root.kind === "other" || (root.entry.size ?? 0) > 30e6 ? ""
+        : Fs.archiveFile(root.entry.path)
     readonly property string mime: root.entry?.mime ?? ""
     readonly property string kind: {
         const m = root.mime;

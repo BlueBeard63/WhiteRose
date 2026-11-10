@@ -50,7 +50,7 @@ Column {
                     width: parent.width; height: 24
                     Text {
                         anchors { left: parent.left; right: buttons.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                        text: card.ok ? card.job.label.replace(/^Copying/, "Copied").replace(/^Moving/, "Moved").replace(/^Deleting/, "Deleted")
+                        text: card.ok ? card.job.label.replace(/^Copying/, "Copied").replace(/^Moving/, "Moved").replace(/^Deleting/, "Deleted").replace(/^Extracting/, "Extracted").replace(/^Compressing/, "Compressed")
                                       : card.job.label
                         elide: Text.ElideMiddle
                         color: Theme.text

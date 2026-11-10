@@ -1,6 +1,7 @@
 //! Files never runs code by itself. Opening a program, a script or a
 //! launcher asks first; if it's somewhere files from outside land
-//! (Downloads, the Desktop, a USB stick, temporary folders, the Trash),
+//! (Downloads, the Desktop, a USB stick, temporary folders, the Trash, or
+//! out of an archive),
 //! running it takes saying you trust it, and launchers from there don't run
 //! at all.
 
@@ -81,6 +82,14 @@ pub fn untrusted(
     if under(&crate::trash::home_trash()) || path.to_string_lossy().contains("/.Trash-") {
         return "It's in the Trash.".into();
     }
+    // Taken out of an archive to open (archive.rs: cached_file).
+    if path.components().collect::<Vec<_>>().windows(3).any(|w| {
+        w[0].as_os_str() == "whiterose"
+            && w[1].as_os_str() == "files"
+            && w[2].as_os_str() == "opened"
+    }) {
+        return "It came out of an archive.".into();
+    }
     for t in ["/tmp", "/var/tmp", "/dev/shm"] {
         if under(Path::new(t)) {
             return "It's in a temporary folder anyone on this computer can write to.".into();
@@ -154,5 +163,6 @@ mod tests {
         assert!(r("/run/media/me/USB/a").contains("removable"));
         assert!(r("/media/stick/a").contains("removable"));
         assert_eq!(r("/home/me/Projects/build.sh"), "");
+        assert!(r("/home/me/.cache/whiterose/files/opened/0123abcd/setup.sh").contains("archive"));
     }
 }

@@ -193,6 +193,15 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "isArchive"]
         fn is_archive(self: &Fs, name: &QString) -> bool;
+        /// A file inside an archive ("archive:…!/…") as a real file to open or
+        /// preview (taken out into a cache): its path, or "" if it can't be.
+        #[qinvokable]
+        #[cxx_name = "archiveFile"]
+        fn archive_file(self: &Fs, place: &QString) -> QString;
+        /// The password for an archive, for looking inside (memory only).
+        #[qinvokable]
+        #[cxx_name = "setArchivePassword"]
+        fn set_archive_password(self: &Fs, archive: &QString, password: &QString);
         /// Something is at `path` (a file, folder or link).
         #[qinvokable]
         fn exists(self: &Fs, path: &QString) -> bool;
@@ -409,6 +418,32 @@ impl qobject::Fs {
             Ok(scattered(tags::files_with(tag), &mut origins, &|n| {
                 ic.mime.type_of(n).to_string()
             }))
+        } else if let Some((archive, inside)) = crate::archive::split_place(&path) {
+            // Inside an archive: what's in that folder of it.
+            crate::archive::list(&archive, &inside).map(|items| {
+                items
+                    .into_iter()
+                    .map(|i| {
+                        let name = i.path.rsplit('/').next().unwrap_or(&i.path).to_string();
+                        listing::Entry {
+                            mime: if i.dir {
+                                "inode/directory".into()
+                            } else {
+                                ic.mime.type_of(&name).to_string()
+                            },
+                            hidden: name.starts_with('.'),
+                            executable: false,
+                            size: i.size,
+                            modified: i.modified,
+                            created: 0,
+                            link: false,
+                            dir: i.dir,
+                            path: crate::archive::place(&archive, &i.path),
+                            name,
+                        }
+                    })
+                    .collect()
+            })
         } else if path == START || path == CLEANUP {
             Ok(vec![])
         } else if path == RECENT {
@@ -472,6 +507,9 @@ impl qobject::Fs {
     }
 
     fn stamp_of(&self, path: &str) -> f64 {
+        if let Some((archive, _)) = crate::archive::split_place(path) {
+            return self.stamp_of(&archive.to_string_lossy());
+        }
         if path == RECENT {
             // A file opened (the shared list) or the index made again.
             return self.stamp_of(&recent::xbel_file().to_string_lossy())
@@ -541,6 +579,27 @@ impl qobject::Fs {
 
     pub fn crumbs(&self, path: &QString) -> QString {
         let path = path.to_string();
+        // Inside an archive: the folders down to it, the archive, then inside.
+        if let Some((archive, inside)) = crate::archive::split_place(&path) {
+            let dir = archive
+                .parent()
+                .map(|d| d.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let mut v: Vec<Value> =
+                serde_json::from_str(&self.crumbs(&QString::from(dir.as_str())).to_string())
+                    .unwrap_or_default();
+            v.push(json!({"name": archive.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), "path": crate::archive::place(&archive, "")}));
+            let mut at = String::new();
+            for part in inside.split('/').filter(|p| !p.is_empty()) {
+                at = if at.is_empty() {
+                    part.to_string()
+                } else {
+                    format!("{at}/{part}")
+                };
+                v.push(json!({"name": part, "path": crate::archive::place(&archive, &at)}));
+            }
+            return q(json!(v));
+        }
         if path == DRIVES {
             return q(json!([{"name": "Storage", "path": DRIVES}]));
         }
@@ -827,6 +886,9 @@ impl qobject::Fs {
                 if a.starts_with(CLEANUP) {
                     return PathBuf::from(CLEANUP);
                 }
+                if a.starts_with(crate::archive::PREFIX) {
+                    return PathBuf::from(&a);
+                }
                 if a.starts_with(TAG) {
                     return PathBuf::from(&a);
                 }
@@ -900,6 +962,22 @@ impl qobject::Fs {
 
     pub fn up(&self, path: &QString) -> QString {
         let path = path.to_string();
+        if let Some((archive, inside)) = crate::archive::split_place(&path) {
+            return QString::from(
+                if inside.is_empty() {
+                    archive
+                        .parent()
+                        .map(|d| d.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                } else {
+                    crate::archive::place(
+                        &archive,
+                        inside.rsplit_once('/').map(|(p, _)| p).unwrap_or(""),
+                    )
+                }
+                .as_str(),
+            );
+        }
         if path == TRASH
             || path == DRIVES
             || path == RECENT
@@ -1169,6 +1247,26 @@ impl qobject::Fs {
             crate::log::warn(&format!("couldn't run {p}: {e}"));
         }
         QString::from(r.err().unwrap_or_default().as_str())
+    }
+
+    pub fn archive_file(&self, place: &QString) -> QString {
+        let Some((archive, inside)) = crate::archive::split_place(&place.to_string()) else {
+            return QString::from("");
+        };
+        match crate::archive::cached_file(&archive, &inside) {
+            Ok(p) => QString::from(p.to_string_lossy().as_ref()),
+            Err(e) => {
+                crate::log::warn(&format!(
+                    "taking {inside} out of {}: {e}",
+                    archive.display()
+                ));
+                QString::from("")
+            }
+        }
+    }
+
+    pub fn set_archive_password(&self, archive: &QString, password: &QString) {
+        crate::archive::set_password(Path::new(&archive.to_string()), &password.to_string());
     }
 
     pub fn exists(&self, path: &QString) -> bool {

@@ -588,7 +588,57 @@ pub fn run<R: Report>(
         run.report.progress(&run.prog);
         return run.out;
     }
-    for src in sources {
+    // Copying out of archives ("archive:…" sources): each archive read once
+    // for all that's taken from it.
+    let mut sources = sources.to_vec();
+    if kind == Kind::Copy {
+        let (inside, plain): (Vec<PathBuf>, Vec<PathBuf>) = sources
+            .into_iter()
+            .partition(|p| p.to_string_lossy().starts_with(crate::archive::PREFIX));
+        sources = plain;
+        let mut by: Vec<(PathBuf, Vec<String>)> = vec![];
+        for p in inside {
+            if let Some((a, i)) = crate::archive::split_place(&p.to_string_lossy()) {
+                match by.iter_mut().find(|(x, _)| *x == a) {
+                    Some((_, v)) => v.push(i),
+                    None => by.push((a, vec![i])),
+                }
+            }
+        }
+        for (archive, chosen) in by {
+            let Some(dir) = dest else { break };
+            struct Along<'b, 'a, R: Report> {
+                run: &'b mut Run<'a, R>,
+            }
+            impl<R: Report> crate::archive::Progress for Along<'_, '_, R> {
+                fn at(&mut self, _done: u64, _total: u64, entry: &str) {
+                    self.run.prog.current = entry
+                        .rsplit('/')
+                        .find(|p| !p.is_empty())
+                        .unwrap_or(entry)
+                        .to_string();
+                    self.run.report.progress(&self.run.prog);
+                }
+                fn go_on(&mut self) -> bool {
+                    self.run.ctl.go_on()
+                }
+            }
+            match crate::archive::extract_some(&archive, &chosen, dir, &mut Along { run: &mut run })
+            {
+                Ok(Some(made)) => run
+                    .out
+                    .done
+                    .extend(made.into_iter().map(|m| m.to_string_lossy().into_owned())),
+                Ok(None) => {
+                    run.out.cancelled = true;
+                    return run.out;
+                }
+                Err(e) => run.fail(&archive, e),
+            }
+        }
+    }
+    for src in &sources {
+        let src = src.as_path();
         if !ctl.go_on() {
             run.out.cancelled = true;
             break;
