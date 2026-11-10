@@ -215,7 +215,7 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{launch, listing, looks, places, search, session, tags, trash, views};
+use crate::{launch, listing, looks, places, recent, search, session, tags, trash, views};
 
 /// The Trash, as a place to go.
 const TRASH: &str = "trash:";
@@ -223,6 +223,8 @@ const TRASH: &str = "trash:";
 const TAG: &str = "tag:";
 /// Every drive, how full (the Storage page).
 const DRIVES: &str = "drives:";
+/// Files opened or changed lately (recent.rs).
+const RECENT: &str = "recent:";
 
 #[derive(Default)]
 pub struct FsRust;
@@ -234,6 +236,51 @@ fn q(v: Value) -> QString {
 fn icon_path(p: Option<std::path::PathBuf>) -> String {
     p.map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+/// Entries for files from all over (a tag's, Recent): each with the folder
+/// it's in noted in `origins`.
+fn scattered(
+    paths: Vec<std::path::PathBuf>,
+    origins: &mut std::collections::HashMap<String, String>,
+    mime: &dyn Fn(&str) -> String,
+) -> Vec<listing::Entry> {
+    let ms = |t: std::io::Result<std::time::SystemTime>| {
+        t.ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0)
+    };
+    paths
+        .into_iter()
+        .filter_map(|p| {
+            let m = std::fs::metadata(&p).ok()?;
+            let name = p.file_name()?.to_string_lossy().into_owned();
+            let dir = m.is_dir();
+            origins.insert(
+                p.to_string_lossy().into_owned(),
+                p.parent()
+                    .map(|d| d.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+            );
+            Some(listing::Entry {
+                mime: if dir {
+                    "inode/directory".into()
+                } else {
+                    mime(&name)
+                },
+                hidden: name.starts_with('.'),
+                executable: false,
+                size: if dir { 0 } else { m.len() },
+                modified: ms(m.modified()),
+                created: ms(m.created()),
+                link: false,
+                dir,
+                path: p.to_string_lossy().into_owned(),
+                name,
+            })
+        })
+        .collect()
 }
 
 impl qobject::Fs {
@@ -286,42 +333,22 @@ impl qobject::Fs {
                 .collect())
         } else if let Some(tag) = path.strip_prefix(TAG) {
             // A tag ("tag:Name"): every file with it, wherever it is.
-            Ok(tags::files_with(tag)
-                .into_iter()
-                .filter_map(|p| {
-                    let m = std::fs::metadata(&p).ok()?;
-                    let name = p.file_name()?.to_string_lossy().into_owned();
-                    let dir = m.is_dir();
-                    origins.insert(
-                        p.to_string_lossy().into_owned(),
-                        p.parent()
-                            .map(|d| d.to_string_lossy().into_owned())
-                            .unwrap_or_default(),
-                    );
-                    let ms = |t: std::io::Result<std::time::SystemTime>| {
-                        t.ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_millis() as i64)
-                            .unwrap_or(0)
-                    };
-                    Some(listing::Entry {
-                        mime: if dir {
-                            "inode/directory".into()
-                        } else {
-                            ic.mime.type_of(&name).to_string()
-                        },
-                        hidden: name.starts_with('.'),
-                        executable: false,
-                        size: if dir { 0 } else { m.len() },
-                        modified: ms(m.modified()),
-                        created: ms(m.created()),
-                        link: false,
-                        dir,
-                        path: p.to_string_lossy().into_owned(),
-                        name,
-                    })
-                })
-                .collect())
+            Ok(scattered(tags::files_with(tag), &mut origins, &|n| {
+                ic.mime.type_of(n).to_string()
+            }))
+        } else if path == RECENT {
+            // Recent: opened lately, or changed in the last two weeks.
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let xbel = std::fs::read_to_string(recent::xbel_file()).unwrap_or_default();
+            let list = recent::files(&xbel, &search::index_file(), &places::home(), now);
+            Ok(scattered(
+                list.into_iter().map(|(p, _)| p).collect(),
+                &mut origins,
+                &|n| ic.mime.type_of(n).to_string(),
+            ))
         } else {
             listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string())
         };
@@ -370,6 +397,11 @@ impl qobject::Fs {
     }
 
     fn stamp_of(&self, path: &str) -> f64 {
+        if path == RECENT {
+            // A file opened (the shared list) or the index made again.
+            return self.stamp_of(&recent::xbel_file().to_string_lossy())
+                + self.stamp_of(&search::index_file().to_string_lossy());
+        }
         if path.starts_with(TAG) {
             // Tagging or untagging anything changes the list.
             return self.stamp_of(&tags::file().to_string_lossy());
@@ -436,6 +468,9 @@ impl qobject::Fs {
         let path = path.to_string();
         if path == DRIVES {
             return q(json!([{"name": "Storage", "path": DRIVES}]));
+        }
+        if path == RECENT {
+            return q(json!([{"name": "Recent", "path": RECENT}]));
         }
         if let Some(tag) = path.strip_prefix(TAG) {
             return q(json!([{"name": "Tags", "path": ""}, {"name": tag, "path": path}]));
@@ -547,6 +582,9 @@ impl qobject::Fs {
                 if a.starts_with(DRIVES) {
                     return PathBuf::from(DRIVES);
                 }
+                if a.starts_with(RECENT) {
+                    return PathBuf::from(RECENT);
+                }
                 if a.starts_with(TAG) {
                     return PathBuf::from(&a);
                 }
@@ -620,7 +658,8 @@ impl qobject::Fs {
 
     pub fn up(&self, path: &QString) -> QString {
         let path = path.to_string();
-        if path == TRASH || path == DRIVES || path == "/" || path.starts_with(TAG) {
+        if path == TRASH || path == DRIVES || path == RECENT || path == "/" || path.starts_with(TAG)
+        {
             return QString::from("");
         }
         let p = Path::new(&path);

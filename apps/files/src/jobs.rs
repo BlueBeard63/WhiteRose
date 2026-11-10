@@ -114,6 +114,19 @@ pub mod qobject {
         #[cxx_name = "driveDone"]
         fn drive_done(self: Pin<&mut Ops>, result: QString);
 
+        /// MD5, SHA-1 and SHA-256 of a file in the background (one read).
+        /// `hashed` brings {done: false, bytes, total} as it goes, then
+        /// {done: true, md5, sha1, sha256} or {done: true, error}. Asking
+        /// again (or "" ) stops the one before.
+        #[qinvokable]
+        fn hash(self: &Ops, path: &QString);
+        #[qsignal]
+        fn hashed(self: Pin<&mut Ops>, path: QString, result: QString);
+        /// Settings › Files › Verify copies.
+        #[qinvokable]
+        #[cxx_name = "setVerify"]
+        fn set_verify(self: &Ops, on: bool);
+
         /// A job finished: {kind, done: [path], failed: [[path, why]], cancelled}.
         #[qsignal]
         fn finished(self: Pin<&mut Ops>, id: i32, result: QString);
@@ -184,6 +197,8 @@ pub struct OpsRust {
     /// Counts going on, each with its stop flag.
     measuring: Arc<Mutex<std::collections::HashMap<i32, Arc<std::sync::atomic::AtomicBool>>>>,
     sizer: Arc<Mutex<Sizer>>,
+    /// The checksum being worked out, and its stop flag.
+    hashing: Arc<Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>>,
 }
 
 /// Folder sizes: what's waiting, what's known (and when), whether a thread
@@ -741,6 +756,50 @@ impl qobject::Ops {
             .filter(|p| p.starts_with('/'))
             .collect();
         q(json!({"cut": cut, "paths": paths}))
+    }
+}
+
+impl qobject::Ops {
+    pub fn set_verify(&self, on: bool) {
+        crate::ops::VERIFY.store(on, Ordering::Relaxed);
+    }
+
+    pub fn hash(&self, path: &QString) {
+        use std::sync::atomic::AtomicBool;
+        let stop = Arc::new(AtomicBool::new(false));
+        if let Some(old) = self.hashing.lock().unwrap().replace(stop.clone()) {
+            old.store(true, Ordering::Relaxed);
+        }
+        let path = path.to_string();
+        if path.is_empty() {
+            return;
+        }
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let p = PathBuf::from(&path);
+            let total = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+            let tell = |r: serde_json::Value| {
+                let (path, r) = (path.clone(), r.to_string());
+                let _ = thread.queue(move |mut obj| {
+                    obj.as_mut()
+                        .hashed(QString::from(path.as_str()), QString::from(r.as_str()))
+                });
+            };
+            let mut last = Instant::now();
+            let r = crate::hash::sums(&p, &stop, &mut |done| {
+                if last.elapsed() > Duration::from_millis(150) {
+                    last = Instant::now();
+                    tell(json!({"done": false, "bytes": done, "total": total}));
+                }
+            });
+            match r {
+                Ok(Some(s)) => {
+                    tell(json!({"done": true, "md5": s.md5, "sha1": s.sha1, "sha256": s.sha256}))
+                }
+                Ok(None) => {}
+                Err(e) => tell(json!({"done": true, "error": e.to_string()})),
+            }
+        });
     }
 }
 

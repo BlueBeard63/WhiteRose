@@ -53,6 +53,11 @@ Column {
             subtitle: "Delete always goes to the Trash, so things can be brought back"
             Toggle { checked: Daemon.setting("files.confirmTrash", false); onToggled: on => Daemon.set("files.confirmTrash", on) }
         }
+        SettingRow {
+            title: "Verify copies"
+            subtitle: "Read each copied file back from the drive and check it matches (slower; catches failing drives and cables)"
+            Toggle { checked: Daemon.setting("files.verifyCopies", false); onToggled: on => Daemon.set("files.verifyCopies", on) }
+        }
     }
 
     Section { text: "Showing" }

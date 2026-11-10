@@ -15,17 +15,28 @@ jobs:
           cache-dependency-path: daemon/go.sum
       - run: make go-check
 
+  # The compositor and the Qt apps (rust-check covers both). In Ubuntu 26.04,
+  # like the .deb build: the apps need its Qt, newer than the runner's.
   compositor:
     runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
+      - run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git make build-essential pkg-config \
+            libxkbcommon-dev libwayland-dev libegl-dev libgles-dev libudev-dev libseat-dev libinput-dev libgbm-dev libdrm-dev \
+            qt6-base-dev qt6-declarative-dev qmake6
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libegl-dev libudev-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: compositor
+          workspaces: |
+            compositor
+            apps
       - run: make rust-check
 
   shell:
@@ -42,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libegl-dev libudev-dev
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libegl-dev libudev-dev libseat-dev libinput-dev libgbm-dev libdrm-dev
       - uses: actions/setup-go@v5
         with:
           go-version-file: daemon/go.mod

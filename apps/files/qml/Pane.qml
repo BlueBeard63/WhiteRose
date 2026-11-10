@@ -38,10 +38,14 @@ FocusScope {
     // A tag's files ("tag:Name"): real files, but nothing can be made or
     // pasted here; dropping things here tags them.
     readonly property bool inTag: path.startsWith("tag:")
+    // Recent ("recent:"): likewise, files from all over.
+    readonly property bool inRecent: path === "recent:"
+    // Files gathered from many folders: nothing can be made or pasted here.
+    readonly property bool inCollection: inTag || inRecent
     // Git (Settings › Files › General): {root, branch, ahead, behind,
     // ignored, entries: {name: state}}; root "" when not in a repository.
     property var git: ({ root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} })
-    readonly property bool wantsGit: Session.git && !pane.special && !pane.inTag && !pane.searching && pane.path.startsWith("/")
+    readonly property bool wantsGit: Session.git && !pane.special && !pane.inCollection && !pane.searching && pane.path.startsWith("/")
     // An entry's state ("" none; inside an ignored folder: ignored).
     function gitOf(e) {
         if (!pane.wantsGit || pane.git.root === "" || !e) return "";
@@ -65,13 +69,15 @@ FocusScope {
     // Folder sizes as they're worked out ({path: {bytes, items}}).
     property var sizes: ({})
     property var sizesSoon: ({})
-    readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash"
+    readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash" : inRecent ? "Recent"
         : JSON.parse(Fs.crumbs(path)).slice(-1)[0]?.name ?? path.substring(path.lastIndexOf("/") + 1)
     // Searching (Search.qml asks, its hits replace the listing): {text,
     // scope, kind, size, modified}; null when not.
     property var search: null
     property var results: []
     property bool searchDone: true
+    // Why the search can't run (a regular expression that doesn't parse).
+    property string searchError: ""
     property real searchSeen: 0
     property int searchId: -1
     readonly property bool searching: pane.search !== null
@@ -104,8 +110,10 @@ FocusScope {
     // it lends, or the default); load() follows.
     onPathChanged: { pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
+    // Recent starts as a list, newest first, grouped by day (until changed by hand).
+    readonly property var baseView: pane.path === "recent:" ? { mode: "list", sortBy: "modified", descending: true, group: "modified" } : Session.defaultView
     function applyView() {
-        const v = JSON.parse(Fs.view(pane.path, JSON.stringify(Session.defaultView)));
+        const v = JSON.parse(Fs.view(pane.path, JSON.stringify(pane.baseView)));
         pane.applying = true;
         pane.mode = v.mode;
         pane.sortBy = v.sortBy;
@@ -119,7 +127,7 @@ FocusScope {
     // not set: nothing's remembered until it's changed by hand.
     property bool picked: false
     function adapt() {
-        if (!Session.adaptive || pane.viewInfo.own || pane.viewInfo.from !== "" || pane.special || pane.searching) return;
+        if (!Session.adaptive || pane.viewInfo.own || pane.viewInfo.from !== "" || pane.special || pane.searching || pane.inRecent) return;
         const m = Layout.adaptive(pane.entries, JSON.parse(Fs.view(pane.path, JSON.stringify(Session.defaultView))).mode);
         if (m !== pane.mode) { pane.applying = true; pane.mode = m; pane.applying = false }
         pane.picked = true;
@@ -145,7 +153,8 @@ FocusScope {
     // merged with what was.
     function find(ask) {
         pane.activated();
-        pane.search = Object.assign({ text: "", scope: "here", kind: "", size: "", modified: "" }, pane.search ?? {}, ask);
+        pane.search = Object.assign({ text: "", scope: "here", kind: "", size: "", modified: "", case: false, regex: false }, pane.search ?? {}, ask);
+        pane.searchError = "";
         pane.filter = "";
         pane.selected = {};
         pane.current = 0;
@@ -176,6 +185,7 @@ FocusScope {
             pane.results = r.hits;
             pane.searchSeen = r.seen;
             pane.searchDone = r.done;
+            pane.searchError = r.error ?? "";
         }
     }
 
@@ -407,7 +417,7 @@ FocusScope {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: pane.error || (pane.searching ? (!pane.searchDone ? "Looking…" : (pane.search.text.trim() || pane.search.kind || pane.search.size || pane.search.modified) ? "Nothing found" : "")
+            text: pane.error || pane.searchError || (pane.searching ? (!pane.searchDone ? "Looking…" : (pane.search.text.trim() || pane.search.kind || pane.search.size || pane.search.modified) ? "Nothing found" : "")
                 : pane.filter !== "" ? "Nothing matches “" + pane.filter + "”" : "This folder is empty")
             color: Theme.muted
             font { family: Theme.font; pointSize: Theme.pt(13) }

@@ -29,6 +29,11 @@ QtObject {
     property bool folderSizes: session.setting("files.folderSizes", true)
     property string openWith: session.setting("files.openWith", "double")
     property bool confirmTrash: session.setting("files.confirmTrash", false)
+    // Copies read back and checked against the original (Settings › Files › General).
+    property bool verifyCopies: session.setting("files.verifyCopies", false)
+    // Recent files kept (Settings › Privacy): Recent shows in the sidebar.
+    property bool recentFiles: session.setting("privacy.recentFiles", true)
+    onVerifyCopiesChanged: Ops.setVerify(session.verifyCopies)
     // Git badges and the branch (Settings › Files › General).
     property bool git: session.setting("files.git", true)
     // The sidebar: shown or hidden (Ctrl+B), and its sections folded away.
@@ -79,6 +84,8 @@ QtObject {
         session.folderSizes = v("files.folderSizes", true);
         session.openWith = v("files.openWith", "double");
         session.confirmTrash = v("files.confirmTrash", false);
+        session.verifyCopies = v("files.verifyCopies", false);
+        session.recentFiles = v("privacy.recentFiles", true);
         session.tagDefs = v("files.tags", []);
         session.sidebar = v("files.sidebar", true);
         session.git = v("files.git", true);
@@ -107,6 +114,8 @@ QtObject {
             case "files.folderSizes": session.folderSizes = v(key, true); break;
             case "files.openWith": session.openWith = v(key, "double"); break;
             case "files.confirmTrash": session.confirmTrash = v(key, false); break;
+            case "files.verifyCopies": session.verifyCopies = v(key, false); break;
+            case "privacy.recentFiles": session.recentFiles = v(key, true); break;
             case "files.git": session.git = v(key, true); break;
             case "files.sidebar": session.sidebar = v(key, true); break;
             case "files.sidebarFolded": session.sidebarFolded = v(key, []); break;

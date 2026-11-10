@@ -10,7 +10,7 @@
   "keywords": ["files", "file manager", "folders", "explorer"],
   "pages": [
     { "id": "general", "name": "General", "icon": "gear", "file": "General.qml",
-      "keywords": ["start", "open", "single click", "double click", "trash", "hidden files", "details", "preview"] },
+      "keywords": ["start", "open", "single click", "double click", "trash", "hidden files", "details", "preview", "verify", "checksum", "copies"] },
     { "id": "views", "name": "Views & lists", "icon": "grid", "file": "Views.qml",
       "keywords": ["view", "grid", "list", "columns", "gallery", "cards", "sort", "group", "folders first", "size", "zoom", "adaptive", "folder sizes"] },
     { "id": "search", "name": "Search", "icon": "search", "file": "Search.qml",

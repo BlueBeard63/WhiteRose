@@ -43,15 +43,30 @@ pub struct Ask {
     /// "" (any), today, week, month, year
     pub modified: String,
     pub hidden: bool,
+    /// Letter case must match.
+    pub case: bool,
+    /// The text (less tag: and ext: parts) is a regular expression.
+    pub regex: bool,
 }
 
-/// What a name must have: words (lowercase, any order) and extensions.
-#[derive(Debug, PartialEq, Default)]
+/// What a name must have: words (lowercase unless matching case, any
+/// order) and extensions; or a regular expression.
+#[derive(Debug, Default)]
 pub struct Query {
     pub words: Vec<String>,
     pub exts: Vec<String>,
     /// tag:work: the file must have these tags (as written, any case).
     pub tags: Vec<String>,
+    pub case: bool,
+    pub pattern: Option<regex::Regex>,
+    /// Why the regular expression can't be used ("" if it can).
+    pub bad: String,
+}
+
+impl PartialEq for Query {
+    fn eq(&self, o: &Query) -> bool {
+        self.words == o.words && self.exts == o.exts && self.tags == o.tags && self.case == o.case
+    }
 }
 
 impl Query {
@@ -68,8 +83,19 @@ impl Query {
     }
 }
 
+#[cfg(test)]
 pub fn parse(text: &str) -> Query {
-    let mut q = Query::default();
+    parse_with(text, false, false)
+}
+
+/// The question as asked: with `case`, letters must match exactly; with
+/// `regex`, what's left after tag: and ext: is one regular expression.
+pub fn parse_with(text: &str, case: bool, regex: bool) -> Query {
+    let mut q = Query {
+        case,
+        ..Query::default()
+    };
+    let mut rest = vec![];
     for w in text.split_whitespace() {
         let lw = w.to_lowercase();
         if let Some(t) = lw.strip_prefix("tag:") {
@@ -82,7 +108,28 @@ pub fn parse(text: &str) -> Query {
                     .map(|e| e.trim_start_matches('.').to_string()),
             );
         } else {
-            q.words.push(lw);
+            rest.push(w);
+            q.words.push(if case { w.to_string() } else { lw });
+        }
+    }
+    if regex && !rest.is_empty() {
+        q.words.clear();
+        match regex::RegexBuilder::new(&rest.join(" "))
+            .case_insensitive(!case)
+            .size_limit(1 << 20)
+            .build()
+        {
+            Ok(r) => q.pattern = Some(r),
+            Err(e) => {
+                q.bad = e
+                    .to_string()
+                    .lines()
+                    .last()
+                    .unwrap_or("not a valid pattern")
+                    .trim()
+                    .trim_start_matches("error: ")
+                    .to_string()
+            }
         }
     }
     q
@@ -92,6 +139,9 @@ pub fn parse(text: &str) -> Query {
 /// a name starting with the first word, words at word starts, and shorter
 /// names rank higher.
 pub fn score(name: &str, q: &Query) -> Option<i32> {
+    if !q.bad.is_empty() {
+        return None;
+    }
     let lower = name.to_lowercase();
     if !q.exts.is_empty() {
         let ext = lower.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
@@ -99,6 +149,13 @@ pub fn score(name: &str, q: &Query) -> Option<i32> {
             return None;
         }
     }
+    if let Some(re) = &q.pattern {
+        let m = re.find(name)?;
+        // Matching from the start, and more of the name, ranks higher.
+        let s = if m.start() == 0 { 100 } else { 0 } + (m.len() * 40 / name.len().max(1)) as i32;
+        return Some(s - (name.len() as i32).min(60) / 3);
+    }
+    let lower = if q.case { name.to_string() } else { lower };
     let mut s = 0;
     for (i, w) in q.words.iter().enumerate() {
         let at = lower.find(w.as_str())?;
@@ -755,10 +812,21 @@ mod tests {
                 words: vec!["budget".into(), "report".into()],
                 exts: vec!["pdf".into()],
                 tags: vec![],
+                ..Query::default()
             }
         );
         assert_eq!(parse("ext:jpg,png").exts, vec!["jpg", "png"]);
         assert_eq!(parse("tag:Work,urgent notes").tags, vec!["work", "urgent"]);
+        // Matching case.
+        let q = parse_with("Notes", true, false);
+        assert!(score("Notes.md", &q).is_some() && score("notes.md", &q).is_none());
+        // A regular expression, any case unless asked.
+        let q = parse_with(r"^IMG_\d{4}\.jpe?g$ ext:jpg", false, true);
+        assert!(score("img_2024.jpg", &q).is_some() && score("IMG_24.jpg", &q).is_none());
+        let q = parse_with(r"^IMG", true, true);
+        assert!(score("img_1.jpg", &q).is_none() && score("IMG_1.jpg", &q).is_some());
+        let q = parse_with("(unclosed", false, true);
+        assert!(!q.bad.is_empty() && score("unclosed", &q).is_none());
         assert_eq!(
             parse("tag:Work notes").words,
             vec!["notes"],

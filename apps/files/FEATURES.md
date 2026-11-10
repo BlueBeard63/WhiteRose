@@ -1,7 +1,7 @@
 # WhiteRose Files — feature checklist
 
 The build checklist. Tiers: MVP first, then Next, then Advanced.
-`[x]` done, `[~]` started (see the note).
+`[x]` done, `[~]` started (see the note), `[-]` not doing (see the note).
 
 ## 1. Navigation & file browsing
 - [x] Tabbed browsing (MVP)
@@ -26,10 +26,10 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Search across multiple locations (MVP) — this folder and below (live), home, or everywhere (home and drives)
 - [x] Inline folder filtering as you type (MVP) — type in any folder; Esc clears; take it to subfolders or everywhere
 - [x] Search by file type, extension, size and date (MVP) — type, size and modified filters; `*.pdf` / `ext:pdf`
-- [ ] Regular expressions and case-sensitive search (Next)
+- [x] Regular expressions and case-sensitive search (Next) — "Aa" and ".*" in the search row; a pattern that doesn't parse says why
 - [ ] Metadata and file-content search (Advanced)
 - [ ] Path autocomplete and fuzzy folder navigation (Next)
-- [ ] Recently modified files collection (Next)
+- [x] Recently modified files collection (Next) — Recent in the sidebar: files apps opened (the shared recently-used list) and files changed in the last two weeks (from the index), newest first, grouped by day; hidden with Settings › Privacy › Recent files
 
 ## 3. File operations & organisation
 - [x] Create, copy, cut, paste, move, rename and delete (MVP)
@@ -39,16 +39,16 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Side-by-side conflict resolution (Next) — size and date of both, replace / keep both / skip, same for the rest
 - [ ] Text diffs when resolving overwrites (Advanced)
 - [~] Merge directories intelligently (Next) — folder onto folder merges, asking about each clash inside
-- [ ] Optional checksum verification of copies (Next)
-- [ ] Persistent undo/redo operation history (Advanced)
+- [x] Optional checksum verification of copies (Next) — Settings › Files › Verify copies: each file is read back from the drive (cache dropped) and checked; a mismatch keeps nothing
+- [-] Persistent undo/redo operation history (Advanced) — not doing for now
 - [ ] Batch rename with regex, numbering, case and preview (Next)
-- [ ] Create folder from selected files (Next)
+- [x] Create folder from selected files (Next) — "New folder with selection…", named from what the files share
 - [ ] File shelf / staging area for collecting items (Next)
 - [x] Recycle Bin/Trash integration and restore (MVP) — every Trash (home and drives) in one view: where from, when; restore (folder remade, renamed if taken), delete for good, empty
 - [x] File and folder properties, permissions and attributes (MVP) — kind, location, size (folders counted live), dates, owner and group, read / change / run for you, group and everyone
-- [ ] Copy file paths, quoted paths and shortcuts (Next)
+- [x] Copy file paths, quoted paths and shortcuts (Next) — Copy path › path, quoted for a terminal, file:// links, names; and this folder's path
 - [x] Custom file tags with colours and multiple labels (Next) — on the file itself (user.xdg.tags, as Dolphin), dots in every view, a Tags column, Sidebar section, tag: search, group by tag, drop onto a tag
-- [ ] File hashing with MD5, SHA-1 and SHA-256 (Next)
+- [x] File hashing with MD5, SHA-1 and SHA-256 (Next) — Properties › Checksums (one read for all three), copy each, paste one to compare
 - [ ] Password-protected ZIP/7z and split archives (Advanced)
 
 ## 4. Previews & file inspection
@@ -64,8 +64,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 
 ## 5. Storage & cleanup
 - [x] Live folder size calculation (MVP) — list view's Size column fills in folder sizes in the background (idle priority, kept a minute)
-- [ ] Recursive size calculation with background caching (Next)
-- [ ] Disk usage treemap visualisation (Next)
+- [x] Recursive size calculation with background caching (Next) — the list's Size column and Properties (see Storage)
+- [x] Disk usage treemap visualisation (Next) — the disk-usage view
 - [ ] Largest files browser (Next)
 - [ ] Duplicate file finder (Next)
 - [x] Disk capacity and free-space dashboard (MVP) — Storage page (sidebar › Drives): every drive, how full, free of total
@@ -74,14 +74,14 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 
 ## 6. Appearance & personalisation
 - [x] Native light, dark and system modes (MVP) — follows the desktop theme via the kit
-- [ ] Per-folder background images (Next)
+- [-] Per-folder background images (Next) — not doing (decided against)
 - [x] Folder colours and icons (added) — a colour, a symbol, or a picture; follows renames, moves and the Trash
 - [ ] Custom toolbar buttons and layouts (Next)
 - [ ] Customisable right-click context menus (Next)
 - [x] Fully remappable keyboard shortcuts (MVP) — ☰ › Keyboard shortcuts…: every shortcut, press new keys, clashes refused, reset
 - [x] Custom view columns and sorting preferences (Next) — view, sort and grouping per folder (lent to subfolders, or everywhere); list columns chosen and resized; folders first / mixed / last
 - [x] Group by (added) — kind, date modified, size or name, with headings that fold, in list, grid and cards
-- [ ] Custom app startup and restoration behaviour (Next)
+- [x] Custom app startup and restoration behaviour (Next) — Settings › Files › Open with: last tabs, Home, or a folder
 - [~] Accessibility, keyboard navigation and scaling (MVP) — arrows/Enter/Backspace, shortcuts for everything so far
 
 ## 7. Developer tools & automation
@@ -93,7 +93,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Run project scripts from an inspector (Advanced)
 - [x] Open folders in terminal (MVP) — F4 or right-click; terminal chosen in Settings › Apps
 - [x] Open current folder or repo in preferred code editor (MVP) — and text files; "Open repository in …" from inside a git repo
-- [ ] Built-in terminal integration (Next)
+- [-] Built-in terminal integration (Next) — not doing: Open in terminal (F4) instead
 - [ ] Docker/Podman container file browsing (Advanced)
 - [ ] Container lifecycle operations and Compose management (Advanced)
 - [ ] Command-line launcher and file search (Next)
@@ -120,6 +120,6 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Recovery after interrupted file transfers (Next)
 - [x] Application logging and diagnostics (MVP) — files.log (0600, rolled at 1 MB); ☰ › Help › Copy diagnostics / Open the log
 - [ ] Export/import settings and preferences (Next)
-- [ ] Signed application updates (Next)
-- [ ] Extension/plugin API for third-party actions (Advanced)
-- [ ] User-defined automation and batch workflows (Advanced)
+- [x] Signed application updates (Next) — Files ships in WhiteRose's signed, health-checked updates (Settings › Updates)
+- [-] Extension/plugin API for third-party actions (Advanced) — comes with the module API (roadmap 1.2: Files extensions)
+- [-] User-defined automation and batch workflows (Advanced) — not doing for now

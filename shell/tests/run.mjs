@@ -23,7 +23,7 @@ const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "p
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
 const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction"]);
-const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
+const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
@@ -603,6 +603,24 @@ test("updates page text", () => {
     assert.match(Up.note({ state: "downloaded" }, { running: "0.4.2" }), /beside 0.4.2/);
     assert.equal(Up.fraction({ progress: [25, 100] }), 0.25);
     assert.equal(Up.fraction({ progress: [0, 0] }), 0);
+});
+
+test("files: checksums, paths as text, group names", () => {
+    const sums = { md5: "900150983cd24fb0d6963f7d28e17f72", sha1: "a9993e364706816aba3e25717850c26c9cd0d89d", sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" };
+    assert.equal(F.sumMatch(sums, " SHA256:BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD "), "SHA-256");
+    assert.equal(F.sumMatch(sums, "900150983cd24fb0d6963f7d28e17f72"), "MD5");
+    assert.equal(F.sumMatch(sums, "a999 3e36 4706 816a ba3e 2571 7850 c26c 9cd0 d89d"), "SHA-1");
+    assert.equal(F.sumMatch(sums, "nope"), "");
+    assert.equal(F.sumMatch(sums, ""), "");
+    const ps = ["/home/me/My Notes/it's.md", "/tmp/a b"];
+    assert.equal(F.pathsAs(ps, "plain"), "/home/me/My Notes/it's.md\n/tmp/a b");
+    assert.equal(F.pathsAs(ps, "quoted"), "'/home/me/My Notes/it'\\''s.md' '/tmp/a b'");
+    assert.equal(F.pathsAs(["/home/me/My Notes/ü#1.md"], "uri"), "file:///home/me/My%20Notes/%C3%BC%231.md");
+    assert.equal(F.pathsAs(ps, "name"), "it's.md\na b");
+    assert.equal(F.groupName(["Holiday 2024 - 01.jpg", "Holiday 2024 - 02.jpg"]), "Holiday 2024");
+    assert.equal(F.groupName(["a.txt", "b.txt"]), "New folder");
+    assert.equal(F.groupName(["report.pdf"]), "report");
+    assert.equal(F.groupName([]), "New folder");
 });
 
 test("fingerprint names and progress", () => {

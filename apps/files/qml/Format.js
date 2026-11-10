@@ -102,3 +102,44 @@ function withBit(mode, who, what, on) {
     return on ? (mode | bit) : (mode & ~bit);
 }
 
+
+// Which checksum a pasted one matches ("SHA-256", "SHA-1", "MD5"), or "":
+// any case, spaces and a "sha256:"-style prefix ignored.
+function sumMatch(sums, pasted) {
+    const parts = String(pasted ?? "").trim().split(":");
+    const p = parts[parts.length - 1].replace(/\s+/g, "").toLowerCase();
+    if (p === "" || !sums) return "";
+    if (p === sums.sha256) return "SHA-256";
+    if (p === sums.sha1) return "SHA-1";
+    if (p === sums.md5) return "MD5";
+    return "";
+}
+
+// Paths as text, one per line: "plain", "quoted" (for a shell), "uri"
+// (file://, percent-encoded) or "name".
+function pathsAs(paths, how) {
+    const one = p => {
+        switch (how) {
+        case "quoted": return "'" + p.replace(/'/g, "'\\''") + "'";
+        case "uri": return "file://" + p.split("/").map(encodeURIComponent).join("/");
+        case "name": return p.slice(p.lastIndexOf("/") + 1);
+        default: return p;
+        }
+    };
+    return paths.map(one).join(how === "quoted" ? " " : "\n");
+}
+
+// A name for a folder made from a selection: the shared start of the names
+// (at least 3 letters, trimmed of separators), else "New folder".
+function groupName(names) {
+    if (names.length === 0) return "New folder";
+    const stems = names.map(n => n.replace(/\.[^./]+$/, ""));
+    let p = stems[0];
+    for (const s of stems) while (!s.startsWith(p)) p = p.slice(0, -1);
+    // Ending partway through a word or number: back to the whole word.
+    const word = /[\p{L}\p{N}]/u;
+    if (p !== "" && word.test(p[p.length - 1]) && stems.some(s => s.length > p.length && word.test(s[p.length])))
+        p = p.replace(/[\p{L}\p{N}]+$/u, "");
+    p = p.replace(/[\s._\-()[\]]+$/, "");
+    return p.length >= 3 ? p : "New folder";
+}

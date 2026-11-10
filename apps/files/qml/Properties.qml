@@ -15,6 +15,9 @@ Popup {
     property var count: ({ bytes: 0, files: 0, folders: 0, done: true })
     property int measuring: -1
     property string error: ""
+    // Checksums, worked out when asked (they read the whole file).
+    property var sums: null
+    property real sumDone: -1
     readonly property bool one: root.paths.length === 1
     readonly property bool canChange: root.one && root.info.mine === true && !root.info.link && !root.info.origin
 
@@ -23,6 +26,9 @@ Popup {
         root.info = paths.length === 1 ? JSON.parse(Fs.info(paths[0])) : {};
         if (paths.length === 0 || (paths.length === 1 && !root.info.ok)) return;
         root.error = "";
+        root.sums = null;
+        root.sumDone = -1;
+        pasted.text = "";
         root.count = { bytes: 0, files: 0, folders: 0, done: false };
         root.measuring = Ops.measure(JSON.stringify(paths));
         root.open();
@@ -37,8 +43,15 @@ Popup {
     Connections {
         target: Ops
         function onMeasured(id, result) { if (id === root.measuring) root.count = JSON.parse(result) }
+        function onHashed(path, result) {
+            if (!root.one || path !== root.paths[0]) return;
+            const r = JSON.parse(result);
+            if (!r.done) { root.sumDone = r.total > 0 ? r.bytes / r.total : 0; return }
+            root.sumDone = -1;
+            if (r.error) root.error = r.error; else root.sums = r;
+        }
     }
-    onClosed: { Ops.stopMeasuring(root.measuring); root.measuring = -1 }
+    onClosed: { Ops.stopMeasuring(root.measuring); root.measuring = -1; Ops.hash("") }
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -123,6 +136,62 @@ Popup {
             Line { label: "Modified"; value: root.one ? F.fullDate(root.info.modified) : "" }
             Line { label: "Opened"; value: root.one ? F.fullDate(root.info.accessed) : "" }
             Line { label: "Created"; value: root.one ? F.fullDate(root.info.created) : "" }
+        }
+
+        // ---- checksums (one file; on request) ------------------------------------------------
+        Rectangle { visible: root.one && !root.info.dir && !root.info.link; width: parent.width; height: 1; color: Theme.surface2 }
+        Column {
+            visible: root.one && !root.info.dir && !root.info.link
+            width: parent.width
+            spacing: 8
+            Row {
+                visible: root.sums === null
+                width: parent.width
+                spacing: 12
+                Text { width: 110; anchors.verticalCenter: parent.verticalCenter; text: "Checksums"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
+                Button {
+                    text: root.sumDone >= 0 ? "Reading… " + Math.round(root.sumDone * 100) + "%" : "Work them out"
+                    enabled: root.sumDone < 0
+                    onClicked: { root.sumDone = 0; Ops.hash(root.paths[0]) }
+                }
+            }
+            Repeater {
+                model: root.sums ? [["MD5", root.sums.md5], ["SHA-1", root.sums.sha1], ["SHA-256", root.sums.sha256]] : []
+                delegate: Row {
+                    required property var modelData
+                    width: parent.width
+                    spacing: 12
+                    Text { width: 110; anchors.verticalCenter: parent.verticalCenter; text: modelData[0]; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
+                    Text {
+                        width: parent.width - 122 - 30
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData[1]
+                        wrapMode: Text.WrapAnywhere
+                        color: F.sumMatch(root.sums, pasted.text) === modelData[0] ? Theme.rose : Theme.text
+                        font { family: Theme.mono; pointSize: Theme.pt(10.5) }
+                    }
+                    IconButton {
+                        width: 26; height: 26; icon: "copy"; iconSize: 12; fill: "transparent"
+                        anchors.verticalCenter: parent.verticalCenter
+                        onClicked: Ops.setClipboardText(modelData[1])
+                    }
+                }
+            }
+            // Paste the sum a download page gives: does it match?
+            Field {
+                id: pasted
+                visible: root.sums !== null
+                width: parent.width
+                mono: true
+                placeholder: "Paste a checksum to compare"
+                error: text.trim() !== "" && F.sumMatch(root.sums, text) === ""
+            }
+            Text {
+                visible: root.sums !== null && pasted.text.trim() !== ""
+                text: F.sumMatch(root.sums, pasted.text) !== "" ? "✓ Matches its " + F.sumMatch(root.sums, pasted.text) : "✗ Doesn't match any of these"
+                color: F.sumMatch(root.sums, pasted.text) !== "" ? Theme.rose : Theme.muted
+                font { family: Theme.font; pointSize: Theme.pt(11.5) }
+            }
         }
 
         // ---- who may do what ----------------------------------------------------------------

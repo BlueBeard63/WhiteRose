@@ -63,6 +63,10 @@ impl Choice {
     }
 }
 
+/// Settings › Files › Verify copies: each copied file is read back from the
+/// drive and checked against what was read from the original.
+pub static VERIFY: AtomicBool = AtomicBool::new(false);
+
 #[derive(Default)]
 pub struct Control {
     pub cancel: AtomicBool,
@@ -369,6 +373,9 @@ impl<'a, R: Report> Run<'a, R> {
         let mut from = fs::File::open(src).map_err(friendly)?;
         let mut to = fs::File::create(&part).map_err(friendly)?;
         let mut buf = vec![0u8; 1 << 20];
+        let mut sum = VERIFY
+            .load(Ordering::Relaxed)
+            .then(crate::hash::Running::default);
         let result = (|| loop {
             if !self.ctl.go_on() {
                 return Ok(false);
@@ -377,11 +384,25 @@ impl<'a, R: Report> Run<'a, R> {
             if n == 0 {
                 return Ok(true);
             }
+            if let Some(h) = sum.as_mut() {
+                h.update(&buf[..n]);
+            }
             to.write_all(&buf[..n]).map_err(friendly)?;
             self.prog.bytes_done += n as u64;
             self.report.progress(&self.prog);
         })();
         drop(to);
+        // Verifying: what's on the drive must be what was read.
+        let result = match (result, sum) {
+            (Ok(true), Some(h)) => match crate::hash::on_disk(&part) {
+                Ok(d) if d == h.finish() => Ok(true),
+                Ok(_) => {
+                    Err("the copy didn't match the original (checksum); nothing was kept".into())
+                }
+                Err(e) => Err(friendly(e)),
+            },
+            (r, _) => r,
+        };
         match result {
             Ok(true) => {
                 let _ =
@@ -814,6 +835,26 @@ mod tests {
             vec![d.join("x (2).txt").to_string_lossy().into_owned()]
         );
         assert_eq!(r.asked, 0);
+    }
+
+    #[test]
+    fn verified_copies_check_what_landed() {
+        let d = scratch("verify");
+        fs::create_dir_all(d.join("to")).unwrap();
+        let big: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
+        fs::write(d.join("big.bin"), &big).unwrap();
+        VERIFY.store(true, Ordering::Relaxed);
+        let out = run(
+            Kind::Copy,
+            &[d.join("big.bin")],
+            Some(&d.join("to")),
+            &Control::default(),
+            &mut Auto::new(Choice::Skip),
+        );
+        VERIFY.store(false, Ordering::Relaxed);
+        assert!(out.failed.is_empty(), "{:?}", out.failed);
+        assert_eq!(fs::read(d.join("to/big.bin")).unwrap(), big);
+        assert!(!d.join("to/.big.bin.wrpart").exists());
     }
 
     #[test]

@@ -137,6 +137,8 @@ Rectangle {
             width: parent.width
             spacing: 2
             Heading { text: "Places" }
+            // Opened or changed lately (off with Settings › Privacy › Recent files).
+            PlaceRow { visible: side.open("Places") && Session.recentFiles; name: "Recent"; path: "recent:"; icon: Fs.icon("document-open-recent", 20) || Fs.icon("folder-recent", 20) }
             Repeater {
                 model: side.open("Places") ? side.places.folders : []
                 delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null }

@@ -567,6 +567,9 @@ AppWindow {
                           { label: "100 MB–1 GB", value: "large" }, { label: "Over 1 GB", value: "huge" }]
                 onPicked: v => win.current?.find({ size: v })
             }
+            // Match case, and the text as a regular expression.
+            SearchOption { text: "Aa"; tip: "Match case"; on: searchRow.ask.case ?? false; onToggled: v => win.current?.find({ case: v }) }
+            SearchOption { text: ".*"; tip: "Regular expression"; on: searchRow.ask.regex ?? false; onToggled: v => win.current?.find({ regex: v }) }
             Choice {
                 value: searchRow.ask.modified ?? ""
                 options: [{ label: "Any time", value: "" }, { label: "Today", value: "today" }, { label: "Past week", value: "week" },
@@ -705,9 +708,9 @@ AppWindow {
                 ...itemMenu.openIn,
                 { separator: true },
                 { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
-            ]) : (win.current?.inTag && !itemMenu.entry) ? [
+            ]) : (win.current?.inCollection && !itemMenu.entry) ? [
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
-                { label: "Rename tag…", run: () => tagDialog.rename(win.current.path.slice(4)) },
+                ...(win.current.inTag ? [{ label: "Rename tag…", run: () => tagDialog.rename(win.current.path.slice(4)) }] : []),
             ] : itemMenu.trashed ? (!itemMenu.entry ? [
                 { label: "Empty Trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
@@ -725,12 +728,13 @@ AppWindow {
                 ...(itemMenu.openIn.length > 0 ? [{ separator: true }].concat(itemMenu.openIn) : []),
                 { separator: true },
                 { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
+                { label: "Copy this folder's path", run: () => Ops.setClipboardText(win.current.path) },
                 { label: "Colour and icon…", run: () => looks.show(win.current.path, win.current.title) },
                 { label: "Properties", run: () => props.show([win.current.path]) },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
                 { label: "Quick look", shortcut: "Space", enabled: !itemMenu.many, run: () => win.quickLook() },
-                ...(win.current?.searching ? [{ label: "Show in folder", run: () => win.showInFolder(itemMenu.entry) }] : []),
+                ...(win.current?.searching || win.current?.inCollection ? [{ label: "Show in folder", run: () => win.showInFolder(itemMenu.entry) }] : []),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
                 ...(itemMenu.many ? [] : itemMenu.openIn),
                 { separator: true },
@@ -738,6 +742,12 @@ AppWindow {
                 { label: "Copy", shortcut: "Ctrl+C", run: () => win.toClipboard(false) },
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Paste into folder", enabled: win.clipFiles.length > 0, run: () => win.paste(itemMenu.entry.path) }] : []),
                 { label: "Duplicate", run: () => win.run("copy", itemMenu.sel.map(e => e.path), win.current.path) },
+                { label: "Copy path", items: [
+                    { label: itemMenu.many ? "Paths" : "Path", run: () => win.copyPaths("plain") },
+                    { label: "Quoted, for a terminal", run: () => win.copyPaths("quoted") },
+                    { label: "As links (file://)", run: () => win.copyPaths("uri") },
+                    { label: itemMenu.many ? "Names" : "Name", run: () => win.copyPaths("name") },
+                ] },
                 ...(itemMenu.sel.length > 0 && itemMenu.sel.every(e => !e.dir && Fs.isArchive(e.name)) && !win.current?.inTrash
                     ? [{ label: "Extract here", run: () => win.run("extract", itemMenu.sel.map(e => e.path), win.current.path) }] : []),
                 ...(win.tab?.other ? [
@@ -746,6 +756,7 @@ AppWindow {
                 ] : []),
                 { separator: true },
                 { label: "Rename…", shortcut: "F2", enabled: !itemMenu.many, run: () => win.askName("rename") },
+                ...(win.current?.searching || win.current?.inCollection ? [] : [{ label: "New folder with selection…", run: () => win.askName("group") }]),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
                 { label: "Tags", items: win.tagItems(itemMenu.sel.map(e => e.path)) },
                 { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
@@ -885,6 +896,13 @@ AppWindow {
         if (sel.length === 0 || !other || other.special || win.current.inDrives) return;
         win.run(kind, sel.map(e => e.path), other.path);
     }
+    // The selection's paths as text: plain, quoted for a shell, file:// links, or names.
+    function copyPaths(how) {
+        const sel = win.current?.selection ?? [];
+        if (sel.length === 0) return;
+        Ops.setClipboardText(F.pathsAs(sel.map(e => e.path), how));
+        win.info = sel.length === 1 ? "Copied" : "Copied " + sel.length + (how === "name" ? " names" : " paths");
+    }
     function toClipboard(cut) {
         // (Drives aren't files to copy or move.)
         if (win.current?.inDrives) return;
@@ -980,7 +998,10 @@ AppWindow {
         nameDialog.what = what;
         nameDialog.entry = e;
         nameDialog.error = "";
-        nameField.text = e ? e.name : what === "folder" ? "New folder" : "New file";
+        nameField.text = e ? e.name : what === "folder" ? "New folder"
+            : what === "group" ? F.groupName(p.selection.map(x => x.name)) : "New file";
+        // (A folder made from the selection: what goes in it.)
+        nameDialog.group = what === "group" ? p.selection.map(x => x.path) : [];
         nameDialog.open();
     }
     function nameChosen() {
@@ -989,6 +1010,10 @@ AppWindow {
                                                           : Ops.create(p.path, name, nameDialog.what === "file"));
         if (!r.ok) { nameDialog.error = r.error; return }
         nameDialog.close();
+        if (nameDialog.what === "group" && nameDialog.group.length > 0) {
+            // The selection goes into the new folder.
+            win.run("move", nameDialog.group, r.path);
+        }
         p.selectPaths([r.path]);
         p.focusView();
     }
@@ -1010,6 +1035,7 @@ AppWindow {
         id: nameDialog
         property string what: "rename"
         property var entry: null
+        property var group: []
         property string error: ""
         parent: Overlay.overlay
         anchors.centerIn: parent
@@ -1027,7 +1053,8 @@ AppWindow {
         contentItem: Column {
             spacing: 12
             Text {
-                text: nameDialog.what === "rename" ? "Rename" : nameDialog.what === "folder" ? "New folder" : "New file"
+                text: nameDialog.what === "rename" ? "Rename" : nameDialog.what === "folder" ? "New folder"
+                    : nameDialog.what === "group" ? "New folder with " + nameDialog.group.length + (nameDialog.group.length === 1 ? " item" : " items") : "New file"
                 color: Theme.text
                 font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
             }
@@ -1177,10 +1204,10 @@ AppWindow {
     Shortcut { sequence: win.keys("reload", "Ctrl+R"); onActivated: win.current?.load() }
     Shortcut { sequence: win.keys("copy", "Ctrl+C"); enabled: !win.typing; onActivated: win.toClipboard(false) }
     Shortcut { sequence: win.keys("cut", "Ctrl+X"); enabled: !win.typing; onActivated: win.toClipboard(true) }
-    Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inTag ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
+    Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inCollection ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
     Shortcut { sequence: win.keys("trash", "Delete"); enabled: !win.typing; onActivated: win.trash() }
     Shortcut { sequence: win.keys("delete", "Shift+Del"); enabled: !win.typing && !(win.current?.inDrives ?? false); onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
     Shortcut { sequence: win.keys("rename", "F2"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: win.askName("rename") }
     Shortcut { sequences: [win.keys("properties", "Alt+Return"), "Alt+Enter"]; enabled: !win.typing; onActivated: win.properties() }
-    Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inTag ?? false); onActivated: win.askName("folder") }
+    Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inCollection ?? false); onActivated: win.askName("folder") }
 }

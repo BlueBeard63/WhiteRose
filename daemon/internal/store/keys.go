@@ -222,6 +222,8 @@ var Known = map[string]Key{
 	"files.startFolder":  {Default: json.RawMessage(`""`), Check: into(pathOrEmpty)},
 	"files.openWith":     {Default: json.RawMessage(`"double"`), Check: into(oneOf("double", "single"))},
 	"files.confirmTrash": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// Each copied file read back from the drive and checked against the original.
+	"files.verifyCopies": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"files.hidden":       {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"files.details":      {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"files.adaptive":     {Default: json.RawMessage(`true`), Check: into[bool](nil)},

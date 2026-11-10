@@ -23,7 +23,8 @@ pub mod qobject {
         type Search = super::SearchRust;
 
         /// `ask` (JSON): {text, scope: here | home | everywhere, here, kind,
-        /// size, modified, hidden}. Returns its id.
+        /// size, modified, hidden, case, regex}. Returns its id. `found`
+        /// brings {hits, seen, done, error?}.
         #[qinvokable]
         fn find(self: Pin<&mut Search>, ask: &QString) -> i32;
         #[qinvokable]
@@ -146,12 +147,19 @@ impl qobject::Search {
         let stop = Arc::new(AtomicBool::new(false));
         self.as_mut().rust_mut().current = Some(stop.clone());
         let thread = self.qt_thread();
+        let thread_err = self.qt_thread();
         let send = move |hits: &[search::Hit], seen: u64, done: bool| {
             let r = json!({"hits": entries(hits), "seen": seen, "done": done}).to_string();
             let _ = thread.queue(move |mut obj| obj.as_mut().found(id, QString::from(r.as_str())));
         };
         std::thread::spawn(move || {
-            let q = search::parse(&ask.text);
+            let q = search::parse_with(&ask.text, ask.case, ask.regex);
+            if !q.bad.is_empty() {
+                let r = json!({"hits": [], "seen": 0, "done": true, "error": format!("Not a valid pattern: {}", q.bad)}).to_string();
+                let _ = thread_err
+                    .queue(move |mut obj| obj.as_mut().found(id, QString::from(r.as_str())));
+                return;
+            }
             let f = search::Filters::from(&ask, now());
             let mime = |n: &str| icons::shared().mime.type_of(n).to_string();
             if ask.scope == "here" || ask.here.is_empty() && ask.scope.is_empty() {
