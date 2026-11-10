@@ -11,5 +11,7 @@
          modules that may not be installed. -->
     <file>qml/MediaPreview.qml</file>
     <file>qml/PdfPreview.qml</file>
+    <!-- WhiteRose's rose (packaging/branding/whiterose.png, small): Start. -->
+    <file>images/whiterose.png</file>
 </qresource>
 </RCC>

@@ -15,10 +15,11 @@ Column {
     Card {
         SettingRow {
             title: "Open with"
-            subtitle: page.startIn === "last" ? "The tabs and windows you had last time" : page.startIn === "home" ? "Your home folder" : "The folder below"
+            subtitle: page.startIn === "last" ? "The tabs and windows you had last time" : page.startIn === "home" ? "Your home folder"
+                : page.startIn === "start" ? "The Start page: workspaces, places, recent files, drives" : "The folder below"
             Choice {
                 value: page.startIn
-                options: [{ label: "Last tabs", value: "last" }, { label: "Home", value: "home" }, { label: "A folder", value: "folder" }]
+                options: [{ label: "Last tabs", value: "last" }, { label: "Home", value: "home" }, { label: "Start page", value: "start" }, { label: "A folder", value: "folder" }]
                 onPicked: v => Daemon.set("files.startIn", v)
             }
         }

@@ -134,7 +134,8 @@ Rectangle {
             x: (pr.tree ? 20 : 10) + pr.depth * 14; y: pr.total > 0 ? 8 : (pr.height - height) / 2
             width: 18; height: 18
             sourceSize: Qt.size(36, 36)
-            source: pr.icon ? "file://" + pr.icon : ""
+            // (An icon theme's file, or one of Files' own: qrc:.)
+            source: !pr.icon ? "" : pr.icon.startsWith("qrc:") ? pr.icon : "file://" + pr.icon
             visible: !pr.look && pr.dot.a === 0
         }
         Rectangle {
@@ -216,6 +217,7 @@ Rectangle {
             width: parent.width
             spacing: 2
             Heading { text: "Places" }
+            PlaceRow { visible: side.open("Places"); tree: true; name: "Start"; path: "start:"; icon: "qrc:/qt/qml/WhiteRose/Files/images/whiterose.png" }
             // Opened or changed lately (off with Settings › Privacy › Recent files).
             PlaceRow { visible: side.open("Places") && Session.recentFiles; tree: true; name: "Recent"; path: "recent:"; icon: Fs.icon("document-open-recent", 20) || Fs.icon("folder-recent", 20) }
             Repeater {

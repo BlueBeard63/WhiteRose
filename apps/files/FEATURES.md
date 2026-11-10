@@ -18,8 +18,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Navigation history, back, forward and parent directory (MVP)
 - [x] Customisable sidebar with pinned folders and drives (MVP) — places, bookmarks (add, remove, drag to reorder; shared with GTK file choosers), drives, a tree under each, sections that fold
 - [x] Expandable directory tree in sidebar (Next) — a chevron on each place and bookmark opens its folders, as deep as you like; what's open is remembered
-- [ ] Workspaces saving tabs, panes and view settings (Next)
-- [ ] Home dashboard with drives, recents and shortcuts (Next)
+- [x] Workspaces saving tabs, panes and view settings (Next) — ☰ › Workspaces or the Start page: save every open window under a name (with its folders' views), open it here or in new windows, rename, delete
+- [x] Home dashboard with drives, recents and shortcuts (Next) — Start: workspaces, places, recent files, drives with how full, tags; can be where Files opens (Settings › Files)
 
 ## 2. Search, filtering & discovery
 - [x] Instant indexed filename search (MVP) — home and drives; built in the background at idle priority, read from disk when searching (no memory held)

@@ -218,7 +218,7 @@ var Known = map[string]Key{
 	"files.keys": {Default: json.RawMessage(`{}`), Check: into(appKeys)},
 	// WhiteRose Files (Settings › Files): where it starts, how items open,
 	// what shows, folders without a view of their own, lists, the search index.
-	"files.startIn":      {Default: json.RawMessage(`"last"`), Check: into(oneOf("last", "home", "folder"))},
+	"files.startIn":      {Default: json.RawMessage(`"last"`), Check: into(oneOf("last", "home", "start", "folder"))},
 	"files.startFolder":  {Default: json.RawMessage(`""`), Check: into(pathOrEmpty)},
 	"files.openWith":     {Default: json.RawMessage(`"double"`), Check: into(oneOf("double", "single"))},
 	"files.confirmTrash": {Default: json.RawMessage(`false`), Check: into[bool](nil)},

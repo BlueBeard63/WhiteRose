@@ -22,6 +22,7 @@ mod session;
 mod tags;
 mod trash;
 mod views;
+mod workspaces;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 

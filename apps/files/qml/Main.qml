@@ -105,6 +105,49 @@ AppWindow {
         Session.open({ tabs: [snap], current: 0 });
     }
     function snapshot() { return { tabs: win.tabs.map(p => p.snapshot()), current: win.currentIndex } }
+    // This window's tabs swapped for `w`'s ({tabs, current}).
+    function replaceTabs(w) {
+        const old = win.tabs;
+        win.tabs = [];
+        for (const t of w.tabs) win.newTab(t);
+        win.show(Math.min(w.current ?? 0, win.tabs.length - 1));
+        for (const p of old) p.destroy();
+        Session.changed();
+    }
+    // A workspace's windows: this one becomes its first (or, `fresh`, all
+    // of them open as new windows).
+    function openWorkspace(name, fresh) {
+        const r = JSON.parse(Fs.openWorkspace(name));
+        if (!r.ok) { win.notice = r.error; return }
+        r.windows.forEach((w, i) => { if (i === 0 && !fresh) win.replaceTabs(w); else Session.open(w) });
+        Session.reload(true);
+    }
+    // Saving what's open as a workspace (`old` "": a new one), or renaming `old`.
+    function askWorkspace(old) {
+        nameDialog.what = old ? "renameWorkspace" : "workspace";
+        nameDialog.entry = old ? { name: old } : null;
+        nameDialog.error = "";
+        nameDialog.group = [];
+        nameField.text = old || (win.current?.title ?? "Workspace");
+        nameDialog.open();
+    }
+    // The ☰ › Workspaces menu (made again when workspaces change).
+    property var workspaceMenu: workspaceItems()
+    Connections { target: Session; function onWorkspacesChanged() { win.workspaceMenu = win.workspaceItems() } }
+    function workspaceItems() {
+        const all = JSON.parse(Fs.workspaces());
+        return all.map(w => ({ label: w.name, items: [
+            { label: "Open", run: () => win.openWorkspace(w.name) },
+            { label: "Open in a new window", run: () => win.openWorkspace(w.name, true) },
+            { label: "Save what's open as this", run: () => Session.saveWorkspace(w.name) },
+            { separator: true },
+            { label: "Rename…", run: () => win.askWorkspace(w.name) },
+            { label: "Delete", danger: true, run: () => { Fs.deleteWorkspace(w.name); Session.workspacesChanged() } },
+        ] })).concat(all.length > 0 ? [{ separator: true }] : []).concat([
+            { label: "Save what's open…", run: () => win.askWorkspace("") },
+            { label: "Start page", run: () => win.current?.go("start:") },
+        ]);
+    }
 
     Component.onCompleted: {
         Session.add(win);
@@ -435,6 +478,8 @@ AppWindow {
         }
         Segmented {
             id: views
+            // (Nothing to show differently on the Start page.)
+            visible: !(win.current?.inStart ?? false)
             anchors { right: searchButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
             options: [{ icon: "grid", label: "Grid (Ctrl+1)", value: "grid" }, { icon: "viewList", label: "List (Ctrl+2)", value: "list" },
@@ -500,6 +545,7 @@ AppWindow {
                         { label: "Name", checked: win.current?.group === "name", run: () => win.current.setView({ group: "name" }) },
                         { label: "Tag", checked: win.current?.group === "tag", run: () => win.current.setView({ group: "tag" }) },
                     ] },
+                    { label: "Workspaces", items: win.workspaceMenu },
                     { label: "This folder", items: [
                         { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark it", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                         { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => looks.show(win.current.path, win.current.title) },
@@ -787,7 +833,7 @@ AppWindow {
                 if (win.notice !== "") return win.notice;
                 if (win.info !== "") return win.info;
                 const p = win.current;
-                if (!p) return "";
+                if (!p || p.inStart) return "";
                 if (p.searching) {
                     const n = p.results.length;
                     return (n === 1 ? "1 result" : n + " results") + (p.searchDone ? "" : " · looking…");
@@ -1006,6 +1052,14 @@ AppWindow {
     }
     function nameChosen() {
         const p = win.current, name = nameField.text;
+        if (nameDialog.what === "workspace" || nameDialog.what === "renameWorkspace") {
+            const err = nameDialog.what === "workspace" ? Session.saveWorkspace(name) : Fs.renameWorkspace(nameDialog.entry.name, name);
+            if (err !== "") { nameDialog.error = err; return }
+            Session.workspacesChanged();
+            nameDialog.close();
+            win.info = nameDialog.what === "workspace" ? "Saved as “" + name.trim() + "”" : "Renamed";
+            return;
+        }
         const r = JSON.parse(nameDialog.what === "rename" ? Ops.rename(nameDialog.entry.path, name)
                                                           : Ops.create(p.path, name, nameDialog.what === "file"));
         if (!r.ok) { nameDialog.error = r.error; return }
@@ -1054,7 +1108,8 @@ AppWindow {
             spacing: 12
             Text {
                 text: nameDialog.what === "rename" ? "Rename" : nameDialog.what === "folder" ? "New folder"
-                    : nameDialog.what === "group" ? "New folder with " + nameDialog.group.length + (nameDialog.group.length === 1 ? " item" : " items") : "New file"
+                    : nameDialog.what === "group" ? "New folder with " + nameDialog.group.length + (nameDialog.group.length === 1 ? " item" : " items")
+                    : nameDialog.what === "workspace" ? "Save as a workspace" : nameDialog.what === "renameWorkspace" ? "Rename workspace" : "New file"
                 color: Theme.text
                 font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
             }

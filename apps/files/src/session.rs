@@ -80,25 +80,27 @@ pub fn clean(s: Session, home: &Path) -> Session {
     Session { windows }
 }
 
+/// Places that aren't folders on disk: the Trash, Start, Recent, the
+/// Storage page, a tag's files.
+fn special(p: &str) -> bool {
+    ["trash:", "start:", "recent:", "drives:"].contains(&p) || p.starts_with("tag:")
+}
+
 fn clean_tab(t: Tab, home: &Path, outer: bool) -> Tab {
     let ok = |p: &String| p.starts_with('/') && Path::new(p).is_dir();
-    let path = if t.path == "trash:" {
+    let path = if special(&t.path) {
         t.path
     } else if t.path.starts_with('/') {
         nearest(&t.path)
     } else {
         home.to_string_lossy().into_owned()
     };
-    let mut back: Vec<String> = t
-        .back
-        .into_iter()
-        .filter(|p| ok(p) || p == "trash:")
-        .collect();
+    let mut back: Vec<String> = t.back.into_iter().filter(|p| ok(p) || special(p)).collect();
     back.drain(..back.len().saturating_sub(HISTORY));
     let forward = t
         .forward
         .into_iter()
-        .filter(|p| ok(p) || p == "trash:")
+        .filter(|p| ok(p) || special(p))
         .take(HISTORY)
         .collect();
     // Only a tab splits, once; its other side is a plain one.

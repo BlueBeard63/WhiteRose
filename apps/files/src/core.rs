@@ -57,6 +57,24 @@ pub mod qobject {
         #[qinvokable]
         fn subfolders(self: &Fs, path: &QString, hidden: bool) -> QString;
         /// Puts a bookmark at position `to` (others keep their order).
+        /// Saved workspaces: [{name, saved, windows, tabs, folders}].
+        #[qinvokable]
+        fn workspaces(self: &Fs) -> QString;
+        /// Saves {windows} as `name`, with its folders' views: "" or why not.
+        #[qinvokable]
+        #[cxx_name = "saveWorkspace"]
+        fn save_workspace(self: &Fs, name: &QString, json: &QString) -> QString;
+        /// `name`'s views put back; {ok, windows} or {ok: false, error}.
+        #[qinvokable]
+        #[cxx_name = "openWorkspace"]
+        fn open_workspace(self: &Fs, name: &QString) -> QString;
+        #[qinvokable]
+        #[cxx_name = "deleteWorkspace"]
+        fn delete_workspace(self: &Fs, name: &QString) -> bool;
+        /// "" or why not.
+        #[qinvokable]
+        #[cxx_name = "renameWorkspace"]
+        fn rename_workspace(self: &Fs, from: &QString, to: &QString) -> QString;
         /// `path` has folders in it (the tree offers to open it).
         #[qinvokable]
         #[cxx_name = "hasSubfolders"]
@@ -243,6 +261,8 @@ const TAG: &str = "tag:";
 const DRIVES: &str = "drives:";
 /// Files opened or changed lately (recent.rs).
 const RECENT: &str = "recent:";
+/// The Start page (StartMode.qml draws it; nothing is listed).
+const START: &str = "start:";
 
 #[derive(Default)]
 pub struct FsRust;
@@ -361,6 +381,8 @@ impl qobject::Fs {
             Ok(scattered(tags::files_with(tag), &mut origins, &|n| {
                 ic.mime.type_of(n).to_string()
             }))
+        } else if path == START {
+            Ok(vec![])
         } else if path == RECENT {
             // Recent: opened lately, or changed in the last two weeks.
             let now = std::time::SystemTime::now()
@@ -497,6 +519,9 @@ impl qobject::Fs {
         if path == RECENT {
             return q(json!([{"name": "Recent", "path": RECENT}]));
         }
+        if path == START {
+            return q(json!([{"name": "Start", "path": START}]));
+        }
         if let Some(tag) = path.strip_prefix(TAG) {
             return q(json!([{"name": "Tags", "path": ""}, {"name": tag, "path": path}]));
         }
@@ -589,6 +614,64 @@ impl qobject::Fs {
         )))
     }
 
+    pub fn workspaces(&self) -> QString {
+        q(json!(crate::workspaces::list(&crate::workspaces::file())))
+    }
+
+    pub fn save_workspace(&self, name: &QString, json: &QString) -> QString {
+        let s: session::Session = serde_json::from_str(&json.to_string()).unwrap_or_default();
+        let all = views::load_from(&views::file());
+        match crate::workspaces::save(
+            &crate::workspaces::file(),
+            &all,
+            &name.to_string(),
+            s,
+            now_s(),
+        ) {
+            Ok(()) => QString::from(""),
+            Err(e) => QString::from(e.as_str()),
+        }
+    }
+
+    pub fn open_workspace(&self, name: &QString) -> QString {
+        let mut wanted: Vec<(String, views::Folder)> = vec![];
+        let r = crate::workspaces::open(
+            &crate::workspaces::file(),
+            &name.to_string(),
+            &places::home(),
+            &mut |p, f| wanted.push((p.to_string(), f.clone())),
+        );
+        match r {
+            Ok(s) => {
+                if !wanted.is_empty() {
+                    views::change(|all| {
+                        for (p, f) in wanted {
+                            all.set(&p, f.view.clone());
+                            all.set_subfolders(&p, f.subfolders);
+                        }
+                    });
+                }
+                q(json!({"ok": true, "windows": s.windows}))
+            }
+            Err(e) => q(json!({"ok": false, "error": e})),
+        }
+    }
+
+    pub fn delete_workspace(&self, name: &QString) -> bool {
+        crate::workspaces::delete(&crate::workspaces::file(), &name.to_string()).is_ok()
+    }
+
+    pub fn rename_workspace(&self, from: &QString, to: &QString) -> QString {
+        match crate::workspaces::rename(
+            &crate::workspaces::file(),
+            &from.to_string(),
+            &to.to_string(),
+        ) {
+            Ok(()) => QString::from(""),
+            Err(e) => QString::from(e.as_str()),
+        }
+    }
+
     pub fn has_subfolders(&self, path: &QString, hidden: bool) -> bool {
         places::has_subfolders(Path::new(&path.to_string()), hidden)
     }
@@ -605,6 +688,11 @@ impl qobject::Fs {
         }
         if t.trim_end_matches('/') == DRIVES {
             return QString::from(DRIVES);
+        }
+        for special in [RECENT, START] {
+            if t.trim_end_matches('/') == special {
+                return QString::from(special);
+            }
         }
         let p = match t.strip_prefix('~') {
             Some(rest) => format!("{}{rest}", places::home().to_string_lossy()),
@@ -639,6 +727,9 @@ impl qobject::Fs {
                 }
                 if a.starts_with(RECENT) {
                     return PathBuf::from(RECENT);
+                }
+                if a.starts_with(START) {
+                    return PathBuf::from(START);
                 }
                 if a.starts_with(TAG) {
                     return PathBuf::from(&a);
@@ -713,7 +804,12 @@ impl qobject::Fs {
 
     pub fn up(&self, path: &QString) -> QString {
         let path = path.to_string();
-        if path == TRASH || path == DRIVES || path == RECENT || path == "/" || path.starts_with(TAG)
+        if path == TRASH
+            || path == DRIVES
+            || path == RECENT
+            || path == START
+            || path == "/"
+            || path.starts_with(TAG)
         {
             return QString::from("");
         }

@@ -160,6 +160,15 @@ QtObject {
     // Settings › Files (at a sub-page: general, views, search, apps, shortcuts).
     function openSettings(sub) { const e = Fs.openSettings("files" + (sub ? "/" + sub : "")); if (e) console.warn(e) }
 
+    // ---- workspaces: what's open, saved under a name (workspaces.rs) ------------------
+    signal workspacesChanged()
+    // Saves every open window as `name`: "" or why not.
+    function saveWorkspace(name) {
+        const err = Fs.saveWorkspace(name, JSON.stringify({ windows: session.windows.map(w => w.snapshot()) }));
+        if (err === "") session.workspacesChanged();
+        return err;
+    }
+
     property var windows: []
     // Closed tabs, newest last: { tab: snapshot, index }.
     property var closed: []
@@ -175,6 +184,7 @@ QtObject {
         // are still saved as you go either way).
         const startIn = session.setting("files.startIn", "last");
         if (startIn === "home") return { tabs: [{ path: "" }], current: 0 };
+        if (startIn === "start") return { tabs: [{ path: "start:" }], current: 0 };
         if (startIn === "folder") {
             const f = Fs.resolve(session.setting("files.startFolder", ""));
             return { tabs: [{ path: f }], current: 0 };

@@ -37,6 +37,7 @@ fn main() {
             "qml/GitBadge.qml",
             "qml/RunDialog.qml",
             "qml/SearchOption.qml",
+            "qml/StartMode.qml",
         ]
         .map(QmlFile::from),
     );
