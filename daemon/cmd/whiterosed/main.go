@@ -8,6 +8,8 @@
 //	whiterosed check-config   validate a displays.toml file
 //	whiterosed brightness set <percent>
 //	whiterosed airplane on|off
+//	whiterosed release-key PUB          make the release signing key (once)
+//	whiterosed sign-release DIR PUB     sign the packages in DIR for a release
 package main
 
 import (
@@ -49,6 +51,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdCalendar(args[1:], stdout, stderr)
 	case "apps-root":
 		return cmdAppsRoot(args[1:], stdout, stderr)
+	case "release-key":
+		return cmdReleaseKey(args[1:], stdout, stderr)
+	case "sign-release":
+		return cmdSignRelease(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0

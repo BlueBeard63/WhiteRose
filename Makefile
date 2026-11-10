@@ -6,7 +6,7 @@ DAEMON   := daemon
 WM       := compositor
 FUZZTIME ?= 20s
 
-.PHONY: dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
+.PHONY: release-key release dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
 
 check: go-check rust-check shell-check
 
@@ -97,6 +97,24 @@ run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl
 # container against that distro's Qt and libraries. Output: build/packages/.
 VERSION ?= 0.1.0
 package: package-deb package-rpm
+
+# ---- releases (updates) ---------------------------------------------------------
+# The release key signs every release; its public half (packaging/release.pub)
+# ships in the packages, so WhiteRose only installs updates signed with it.
+# The private half stays in ~/.config/whiterose-release (back it up).
+release-key:         ## Make the release signing key (once)
+	cd $(DAEMON) && $(GO) run ./cmd/whiterosed release-key $(CURDIR)/packaging/release.pub
+
+# VERSION=0.2.0 make release: both packages, signed, published as a GitHub
+# release (needs `gh` logged in, and RELEASE_REPO=owner/name).
+RELEASE_REPO ?= $(shell cat packaging/release-repo 2>/dev/null)
+release:             ## Build, sign and publish VERSION as a GitHub release
+	@test -n "$(RELEASE_REPO)" || { echo "set RELEASE_REPO=owner/name (or packaging/release-repo)"; exit 1; }
+	@test -f packaging/release.pub || { echo "no release key yet: make release-key"; exit 1; }
+	rm -rf build/packages/* && $(MAKE) package VERSION=$(VERSION)
+	cd $(DAEMON) && $(GO) run ./cmd/whiterosed sign-release $(CURDIR)/build/packages $(CURDIR)/packaging/release.pub
+	gh release create v$(VERSION) --repo $(RELEASE_REPO) --title "WhiteRose $(VERSION)" \
+		--notes-file $${NOTES:-/dev/stdin} build/packages/*.deb build/packages/*.rpm build/packages/SHA256SUMS build/packages/SHA256SUMS.sig
 
 package-deb:
 	docker build -q -t whiterose-build-ubuntu -f packaging/Dockerfile.ubuntu packaging >/dev/null
