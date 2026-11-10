@@ -40,36 +40,56 @@ qs_bin=$(find "$work/qs/build" -maxdepth 2 -type f -name quickshell -perm -u+x |
 (cd daemon && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$work/whiterosed" ./cmd/whiterosed)
 
 # ---- the file layout ---------------------------------------------------------
-install -Dm755 "$work/target/release/whiterose-wm" "$stage/usr/bin/whiterose-wm"
-install -Dm755 "$work/whiterosed" "$stage/usr/bin/whiterosed"
-install -Dm755 "$work/apps-target/release/whiterose-notepad" "$stage/usr/bin/whiterose-notepad"
-install -Dm644 packaging/files/whiterose-notepad.desktop "$stage/usr/share/applications/whiterose-notepad.desktop"
-install -Dm755 "$work/apps-target/release/whiterose-files" "$stage/usr/bin/whiterose-files"
-install -Dm644 packaging/files/whiterose-files.desktop "$stage/usr/share/applications/whiterose-files.desktop"
+# Two packages. whiterose-core-<version>: everything that runs, in
+# /usr/lib/whiterose/<version>/, so versions install side by side (the one
+# before stays to go back to). whiterose: what doesn't change between
+# versions (the session launcher, commands that run the right version,
+# desktop entries, icons, system files); it needs its version's core.
+core="$stage/core"
+meta="$stage/meta"
+v="$core/usr/lib/whiterose/$VERSION"
+install -Dm755 "$work/target/release/whiterose-wm" "$v/bin/whiterose-wm"
+install -Dm755 "$work/whiterosed" "$v/bin/whiterosed"
+install -Dm755 "$work/apps-target/release/whiterose-notepad" "$v/bin/whiterose-notepad"
+install -Dm755 "$work/apps-target/release/whiterose-files" "$v/bin/whiterose-files"
+install -Dm755 "$qs_bin" "$v/bin/quickshell"
+ln -s quickshell "$v/bin/qs"
+mkdir -p "$v"
+tar -C . --exclude=./shell/tests -cf - shell | tar -C "$v" -xf -
+echo "$VERSION" > "$v/VERSION"
+
+install -Dm755 packaging/files/whiterose-select "$meta/usr/lib/whiterose/select"
+install -Dm755 packaging/files/whiterose-session "$meta/usr/bin/whiterose-session"
+# /usr/bin commands: run the version this session uses.
+for b in whiterose-wm whiterosed whiterose-notepad whiterose-files; do
+    printf '#!/bin/sh\nd=$(/usr/lib/whiterose/select) || exit 1\nexec "$d/bin/%s" "$@"\n' "$b" > "$meta/usr/bin/$b"
+    chmod 755 "$meta/usr/bin/$b"
+done
+printf '#!/bin/sh\nd=$(/usr/lib/whiterose/select) || exit 1\nPATH="$d/bin:$PATH" exec "$d/shell/bin/whiterose-settings" "$@"\n' > "$meta/usr/bin/whiterose-settings"
+chmod 755 "$meta/usr/bin/whiterose-settings"
+install -Dm644 packaging/files/whiterose-notepad.desktop "$meta/usr/share/applications/whiterose-notepad.desktop"
+install -Dm644 packaging/files/whiterose-files.desktop "$meta/usr/share/applications/whiterose-files.desktop"
+install -Dm644 packaging/files/whiterose-settings.desktop "$meta/usr/share/applications/whiterose-settings.desktop"
 # The apps' icons (Settings, Notepad, Files), every size.
-mkdir -p "$stage/usr/share/icons"
-cp -r packaging/icons/hicolor "$stage/usr/share/icons/"
+mkdir -p "$meta/usr/share/icons"
+cp -r packaging/icons/hicolor "$meta/usr/share/icons/"
 # Folders open in Files, in a WhiteRose session only.
-install -Dm644 packaging/files/whiterose-mimeapps.list "$stage/etc/xdg/whiterose-mimeapps.list"
-install -Dm755 "$qs_bin" "$stage/usr/lib/whiterose/quickshell"
-ln -s quickshell "$stage/usr/lib/whiterose/qs"
-install -Dm755 packaging/files/whiterose-session "$stage/usr/bin/whiterose-session"
-mkdir -p "$stage/usr/share/whiterose"
-tar -C . --exclude=./shell/tests -cf - shell | tar -C "$stage/usr/share/whiterose" -xf -
-ln -s ../share/whiterose/shell/bin/whiterose-settings "$stage/usr/bin/whiterose-settings"
-install -Dm644 shell/pam/whiterose-lock "$stage/etc/pam.d/whiterose-lock"
-install -Dm644 packaging/files/whiterose.desktop "$stage/usr/share/wayland-sessions/whiterose.desktop"
-install -Dm644 packaging/files/whiterose-portals.conf "$stage/usr/share/xdg-desktop-portal/whiterose-portals.conf"
-install -Dm644 packaging/files/whiterose-settings.desktop "$stage/usr/share/applications/whiterose-settings.desktop"
-install -Dm644 ARCHITECTURE.md "$stage/usr/share/doc/whiterose/ARCHITECTURE.md"
-install -Dm644 packaging/files/whiterose-autostart.sh "$stage/etc/profile.d/whiterose-autostart.sh"
-install -Dm644 packaging/files/org.whiterose.apps.policy "$stage/usr/share/polkit-1/actions/org.whiterose.apps.policy"
+install -Dm644 packaging/files/whiterose-mimeapps.list "$meta/etc/xdg/whiterose-mimeapps.list"
+install -Dm644 shell/pam/whiterose-lock "$meta/etc/pam.d/whiterose-lock"
+install -Dm644 packaging/files/whiterose.desktop "$meta/usr/share/wayland-sessions/whiterose.desktop"
+install -Dm644 packaging/files/whiterose-portals.conf "$meta/usr/share/xdg-desktop-portal/whiterose-portals.conf"
+install -Dm644 ARCHITECTURE.md "$meta/usr/share/doc/whiterose/ARCHITECTURE.md"
+install -Dm644 packaging/files/whiterose-autostart.sh "$meta/etc/profile.d/whiterose-autostart.sh"
+install -Dm644 packaging/files/org.whiterose.apps.policy "$meta/usr/share/polkit-1/actions/org.whiterose.apps.policy"
+# Updates are only installed when signed with this key (internal/update).
+[ -f packaging/release.pub ] && install -Dm644 packaging/release.pub "$meta/usr/share/whiterose/release.pub"
+[ -f packaging/release-repo ] && install -Dm644 packaging/release-repo "$meta/usr/share/whiterose/release-repo"
 # Your theme and VS Code extensions, for the app setup.
-install -Dm644 profile/custom.zsh-theme "$stage/usr/share/whiterose/profile/custom.zsh-theme"
-install -Dm644 profile/vscode-extensions.txt "$stage/usr/share/whiterose/profile/vscode-extensions.txt"
+install -Dm644 profile/custom.zsh-theme "$meta/usr/share/whiterose/profile/custom.zsh-theme"
+install -Dm644 profile/vscode-extensions.txt "$meta/usr/share/whiterose/profile/vscode-extensions.txt"
 
 # ---- dependencies: what the binaries link, plus what the shell uses ------------
-bins="$stage/usr/bin/whiterose-wm $stage/usr/lib/whiterose/quickshell $stage/usr/bin/whiterose-notepad $stage/usr/bin/whiterose-files"
+bins="$v/bin/whiterose-wm $v/bin/quickshell $v/bin/whiterose-notepad $v/bin/whiterose-files"
 case "$FORMAT" in
 deb)
     # dpkg-shlibdeps maps each linked library to its package.
@@ -102,7 +122,25 @@ deb) scripts="scripts:
   postremove: $work/src/packaging/files/postrm-deb.sh" ;;
 *) scripts="" ;;
 esac
-deps_yaml=$(echo "$depends" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | grep -v '^$' | sort -u | sed 's/^/  - "/; s/$/"/')
+yaml_list() { echo "$1" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | grep -v '^$' | sort -u | sed 's/^/  - "/; s/$/"/'; }
+cat > "$work/nfpm-core.yaml" <<YAML
+name: whiterose-core-$VERSION
+version: "$VERSION"
+arch: amd64
+maintainer: "WhiteRose"
+description: |
+  WhiteRose $VERSION: the compositor, daemon, shell and apps, in /usr/lib/whiterose/$VERSION.
+contents:
+  - src: $core/
+    dst: /
+    type: tree
+depends:
+$(yaml_list "$depends")
+YAML
+case "$FORMAT" in
+deb) needs="whiterose-core-$VERSION (= $VERSION)" ;;
+*) needs="whiterose-core-$VERSION = $VERSION" ;;
+esac
 cat > "$work/nfpm.yaml" <<YAML
 name: whiterose
 version: "$VERSION"
@@ -111,12 +149,13 @@ maintainer: "WhiteRose"
 description: |
   WhiteRose: a light Wayland desktop (compositor, shell, settings and session daemon).
 contents:
-  - src: $stage/
+  - src: $meta/
     dst: /
     type: tree
 depends:
-$deps_yaml
+  - "$needs"
 $scripts
 YAML
+nfpm package --config "$work/nfpm-core.yaml" --packager "$FORMAT" --target /out/
 nfpm package --config "$work/nfpm.yaml" --packager "$FORMAT" --target /out/
 ls -la /out

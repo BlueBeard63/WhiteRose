@@ -384,10 +384,11 @@ Figma frames: `Settings - Updates` and `Recovery - Update Failed`.
 
 ### 2. Install alongside, never over
 
-- The **compositor, daemon, shell and core modules** are packaged per version, the same way the kernel is: `whiterose-core-0.5.0` installs into `/usr/lib/whiterose/0.5.0/`.
+- The **compositor, daemon, shell and apps** are packaged per version, the same way the kernel is: `whiterose-core-0.5.0` installs into `/usr/lib/whiterose/0.5.0/` (`bin/`, `shell/`, `VERSION`).
 - `/usr/lib/whiterose/0.4.2/` is left completely alone.
-- A small `whiterose` meta-package depends on the newest core package.
-- Configure apt and dnf to keep the last 2 versions, as they already do for kernels (dnf `installonlypkgs`; on apt, our own cleanup that keeps the current and previous versions).
+- A small `whiterose` package holds what doesn't change between versions: `whiterose-session`, the `/usr/bin` commands, desktop entries, icons, PAM / polkit / portal files, the release key. It depends on its version's core.
+- **Never more than two versions on disk** (`update.Keep`): the newest, plus the one you're running if that's another (after a rollback), else the one before the newest. Anything older is uninstalled when an update installs. Nothing piles up.
+- **Which version runs:** `/usr/lib/whiterose/select` picks `$WHITEROSE_DIR` (set by `whiterose-session` for the whole session), else `current=` in `~/.local/state/whiterose/version`, else the newest installed. The `/usr/bin` commands are three-line wrappers through it, so a session keeps using its version while a newer one installs.
 - Installing never changes what runs. Only the session launcher decides which version starts.
 
 ### 3. Switch on the next session start, with a health check

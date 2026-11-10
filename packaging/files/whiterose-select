@@ -1,0 +1,25 @@
+#!/bin/sh
+# Prints the folder of the WhiteRose version to run (/usr/lib/whiterose/<version>):
+#  1. $WHITEROSE_DIR, set by whiterose-session for everything in a session;
+#  2. the version your session state names (~/.local/state/whiterose/version,
+#     "current=<version>"; not for root);
+#  3. the newest one installed.
+# Each version lives in its own folder (package whiterose-core-<version>), so
+# a new one installs beside the old and only a new session switches to it.
+root=${WHITEROSE_ROOT:-/usr/lib/whiterose}
+ok() { [ -n "$1" ] && [ -x "$root/$1/bin/whiterose-wm" ]; }
+
+if [ -n "$WHITEROSE_DIR" ] && [ -x "$WHITEROSE_DIR/bin/whiterose-wm" ]; then
+    echo "$WHITEROSE_DIR"; exit 0
+fi
+if [ "$(id -u)" != 0 ]; then
+    state="${XDG_STATE_HOME:-$HOME/.local/state}/whiterose/version"
+    cur=$(sed -n 's/^current=//p' "$state" 2>/dev/null | head -1)
+    # (A version name: digits, dots, letters, - and ~ only.)
+    case "$cur" in *[!0-9A-Za-z.~-]*) cur= ;; esac
+    if ok "$cur"; then echo "$root/$cur"; exit 0; fi
+fi
+newest=$(ls -1 "$root" 2>/dev/null | grep -E '^[0-9][0-9A-Za-z.~-]*$' | sort -V | while read -r v; do ok "$v" && echo "$v"; done | tail -1)
+if [ -n "$newest" ]; then echo "$root/$newest"; exit 0; fi
+echo "whiterose: no version of WhiteRose is installed in $root" >&2
+exit 1

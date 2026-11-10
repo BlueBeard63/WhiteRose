@@ -110,11 +110,11 @@ func TestFetchVerifies(t *testing.T) {
 	}
 	dir := t.TempDir()
 	var seen int64
-	path, steps, err := src.Fetch(ctx, r, "deb", pub, dir, func(d, _ int64) { seen = d })
-	if err != nil {
+	paths, steps, err := src.Fetch(ctx, r, "deb", pub, dir, func(d, _ int64) { seen = d })
+	if err != nil || len(paths) != 1 {
 		t.Fatalf("good release refused: %v", err)
 	}
-	if b, _ := os.ReadFile(path); string(b) != "the package" || seen != 11 {
+	if b, _ := os.ReadFile(paths[0]); string(b) != "the package" || seen != 11 {
 		t.Errorf("got %q, progress %d", b, seen)
 	}
 	for _, s := range steps {

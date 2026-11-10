@@ -225,14 +225,16 @@ func (r Release) Changes() []string {
 	return out
 }
 
-// Package is the release's package for this kind of system ("deb" or "rpm").
-func (r Release) Package(kind string) (Asset, bool) {
+// Packages are the release's packages for this kind of system ("deb" or
+// "rpm"): whiterose-core-<version> and whiterose (installed together).
+func (r Release) Packages(kind string) []Asset {
+	var out []Asset
 	for _, a := range r.Assets {
 		if (kind == "deb" && strings.HasSuffix(a.Name, "_amd64.deb")) || (kind == "rpm" && strings.HasSuffix(a.Name, ".x86_64.rpm")) {
-			return a, true
+			out = append(out, a)
 		}
 	}
-	return Asset{}, false
+	return out
 }
 
 func (r Release) asset(name string) (Asset, bool) {
@@ -350,53 +352,68 @@ func (s Source) fetch(ctx context.Context, url string, dst io.Writer, max int64,
 	}
 }
 
-// Fetch downloads the release's package for `kind` into `dir` and verifies
-// it against SHA256SUMS and its signature (by `public`). On success: the
-// package's path and the steps; on failure the steps so far, and the
-// package is removed.
-func (s Source) Fetch(ctx context.Context, r Release, kind, public, dir string, prog Progress) (string, []Step, error) {
+// Fetch downloads the release's packages for `kind` into `dir` and
+// verifies them against SHA256SUMS and its signature (by `public`). On
+// success: the packages' paths and the steps; on failure the steps so far,
+// and nothing downloaded is kept.
+func (s Source) Fetch(ctx context.Context, r Release, kind, public, dir string, prog Progress) ([]string, []Step, error) {
 	steps := []Step{{Name: "downloaded"}, {Name: "signature"}, {Name: "verified"}}
-	pkg, ok := r.Package(kind)
-	if !ok {
-		return "", steps, fmt.Errorf("this release has no .%s package", kind)
+	pkgs := r.Packages(kind)
+	if len(pkgs) == 0 {
+		return nil, steps, fmt.Errorf("this release has no .%s packages", kind)
 	}
 	sumsA, ok1 := r.asset("SHA256SUMS")
 	sigA, ok2 := r.asset("SHA256SUMS.sig")
 	if !ok1 || !ok2 {
-		return "", steps, errors.New("this release isn't signed")
+		return nil, steps, errors.New("this release isn't signed")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", steps, err
+		return nil, steps, err
 	}
 	// The small files first.
 	var sums, sig bytes.Buffer
 	if err := s.fetch(ctx, sumsA.URL, &sums, 1<<20, nil, 0); err != nil {
-		return "", steps, err
+		return nil, steps, err
 	}
 	if err := s.fetch(ctx, sigA.URL, &sig, 4<<10, nil, 0); err != nil {
-		return "", steps, err
+		return nil, steps, err
 	}
-	// The package, under a temporary name until it checks out.
-	path := filepath.Join(dir, filepath.Base(pkg.Name))
-	part := path + ".part"
-	f, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-	if err != nil {
-		return "", steps, err
+	// The packages, under temporary names until they check out.
+	var total, before int64
+	for _, p := range pkgs {
+		total += p.Size
 	}
-	err = s.fetch(ctx, pkg.URL, f, pkg.Size+1, prog, pkg.Size)
-	f.Close()
-	fail := func(e error) (string, []Step, error) {
-		os.Remove(part)
-		return "", steps, e
+	var parts []string
+	fail := func(e error) ([]string, []Step, error) {
+		for _, p := range parts {
+			os.Remove(p)
+		}
+		return nil, steps, e
 	}
-	if err != nil {
-		return fail(err)
+	for _, pkg := range pkgs {
+		part := filepath.Join(dir, filepath.Base(pkg.Name)) + ".part"
+		parts = append(parts, part)
+		f, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fail(err)
+		}
+		b := before
+		err = s.fetch(ctx, pkg.URL, f, pkg.Size+1, func(d, _ int64) {
+			if prog != nil {
+				prog(b+d, total)
+			}
+		}, pkg.Size)
+		f.Close()
+		if err != nil {
+			return fail(err)
+		}
+		st, _ := os.Stat(part)
+		if st == nil || (pkg.Size > 0 && st.Size() != pkg.Size) {
+			return fail(errors.New("the download was cut short"))
+		}
+		before += st.Size()
 	}
-	st, _ := os.Stat(part)
-	if st == nil || (pkg.Size > 0 && st.Size() != pkg.Size) {
-		return fail(errors.New("the download was cut short"))
-	}
-	steps[0] = Step{Name: "downloaded", Done: true, Detail: fmt.Sprintf("%s, complete", Size(st.Size()))}
+	steps[0] = Step{Name: "downloaded", Done: true, Detail: fmt.Sprintf("%s, complete", Size(before))}
 
 	if err := Verify(public, sums.Bytes(), sig.String()); err != nil {
 		return fail(err)
@@ -407,22 +424,29 @@ func (s Source) Fetch(ctx context.Context, r Release, kind, public, dir string, 
 	if err != nil {
 		return fail(err)
 	}
-	want, ok := table[pkg.Name]
-	if !ok {
-		return fail(errors.New("the package isn't in the signed checksums"))
+	for i, pkg := range pkgs {
+		want, ok := table[pkg.Name]
+		if !ok {
+			return fail(fmt.Errorf("%s isn't in the signed checksums", pkg.Name))
+		}
+		got, err := fileSum(parts[i])
+		if err != nil {
+			return fail(err)
+		}
+		if got != want {
+			return fail(fmt.Errorf("%s doesn't match its signed checksum", pkg.Name))
+		}
 	}
-	got, err := fileSum(part)
-	if err != nil {
-		return fail(err)
+	steps[2] = Step{Name: "verified", Done: true, Detail: fmt.Sprintf("%d packages · sha256", len(pkgs))}
+	var paths []string
+	for _, part := range parts {
+		path := strings.TrimSuffix(part, ".part")
+		if err := os.Rename(part, path); err != nil {
+			return fail(err)
+		}
+		paths = append(paths, path)
 	}
-	if got != want {
-		return fail(errors.New("the package doesn't match its signed checksum"))
-	}
-	steps[2] = Step{Name: "verified", Done: true, Detail: "sha256 " + got[:8] + "…"}
-	if err := os.Rename(part, path); err != nil {
-		return fail(err)
-	}
-	return path, steps, nil
+	return paths, steps, nil
 }
 
 // Size is bytes for people ("48.2 MB").

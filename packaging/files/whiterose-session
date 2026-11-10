@@ -7,8 +7,12 @@ export XDG_SESSION_TYPE=wayland
 export QT_QPA_PLATFORM=wayland
 export MOZ_ENABLE_WAYLAND=1
 export ELECTRON_OZONE_PLATFORM_HINT=auto
-# WhiteRose's own QuickShell build (pinned to the Qt it was built with).
-export PATH="/usr/lib/whiterose:$PATH"
+# The version to run (/usr/lib/whiterose/<version>): everything in the
+# session uses it, whatever newer one gets installed meanwhile.
+WHITEROSE_DIR=$(/usr/lib/whiterose/select) || exit 1
+export WHITEROSE_DIR
+# Its own programs first (WhiteRose's QuickShell, pinned to its Qt).
+export PATH="$WHITEROSE_DIR/bin:$PATH"
 
 # The terminal SUPER+RETURN opens: $TERMINAL, else the first one installed.
 if [ -z "$TERMINAL" ]; then
@@ -25,5 +29,5 @@ export TERMINAL
 # this session's display.
 exec whiterose-wm --backend drm \
     --daemon "whiterosed serve" \
-    --shell "qs -p /usr/share/whiterose/shell" \
+    --shell "qs -p $WHITEROSE_DIR/shell" \
     -c "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE"
