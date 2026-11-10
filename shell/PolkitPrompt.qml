@@ -20,6 +20,9 @@ Scope {
         onIsRegisteredChanged: if (isRegistered) console.info("polkit: WhiteRose is this session's agent")
     }
     readonly property var flow: agent.flow
+    // PAM is waiting for a finger (pam_fprintd: it talks, it doesn't ask).
+    readonly property bool fingerprint: flow !== null && !flow.isResponseRequired
+        && /finger|swipe/i.test(flow.supplementaryMessage ?? "")
 
     PanelWindow {
         visible: root.flow !== null && !ShellState.locked
@@ -125,19 +128,42 @@ Scope {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: field.text === ""
-                            text: (root.flow?.inputPrompt ?? "Password").replace(/:\s*$/, "")
+                            text: root.fingerprint ? "Waiting for the reader…" : (root.flow?.inputPrompt ?? "Password").replace(/:\s*$/, "")
                             color: Theme.faint
                             font: field.font
                         }
                     }
                 }
-                Text {
-                    visible: text !== ""
+                // What PAM says: a wrong password, or (with fingerprints on for
+                // admin prompts, Settings › Users) the reader listening.
+                Row {
+                    visible: note.text !== ""
                     width: parent.width
-                    wrapMode: Text.Wrap
-                    text: root.flow?.supplementaryMessage ?? ""
-                    color: root.flow?.supplementaryIsError ? Theme.rose : Theme.muted
-                    font { family: Theme.font; pointSize: Theme.pt(11.5) }
+                    spacing: 8
+                    Icon {
+                        id: noteIcon
+                        visible: root.fingerprint
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "fingerprint"; size: 16
+                        color: root.flow?.supplementaryIsError ? Theme.rose : Theme.muted
+                        SequentialAnimation on opacity {
+                            running: root.fingerprint && !(root.flow?.supplementaryIsError ?? false)
+                            loops: Animation.Infinite
+                            onRunningChanged: if (!running) noteIcon.opacity = 1
+                            NumberAnimation { to: 0.45; duration: 900; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1; duration: 900; easing.type: Easing.InOutSine }
+                        }
+                    }
+                    Text {
+                        id: note
+                        width: parent.width - (noteIcon.visible ? noteIcon.width + parent.spacing : 0)
+                        wrapMode: Text.Wrap
+                        text: root.fingerprint && !(root.flow?.supplementaryIsError ?? false)
+                            ? "Touch the fingerprint reader, or wait to type your password"
+                            : (root.flow?.supplementaryMessage ?? "")
+                        color: root.flow?.supplementaryIsError ? Theme.rose : Theme.muted
+                        font { family: Theme.font; pointSize: Theme.pt(11.5) }
+                    }
                 }
                 Row {
                     anchors.right: parent.right

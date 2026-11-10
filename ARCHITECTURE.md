@@ -282,7 +282,7 @@ Figma frame: `Screenshot - Region (SUPER + SHIFT + S)`.
 
 ## Users and permissions
 
-- **The shell is the session's polkit agent** (`shell/PolkitPrompt.qml`, QuickShell's PolkitAgent). When anything needs permission, an app or Settings, a card asks for the password over a dimmed screen. A wrong password shakes it and lets you retry. Nested inside another desktop, that desktop stays the agent (polkit allows one per session).
+- **The shell is the session's polkit agent** (`shell/PolkitPrompt.qml`, QuickShell's PolkitAgent). When anything needs permission, an app or Settings, a card asks for the password over a dimmed screen. A wrong password shakes it and lets you retry. When the system's PAM asks for a fingerprint first (fprintd enabled for `polkit-1`), the card shows the reader listening, and the password field takes over when PAM moves on. Nested inside another desktop, that desktop stays the agent (polkit allows one per session).
 - **Accounts** (`daemon/internal/accounts`): AccountsService over D-Bus. Listing, name, picture, administrator rights, password, adding and removing people. Calls allow interactive authorization, so polkit asks through the prompt. Passwords are hashed in the daemon (SHA-512 crypt, checked against the specification's test vectors) and never sent in the clear. You can't remove your own administrator rights or your own account.
 - **Slow requests don't block:** whiterosed answers the optional ops (users, battery, network profiles) on their own goroutines, so a request waiting on a password doesn't hold up the shell's settings traffic. Settings requests stay in order.
 
@@ -494,6 +494,7 @@ The compositor implements `ext-session-lock-v1` (`compositor/src/session_lock.rs
   - Panels can't take the keyboard.
 - **Confirmation:** `locked` is sent to the client only after a frame without the desktop has been shown.
 - **Unlocking:** only the locking client can unlock. The password is checked by PAM with `shell/pam/whiterose-lock` (pam_unix); packages install it as `/etc/pam.d/whiterose-lock`.
+- **Fingerprint:** a second PAM conversation (`shell/pam/whiterose-fingerprint`, pam_fprintd) runs alongside the password one, so either unlocks (`shell/Auth.qml`). With no reader or no enrolled finger it fails at once and isn't shown. It stops after 30 s or three misses, as the reader draws power while listening; a key or click starts it again.
 - **If the shell dies while locked:** the session stays locked. The compositor restarts the shell (`shell_supervisor.rs`, which gives up after 5 exits in a minute). The compositor's `lock` event tells the new shell the session is locked, so it locks again and takes over.
 
 ## Notifications

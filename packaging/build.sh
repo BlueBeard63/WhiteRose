@@ -80,6 +80,7 @@ cp -r packaging/icons/hicolor "$meta/usr/share/icons/"
 # Folders open in Files, in a WhiteRose session only.
 install -Dm644 packaging/files/whiterose-mimeapps.list "$meta/etc/xdg/whiterose-mimeapps.list"
 install -Dm644 shell/pam/whiterose-lock "$meta/etc/pam.d/whiterose-lock"
+install -Dm644 shell/pam/whiterose-fingerprint "$meta/etc/pam.d/whiterose-fingerprint"
 install -Dm644 packaging/files/whiterose.desktop "$meta/usr/share/wayland-sessions/whiterose.desktop"
 install -Dm644 packaging/files/whiterose-portals.conf "$meta/usr/share/xdg-desktop-portal/whiterose-portals.conf"
 install -Dm644 ARCHITECTURE.md "$meta/usr/share/doc/whiterose/ARCHITECTURE.md"
@@ -103,6 +104,9 @@ deb)
     qtabi=$(dpkg-query -W -f='${Provides}\n' libqt6core6t64 libqt6qml6 2>/dev/null | tr ',' '\n' | grep -E 'private-abi' | sed 's/^ *//' | paste -sd, -)
     extra="qml6-module-org-kde-syntaxhighlighting, udisks2, qml6-module-qtmultimedia, qml6-module-qtquick-pdf, qml6-module-qtquick-controls, libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime"
     depends="$libs${qtabi:+, $qtabi}, $extra"
+    # Fingerprint unlock and sign-in, when there's a reader (installed by
+    # default, removable).
+    recommends="fprintd, libpam-fprintd"
     ;;
 rpm)
     # RPM resolves sonames itself: require each linked library by soname.
@@ -112,6 +116,7 @@ rpm)
     qtver=$(rpm -q --qf '%{VERSION}' qt6-qtbase)
     extra="kf6-syntax-highlighting, udisks2, qt6-qtmultimedia, qt6-qtpdf, mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam"
     depends="$libs, $extra"
+    recommends="fprintd, fprintd-pam"
     ;;
 *) echo "format must be deb or rpm" >&2; exit 2 ;;
 esac
@@ -158,6 +163,8 @@ contents:
     type: tree
 depends:
   - "$needs"
+recommends:
+$(yaml_list "$recommends")
 $scripts
 YAML
 nfpm package --config "$work/nfpm-core.yaml" --packager "$FORMAT" --target /out/

@@ -1,0 +1,7 @@
+#%PAM-1.0
+# Unlocking the WhiteRose lock screen with a fingerprint (fprintd), asked at
+# the same time as the password (shell/pam/whiterose-lock), not instead of
+# it. A missing reader or no enrolled fingers fails at once, and the lock
+# screen just doesn't offer it. Packages install this as
+# /etc/pam.d/whiterose-fingerprint.
+auth required pam_fprintd.so max-tries=3 timeout=30
