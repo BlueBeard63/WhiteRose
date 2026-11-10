@@ -257,7 +257,7 @@ var Known = map[string]Key{
 	"files.widths":      {Default: json.RawMessage(`{}`), Check: into(columnWidths)},
 	"files.folderSizes": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"files.defaultView": {Default: json.RawMessage(`{"mode":"grid","sortBy":"name","descending":false,"group":""}`), Check: into(func(v FilesView) error {
-		if err := oneOf("grid", "list", "columns", "gallery", "cards", "usage")(v.Mode); err != nil {
+		if err := oneOf("grid", "list", "columns", "cards", "usage")(v.Mode); err != nil {
 			return err
 		}
 		if err := oneOf("name", "size", "modified", "created", "kind")(v.SortBy); err != nil {

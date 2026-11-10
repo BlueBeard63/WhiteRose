@@ -362,7 +362,7 @@ FocusScope {
             : pane.mode === "list" || pane.searching ? listView
             : pane.grouped && pane.mode === "grid" ? groupedGridView
             : pane.grouped && pane.mode === "cards" ? groupedCardsView
-            : ({ columns: columnsView, gallery: galleryView, cards: cardsView, usage: usageView })[pane.mode] ?? gridView
+            : ({ columns: columnsView, cards: cardsView, usage: usageView })[pane.mode] ?? gridView
     }
     // (Inside the views `pane` names their own property, hence view.parent.)
     Component { id: gridView; GridMode { pane: view.parent } }
@@ -374,7 +374,6 @@ FocusScope {
     Component { id: containersView; ContainersMode { pane: view.parent } }
     Component { id: groupedGridView; GroupedGrid { pane: view.parent } }
     Component { id: groupedCardsView; GroupedGrid { pane: view.parent; cards: true } }
-    Component { id: galleryView; GalleryMode { pane: view.parent } }
     Component { id: cardsView; CardsMode { pane: view.parent } }
     Component { id: usageView; UsageMode { pane: view.parent } }
 

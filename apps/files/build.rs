@@ -26,7 +26,6 @@ fn main() {
             "qml/KeysDialog.qml",
             "qml/FolderIcon.qml",
             "qml/LookDialog.qml",
-            "qml/GalleryMode.qml",
             "qml/CardsMode.qml",
             "qml/UsageMode.qml",
             "qml/GridCell.qml",

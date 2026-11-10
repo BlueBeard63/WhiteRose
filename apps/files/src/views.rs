@@ -43,7 +43,8 @@ impl View {
     pub fn checked(self) -> View {
         View {
             mode: match self.mode.as_str() {
-                "list" | "columns" | "gallery" | "cards" | "usage" => self.mode,
+                "list" | "columns" | "cards" | "usage" => self.mode,
+                // (Gallery was taken out: those folders show as a grid.)
                 _ => "grid".into(),
             },
             sort_by: match self.sort_by.as_str() {
@@ -334,10 +335,13 @@ mod tests {
     #[test]
     fn new_views() {
         let mut v = Views::default();
-        for m in ["gallery", "cards", "usage"] {
+        for m in ["cards", "usage"] {
             v.set("/a", view(m));
             assert_eq!(v.find("/a").view.mode, m);
         }
+        // A folder left on the old gallery view opens as a grid.
+        v.set("/g", view("gallery"));
+        assert_eq!(v.find("/g").view.mode, "grid");
         let old: Views = serde_json::from_str(r#"{"hidden":true,"zoom":2}"#).unwrap();
         assert!(
             old.folders.is_empty(),

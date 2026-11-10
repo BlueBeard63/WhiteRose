@@ -760,8 +760,8 @@ test("files: what's dragged and what a drop does", () => {
 test("files: a view to suit the folder", () => {
     const f = (name, mime) => ({ name, mime, dir: false });
     const photos = ["a", "b", "c", "d"].map(n => f(n + ".jpg", "image/jpeg")).concat([f("notes.txt", "text/plain")]);
-    assert.equal(Lay.adaptive(photos, "grid"), "gallery");
-    assert.equal(Lay.adaptive(photos.slice(0, 2), "grid"), "grid", "too few to say");
+    assert.equal(Lay.adaptive(photos, "list"), "grid", "pictures: thumbnails");
+    assert.equal(Lay.adaptive(photos.slice(0, 2), "list"), "list", "too few to say");
     assert.equal(Lay.adaptive([{ name: ".git", dir: true, mime: "inode/directory" }, f("x.png", "image/png")], "grid"), "list", "a repository");
     assert.equal(Lay.adaptive([f("Cargo.toml", "application/toml")], "cards"), "list");
     assert.equal(Lay.adaptive([f("a.pdf", "application/pdf"), f("b.odt", "x")], "cards"), "cards", "else what it was");

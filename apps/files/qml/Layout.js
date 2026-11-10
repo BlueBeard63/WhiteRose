@@ -2,12 +2,12 @@
 // Picking a view from what's in a folder, and laying out the disk usage map.
 
 // The view for a folder that has none of its own: mostly pictures or
-// videos → gallery; a code project (or mostly code) → list; else `fallback`.
+// videos → grid (thumbnails); a code project (or mostly code) → list; else `fallback`.
 function adaptive(entries, fallback) {
     const files = entries.filter(e => !e.dir);
     if (files.length >= 4) {
         const media = files.filter(e => /^(image|video)\//.test(e.mime)).length;
-        if (media / files.length >= 0.6) return "gallery";
+        if (media / files.length >= 0.6) return "grid";
     }
     if (entries.some(e => e.dir && e.name === ".git") || entries.some(e => ["Cargo.toml", "package.json", "go.mod", "pyproject.toml", "Makefile", "CMakeLists.txt"].includes(e.name)))
         return "list";

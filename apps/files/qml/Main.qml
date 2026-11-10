@@ -511,8 +511,8 @@ AppWindow {
             anchors { right: extraTools.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
             options: [{ icon: "grid", label: "Grid (Ctrl+1)", value: "grid" }, { icon: "viewList", label: "List (Ctrl+2)", value: "list" },
-                      { icon: "viewColumns", label: "Columns (Ctrl+3)", value: "columns" }, { icon: "viewGallery", label: "Gallery (Ctrl+4)", value: "gallery" },
-                      { icon: "viewCards", label: "Cards (Ctrl+5)", value: "cards" }, { icon: "viewUsage", label: "Disk usage (Ctrl+6)", value: "usage" }]
+                      { icon: "viewColumns", label: "Columns (Ctrl+3)", value: "columns" },
+                      { icon: "viewCards", label: "Cards (Ctrl+4)", value: "cards" }, { icon: "viewUsage", label: "Disk usage (Ctrl+5)", value: "usage" }]
             onPicked: v => { if (win.current) { win.current.setView({ mode: v }); Qt.callLater(() => win.current.focusView()) } }
         }
         // Your own toolbar buttons (Settings › Files › Toolbar & menus).
@@ -1677,9 +1677,8 @@ AppWindow {
     Shortcut { sequence: win.keys("grid", "Ctrl+1"); onActivated: win.current?.setView({ mode: "grid" }) }
     Shortcut { sequence: win.keys("list", "Ctrl+2"); onActivated: win.current?.setView({ mode: "list" }) }
     Shortcut { sequence: win.keys("columns", "Ctrl+3"); onActivated: win.current?.setView({ mode: "columns" }) }
-    Shortcut { sequence: win.keys("gallery", "Ctrl+4"); onActivated: win.current?.setView({ mode: "gallery" }) }
-    Shortcut { sequence: win.keys("cards", "Ctrl+5"); onActivated: win.current?.setView({ mode: "cards" }) }
-    Shortcut { sequence: win.keys("usage", "Ctrl+6"); onActivated: win.current?.setView({ mode: "usage" }) }
+    Shortcut { sequence: win.keys("cards", "Ctrl+4"); onActivated: win.current?.setView({ mode: "cards" }) }
+    Shortcut { sequence: win.keys("usage", "Ctrl+5"); onActivated: win.current?.setView({ mode: "usage" }) }
     Shortcut { sequences: [win.keys("bigger", "Ctrl+="), "Ctrl++"]; onActivated: Session.setZoom(Session.zoom + 0.1) }
     Shortcut { sequence: win.keys("smaller", "Ctrl+-"); onActivated: Session.setZoom(Session.zoom - 0.1) }
     Shortcut { sequence: win.keys("normal-size", "Ctrl+0"); onActivated: Session.setZoom(1) }

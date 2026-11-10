@@ -27,7 +27,7 @@ Column {
             Choice {
                 value: page.dv.mode
                 options: [{ label: "Grid", value: "grid" }, { label: "List", value: "list" }, { label: "Columns", value: "columns" },
-                          { label: "Gallery", value: "gallery" }, { label: "Cards", value: "cards" }, { label: "Disk usage", value: "usage" }]
+                          { label: "Cards", value: "cards" }, { label: "Disk usage", value: "usage" }]
                 onPicked: v => page.setView({ mode: v })
             }
         }
@@ -59,7 +59,7 @@ Column {
         }
         SettingRow {
             title: "Pick views to suit each folder"
-            subtitle: "Pictures open as a gallery, code projects as a list"
+            subtitle: "Pictures open as a grid of thumbnails, code projects as a list"
             Toggle { checked: Daemon.setting("files.adaptive", true); onToggled: on => Daemon.set("files.adaptive", on) }
         }
     }

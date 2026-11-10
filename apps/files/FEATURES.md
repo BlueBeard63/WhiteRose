@@ -10,7 +10,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Copy/move files between panes using shortcuts or drag and drop (MVP) — F5 / F6, the right-click menu, or dragging
 - [x] Compare folders and one-way/two-way/mirror sync (Advanced) — ☰ › This folder › Compare with… (the other side when split): only-here/only-there/newer/different, all the way down, by size and time or byte by byte; update either way, two-way (unclear ones left alone and counted), or mirror (extras to the Trash, after asking); runs as a transfer
 - [x] Icon/grid, details/list and column views (MVP)
-- [x] Gallery view (Next) — one item as large as it fits, arrows on hover, "3 of 9" (no filmstrip, by choice)
+- [x] Gallery view (Next) — taken out by choice: picture folders open as a grid of thumbnails, and Quick look (Space) shows one large with arrows
 - [x] Disk usage view as a file browsing mode (Advanced) — a treemap of the folder, sized as folders are measured
 - [x] Adjustable item density and icon/text sizing (Next) — Ctrl+= / Ctrl+- / Ctrl+0
 - [x] Cards view and adaptive views (added) — cards with kind, size and date; folders without a view of their own get one to suit them
