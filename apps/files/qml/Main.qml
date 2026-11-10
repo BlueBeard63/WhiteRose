@@ -654,6 +654,17 @@ AppWindow {
             // Match case, and the text as a regular expression.
             SearchOption { text: "Aa"; tip: "Match case"; on: searchRow.ask.case ?? false; onToggled: v => win.current?.find({ case: v }) }
             SearchOption { text: ".*"; tip: "Regular expression"; on: searchRow.ask.regex ?? false; onToggled: v => win.current?.find({ regex: v }) }
+            // Text inside the files (their contents, a PDF's text, or a comment).
+            Field {
+                id: insideField
+                width: 190
+                anchors.verticalCenter: parent.verticalCenter
+                placeholder: "Text inside files…"
+                text: searchRow.ask.content ?? ""
+                onAccepted: win.current?.find({ content: text })
+                onTextChanged: insideTimer.restart()
+                Timer { id: insideTimer; interval: 450; onTriggered: if (insideField.text !== (searchRow.ask.content ?? "")) win.current?.find({ content: insideField.text }) }
+            }
             Choice {
                 value: searchRow.ask.modified ?? ""
                 options: [{ label: "Any time", value: "" }, { label: "Today", value: "today" }, { label: "Past week", value: "week" },

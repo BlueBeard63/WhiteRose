@@ -193,7 +193,7 @@ FocusScope {
                     }
                     Text {
                         id: nameText
-                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: 8 + (row.gitState && row.gitState !== "ignored" ? 22 : 0) + (row.cloudState ? 22 : 0); verticalCenter: parent.verticalCenter }
+                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: row.modelData.found ? parent.width * 0.55 : 8 + (row.gitState && row.gitState !== "ignored" ? 22 : 0) + (row.cloudState ? 22 : 0); verticalCenter: parent.verticalCenter }
                         text: row.modelData.name + (row.modelData.link ? "  →" : "")
                         elide: Text.ElideMiddle
                         color: row.modelData.hidden ? Theme.muted : Theme.text
@@ -203,6 +203,16 @@ FocusScope {
                         id: gitMark
                         state: row.gitState
                         anchors { left: parent.left; leftMargin: ic.width + 10 + Math.min(nameText.implicitWidth, nameText.width) + 8; verticalCenter: parent.verticalCenter }
+                    }
+                    // Searching inside: where it was found.
+                    Text {
+                        visible: !!row.modelData.found
+                        anchors { left: parent.left; leftMargin: ic.width + 10 + Math.min(nameText.implicitWidth, nameText.width) + 14; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        text: row.modelData.found ?? ""
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Theme.faint
+                        font { family: Theme.mono; pointSize: Theme.pt(10.5) }
                     }
                     CloudBadge {
                         state: row.cloudState

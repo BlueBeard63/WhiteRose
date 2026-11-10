@@ -121,6 +121,7 @@ Rectangle {
                         }
                     }
                 }
+                Fact { label: "Found"; value: root.entry?.found ?? "" }
                 Fact { label: root.pane?.inTrash ? "Deleted" : "Modified"; value: root.entry ? F.fullDate(root.entry.modified) : "" }
                 Fact { label: root.pane?.inTrash ? "From" : "Folder"; value: String(root.entry?.origin ?? root.entry?.folder ?? "").replace(Fs.home(), "~") }
                 Button { text: "Open"; kind: "primary"; anchors.verticalCenter: undefined; onClicked: root.pane.activate(root.entry) }

@@ -46,6 +46,101 @@ pub struct Ask {
     pub case: bool,
     /// The text (less tag: and ext: parts) is a regular expression.
     pub regex: bool,
+    /// Text the file must have inside it (its contents, a PDF's text, or
+    /// its comment); "" for names only. Same case and regex rules.
+    pub content: String,
+}
+
+// ---- inside files ---------------------------------------------------------------------
+
+/// What must be inside a file, and how it's looked for.
+pub struct Inside {
+    re: regex::Regex,
+    /// pdftotext is installed: PDFs' text is looked in too.
+    pub pdf: bool,
+}
+
+/// Files bigger than this aren't read through.
+pub const INSIDE_MAX: u64 = 20 << 20;
+
+impl Inside {
+    pub fn new(text: &str, case: bool, regex: bool) -> Result<Inside, String> {
+        let pat = if regex {
+            text.to_string()
+        } else {
+            regex::escape(text.trim())
+        };
+        let re = regex::RegexBuilder::new(&pat)
+            .case_insensitive(!case)
+            .size_limit(1 << 20)
+            .build()
+            .map_err(|e| e.to_string().lines().last().unwrap_or("").to_string())?;
+        Ok(Inside {
+            re,
+            pdf: crate::launch::installed("pdftotext"),
+        })
+    }
+
+    fn line_of(&self, text: &str) -> Option<String> {
+        let m = self.re.find(text)?;
+        let line_no = text[..m.start()].matches('\n').count() + 1;
+        let start = text[..m.start()].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let end = text[m.end()..]
+            .find('\n')
+            .map(|i| m.end() + i)
+            .unwrap_or(text.len());
+        let line = text[start..end].trim();
+        // Around the match, at most ~100 characters.
+        let line: String = if line.chars().count() > 100 {
+            let at = line.find(m.as_str()).unwrap_or(0);
+            let from = line[..at]
+                .char_indices()
+                .rev()
+                .nth(30)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            let s: String = line[from..].chars().take(100).collect();
+            format!("{}{s}…", if from > 0 { "…" } else { "" })
+        } else {
+            line.to_string()
+        };
+        Some(format!("{line_no}: {line}"))
+    }
+
+    /// Where in `path` it is ("12: the line"), or None. Text files (no NUL
+    /// near the start), PDFs (with pdftotext), and the file's comment.
+    pub fn find(&self, path: &Path, size: u64, mime: &str) -> Option<String> {
+        let comment = crate::tags::comment(path);
+        if !comment.is_empty() && self.re.is_match(&comment) {
+            return Some(format!("comment: {comment}"));
+        }
+        if size == 0 || size > INSIDE_MAX {
+            return None;
+        }
+        if mime == "application/pdf" {
+            if !self.pdf {
+                return None;
+            }
+            let out = std::process::Command::new("pdftotext")
+                .args(["-l", "200", "-q"])
+                .arg(path)
+                .arg("-")
+                .stdin(std::process::Stdio::null())
+                .output()
+                .ok()?;
+            let text = String::from_utf8_lossy(&out.stdout);
+            return self.find_text(&text).map(|l| format!("page text {l}"));
+        }
+        let bytes = fs::read(path).ok()?;
+        if bytes[..bytes.len().min(8192)].contains(&0) {
+            return None;
+        }
+        self.find_text(&String::from_utf8_lossy(&bytes))
+    }
+
+    fn find_text(&self, text: &str) -> Option<String> {
+        self.line_of(text).map(|l| format!("line {l}"))
+    }
 }
 
 /// What a name must have: words (lowercase unless matching case, any
@@ -300,6 +395,9 @@ pub struct Hit {
     pub modified: i64,
     #[serde(skip)]
     pub score: i32,
+    /// Searching inside: where it was found ("line 12: …").
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub found: String,
 }
 
 /// Best first: score, then newest.
@@ -329,6 +427,8 @@ pub struct Look<'a> {
     pub filters: &'a Filters,
     pub hidden: bool,
     pub mime: &'a dyn Fn(&str) -> String,
+    /// Searching inside files too.
+    pub inside: Option<&'a Inside>,
 }
 
 pub fn walk(
@@ -363,7 +463,20 @@ pub fn walk(
             if !f.pass(|| mime(&name), is_dir, m.len(), m.mtime()) || !q.tagged(&e.path()) {
                 continue;
             }
+            let found = match look.inside {
+                Some(inside) => {
+                    if is_dir || !m.is_file() {
+                        continue;
+                    }
+                    match inside.find(&e.path(), m.len(), &mime(&name)) {
+                        Some(f) => f,
+                        None => continue,
+                    }
+                }
+                None => String::new(),
+            };
             hits.push(Hit {
+                found,
                 path: e.path().to_string_lossy().into_owned(),
                 name,
                 dir: is_dir,
@@ -735,6 +848,7 @@ impl Index {
                         size: r.size,
                         modified: r.modified * 1000,
                         score: s,
+                        found: String::new(),
                     },
                 ));
                 if hits.len() > keep * 4 {
@@ -921,6 +1035,7 @@ mod tests {
                 filters: &f,
                 hidden: false,
                 mime: &mime,
+                inside: None,
             },
             &stop,
             100,
@@ -996,6 +1111,76 @@ mod tests {
         fs::remove_file(usb.join("Backups/report-old.pdf")).unwrap();
         let (hits, _) = ix.find(&parse("report-old"), &any(), &all, &mime, &stop, 100);
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn searches_inside_files() {
+        let d = scratch("inside");
+        fs::create_dir_all(d.join("notes")).unwrap();
+        fs::write(
+            d.join("notes/meeting.md"),
+            "# Monday\n\nAgreed the Invoice total with Sam.\n",
+        )
+        .unwrap();
+        fs::write(d.join("notes/other.txt"), "nothing here").unwrap();
+        fs::write(d.join("photo.jpg"), b"\xff\xd8\0invoice").unwrap();
+        let mut long = "x ".repeat(200);
+        long.push_str("invoice number 42");
+        long.push_str(&" y".repeat(200));
+        fs::write(d.join("long.log"), &long).unwrap();
+        let inside = Inside::new("invoice", false, false).unwrap();
+        let (q, f) = (parse(""), any());
+        let mut got = vec![];
+        walk(
+            &d,
+            &Look {
+                query: &q,
+                filters: &f,
+                hidden: false,
+                mime: &mime,
+                inside: Some(&inside),
+            },
+            &AtomicBool::new(false),
+            100,
+            &mut |h, _, done| {
+                if done {
+                    got = h
+                        .iter()
+                        .map(|x| (x.name.clone(), x.found.clone()))
+                        .collect();
+                }
+            },
+        );
+        got.sort();
+        assert_eq!(
+            got.len(),
+            2,
+            "binary files and non-matches left out: {got:?}"
+        );
+        assert_eq!(
+            got[1],
+            (
+                "meeting.md".into(),
+                "line 3: Agreed the Invoice total with Sam.".into()
+            )
+        );
+        assert!(
+            got[0].1.starts_with("line 1: …")
+                && got[0].1.contains("invoice number 42")
+                && got[0].1.chars().count() <= 112,
+            "{:?}",
+            got[0]
+        );
+        // Matching case, and a regular expression.
+        assert!(Inside::new("invoice", true, false)
+            .unwrap()
+            .find(&d.join("notes/meeting.md"), 40, "text/markdown")
+            .is_none());
+        assert!(Inside::new(r"total\s+with", false, true)
+            .unwrap()
+            .find(&d.join("notes/meeting.md"), 40, "text/markdown")
+            .is_some());
+        assert!(Inside::new("(", false, true).is_err());
     }
 
     #[test]

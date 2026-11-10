@@ -133,6 +133,7 @@ fn entries(hits: &[search::Hit]) -> Vec<Value> {
                 "mime": mime, "icon": icon.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
                 "folder": Path::new(&h.path).parent().map(|p| p.to_string_lossy().into_owned()),
                 "look": if h.dir { looks.get(&h.path).cloned() } else { None },
+                "found": h.found,
             })
         })
         .collect()
@@ -162,6 +163,59 @@ impl qobject::Search {
             }
             let f = search::Filters::from(&ask, now());
             let mime = |n: &str| icons::shared().mime.type_of(n).to_string();
+            // Inside files: walked (here, home, or home and the drives), each
+            // file that passes read through.
+            if !ask.content.trim().is_empty() {
+                let inside = match search::Inside::new(&ask.content, ask.case, ask.regex) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        let r = json!({"hits": [], "seen": 0, "done": true, "error": format!("Not a valid pattern: {e}")}).to_string();
+                        let _ = thread_err.queue(move |mut obj| {
+                            obj.as_mut().found(id, QString::from(r.as_str()))
+                        });
+                        return;
+                    }
+                };
+                let look = search::Look {
+                    query: &q,
+                    filters: &f,
+                    hidden: ask.hidden,
+                    mime: &mime,
+                    inside: Some(&inside),
+                };
+                let roots: Vec<PathBuf> = match ask.scope.as_str() {
+                    "home" => vec![places::home()],
+                    "everywhere" => std::iter::once(places::home())
+                        .chain(
+                            places::drives()
+                                .into_iter()
+                                .filter(|d| d.mounted && !d.path.is_empty() && d.path != "/")
+                                .map(|d| PathBuf::from(d.path)),
+                        )
+                        .collect(),
+                    _ => vec![PathBuf::from(&ask.here)],
+                };
+                let mut all: Vec<search::Hit> = vec![];
+                let mut seen_before = 0u64;
+                let n = roots.len();
+                for (i, root) in roots.iter().enumerate() {
+                    let mut last: Vec<search::Hit> = vec![];
+                    let mut seen = 0;
+                    search::walk(root, &look, &stop, KEEP, &mut |h, s, done| {
+                        last = h.to_vec();
+                        seen = s;
+                        let mut so_far = all.clone();
+                        so_far.extend(h.iter().cloned());
+                        send(&so_far, seen_before + s, done && i + 1 == n);
+                    });
+                    all.extend(last);
+                    seen_before += seen;
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                }
+                return;
+            }
             if ask.scope == "here" || ask.here.is_empty() && ask.scope.is_empty() {
                 let mut send = send;
                 let look = search::Look {
@@ -169,6 +223,7 @@ impl qobject::Search {
                     filters: &f,
                     hidden: ask.hidden,
                     mime: &mime,
+                    inside: None,
                 };
                 search::walk(Path::new(&ask.here), &look, &stop, KEEP, &mut send);
                 return;
@@ -203,6 +258,7 @@ impl qobject::Search {
                             size: if m.is_dir() { 0 } else { m.len() },
                             modified: m.mtime() * 1000,
                             score: s,
+                            found: String::new(),
                         })
                     })
                     .collect();

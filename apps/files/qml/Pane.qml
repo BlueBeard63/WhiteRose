@@ -183,14 +183,14 @@ FocusScope {
     // merged with what was.
     function find(ask) {
         pane.activated();
-        pane.search = Object.assign({ text: "", scope: "here", kind: "", size: "", modified: "", case: false, regex: false }, pane.search ?? {}, ask);
+        pane.search = Object.assign({ text: "", scope: "here", kind: "", size: "", modified: "", case: false, regex: false, content: "" }, pane.search ?? {}, ask);
         pane.searchError = "";
         pane.filter = "";
         pane.selected = {};
         pane.current = 0;
         // Nothing to look for yet: nothing found.
         const s = pane.search;
-        if (s.text.trim() === "" && !s.kind && !s.size && !s.modified) {
+        if (s.text.trim() === "" && s.content.trim() === "" && !s.kind && !s.size && !s.modified) {
             Search.stop();
             pane.results = [];
             pane.searchDone = true;
