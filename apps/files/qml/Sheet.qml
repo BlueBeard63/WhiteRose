@@ -3,6 +3,8 @@
 //   Info     the file (preview, name changed by typing on it, kind, size,
 //            opens with, where, when, tags, comment, checksums, who may
 //            do what); several: how many and how big; none: the folder.
+//   Rename   rules for every selected name, the new names shown in the
+//            list as you type (RenameSheet.qml).
 //   Scripts  the folder's project scripts (Cargo, npm, Go, Make…), run in
 //            your terminal; somewhere untrusted (Downloads…) asks first.
 // (Properties, the tag and comment boxes all live here now.)
@@ -20,6 +22,8 @@ Rectangle {
     signal tagsEdited()
     signal closeIt()
     signal said(string notice)
+    signal renamed(var paths)
+    signal renameFailed(string message)
 
     readonly property var sel: root.pane?.selection ?? []
     readonly property var entry: root.sel.length === 1 ? root.sel[0] : null
@@ -27,7 +31,7 @@ Rectangle {
     readonly property var targets: root.sel.length > 0 ? root.sel.map(e => e.path)
         : root.pane && root.pane.path.startsWith("/") && !root.pane.special ? [root.pane.path] : []
     readonly property bool one: root.targets.length === 1
-    readonly property bool typing: nameField.editing || commentField.editing || tagField.editing || pasted.editing
+    readonly property bool typing: nameField.editing || commentField.editing || tagField.editing || pasted.editing || renamer.typing
 
     // ---- what's known about the targets ------------------------------------------------
     property var info: ({})
@@ -178,6 +182,7 @@ Rectangle {
             anchors.bottom: parent.bottom
             spacing: 18
             Tab { name: "info"; label: "Info" }
+            Tab { name: "rename"; label: "Rename"; visible: !(root.pane?.readOnly ?? true) && !(root.pane?.special ?? true) && (root.sel.length > 0 || root.tab === "rename") }
             Tab { name: "scripts"; label: "Scripts"; visible: root.projects.projects.length > 0 }
         }
         IconButton {
@@ -190,7 +195,7 @@ Rectangle {
 
     Flickable {
         anchors { left: parent.left; leftMargin: 1; right: parent.right; top: head.bottom; bottom: parent.bottom }
-        contentHeight: (root.tab === "info" ? info.implicitHeight : scripts.implicitHeight) + 32
+        contentHeight: (root.tab === "info" ? info.implicitHeight : root.tab === "rename" ? renamer.implicitHeight : scripts.implicitHeight) + 32
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
@@ -505,6 +510,19 @@ Rectangle {
                 text: "Open"; kind: "primary"
                 onClicked: root.pane.activate(root.entry)
             }
+        }
+
+        // ======== Rename ========
+        RenameSheet {
+            id: renamer
+            visible: root.tab === "rename"
+            active: root.visible && root.tab === "rename"
+            x: 16; y: 14
+            width: parent.width - 32
+            pane: root.pane
+            onRenamed: paths => { root.tab = "info"; root.renamed(paths) }
+            onFailed: message => root.renameFailed(message)
+            onCancelled: root.tab = "info"
         }
 
         // ======== Scripts ========

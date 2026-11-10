@@ -13,6 +13,7 @@ FocusScope {
     readonly property real now: Date.now()
     // In the Trash and in search results the last column says where things are.
     readonly property bool located: root.pane.inTrash || root.pane.searching
+    readonly property bool renamingNow: Object.keys(root.pane.renaming).length > 0
     // Every column there can be after Name: what it's called, how wide, what
     // it shows, and what sorting by it means ("": it can't sort).
     readonly property var all: ({
@@ -28,7 +29,8 @@ FocusScope {
     // The columns shown (the Trash and search: their own), widths as set,
     // dropped from the end while the name would get under 160 px.
     readonly property var cols: {
-        const keys = root.located ? ["size", "modified", "where"] : Session.columns;
+        // Renaming in the Sheet: room for "old → new", with only the date beside.
+        const keys = root.renamingNow ? ["modified"] : root.located ? ["size", "modified", "where"] : Session.columns;
         const list = keys.filter(k => root.all[k]).map(k => Object.assign({ key: k }, root.all[k], { w: Session.widths[k] ?? root.all[k].w }));
         while (list.length > 0 && root.width - 32 - list.reduce((a, c) => a + c.w, 0) < 160) list.pop();
         return list;
@@ -61,7 +63,7 @@ FocusScope {
         Row {
             anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
             Repeater {
-                model: [{ key: "name", label: "Name", w: root.nameW, sort: "name" }].concat(root.cols)
+                model: [{ key: "name", label: root.renamingNow ? "Name  →  new name" : "Name", w: root.nameW, sort: "name" }].concat(root.cols)
                 delegate: Item {
                     id: heading
                     required property var modelData
@@ -165,7 +167,13 @@ FocusScope {
             x: 8; width: list.width - 16; height: hiddenByFold ? 0 : 32 * Session.zoom
             visible: !hiddenByFold
             readonly property string cloudState: root.pane.cloudOf(modelData)
-            radius: 8
+            // Renaming in the Sheet: its new name ({to, problem}), if any.
+            readonly property var newName: root.pane.renaming[modelData.path] ?? null
+            // Selected next to selected: one block, not a box each.
+            readonly property bool joinUp: on && index > 0 && !!root.pane.selected[root.pane.shownEntries[index - 1]?.path]
+            readonly property bool joinDown: on && !!root.pane.selected[root.pane.shownEntries[index + 1]?.path]
+            topLeftRadius: joinUp ? 0 : 8; topRightRadius: joinUp ? 0 : 8
+            bottomLeftRadius: joinDown ? 0 : 8; bottomRightRadius: joinDown ? 0 : 8
             color: on || drop.over ? Theme.tint(0.22) : rowArea.containsMouse ? Theme.surface1 : "transparent"
             border { width: drop.over || (index === list.currentIndex && list.activeFocus) ? 1 : 0; color: Theme.tint(0.6) }
             Row {
@@ -191,11 +199,38 @@ FocusScope {
                     }
                     Text {
                         id: nameText
-                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: row.modelData.found ? parent.width * 0.55 : 8 + (row.cloudState ? 22 : 0); verticalCenter: parent.verticalCenter }
+                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: row.modelData.found ? parent.width * 0.55 : row.newName ? parent.width * 0.5 : 8 + (row.cloudState ? 22 : 0); verticalCenter: parent.verticalCenter }
                         text: row.modelData.name + (row.modelData.link ? "  →" : "")
                         elide: Text.ElideMiddle
-                        color: row.modelData.hidden ? Theme.muted : Theme.text
+                        color: row.modelData.hidden || row.newName ? Theme.muted : Theme.text
                         font { family: Theme.font; pointSize: Theme.pt(12.5 * Math.sqrt(Session.zoom)) }
+                    }
+                    // Renaming: → the new name (red, with why, when it's left alone).
+                    Row {
+                        visible: !!row.newName
+                        x: parent.width * 0.5; width: parent.width * 0.5 - 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 8
+                        Icon { anchors.verticalCenter: parent.verticalCenter; name: "arrowRight"; size: 12; color: Theme.faint }
+                        Text {
+                            id: toText
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, parent.width - 20 - (warnIcon.visible ? 20 : 0))
+                            elide: Text.ElideMiddle
+                            readonly property bool same: row.newName?.to === row.modelData.name
+                            text: same && !row.newName?.problem ? "(not changing)" : row.newName?.to ?? ""
+                            color: row.newName?.problem ? Theme.rose : same ? Theme.faint : Theme.text
+                            font { family: Theme.font; pointSize: Theme.pt(12.5 * Math.sqrt(Session.zoom)); weight: same ? Font.Normal : Font.Medium }
+                        }
+                        Icon {
+                            id: warnIcon
+                            visible: !!row.newName?.problem
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "alert"; size: 12; color: Theme.rose
+                            MouseArea { id: warnMouse; anchors { fill: parent; margins: -4 } hoverEnabled: true }
+                            ToolTip.visible: warnMouse.containsMouse
+                            ToolTip.text: row.newName?.problem ?? ""
+                        }
                     }
                     // Searching inside: where it was found.
                     Text {
@@ -219,10 +254,12 @@ FocusScope {
                         width: modelData.w
                         anchors.verticalCenter: parent.verticalCenter
                         leftPadding: 8
-                        text: modelData.value(row.modelData)
-                        textFormat: modelData.rich ? Text.StyledText : Text.PlainText
+                        // A name left alone: why, in place of the date.
+                        readonly property bool why: !!row.newName?.problem && modelData.key === "modified"
+                        text: why ? "left as it is" : modelData.value(row.modelData)
+                        textFormat: modelData.rich && !why ? Text.StyledText : Text.PlainText
                         elide: modelData.key === "where" ? Text.ElideMiddle : Text.ElideRight
-                        color: Theme.muted
+                        color: why ? Theme.rose : Theme.muted
                         font { family: Theme.font; pointSize: Theme.pt(12) }
                     }
                 }

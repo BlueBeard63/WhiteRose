@@ -38,7 +38,7 @@ fn main() {
             "qml/StartMode.qml",
             "qml/CleanupMode.qml",
             "qml/CompressDialog.qml",
-            "qml/BulkRename.qml",
+            "qml/RenameSheet.qml",
             "qml/CompareDialog.qml",
             "qml/DiffView.qml",
             "qml/ConnectDialog.qml",

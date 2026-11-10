@@ -17,6 +17,8 @@ FocusScope {
     property string error: ""
     property real stamp: 0
     property var selected: ({})
+    // Renaming in the Sheet: the new names, shown in the list ({path: {to, problem}}).
+    property var renaming: ({})
     property int anchor: -1
     property int current: 0
     property string mode: "grid"           // grid | list | columns

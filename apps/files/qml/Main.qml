@@ -782,6 +782,14 @@ AppWindow {
             if (err) win.notice = err; else win.info = "Running “" + command + "” in the terminal";
         }
         onTagsEdited: win.refreshTags()
+        onRenamed: paths => {
+            const p = win.current;
+            if (!p) return;
+            p.selectPaths(paths);
+            p.focusView();
+            if (paths.length > 0) win.info = "Renamed " + paths.length + (paths.length === 1 ? " item" : " items");
+        }
+        onRenameFailed: message => win.notice = message
         onCloseIt: { Session.setDetails(false); win.current?.focusView() }
     }
     QuickLook {
@@ -1246,7 +1254,7 @@ AppWindow {
         const p = win.current;
         if (!p) return;
         // Several selected: rename them all at once.
-        if (what === "rename" && p.selection.length > 1) { bulkRename.show(p.selection.map(e => ({ path: e.path, name: e.name, dir: e.dir }))); return }
+        if (what === "rename" && p.selection.length > 1) { details.tab = "rename"; Session.setDetails(true); return }
         const e = what === "rename" ? p.selection[0] : null;
         if (what === "rename" && !e) return;
         nameDialog.what = what;
@@ -1408,17 +1416,6 @@ AppWindow {
     }
     // (A sync shows in Transfers like any copy.)
     CompareDialog { id: compareDialog }
-    BulkRename {
-        id: bulkRename
-        onRenamed: paths => {
-            const p = win.current;
-            if (!p) return;
-            p.selectPaths(paths);
-            p.focusView();
-            if (paths.length > 0) win.info = "Renamed " + paths.length + (paths.length === 1 ? " item" : " items");
-        }
-        onFailed: message => win.notice = message
-    }
     CompressDialog {
         id: compressDialog
         onMade: id => {
