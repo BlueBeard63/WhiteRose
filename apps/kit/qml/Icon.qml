@@ -39,6 +39,7 @@ Item {
         chevUp: "m18 15-6-6-6 6",
         plus: "M5 12h14 M12 5v14",
         pause: "M14 4h4v16h-4z M6 4h4v16H6z",
+        branch: "M6 3v12 M18 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6 M6 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6 M18 9a9 9 0 0 1-9 9",
         panelLeft: "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 3v18",
         // Files' views.
         viewList: "M3 6h.01 M3 12h.01 M3 18h.01 M8 6h13 M8 12h13 M8 18h13",

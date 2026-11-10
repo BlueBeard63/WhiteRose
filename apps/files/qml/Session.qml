@@ -29,6 +29,8 @@ QtObject {
     property bool folderSizes: session.setting("files.folderSizes", true)
     property string openWith: session.setting("files.openWith", "double")
     property bool confirmTrash: session.setting("files.confirmTrash", false)
+    // Git badges and the branch (Settings › Files › General).
+    property bool git: session.setting("files.git", true)
     // The sidebar: shown or hidden (Ctrl+B), and its sections folded away.
     property bool sidebar: session.setting("files.sidebar", true)
     property var sidebarFolded: session.setting("files.sidebarFolded", [])
@@ -79,6 +81,7 @@ QtObject {
         session.confirmTrash = v("files.confirmTrash", false);
         session.tagDefs = v("files.tags", []);
         session.sidebar = v("files.sidebar", true);
+        session.git = v("files.git", true);
         session.sidebarFolded = v("files.sidebarFolded", []);
         session.defaultView = v("files.defaultView", session.defaultView);
         session.reload(true);
@@ -104,6 +107,7 @@ QtObject {
             case "files.folderSizes": session.folderSizes = v(key, true); break;
             case "files.openWith": session.openWith = v(key, "double"); break;
             case "files.confirmTrash": session.confirmTrash = v(key, false); break;
+            case "files.git": session.git = v(key, true); break;
             case "files.sidebar": session.sidebar = v(key, true); break;
             case "files.sidebarFolded": session.sidebarFolded = v(key, []); break;
             case "files.tags": session.tagDefs = v(key, []); session.reload(false); break;

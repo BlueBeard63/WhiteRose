@@ -38,6 +38,30 @@ FocusScope {
     // A tag's files ("tag:Name"): real files, but nothing can be made or
     // pasted here; dropping things here tags them.
     readonly property bool inTag: path.startsWith("tag:")
+    // Git (Settings › Files › General): {root, branch, ahead, behind,
+    // ignored, entries: {name: state}}; root "" when not in a repository.
+    property var git: ({ root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} })
+    readonly property bool wantsGit: Session.git && !pane.special && !pane.inTag && !pane.searching && pane.path.startsWith("/")
+    // An entry's state ("" none; inside an ignored folder: ignored).
+    function gitOf(e) {
+        if (!pane.wantsGit || pane.git.root === "" || !e) return "";
+        if (pane.git.ignored) return "ignored";
+        return pane.git.entries[e.name] ?? "";
+    }
+    function askGit() { if (pane.wantsGit && pane.visible) Ops.askGit(pane.path) }
+    onWantsGitChanged: if (!pane.wantsGit) pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; else pane.askGit()
+    Connections {
+        target: Ops
+        function onGitStatus(dir, result) { if (dir === pane.path) pane.git = JSON.parse(result) }
+    }
+    // Files edited elsewhere don't change the folder: look again every few
+    // seconds while in a repository and Files is in front.
+    Timer {
+        interval: 4000
+        repeat: true
+        running: pane.visible && pane.git.root !== "" && pane.wantsGit && Qt.application.state === Qt.ApplicationActive
+        onTriggered: pane.askGit()
+    }
     // Folder sizes as they're worked out ({path: {bytes, items}}).
     property var sizes: ({})
     property var sizesSoon: ({})
@@ -78,7 +102,7 @@ FocusScope {
     signal changed()
     // A folder is shown the way it was last time (or as the folder above
     // it lends, or the default); load() follows.
-    onPathChanged: { pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
+    onPathChanged: { pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
     function applyView() {
         const v = JSON.parse(Fs.view(pane.path, JSON.stringify(Session.defaultView)));
@@ -176,6 +200,7 @@ FocusScope {
         pane.selected = still;
         pane.current = Math.min(pane.current, Math.max(0, r.entries.length - 1));
         pane.adapt();
+        pane.askGit();
     }
     function go(p, keepForward) {
         pane.activated();

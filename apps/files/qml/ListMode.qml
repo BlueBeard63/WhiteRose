@@ -164,6 +164,8 @@ FocusScope {
             readonly property bool hiddenByFold: root.pane.grouped && !!root.pane.folded[modelData.group]
             x: 8; width: list.width - 16; height: hiddenByFold ? 0 : 32 * Session.zoom
             visible: !hiddenByFold
+            readonly property string gitState: root.pane.gitOf(modelData)
+            opacity: gitState === "ignored" ? 0.5 : 1
             radius: 8
             color: on || drop.over ? Theme.tint(0.22) : rowArea.containsMouse ? Theme.surface1 : "transparent"
             border { width: drop.over || (index === list.currentIndex && list.activeFocus) ? 1 : 0; color: Theme.tint(0.6) }
@@ -189,11 +191,16 @@ FocusScope {
                         look: row.modelData.look ?? ({})
                     }
                     Text {
-                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        id: nameText
+                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: row.gitState && row.gitState !== "ignored" ? 30 : 8; verticalCenter: parent.verticalCenter }
                         text: row.modelData.name + (row.modelData.link ? "  →" : "")
                         elide: Text.ElideMiddle
                         color: row.modelData.hidden ? Theme.muted : Theme.text
                         font { family: Theme.font; pointSize: Theme.pt(12.5 * Math.sqrt(Session.zoom)) }
+                    }
+                    GitBadge {
+                        state: row.gitState
+                        anchors { left: parent.left; leftMargin: ic.width + 10 + Math.min(nameText.implicitWidth, nameText.width) + 8; verticalCenter: parent.verticalCenter }
                     }
                 }
                 Repeater {

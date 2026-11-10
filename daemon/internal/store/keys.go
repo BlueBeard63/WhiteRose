@@ -234,6 +234,8 @@ var Known = map[string]Key{
 	// Tags (Files): their names and colours, in the order shown. The tags
 	// themselves are on the files (user.xdg.tags).
 	"files.tags": {Default: json.RawMessage(`[{"name":"Important","colour":"red"},{"name":"Work","colour":"blue"},{"name":"Personal","colour":"green"}]`), Check: into(tagList)},
+	// Git status marks and the branch in Files.
+	"files.git": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Files' sidebar: shown, and the sections folded away.
 	"files.sidebar":       {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"files.sidebarFolded": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](10))},

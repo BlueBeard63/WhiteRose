@@ -768,6 +768,28 @@ AppWindow {
             color: win.notice !== "" ? Theme.rose : Theme.muted
             font { family: Theme.font; pointSize: Theme.pt(11) }
         }
+        // The git branch of the repository this is in, and how far ahead of
+        // / behind its remote.
+        Row {
+            readonly property var git: win.current?.git ?? ({ root: "" })
+            visible: git.root !== "" && git.branch !== ""
+            anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+            spacing: 5
+            Icon { anchors.verticalCenter: parent.verticalCenter; name: "branch"; size: 12; color: Theme.rose }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: parent.git.branch ?? ""
+                color: Theme.muted
+                font { family: Theme.mono; pointSize: Theme.pt(10.5) }
+            }
+            Text {
+                visible: (parent.git.ahead ?? 0) > 0 || (parent.git.behind ?? 0) > 0
+                anchors.verticalCenter: parent.verticalCenter
+                text: ((parent.git.ahead ?? 0) > 0 ? "↑" + parent.git.ahead : "") + ((parent.git.ahead ?? 0) > 0 && (parent.git.behind ?? 0) > 0 ? " " : "") + ((parent.git.behind ?? 0) > 0 ? "↓" + parent.git.behind : "")
+                color: Theme.faint
+                font { family: Theme.mono; pointSize: Theme.pt(10.5) }
+            }
+        }
     }
 
     // ---- file operations ---------------------------------------------------------------------

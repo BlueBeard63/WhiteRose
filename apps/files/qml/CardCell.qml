@@ -15,6 +15,8 @@ Item {
     // The grid it's in: k (size), cellWidth / cellHeight, current, focused, takeFocus(), now.
     required property var view
     readonly property bool on: !!cell.pane.selected[modelData.path]
+    readonly property string gitState: cell.pane.gitOf(cell.modelData)
+    opacity: cell.gitState === "ignored" ? 0.5 : 1
     readonly property bool photo: String(modelData.mime).startsWith("image/") && modelData.size < 40e6
     width: cell.view.cellWidth; height: cell.view.cellHeight
     Rectangle {
@@ -41,6 +43,7 @@ Item {
                 opacity: cell.modelData.hidden ? 0.55 : 1
             }
             FolderIcon { visible: !!cell.modelData.look; anchors.centerIn: parent; size: parent.width * 0.85; look: cell.modelData.look ?? ({}) }
+            GitBadge { state: cell.gitState; size: 14 * cell.view.k; anchors { right: parent.right; bottom: parent.bottom } }
         }
         Column {
             anchors { left: thumb.right; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }

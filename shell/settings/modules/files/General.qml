@@ -63,6 +63,11 @@ Column {
             Toggle { checked: Daemon.setting("files.hidden", false); onToggled: on => Daemon.set("files.hidden", on) }
         }
         SettingRow {
+            title: "Git status"
+            subtitle: "Marks on changed files and the branch at the bottom, in git repositories"
+            Toggle { checked: Daemon.setting("files.git", true); onToggled: on => Daemon.set("files.git", on) }
+        }
+        SettingRow {
             title: "Sidebar"
             subtitle: "Places, bookmarks, tags and drives (Ctrl+B in Files; click a heading there to fold it)"
             Toggle { checked: Daemon.setting("files.sidebar", true); onToggled: on => Daemon.set("files.sidebar", on) }

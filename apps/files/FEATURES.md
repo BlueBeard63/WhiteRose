@@ -86,8 +86,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [~] Accessibility, keyboard navigation and scaling (MVP) — arrows/Enter/Backspace, shortcuts for everything so far
 
 ## 7. Developer tools & automation
-- [ ] Git status badges beside files (Next)
-- [ ] Current Git branch in path/navigation bar (Next)
+- [x] Git status badges beside files (Next) — modified, new, untracked, conflict; folders show the worst inside; ignored dimmed
+- [x] Current Git branch in path/navigation bar (Next) — in the status bar, with ahead / behind
 - [ ] Git clone, init, fetch, pull, push and sync (Advanced)
 - [ ] Git branch switching and repository operations (Advanced)
 - [ ] Project type recognition / script discovery (Advanced)

@@ -89,6 +89,15 @@ pub mod qobject {
         #[cxx_name = "folderSized"]
         fn folder_sized(self: Pin<&mut Ops>, path: QString, bytes: f64, items: f64);
 
+        /// Git status of `dir` in the background; `gitStatus` brings
+        /// {root, branch, ahead, behind, ignored, entries: {name: state}}.
+        #[qinvokable]
+        #[cxx_name = "askGit"]
+        fn ask_git(self: &Ops, dir: &QString);
+        #[qsignal]
+        #[cxx_name = "gitStatus"]
+        fn git_status(self: Pin<&mut Ops>, dir: QString, result: QString);
+
         /// A job finished: {kind, done: [path], failed: [[path, why]], cancelled}.
         #[qsignal]
         fn finished(self: Pin<&mut Ops>, id: i32, result: QString);
@@ -605,6 +614,22 @@ impl qobject::Ops {
                         .folder_sized(QString::from(next.as_str()), b as f64, i as f64)
                 });
             }
+        });
+    }
+
+    pub fn ask_git(&self, dir: &QString) {
+        let dir = dir.to_string();
+        if !dir.starts_with('/') {
+            return;
+        }
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            crate::finder::background();
+            let r = serde_json::to_string(&crate::git::status(Path::new(&dir))).unwrap_or_default();
+            let _ = thread.queue(move |mut obj| {
+                obj.as_mut()
+                    .git_status(QString::from(dir.as_str()), QString::from(r.as_str()))
+            });
         });
     }
 
