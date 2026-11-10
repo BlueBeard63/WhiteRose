@@ -16,8 +16,8 @@ Singleton {
 
     // Which view the centre island shows. The window switcher overrides this
     // while ALT+TAB is held (it is driven by the compositor).
-    property string islandView: "idle"   // idle | dock | clipboard | screenshots | launcher
-    readonly property var views: ["idle", "dock", "clipboard", "screenshots", "launcher"]
+    property string islandView: "idle"   // idle | dock | clipboard | screenshots | launcher | recovery
+    readonly property var views: ["idle", "dock", "clipboard", "screenshots", "launcher", "recovery"]
 
     function show(view) { if (views.includes(view)) { islandView = view; if (view !== "idle") panel = "" } }
     function toggle(view) { islandView === view ? close() : show(view) }
@@ -39,6 +39,31 @@ Singleton {
     // a correct password clears it.
     property bool locked: false
     function lock() { panel = ""; islandView = "idle"; locked = true }
+
+    // A new WhiteRose version didn't start (the session launcher went back):
+    // { version, reason, attempts, tries, log, back_on }, from whiterosed.
+    // The island shows the "couldn't start" prompt once per session; Try
+    // again / Stay settle it (Settings › Updates shows it too).
+    property var updateFailure: null
+    property bool failureShown: false
+    function noteUpdates(st) {
+        root.updateFailure = st?.failure ?? null;
+        if (root.updateFailure && !root.failureShown && !root.locked) {
+            root.failureShown = true;
+            root.show("recovery");
+        } else if (!root.updateFailure && root.islandView === "recovery") {
+            root.close();
+        }
+    }
+    Connections {
+        target: Daemon
+        function onUpdatesEvent(st) { root.noteUpdates(st) }
+        function onConnectedChanged() { root.askUpdates() }
+    }
+    function askUpdates() {
+        if (Daemon.connected) Daemon.request({ op: "updates" }, v => { if (v) root.noteUpdates(v) });
+    }
+    Component.onCompleted: askUpdates()
 
     // An item is being dragged out of the island: keep it open meanwhile.
     property bool dragging: false

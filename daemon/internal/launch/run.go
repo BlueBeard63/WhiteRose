@@ -109,6 +109,8 @@ func (c Config) start(plan Plan, stateFile string) (int, error) {
 		"WHITEROSE_DIR="+dir,
 		"WHITEROSE_VERSION="+plan.Version,
 		"WHITEROSE_READY_DIR="+ready,
+		// (Updates › Restart session now works: something starts it again.)
+		"WHITEROSE_LAUNCHER=1",
 		"PATH="+filepath.Join(dir, "bin")+":"+envPath(c.Env),
 	)
 	cmd.Stdin, cmd.Stdout = os.Stdin, os.Stdout

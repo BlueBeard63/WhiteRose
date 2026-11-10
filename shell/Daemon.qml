@@ -24,6 +24,8 @@ Singleton {
     signal appsEvent(var e)
     // Adding a fingerprint: { finger, state: stage|retry|done|failed|cancelled, stage, stages, message }.
     signal fingerprintEvent(var e)
+    // WhiteRose updates: the Updates page's whole status, whenever it changes.
+    signal updatesEvent(var status)
     signal lockRequested()
     signal unlockRequested()
 
@@ -84,6 +86,7 @@ Singleton {
         case "lock": root.lockRequested(); break;
         case "apps": root.appsEvent(msg); break;
         case "fingerprint": root.fingerprintEvent(msg); break;
+        case "updates": root.updatesEvent(msg.status); break;
         case "unlock": root.unlockRequested(); break;
         }
     }

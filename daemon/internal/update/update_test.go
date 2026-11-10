@@ -122,6 +122,15 @@ func TestFetchVerifies(t *testing.T) {
 			t.Errorf("step %s not done", s.Name)
 		}
 	}
+	// Checked again from what's on disk (as installing does)...
+	if got, err := VerifyDir(dir, "deb", pub); err != nil || len(got) != 1 {
+		t.Errorf("verify dir: %v %v", got, err)
+	}
+	// ...and a package swapped afterwards is caught.
+	os.WriteFile(paths[0], []byte("swapped"), 0o600)
+	if _, err := VerifyDir(dir, "deb", pub); err == nil {
+		t.Error("swapped package passed")
+	}
 	if _, _, err := src.Fetch(ctx, r, "rpm", pub, dir, nil); err == nil {
 		t.Error("no rpm in the release, yet fetched")
 	}
@@ -146,10 +155,29 @@ func TestFetchVerifies(t *testing.T) {
 		t.Errorf("forged signature: %v", err)
 	}
 	if left, _ := os.ReadDir(d3); len(left) != 0 {
+		// (nothing at all: not the checksums either)
 		t.Errorf("a refused download was left behind: %v", left)
 	}
 
 	if _, err := (Source{Repo: "../evil"}).Latest(ctx); err == nil {
 		t.Error("bad repo name used")
+	}
+}
+
+func TestPackageName(t *testing.T) {
+	for name, ok := range map[string]bool{
+		"whiterose_0.5.0_amd64.deb":            true,
+		"whiterose-core-0.5.0_0.5.0_amd64.deb": true,
+		"evil_0.5.0_amd64.deb":                 false,
+		"whiterose_0.5.0_amd64.deb.part":       false,
+		"../whiterose_0.5.0_amd64.deb":         false,
+		"whiterose 1_amd64.deb":                false,
+	} {
+		if PackageName(name, "deb") != ok {
+			t.Errorf("%s: %v", name, !ok)
+		}
+	}
+	if !PackageName("whiterose-0.5.0-1.x86_64.rpm", "rpm") || PackageName("whiterose-0.5.0-1.x86_64.rpm", "deb") {
+		t.Error("rpm")
 	}
 }

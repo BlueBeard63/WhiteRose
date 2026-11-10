@@ -380,9 +380,9 @@ Figma frames: `Settings - Updates` and `Recovery - Update Failed`.
 
 ### 1. Download and verification (nothing is touched until this passes)
 
-- Updates come from WhiteRose's signed APT and DNF repositories.
-- apt and dnf check the repository signature and every package's checksum **before** installing anything. A partial or corrupted download fails that check and leaves the system untouched.
-- The Updates page shows these stages as steps: downloaded → signature → files verified.
+- Releases are GitHub Releases of the repository in `/usr/share/whiterose/release-repo`: the two packages for each system (`.deb`, `.rpm`), `SHA256SUMS`, and `SHA256SUMS.sig`, an ed25519 signature by the release key (`packaging/release.pub`, installed to `/usr/share/whiterose/release.pub`; `make release-key` makes it once, `make release` signs and publishes).
+- `whiterosed` (`internal/updater`) checks on a schedule (`update.check`: daily by default, weekly, or manually; looked at hourly, never in the first minutes after login). A newer release is downloaded straight away into `~/.cache/whiterose/updates/<version>/`, as you, unless the connection is metered (NetworkManager), when the page offers Download instead.
+- Each package downloads under a temporary name; the checksums' signature, then every package against the signed checksums, must pass before anything is kept. A partial, corrupted or tampered download is deleted. The page shows this as its first three steps: Downloaded → Signature (the key's id) → Files verified.
 
 ### 2. Install alongside, never over
 
@@ -403,7 +403,9 @@ Figma frames: `Settings - Updates` and `Recovery - Update Failed`.
   attempts=1         tries of it so far (at most 2)
   failed=0.5.0       the last one that didn't come up, and why (for the prompt)
   reason=compositor exited during start (signal 11, segmentation fault)
+  skip=             a version not to try (you stayed, or rolled back from it)
   snapshot=1762790000
+  rollback=on        automatic rollback (off: switch without the health check)
   ```
 - A newer version installed (by the Updates page, or apt / dnf) becomes `pending`, unless it's the one that already failed and you chose to stay. A pending or current version that's been removed is forgotten.
 - With `pending` set and fewer than two tries, it snapshots the settings and starts that version with `WHITEROSE_DIR`, `PATH` and `WHITEROSE_READY_DIR` set. **Health check:** the compositor (`compositor/src/ready.rs`, before its event loop), `whiterosed serve` (once its socket is up) and the shell (when it connects to the compositor) each write a file in `WHITEROSE_READY_DIR` within 20 s, and the session is still running at 60 s (or ended normally once up: logged out, restarted).
@@ -419,7 +421,14 @@ Figma frames: `Settings - Updates` and `Recovery - Update Failed`.
 - Before a try, `~/.config/whiterose/` and the settings database (`~/.local/share/whiterose/settings.db` and its journal) are copied to `~/.local/state/whiterose/snapshot/`. There's one snapshot only; each new try replaces it.
 - Config files carry a schema version. Migrations only move forward and run on first start of the new version. A failed try restores the snapshot, so the old version never reads a config format it doesn't understand.
 
-### 5. Reboots
+### 5. Installing, and the page
+
+- **Install** (asks for an administrator's password: polkit action `org.whiterose.update.install`) runs `whiterosed update-root DIR KEEP` through pkexec. As root it copies the download into a folder of its own, checks it again (signature by the installed key, every package against the signed checksums; nothing in your folder is trusted), installs both packages with `apt-get` / `dnf` beside the versions already there, then uninstalls anything older than the two kept (`update.Remove`). The download is then deleted.
+- **Settings › Updates** (`shell/settings/modules/updates`; Figma `Settings - Updates`): your version and when it last checked, Check now; the release card (what's in it, size, date; the five steps; Download / Install / Apply at next login / Restart session now); Previous version with Roll back (the previous one from the next start, the newer one skipped until a newer release; Stay undoes it); Automatic rollback (off: a new version is switched to without the health check); Settings snapshot (when); Check for updates. The sidebar shows a 1 while there's an update or a failed start to see to. Restart session now (after a confirmation) is offered only when the launcher started the session (`WHITEROSE_LAUNCHER`), as it's what starts the next one: the daemon sends the compositor `{"cmd":"restart"}`.
+- **"Couldn't start"** (`shell/RecoveryView.qml`, an island view; Figma `Recovery - Update Failed`): shown once per session while a failed start is recorded. Try again (two more tries, restarting the session now), Stay on the working version (the failed one is skipped until a newer release), View log. It's a question, so it doesn't close when you click elsewhere. Settings › Updates shows the same choice.
+- For trying it from a build: `WHITEROSE_VERSION`, `WHITEROSE_ROOT`, `WHITEROSE_RELEASE_KEY`, `WHITEROSE_RELEASE_REPO` and `WHITEROSE_UPDATE_API` override what the daemon would read from the installed system.
+
+### 6. Reboots
 
 WhiteRose updates never need a reboot: restarting the session (or the next login) applies them. Kernel and firmware updates remain the distro's job.
 

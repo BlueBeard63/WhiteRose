@@ -184,6 +184,13 @@ FloatingWindow {
             color: Theme.text
             font { family: Theme.font; pointSize: Theme.pt(12.5); weight: nav.within ? Font.Medium : Font.Normal }
         }
+        Text {
+            anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            visible: text !== ""
+            text: SettingsState.badges[nav.module.id] ?? ""
+            color: Theme.rose
+            font { family: Theme.mono; pointSize: Theme.pt(10.5) }
+        }
         MouseArea { id: navMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: SettingsState.open(nav.module.id) }
     }
 

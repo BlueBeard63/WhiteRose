@@ -329,6 +329,12 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	for name, op := range prints.ops() {
 		srv.Ops[name] = op
 	}
+	// WhiteRose updates (Settings › Updates, and the "couldn't start" prompt).
+	updates := newUpdater(st, dirs.Cache, srv.Broadcast)
+	for name, op := range updateOps(updates) {
+		srv.Ops[name] = op
+	}
+	go scheduleUpdates(updates, st)
 	every := func(d time.Duration, fn func()) {
 		for {
 			fn()

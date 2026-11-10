@@ -12,6 +12,23 @@ Singleton {
     // [{ id, name, description, icon, category, order, version, core, keywords, dir, builtin,
     //    pages? [{ id, name, icon, file, keywords }] }]: a module's sub-pages.
     property var modules: []
+    // A count beside a page in the sidebar ({ updates: 1 }).
+    property var badges: ({})
+    function setBadge(id, n) {
+        const b = Object.assign({}, badges);
+        if (n > 0) b[id] = n; else delete b[id];
+        badges = b;
+    }
+    // Updates: 1 while there's an update (or a failed start) to see to.
+    function updatesBadge(st) { setBadge("updates", st && (st.release || st.failure) ? 1 : 0) }
+    Connections {
+        target: Daemon
+        function onUpdatesEvent(st) { root.updatesBadge(st) }
+        function onConnectedChanged() {
+            if (Daemon.connected) Daemon.request({ op: "updates" }, v => { if (v) root.updatesBadge(v) });
+        }
+    }
+    Component.onCompleted: if (Daemon.connected) Daemon.request({ op: "updates" }, v => { if (v) root.updatesBadge(v) })
     readonly property var disabled: Daemon.setting("settings.modules.disabled", [])
     readonly property var enabled: modules.filter(m => m.core || !disabled.includes(m.id))
     readonly property string userModules: (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/whiterose/modules"

@@ -1,6 +1,7 @@
 // The centre island (Figma: "Center Island"): one shape hanging from the bar
 // that morphs between every view: idle, dock, clipboard, screenshots,
-// launcher, and the ALT+TAB / SUPER+ALT+TAB switchers. Switching views
+// launcher, the ALT+TAB / SUPER+ALT+TAB switchers, and the "couldn't start"
+// prompt after a failed update. Switching views
 // reshapes the same outline in place; closing shrinks it back to idle.
 // When a window sits right under it (a maximized title bar), the idle island
 // tucks into the bar, leaving its grip there; hovering brings it back out.
@@ -14,8 +15,9 @@ Item {
     readonly property string view: Compositor.switcher ? "switcher" : ShellState.islandView
     readonly property bool idle: view === "idle"
     // Views that take the keyboard (the switcher doesn't: the compositor owns
-    // those keys).
-    readonly property bool wantsKeyboard: !idle && view !== "switcher"
+    // those keys; nor does the "couldn't start" prompt: it's a question that
+    // stays until it's answered, not something clicking elsewhere closes).
+    readonly property bool wantsKeyboard: !idle && view !== "switcher" && view !== "recovery"
 
     // Opening a switcher over another view ends that view.
     Connections {
@@ -26,7 +28,7 @@ Item {
     // ---- views -------------------------------------------------------------
     readonly property var current: ({
         dock: dockLoader, clipboard: clipLoader, screenshots: shotsLoader,
-        launcher: launcherLoader, switcher: switcherLoader
+        launcher: launcherLoader, switcher: switcherLoader, recovery: recoveryLoader
     })[view] ?? null
     // ---- tucking ----------------------------------------------------------------
     // Hovering the bar's centre or the island itself keeps it out; leaving
@@ -155,6 +157,7 @@ Item {
             View { id: shotsLoader; name: "screenshots"; sourceComponent: ScreenshotsView {} }
             View { id: launcherLoader; name: "launcher"; sourceComponent: LauncherView {} }
             View { id: switcherLoader; name: "switcher"; sourceComponent: SwitcherView {} }
+            View { id: recoveryLoader; name: "recovery"; sourceComponent: RecoveryView {} }
         }
 
         onActiveFocusChanged: {

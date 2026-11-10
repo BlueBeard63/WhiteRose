@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Files Format.js and Tabs.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js and Tabs.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
+const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
@@ -579,6 +580,29 @@ test("users: suggested usernames, checks, last seen", () => {
     assert.equal(U.lastSeen(new Date(2026, 10, 5).getTime() / 1000, now), "Signed in 4 days ago");
     assert.equal(U.lastSeen(new Date(2026, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct");
     assert.equal(U.lastSeen(new Date(2025, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct 2025");
+});
+
+test("updates page text", () => {
+    const now = Date.UTC(2026, 10, 10, 12, 0, 0);
+    const t = now / 1000;
+    assert.equal(Up.ago(t - 20, now), "just now");
+    assert.equal(Up.ago(t - 300, now), "5 minutes ago");
+    assert.equal(Up.ago(t - 60, now), "1 minute ago");
+    assert.equal(Up.ago(t - 7200, now), "2 hours ago");
+    assert.equal(Up.ago(t - 86400 * 1.5, now), "yesterday");
+    assert.equal(Up.ago(Date.UTC(2026, 10, 2, 12) / 1000, now), "on 2 Nov");
+    assert.equal(Up.ago(Date.UTC(2025, 10, 2, 12) / 1000, now), "on 2 Nov 2025");
+    assert.equal(Up.ago(0, now), "never");
+    assert.equal(Up.headline({ running: "0.4.2", supported: true, checked: t - 300 }, now), "WhiteRose 0.4.2 · checked 5 minutes ago");
+    assert.equal(Up.headline({ running: "", supported: false }, now), "A build being worked on");
+    assert.equal(Up.headline({ running: "0.4.2", supported: true, busy: "checking" }, now), "WhiteRose 0.4.2 · checking…");
+    assert.deepEqual(Up.badge({ state: "ready", pending: true }), ["Ready to apply", "ready"]);
+    assert.deepEqual(Up.badge(null), ["", "plain"]);
+    assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: true }), /session restarts/);
+    assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: false }), /log out/);
+    assert.match(Up.note({ state: "downloaded" }, { running: "0.4.2" }), /beside 0.4.2/);
+    assert.equal(Up.fraction({ progress: [25, 100] }), 0.25);
+    assert.equal(Up.fraction({ progress: [0, 0] }), 0);
 });
 
 test("fingerprint names and progress", () => {

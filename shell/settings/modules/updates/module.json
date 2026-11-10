@@ -1,0 +1,11 @@
+{
+  "id": "updates",
+  "name": "Updates",
+  "description": "New versions of WhiteRose: what's in them, installing, switching and going back",
+  "icon": "refresh",
+  "category": "system",
+  "order": 5.5,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["update", "updates", "upgrade", "version", "release", "install", "rollback", "roll back", "previous version", "restart", "snapshot", "check for updates", "whiterose"]
+}

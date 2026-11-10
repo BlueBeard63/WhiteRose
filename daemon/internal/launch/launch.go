@@ -37,7 +37,11 @@ type State struct {
 	Attempts int    // tries of Pending so far
 	Failed   string // the version that last failed to start (for the prompt)
 	Reason   string // why
+	Skip     string // a version not to try (you stayed, or rolled back from it)
 	Snapshot int64  // when settings were last snapshotted (unix s)
+	// Automatic rollback off: a new version is switched to without the
+	// health check (and nothing goes back by itself).
+	NoRollback bool
 }
 
 func StateFile(stateHome string) string {
@@ -68,8 +72,12 @@ func Load(path string) State {
 			s.Failed = v
 		case "reason":
 			s.Reason = v
+		case "skip":
+			s.Skip = v
 		case "snapshot":
 			s.Snapshot, _ = strconv.ParseInt(v, 10, 64)
+		case "rollback":
+			s.NoRollback = v == "off"
 		}
 	}
 	if sc.Err() != nil {
@@ -83,8 +91,12 @@ func Save(path string, s State) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	text := fmt.Sprintf("current=%s\npending=%s\nattempts=%d\nfailed=%s\nreason=%s\nsnapshot=%d\n",
-		s.Current, s.Pending, s.Attempts, s.Failed, strings.ReplaceAll(s.Reason, "\n", " "), s.Snapshot)
+	rollback := "on"
+	if s.NoRollback {
+		rollback = "off"
+	}
+	text := fmt.Sprintf("current=%s\npending=%s\nattempts=%d\nfailed=%s\nreason=%s\nskip=%s\nsnapshot=%d\nrollback=%s\n",
+		s.Current, s.Pending, s.Attempts, s.Failed, strings.ReplaceAll(s.Reason, "\n", " "), s.Skip, s.Snapshot, rollback)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(text), 0o600); err != nil {
 		return err
@@ -130,9 +142,14 @@ func Decide(s State, installed []string, newer func(a, b string) bool) (Plan, St
 		s.Pending, s.Attempts = "", 0
 	}
 	// A newer one installed (the Updates page, or apt / dnf): to try, unless
-	// it's the one that already failed (you chose to stay).
-	if s.Pending == "" && newer(newest, s.Current) && newest != s.Failed {
+	// it already failed, or you chose to stay on (or roll back from) it.
+	if s.Pending == "" && newer(newest, s.Current) && newest != s.Failed && newest != s.Skip {
 		s.Pending, s.Attempts = newest, 0
+	}
+	if s.Pending != "" && s.NoRollback {
+		// No health check: it's the one from now on.
+		s = Passed(s, s.Pending)
+		return Plan{Version: s.Current}, s, nil
 	}
 	if s.Pending != "" && s.Attempts < Tries {
 		s.Attempts++
@@ -147,6 +164,9 @@ func Passed(s State, version string) State {
 	if s.Failed == version {
 		s.Failed, s.Reason = "", ""
 	}
+	if s.Skip == version {
+		s.Skip = ""
+	}
 	return s
 }
 
@@ -160,15 +180,50 @@ func FailedTry(s State, version, reason string) State {
 func TryAgain(s State) State {
 	if s.Failed != "" {
 		s.Pending, s.Attempts = s.Failed, 0
+		if s.Skip == s.Failed {
+			s.Skip = ""
+		}
 		s.Failed, s.Reason = "", ""
 	}
 	return s
 }
 
 // Stay (the prompt): keep the working version; the failed one isn't tried
-// again (until a newer one comes).
+// again (until a newer one comes), and the prompt goes away.
 func Stay(s State) State {
-	s.Pending, s.Attempts, s.Reason = "", 0, ""
+	if s.Failed != "" {
+		s.Skip = s.Failed
+	} else if s.Pending != "" {
+		s.Skip = s.Pending
+	}
+	s.Pending, s.Attempts, s.Failed, s.Reason = "", 0, "", ""
+	return s
+}
+
+// Apply (Updates › Apply at next login): `version` is started (and health
+// checked) at the next session start.
+func Apply(s State, version string) State {
+	if version == s.Current {
+		return s
+	}
+	s.Pending, s.Attempts = version, 0
+	if s.Skip == version {
+		s.Skip = ""
+	}
+	if s.Failed == version {
+		s.Failed, s.Reason = "", ""
+	}
+	return s
+}
+
+// Rollback (Updates › Roll back): `to` from the next session start; the
+// version left isn't tried again until a newer one comes.
+func Rollback(s State, to string) State {
+	if to == s.Current {
+		return s
+	}
+	s.Skip = s.Current
+	s.Current, s.Pending, s.Attempts, s.Failed, s.Reason = to, "", 0, "", ""
 	return s
 }
 

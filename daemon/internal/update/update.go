@@ -438,6 +438,13 @@ func (s Source) Fetch(ctx context.Context, r Release, kind, public, dir string, 
 		}
 	}
 	steps[2] = Step{Name: "verified", Done: true, Detail: fmt.Sprintf("%d packages · sha256", len(pkgs))}
+	// Kept beside them: installing checks them again, as root.
+	if err := os.WriteFile(filepath.Join(dir, "SHA256SUMS"), sums.Bytes(), 0o600); err != nil {
+		return fail(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SHA256SUMS.sig"), sig.Bytes(), 0o600); err != nil {
+		return fail(err)
+	}
 	var paths []string
 	for _, part := range parts {
 		path := strings.TrimSuffix(part, ".part")
@@ -460,4 +467,68 @@ func Size(n int64) string {
 		return fmt.Sprintf("%.0f kB", float64(n)/1e3)
 	}
 	return fmt.Sprintf("%d B", n)
+}
+
+// PackageName says whether `name` is a WhiteRose package file of `kind`
+// ("whiterose_0.5.0_amd64.deb", "whiterose-core-0.5.0-0.5.0-1.x86_64.rpm").
+func PackageName(name, kind string) bool {
+	if !strings.HasPrefix(name, "whiterose") || strings.ContainsAny(name, "/\\ ") || strings.HasPrefix(name, ".") {
+		return false
+	}
+	switch kind {
+	case "deb":
+		return strings.HasSuffix(name, "_amd64.deb")
+	case "rpm":
+		return strings.HasSuffix(name, ".x86_64.rpm")
+	}
+	return false
+}
+
+// VerifyDir checks a downloaded release in `dir` (what Fetch left): the
+// checksums' signature by `public`, and every package of `kind` there
+// against them. Returns the packages' paths. Installing runs it again as
+// root, on its own copy, so nothing swapped in after the download counts.
+func VerifyDir(dir, kind, public string) ([]string, error) {
+	sums, err := os.ReadFile(filepath.Join(dir, "SHA256SUMS"))
+	if err != nil {
+		return nil, errors.New("no checksums with the download")
+	}
+	sig, err := os.ReadFile(filepath.Join(dir, "SHA256SUMS.sig"))
+	if err != nil {
+		return nil, errors.New("no signature with the download")
+	}
+	if err := Verify(public, sums, string(sig)); err != nil {
+		return nil, err
+	}
+	table, err := Sums(sums)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, e := range entries {
+		if !e.Type().IsRegular() || !PackageName(e.Name(), kind) {
+			continue
+		}
+		want, ok := table[e.Name()]
+		if !ok {
+			return nil, fmt.Errorf("%s isn't in the signed checksums", e.Name())
+		}
+		p := filepath.Join(dir, e.Name())
+		got, err := fileSum(p)
+		if err != nil {
+			return nil, err
+		}
+		if got != want {
+			return nil, fmt.Errorf("%s doesn't match its signed checksum", e.Name())
+		}
+		paths = append(paths, p)
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no .%s packages in the download", kind)
+	}
+	return paths, nil
 }

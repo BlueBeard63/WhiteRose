@@ -11,6 +11,7 @@
 //	whiterosed release-key PUB          make the release signing key (once)
 //	whiterosed sign-release DIR PUB     sign the packages in DIR for a release
 //	whiterosed fingerprint-root on|off  fingerprint for sign-in and sudo (as root, via pkexec)
+//	whiterosed update-root DIR KEEP     install a downloaded update (as root, via pkexec)
 package main
 
 import (
@@ -58,6 +59,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdSignRelease(args[1:], stdout, stderr)
 	case "fingerprint-root":
 		return cmdFingerprintRoot(args[1:], stdout, stderr)
+	case "update-root":
+		return cmdUpdateRoot(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
@@ -81,6 +84,7 @@ commands:
   calendar       list | add NAME URL|FILE [#COLOUR] | remove N | events FROM TO
   apps-root      ID...: install apps from the setup (as root, through pkexec)
   fingerprint-root on|off: fingerprint for sign-in, sudo and admin prompts (as root, through pkexec)
+  update-root    DIR KEEP: install a downloaded WhiteRose update (as root, through pkexec)
 `)
 }
 

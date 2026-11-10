@@ -259,9 +259,11 @@ var Known = map[string]Key{
 	"files.reindex":      {Default: json.RawMessage(`0`), Check: into[float64](nil)},
 	// Privacy: lock after this many idle minutes (0: never), screens off
 	// after this many (0: never), lock before sleeping, and what's remembered.
-	"privacy.lockAfter":        {Default: json.RawMessage(`5`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
-	"privacy.screenOffAfter":   {Default: json.RawMessage(`10`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
-	"privacy.lockOnSuspend":    {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"privacy.lockAfter":      {Default: json.RawMessage(`5`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
+	"privacy.screenOffAfter": {Default: json.RawMessage(`10`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
+	"privacy.lockOnSuspend":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// How often whiterosed looks for a WhiteRose update (Settings › Updates).
+	"update.check":             {Default: json.RawMessage(`"daily"`), Check: into(oneOf("daily", "weekly", "manual"))},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"privacy.recentFiles":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Keyboard layouts, first is the default: UK English to start with.

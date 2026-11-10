@@ -15,7 +15,7 @@ func TestStateFile(t *testing.T) {
 	if s := Load(p); s != (State{}) {
 		t.Fatalf("no file: %+v", s)
 	}
-	in := State{Current: "0.4.2", Pending: "0.5.0", Attempts: 1, Failed: "0.5.0", Reason: "crashed\nbadly", Snapshot: 99}
+	in := State{Current: "0.4.2", Pending: "0.5.0", Attempts: 1, Failed: "0.5.0", Reason: "crashed\nbadly", Skip: "0.4.9", Snapshot: 99, NoRollback: true}
 	if err := Save(p, in); err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,11 @@ func TestDecide(t *testing.T) {
 	if !p.Trial || p.Version != "0.5.0" || s2.Attempts != 1 || s2.Failed != "" {
 		t.Errorf("try again: %+v %+v", p, s2)
 	}
-	// Stay: not tried again...
+	// Stay: not tried again, and no failure left for the prompt...
 	stay := Stay(s)
+	if stay.Failed != "" || stay.Skip != "0.5.0" {
+		t.Errorf("stay: %+v", stay)
+	}
 	p, stay, _ = Decide(stay, both, newer)
 	if p.Trial || p.Version != "0.4.2" {
 		t.Errorf("stay: %+v %+v", p, stay)
@@ -68,6 +71,22 @@ func TestDecide(t *testing.T) {
 	p, _, _ = Decide(stay, append(both, "0.5.1"), newer)
 	if !p.Trial || p.Version != "0.5.1" {
 		t.Errorf("newer after staying: %+v", p)
+	}
+
+	// Rolling back: the old one next time, the newer one left alone.
+	p, s, _ = Decide(Rollback(State{Current: "0.5.0"}, "0.4.2"), both, newer)
+	if p.Trial || p.Version != "0.4.2" || s.Skip != "0.5.0" {
+		t.Errorf("rollback: %+v %+v", p, s)
+	}
+	// ...until you apply it again.
+	p, _, _ = Decide(Apply(s, "0.5.0"), both, newer)
+	if !p.Trial || p.Version != "0.5.0" {
+		t.Errorf("apply: %+v", p)
+	}
+	// Automatic rollback off: switched to, no check.
+	p, s, _ = Decide(State{Current: "0.4.2", NoRollback: true}, both, newer)
+	if p.Trial || p.Version != "0.5.0" || s.Current != "0.5.0" || s.Pending != "" {
+		t.Errorf("no rollback: %+v %+v", p, s)
 	}
 
 	// Passing makes it the one.
