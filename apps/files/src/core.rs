@@ -99,6 +99,28 @@ pub mod qobject {
         /// total, free, removable}], icons at 64 px.
         #[qinvokable]
         fn storage(self: &Fs) -> QString;
+        /// Tag (`on`) or untag these files ([path]) with `tag`:
+        /// {failed: [[path, why]]}.
+        #[qinvokable]
+        #[cxx_name = "setTag"]
+        fn set_tag(self: &Fs, paths: &QString, tag: &QString, on: bool) -> QString;
+        /// The tags these files have between them: {tag: how many have it}.
+        #[qinvokable]
+        #[cxx_name = "tagsOn"]
+        fn tags_on(self: &Fs, paths: &QString) -> QString;
+        /// Every tag Files knows files have: {tag: how many files}.
+        #[qinvokable]
+        #[cxx_name = "tagCounts"]
+        fn tag_counts(self: &Fs) -> QString;
+        /// Renames a tag on every file that has it (`to` "": takes it off them):
+        /// {ok, error?, changed}.
+        #[qinvokable]
+        #[cxx_name = "renameTag"]
+        fn rename_tag(self: &Fs, from: &QString, to: &QString) -> QString;
+        /// A tag's name checked: {ok, name} or {ok: false, error}.
+        #[qinvokable]
+        #[cxx_name = "checkTag"]
+        fn check_tag(self: &Fs, name: &QString) -> QString;
         /// Installed terminals / code editors: [{id, name}].
         #[qinvokable]
         fn terminals(self: &Fs) -> QString;
@@ -170,10 +192,12 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{launch, listing, looks, places, session, trash, views};
+use crate::{launch, listing, looks, places, session, tags, trash, views};
 
 /// The Trash, as a place to go.
 const TRASH: &str = "trash:";
+/// A tag's files, wherever they are ("tag:Name").
+const TAG: &str = "tag:";
 /// Every drive, how full (the Storage page).
 const DRIVES: &str = "drives:";
 
@@ -237,6 +261,44 @@ impl qobject::Fs {
                     })
                 })
                 .collect())
+        } else if let Some(tag) = path.strip_prefix(TAG) {
+            // A tag ("tag:Name"): every file with it, wherever it is.
+            Ok(tags::files_with(tag)
+                .into_iter()
+                .filter_map(|p| {
+                    let m = std::fs::metadata(&p).ok()?;
+                    let name = p.file_name()?.to_string_lossy().into_owned();
+                    let dir = m.is_dir();
+                    origins.insert(
+                        p.to_string_lossy().into_owned(),
+                        p.parent()
+                            .map(|d| d.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                    );
+                    let ms = |t: std::io::Result<std::time::SystemTime>| {
+                        t.ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_millis() as i64)
+                            .unwrap_or(0)
+                    };
+                    Some(listing::Entry {
+                        mime: if dir {
+                            "inode/directory".into()
+                        } else {
+                            ic.mime.type_of(&name).to_string()
+                        },
+                        hidden: name.starts_with('.'),
+                        executable: false,
+                        size: if dir { 0 } else { m.len() },
+                        modified: ms(m.modified()),
+                        created: ms(m.created()),
+                        link: false,
+                        dir,
+                        path: p.to_string_lossy().into_owned(),
+                        name,
+                    })
+                })
+                .collect())
         } else {
             listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string())
         };
@@ -274,6 +336,10 @@ impl qobject::Fs {
                 if let Some(l) = looks.get(&e.path).filter(|_| e.dir) {
                     v["look"] = json!(l);
                 }
+                let t = tags::read(Path::new(&e.path));
+                if !t.is_empty() {
+                    v["tags"] = json!(t);
+                }
                 v
             })
             .collect();
@@ -281,6 +347,10 @@ impl qobject::Fs {
     }
 
     fn stamp_of(&self, path: &str) -> f64 {
+        if path.starts_with(TAG) {
+            // Tagging or untagging anything changes the list.
+            return self.stamp_of(&tags::file().to_string_lossy());
+        }
         if path == TRASH {
             // Something trashed, restored or deleted changes an info folder.
             return trash::all_trashes()
@@ -343,6 +413,9 @@ impl qobject::Fs {
         let path = path.to_string();
         if path == DRIVES {
             return q(json!([{"name": "Storage", "path": DRIVES}]));
+        }
+        if let Some(tag) = path.strip_prefix(TAG) {
+            return q(json!([{"name": "Tags", "path": ""}, {"name": tag, "path": path}]));
         }
         let trash_crumb = json!({"name": "Trash", "path": TRASH});
         if path == TRASH {
@@ -451,6 +524,9 @@ impl qobject::Fs {
                 if a.starts_with(DRIVES) {
                     return PathBuf::from(DRIVES);
                 }
+                if a.starts_with(TAG) {
+                    return PathBuf::from(&a);
+                }
                 let p = Path::new(a.strip_prefix("file://").unwrap_or(&a)).to_path_buf();
                 let p = if p.is_absolute() { p } else { cwd.join(p) };
                 // A file: open its folder.
@@ -521,7 +597,7 @@ impl qobject::Fs {
 
     pub fn up(&self, path: &QString) -> QString {
         let path = path.to_string();
-        if path == TRASH || path == DRIVES || path == "/" {
+        if path == TRASH || path == DRIVES || path == "/" || path.starts_with(TAG) {
             return QString::from("");
         }
         let p = Path::new(&path);
@@ -662,6 +738,88 @@ impl qobject::Fs {
             })
             .collect();
         q(json!(v))
+    }
+
+    pub fn set_tag(&self, paths: &QString, tag: &QString, on: bool) -> QString {
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let Ok(tag) = tags::check_name(&tag.to_string()) else {
+            return q(json!({"failed": [["", "not a tag name"]]}));
+        };
+        let mut failed = vec![];
+        let mut done = vec![];
+        for p in paths {
+            let pb = PathBuf::from(&p);
+            let mut t = tags::read(&pb);
+            let has = t.contains(&tag);
+            if on == has {
+                done.push((p, t));
+                continue;
+            }
+            if on {
+                t.push(tag.clone());
+            } else {
+                t.retain(|x| *x != tag);
+            }
+            match tags::write(&pb, &t) {
+                Ok(()) => done.push((p, t)),
+                Err(e) => failed.push((p, e)),
+            }
+        }
+        tags::change(|r| {
+            for (p, t) in &done {
+                r.set(p, t.clone());
+            }
+            true
+        });
+        q(json!({"failed": failed}))
+    }
+
+    pub fn tags_on(&self, paths: &QString) -> QString {
+        let paths: Vec<PathBuf> = serde_json::from_str::<Vec<String>>(&paths.to_string())
+            .unwrap_or_default()
+            .into_iter()
+            .map(PathBuf::from)
+            .collect();
+        q(json!(tags::on(&paths)))
+    }
+
+    pub fn tag_counts(&self) -> QString {
+        q(json!(tags::counts()))
+    }
+
+    pub fn rename_tag(&self, from: &QString, to: &QString) -> QString {
+        let from = from.to_string();
+        let to = to.to_string();
+        let to = if to.trim().is_empty() {
+            None
+        } else {
+            match tags::check_name(&to) {
+                Ok(n) => Some(n),
+                Err(e) => return q(json!({"ok": false, "error": e})),
+            }
+        };
+        // Files the list doesn't know of yet are picked up by the next index.
+        let mut changed = vec![];
+        tags::change(|r| {
+            changed = r.rename(&from, to.as_deref());
+            true
+        });
+        let mut failed = 0;
+        for (p, t) in &changed {
+            if tags::write(Path::new(p), t).is_err() {
+                failed += 1;
+            }
+        }
+        q(
+            json!({"ok": failed == 0, "changed": changed.len(), "error": if failed > 0 { format!("{failed} files couldn't be changed") } else { String::new() }}),
+        )
+    }
+
+    pub fn check_tag(&self, name: &QString) -> QString {
+        match tags::check_name(&name.to_string()) {
+            Ok(n) => q(json!({"ok": true, "name": n})),
+            Err(e) => q(json!({"ok": false, "error": e})),
+        }
     }
 
     pub fn terminals(&self) -> QString {

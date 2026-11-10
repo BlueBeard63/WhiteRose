@@ -336,6 +336,7 @@ impl<'a, R: Report> Run<'a, R> {
                 }
             }
             let _ = fs::set_permissions(target, meta.permissions());
+            crate::tags::copy(src, target);
         } else if meta.is_file() {
             match self.copy_file(src, target, &meta) {
                 Ok(true) => {}
@@ -383,6 +384,8 @@ impl<'a, R: Report> Run<'a, R> {
                 let _ =
                     fs::set_permissions(&part, fs::Permissions::from_mode(meta.mode() & 0o7777));
                 keep_times(&part, meta);
+                // Tags go with the copy.
+                crate::tags::copy(src, &part);
                 fs::rename(&part, target).map_err(|e| {
                     let _ = fs::remove_file(&part);
                     friendly(e)

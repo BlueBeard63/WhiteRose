@@ -52,7 +52,7 @@ impl View {
             },
             descending: self.descending,
             group: match self.group.as_str() {
-                "kind" | "modified" | "size" | "name" => self.group,
+                "kind" | "modified" | "size" | "name" | "tag" => self.group,
                 _ => String::new(),
             },
         }

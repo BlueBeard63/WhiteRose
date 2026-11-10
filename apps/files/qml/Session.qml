@@ -29,8 +29,64 @@ QtObject {
     property bool folderSizes: session.setting("files.folderSizes", true)
     property string openWith: session.setting("files.openWith", "double")
     property bool confirmTrash: session.setting("files.confirmTrash", false)
+    // The sidebar: shown or hidden (Ctrl+B), and its sections folded away.
+    property bool sidebar: session.setting("files.sidebar", true)
+    property var sidebarFolded: session.setting("files.sidebarFolded", [])
+    function setSidebar(on) { session.sidebar = on; session.set("files.sidebar", on) }
+    function foldSidebar(section) {
+        const next = session.sidebarFolded.includes(section) ? session.sidebarFolded.filter(x => x !== section) : session.sidebarFolded.concat([section]);
+        session.sidebarFolded = next;
+        session.set("files.sidebarFolded", next);
+    }
+    // Tags: names and colours, in order ({name, colour}).
+    property var tagDefs: session.setting("files.tags", [])
+    readonly property var palette: ({
+        rose: "#E8A3AE", red: "#E5534B", orange: "#F0883E", yellow: "#E3B341", green: "#57AB5A",
+        teal: "#39C5BB", blue: "#539BF5", purple: "#986EE2", pink: "#E275AD", grey: "#8B949E",
+    })
+    // A tag's colour (one Files doesn't list yet: grey).
+    function tagColour(name) {
+        const d = session.tagDefs.find(t => t.name.toLowerCase() === String(name).toLowerCase());
+        return session.palette[d?.colour ?? "grey"];
+    }
+    function defineTag(name, colour) {
+        if (session.tagDefs.some(t => t.name.toLowerCase() === name.toLowerCase())) return;
+        const next = session.tagDefs.concat([{ name: name, colour: colour }]);
+        session.tagDefs = next;
+        session.set("files.tags", next);
+    }
+    function setTagDefs(list) { session.tagDefs = list; session.set("files.tags", list) }
+    // The next colour for a new tag (one not used yet, if any).
+    function freshColour() {
+        const used = session.tagDefs.map(t => t.colour);
+        return Object.keys(session.palette).find(c => !used.includes(c)) ?? "rose";
+    }
     property var defaultView: session.setting("files.defaultView", ({ mode: "grid", sortBy: "name", descending: false, group: "" }))
     readonly property var indexOpts: ({ drives: session.setting("files.indexDrives", true), exclude: session.setting("files.indexExclude", []) })
+    // The daemon's settings arrive a moment after start (the values above are
+    // the defaults until then): everything read again once they're here.
+    function readAll() {
+        const v = (k, f) => session.setting(k, f);
+        session.hidden = v("files.hidden", false);
+        session.details = v("files.details", false);
+        session.adaptive = v("files.adaptive", true);
+        session.zoom = v("files.zoom", 1);
+        session.foldersAt = v("files.foldersAt", "first");
+        session.columns = v("files.columns", ["size", "modified", "kind"]);
+        session.widths = v("files.widths", {});
+        session.folderSizes = v("files.folderSizes", true);
+        session.openWith = v("files.openWith", "double");
+        session.confirmTrash = v("files.confirmTrash", false);
+        session.tagDefs = v("files.tags", []);
+        session.sidebar = v("files.sidebar", true);
+        session.sidebarFolded = v("files.sidebarFolded", []);
+        session.defaultView = v("files.defaultView", session.defaultView);
+        session.reload(true);
+    }
+    property Connections connected: Connections {
+        target: Desktop
+        function onConnectedChanged() { if (Desktop.connected) session.readAll() }
+    }
     // Changed (here, in Settings, or in another Files): every window shows it.
     property Connections watch: Connections {
         target: Desktop
@@ -48,6 +104,9 @@ QtObject {
             case "files.folderSizes": session.folderSizes = v(key, true); break;
             case "files.openWith": session.openWith = v(key, "double"); break;
             case "files.confirmTrash": session.confirmTrash = v(key, false); break;
+            case "files.sidebar": session.sidebar = v(key, true); break;
+            case "files.sidebarFolded": session.sidebarFolded = v(key, []); break;
+            case "files.tags": session.tagDefs = v(key, []); session.reload(false); break;
             case "files.defaultView": session.defaultView = v(key, session.defaultView); session.reload(true); break;
             case "files.reindex": Search.keepFresh(JSON.stringify(session.indexOpts), v(key, 0)); break;
             }
@@ -64,7 +123,7 @@ QtObject {
     function setFoldersAt(at) { session.foldersAt = at; session.set("files.foldersAt", at); session.reload(false) }
     function toggleColumn(key) {
         const on = session.columns.includes(key);
-        const next = ["size", "modified", "created", "kind"].filter(k => k === key ? !on : session.columns.includes(k));
+        const next = ["size", "modified", "created", "kind", "tags"].filter(k => k === key ? !on : session.columns.includes(k));
         session.columns = next;
         session.set("files.columns", next);
     }

@@ -1,5 +1,6 @@
 // A dropdown menu in the desktop's style: `items` is [{ label, shortcut?,
-// danger?, enabled?, checked? (a tick: on/off items), separator?, run }].
+// danger?, enabled?, checked? (a tick: on/off items), colour? (a dot
+// before the label), separator?, run }].
 // An item with `items` of its own (and no run) is a submenu: › on it, and
 // it opens beside it on hover or click (to the left if there's no room on
 // the right). Open with openAt(x, y) (in its parent's coordinates) or open().
@@ -11,6 +12,8 @@ Popup {
     id: menu
     property var items: []
     function openAt(px, py) { menu.x = px; menu.y = py; menu.open() }
+    // Never off the window: up (and left) as far as it takes to fit.
+    margins: 6
     // Something in it (or a submenu of it) was chosen.
     signal chosen()
     // The submenu open (its index; -1 none).
@@ -35,7 +38,7 @@ Popup {
                 required property var modelData
                 required property int index
                 readonly property bool sub: !!modelData.items
-                readonly property real need: labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0) + (sub ? 20 : 0)
+                readonly property real need: labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0) + (sub ? 20 : 0) + (dot.visible ? 18 : 0)
                 width: menu.width - 12
                 height: modelData.separator ? 9 : 30
                 Rectangle { visible: !!modelData.separator; anchors.centerIn: parent; width: parent.width - 8; height: 1; color: Theme.surface2 }
@@ -54,9 +57,16 @@ Popup {
                             anchors.verticalCenter: parent.verticalCenter
                             Icon { visible: modelData.checked === true; name: "check"; size: 13; color: Theme.rose; anchors.verticalCenter: parent.verticalCenter }
                         }
+                        Item {
+                            id: dot
+                            visible: !!modelData.colour
+                            width: 18; height: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            Rectangle { width: 9; height: 9; radius: 4.5; anchors.verticalCenter: parent.verticalCenter; color: modelData.colour ?? "transparent" }
+                        }
                         Text {
                             id: labelText
-                            width: parent.width - keys.width - (tick.visible ? tick.width : 0) - (entry.sub ? 14 : 0)
+                            width: parent.width - keys.width - (tick.visible ? tick.width : 0) - (entry.sub ? 14 : 0) - (dot.visible ? dot.width : 0)
                             text: modelData.label ?? ""
                             color: modelData.enabled === false ? Theme.faint : modelData.danger ? Theme.rose : Theme.text
                             font { family: Theme.font; pointSize: Theme.pt(12.5) }

@@ -35,6 +35,9 @@ FocusScope {
     readonly property bool inDrives: path === "drives:"
     // Not a real folder: nothing can be made, pasted or dropped here.
     readonly property bool special: inTrash || inDrives
+    // A tag's files ("tag:Name"): real files, but nothing can be made or
+    // pasted here; dropping things here tags them.
+    readonly property bool inTag: path.startsWith("tag:")
     // Folder sizes as they're worked out ({path: {bytes, items}}).
     property var sizes: ({})
     property var sizesSoon: ({})

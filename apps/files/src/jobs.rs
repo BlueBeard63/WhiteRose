@@ -390,6 +390,11 @@ impl qobject::Ops {
                     let a = out.moved.iter().fold(false, |c, (f, t)| l.moved(f, t) | c);
                     out.gone.iter().fold(a, |c, g| l.forget(g) | c)
                 });
+                // And the list of what's tagged where.
+                crate::tags::change(|r| {
+                    let a = out.moved.iter().fold(false, |c, (f, t)| r.moved(f, t) | c);
+                    out.gone.iter().fold(a, |c, g| r.forget(g) | c)
+                });
             }
             w.update(|j| {
                 j.state = "done";
@@ -454,6 +459,7 @@ impl qobject::Ops {
             Ok(p) => {
                 let to = p.to_string_lossy().into_owned();
                 crate::looks::change(|l| l.moved(&from, &to));
+                crate::tags::change(|r| r.moved(&from, &to));
                 q(json!({"ok": true, "path": p}))
             }
             Err(e) => q(json!({"ok": false, "error": e})),
@@ -475,6 +481,7 @@ impl qobject::Ops {
                 Ok(to) => {
                     let to = to.to_string_lossy().into_owned();
                     crate::looks::change(|l| l.moved(&p, &to));
+                    crate::tags::change(|r| r.moved(&p, &to));
                     done.push(to);
                 }
                 Err(e) => failed.push((p, e)),

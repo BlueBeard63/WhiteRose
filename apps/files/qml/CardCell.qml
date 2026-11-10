@@ -61,11 +61,14 @@ Item {
                 color: Theme.muted
                 font { family: Theme.font; pointSize: Theme.pt(11 * Math.sqrt(cell.view.k)) }
             }
-            Text {
-                width: parent.width
-                text: F.date(cell.modelData.modified, cell.view.now)
-                color: Theme.faint
-                font { family: Theme.font; pointSize: Theme.pt(10.5 * Math.sqrt(cell.view.k)) }
+            Row {
+                spacing: 6
+                TagDots { tags: cell.modelData.tags ?? []; anchors.verticalCenter: parent.verticalCenter }
+                Text {
+                    text: F.date(cell.modelData.modified, cell.view.now)
+                    color: Theme.faint
+                    font { family: Theme.font; pointSize: Theme.pt(10.5 * Math.sqrt(cell.view.k)) }
+                }
             }
         }
     }

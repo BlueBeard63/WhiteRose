@@ -20,6 +20,9 @@ FocusScope {
         modified: { label: root.pane.inTrash ? "Deleted" : "Modified", w: 150, sort: "modified", value: e => F.date(e.modified, root.now) },
         created: { label: "Created", w: 150, sort: "created", value: e => e.created ? F.date(e.created, root.now) : "—" },
         kind: { label: "Kind", w: 110, sort: "kind", value: e => F.kind(e.mime) },
+        // Coloured dots and names.
+        tags: { label: "Tags", w: 160, sort: "", rich: true,
+                value: e => (e.tags ?? []).map(t => '<font color="' + Session.tagColour(t) + '">●</font>&nbsp;' + t.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("&nbsp;&nbsp;") },
         where: { label: root.pane.inTrash ? "From" : "Folder", w: 220, sort: "", value: e => String(e.origin ?? e.folder ?? "").replace(Fs.home(), "~") },
     })
     // The columns shown (the Trash and search: their own), widths as set,
@@ -52,6 +55,7 @@ FocusScope {
                 { label: "Modified", checked: Session.columns.includes("modified"), run: () => Session.toggleColumn("modified") },
                 { label: "Created", checked: Session.columns.includes("created"), run: () => Session.toggleColumn("created") },
                 { label: "Kind", checked: Session.columns.includes("kind"), run: () => Session.toggleColumn("kind") },
+                { label: "Tags", checked: Session.columns.includes("tags"), run: () => Session.toggleColumn("tags") },
             ]
         }
         Row {
@@ -200,6 +204,7 @@ FocusScope {
                         anchors.verticalCenter: parent.verticalCenter
                         leftPadding: 8
                         text: modelData.value(row.modelData)
+                        textFormat: modelData.rich ? Text.StyledText : Text.PlainText
                         elide: modelData.key === "where" ? Text.ElideMiddle : Text.ElideRight
                         color: Theme.muted
                         font { family: Theme.font; pointSize: Theme.pt(12) }

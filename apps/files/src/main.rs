@@ -12,6 +12,7 @@ mod ops;
 mod places;
 mod search;
 mod session;
+mod tags;
 mod trash;
 mod views;
 

@@ -46,6 +46,7 @@ pub mod qobject {
 }
 
 use std::{
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
@@ -164,11 +165,48 @@ impl qobject::Search {
                 search::walk(Path::new(&ask.here), &look, &stop, KEEP, &mut send);
                 return;
             }
+            let home = places::home();
+            // Tags asked for: the tagged files, not the whole index.
+            if !q.tags.is_empty() {
+                let reg = crate::tags::load();
+                let mut hits: Vec<search::Hit> = reg
+                    .files
+                    .iter()
+                    .filter(|(p, t)| {
+                        let lower: Vec<String> = t.iter().map(|x| x.to_lowercase()).collect();
+                        q.tags.iter().all(|w| lower.contains(w))
+                            && (ask.scope == "everywhere" || Path::new(p).starts_with(&home))
+                    })
+                    .filter_map(|(p, _)| {
+                        let path = Path::new(p);
+                        let m = std::fs::metadata(path).ok()?;
+                        let name = path.file_name()?.to_string_lossy().into_owned();
+                        let s = search::score(&name, &q)?;
+                        if !f.pass(|| mime(&name), m.is_dir(), m.len(), m.mtime())
+                            || !q.tagged(path)
+                        {
+                            return None;
+                        }
+                        Some(search::Hit {
+                            path: p.clone(),
+                            name,
+                            dir: m.is_dir(),
+                            link: false,
+                            size: if m.is_dir() { 0 } else { m.len() },
+                            modified: m.mtime() * 1000,
+                            score: s,
+                        })
+                    })
+                    .collect();
+                let n = hits.len() as u64;
+                search::rank(&mut hits, KEEP);
+                send(&hits, n, true);
+                return;
+            }
             let Some(ix) = search::Index::open(&search::index_file()) else {
                 send(&[], 0, true);
                 return;
             };
-            let home = places::home();
             let want = |top: &Path| ask.scope == "everywhere" || top == home;
             let (hits, seen) = ix.find(&q, &f, &want, &mime, &stop, KEEP);
             if !stop.load(Ordering::Relaxed) {
@@ -205,7 +243,13 @@ impl qobject::Search {
         std::thread::spawn(move || {
             background();
             let file = search::index_file();
-            let _ = search::build_leaving(&roots(opts.drives), &exclude, &file, &stop);
+            let mut tagged = vec![];
+            if search::build_tagged(&roots(opts.drives), &exclude, &file, &stop, &mut tagged)
+                .is_ok()
+            {
+                // Tags other apps put on files: on the list too.
+                crate::tags::found(tagged);
+            }
             let at = search::index_age(&file) as f64 * 1000.0;
             let _ = thread.queue(move |mut obj| {
                 obj.as_mut().set_indexed(at);

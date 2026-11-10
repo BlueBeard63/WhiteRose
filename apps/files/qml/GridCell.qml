@@ -53,6 +53,12 @@ Item {
         color: Theme.surface2
         Icon { anchors.centerIn: parent; name: "link"; size: 10; color: Theme.text }
     }
+    // Its tags: dots at the icon's corner.
+    TagDots {
+        tags: cell.modelData.tags ?? []
+        anchors { left: icon.right; leftMargin: -4; top: icon.top }
+        size: 8 * cell.view.k
+    }
     Text {
         anchors { top: icon.bottom; topMargin: 6; left: parent.left; right: parent.right; leftMargin: 8; rightMargin: 8 }
         horizontalAlignment: Text.AlignHCenter

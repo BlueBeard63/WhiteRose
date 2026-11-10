@@ -348,10 +348,39 @@ AppWindow {
     Sidebar {
         id: sidebar
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-        width: 210
+        // Hidden (Ctrl+B): the folder takes the whole width.
+        width: Session.sidebar ? 210 : 0
+        visible: width > 0
+        clip: true
+        Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         current: win.current?.path ?? ""
         onChosen: p => { win.current?.go(p); win.current?.focusView() }
         onDropped: (paths, dest) => win.drop(paths, dest)
+        onTagMenu: (name, x, y) => { tagMenu.tag = name; tagMenu.openAt(x, y) }
+        Menu {
+            id: tagMenu
+            property string tag
+            readonly property bool listed: Session.tagDefs.some(t => t.name === tagMenu.tag)
+            items: [
+                { label: "Colour", items: Object.keys(Session.palette).map(c => ({
+                    label: c.charAt(0).toUpperCase() + c.slice(1), colour: Session.palette[c],
+                    checked: (Session.tagDefs.find(t => t.name === tagMenu.tag)?.colour ?? "grey") === c,
+                    run: () => {
+                        const has = Session.tagDefs.some(t => t.name === tagMenu.tag);
+                        Session.setTagDefs(has ? Session.tagDefs.map(t => t.name === tagMenu.tag ? { name: t.name, colour: c } : t)
+                                               : Session.tagDefs.concat([{ name: tagMenu.tag, colour: c }]));
+                    },
+                })) },
+                { label: "Rename…", run: () => tagDialog.rename(tagMenu.tag) },
+                { separator: true },
+                { label: "Take off every file", danger: true, run: () => {
+                    const r = JSON.parse(Fs.renameTag(tagMenu.tag, ""));
+                    if (!r.ok) win.notice = r.error;
+                    win.refreshTags();
+                } },
+                { label: "Remove from this list", enabled: tagMenu.listed, run: () => Session.setTagDefs(Session.tagDefs.filter(t => t.name !== tagMenu.tag)) },
+            ]
+        }
     }
 
     // ---- navigation row --------------------------------------------------------------------
@@ -363,6 +392,8 @@ AppWindow {
             id: arrows
             anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 2
+            // Show / hide the sidebar.
+            IconButton { width: 32; height: 32; icon: "panelLeft"; fill: "transparent"; iconColor: Session.sidebar ? Theme.text : Theme.muted; onClicked: Session.setSidebar(!Session.sidebar) }
             IconButton { width: 32; height: 32; icon: "chevL"; fill: "transparent"; opacity: (win.current?.back.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goBack() }
             IconButton { width: 32; height: 32; icon: "chevR"; fill: "transparent"; opacity: (win.current?.forward.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goForward() }
             IconButton { width: 32; height: 32; icon: "chevUp"; fill: "transparent"; opacity: Fs.up(win.current?.path ?? "/") !== "" ? 1 : 0.35; onClicked: win.current?.up() }
@@ -450,6 +481,7 @@ AppWindow {
                         { label: "Date modified", checked: win.current?.group === "modified", run: () => win.current.setView({ group: "modified" }) },
                         { label: "Size", checked: win.current?.group === "size", run: () => win.current.setView({ group: "size" }) },
                         { label: "Name", checked: win.current?.group === "name", run: () => win.current.setView({ group: "name" }) },
+                        { label: "Tag", checked: win.current?.group === "tag", run: () => win.current.setView({ group: "tag" }) },
                     ] },
                     { label: "Folders", items: [
                         { label: "First", checked: Session.foldersAt === "first", run: () => Session.setFoldersAt("first") },
@@ -461,6 +493,7 @@ AppWindow {
                         { label: "Modified", checked: Session.columns.includes("modified"), run: () => Session.toggleColumn("modified") },
                         { label: "Created", checked: Session.columns.includes("created"), run: () => Session.toggleColumn("created") },
                         { label: "Kind", checked: Session.columns.includes("kind"), run: () => Session.toggleColumn("kind") },
+                        { label: "Tags", checked: Session.columns.includes("tags"), run: () => Session.toggleColumn("tags") },
                     ] },
                     { separator: true },
                     { label: "Bigger items", shortcut: "Ctrl+=", run: () => Session.setZoom(Session.zoom + 0.1) },
@@ -652,7 +685,10 @@ AppWindow {
                 ...itemMenu.openIn,
                 { separator: true },
                 { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
-            ]) : itemMenu.trashed ? (!itemMenu.entry ? [
+            ]) : (win.current?.inTag && !itemMenu.entry) ? [
+                { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
+                { label: "Rename tag…", run: () => tagDialog.rename(win.current.path.slice(4)) },
+            ] : itemMenu.trashed ? (!itemMenu.entry ? [
                 { label: "Empty Trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
             ] : [
@@ -689,6 +725,7 @@ AppWindow {
                 { separator: true },
                 { label: "Rename…", shortcut: "F2", enabled: !itemMenu.many, run: () => win.askName("rename") },
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
+                { label: "Tags", items: win.tagItems(itemMenu.sel.map(e => e.path)) },
                 { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
                 { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
                 { separator: true },
@@ -738,7 +775,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
+    readonly property bool typing: tagDialog.visible || keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -747,6 +784,7 @@ AppWindow {
     }
     function showMenu(entry, x, y) {
         win.readClipboard();
+        if (entry) win.menuTags = JSON.parse(Fs.tagsOn(JSON.stringify((win.current?.selection ?? []).map(e => e.path))));
         itemMenu.entry = entry;
         // (The Storage page's empty space has nothing to offer.)
         if (!entry && win.current?.inDrives) return;
@@ -765,11 +803,36 @@ AppWindow {
     }
     // Files dropped on folder `dest` (Drops.plan: copy or move, or trash).
     function drop(paths, dest) {
+        // On a tag: tagged with it.
+        if (dest.startsWith("tag:")) { win.tag(paths, dest.slice(4), true); return }
         const mods = Ops.modifiers();
         const plan = Drops.plan(paths, dest, (mods & Qt.ControlModifier) !== 0, (mods & Qt.ShiftModifier) !== 0,
                                 Fs.sameDrive(paths[0], dest));
         if (plan) win.run(plan.kind, plan.paths, plan.kind === "trash" ? "" : dest);
     }
+    // ---- tags ---------------------------------------------------------------------------
+    // The tags the right-clicked selection has ({tag: how many have it}).
+    property var menuTags: ({})
+    function tag(paths, name, on) {
+        const r = JSON.parse(Fs.setTag(JSON.stringify(paths), name, on));
+        if (r.failed.length > 0) win.notice = "Couldn't tag “" + r.failed[0][0].substring(r.failed[0][0].lastIndexOf("/") + 1) + "”: " + r.failed[0][1];
+        if (on) Session.defineTag(name, Session.freshColour());
+        win.refreshTags();
+    }
+    function refreshTags() {
+        for (const w of Session.windows) { for (const t of w.tabs) for (const p of t.panes) p.load(); w.refreshSidebar() }
+    }
+    // The Tags submenu for these paths: every tag, ticked when they all have it.
+    function tagItems(paths) {
+        const on = win.menuTags;
+        const names = Session.tagDefs.map(t => t.name).concat(Object.keys(on).filter(t => !Session.tagDefs.some(d => d.name === t)));
+        return names.map(n => ({
+            label: n, colour: Session.tagColour(n), checked: (on[n] ?? 0) === paths.length,
+            run: () => win.tag(paths, n, (on[n] ?? 0) !== paths.length),
+        })).concat(names.length > 0 ? [{ separator: true }] : [], [{ label: "New tag…", run: () => tagDialog.newTag(paths) }]);
+    }
+    TagDialog { id: tagDialog; onDone: win.refreshTags(); onClosed: win.current?.focusView() }
+
     // The selection to the folder on the other side of a split tab.
     function toOther(kind) {
         const sel = win.current?.selection ?? [];
@@ -1032,10 +1095,10 @@ AppWindow {
     Shortcut { sequence: win.keys("reload", "Ctrl+R"); onActivated: win.current?.load() }
     Shortcut { sequence: win.keys("copy", "Ctrl+C"); enabled: !win.typing; onActivated: win.toClipboard(false) }
     Shortcut { sequence: win.keys("cut", "Ctrl+X"); enabled: !win.typing; onActivated: win.toClipboard(true) }
-    Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
+    Shortcut { sequence: win.keys("paste", "Ctrl+V"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inTag ?? false); onActivated: { if (win.current) win.paste(win.current.path) } }
     Shortcut { sequence: win.keys("trash", "Delete"); enabled: !win.typing; onActivated: win.trash() }
     Shortcut { sequence: win.keys("delete", "Shift+Del"); enabled: !win.typing && !(win.current?.inDrives ?? false); onActivated: win.askDelete((win.current?.selection ?? []).map(e => e.path), win.current?.inTrash ? "purge" : "delete") }
     Shortcut { sequence: win.keys("rename", "F2"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: win.askName("rename") }
     Shortcut { sequences: [win.keys("properties", "Alt+Return"), "Alt+Enter"]; enabled: !win.typing; onActivated: win.properties() }
-    Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false); onActivated: win.askName("folder") }
+    Shortcut { sequence: win.keys("new-folder", "Ctrl+Shift+N"); enabled: !win.typing && !(win.current?.special ?? false) && !(win.current?.inTag ?? false); onActivated: win.askName("folder") }
 }

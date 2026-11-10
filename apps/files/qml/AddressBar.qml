@@ -89,7 +89,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: modelData.more ? bar.edit() : bar.go(modelData.path)
+                        onClicked: modelData.more ? bar.edit() : modelData.path ? bar.go(modelData.path) : bar.edit()
                     }
                 }
             }

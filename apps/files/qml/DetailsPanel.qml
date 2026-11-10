@@ -79,6 +79,34 @@ Rectangle {
                     value: label !== "" ? preview.facts : ""
                 }
                 Fact { label: "Size"; value: root.entry && !root.entry.dir ? F.exactSize(root.entry.size) : "" }
+                // Its tags (click one: every file with it).
+                Column {
+                    visible: (root.entry?.tags ?? []).length > 0
+                    width: parent.width
+                    spacing: 4
+                    Text { text: "Tags"; color: Theme.faint; font { family: Theme.font; pointSize: Theme.pt(10.5) } }
+                    Flow {
+                        width: parent.width
+                        spacing: 6
+                        Repeater {
+                            model: root.entry?.tags ?? []
+                            delegate: Rectangle {
+                                required property string modelData
+                                height: 24; radius: 12
+                                width: chipRow.implicitWidth + 16
+                                color: chipArea.containsMouse ? Theme.surface2 : Theme.surface1
+                                Row {
+                                    id: chipRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    Rectangle { width: 8; height: 8; radius: 4; color: Session.tagColour(modelData); anchors.verticalCenter: parent.verticalCenter }
+                                    Text { text: modelData; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(11) } }
+                                }
+                                MouseArea { id: chipArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.pane.go("tag:" + modelData) }
+                            }
+                        }
+                    }
+                }
                 Fact { label: root.pane?.inTrash ? "Deleted" : "Modified"; value: root.entry ? F.fullDate(root.entry.modified) : "" }
                 Fact { label: root.pane?.inTrash ? "From" : "Folder"; value: String(root.entry?.origin ?? root.entry?.folder ?? "").replace(Fs.home(), "~") }
                 Button { text: "Open"; kind: "primary"; anchors.verticalCenter: undefined; onClicked: root.pane.activate(root.entry) }

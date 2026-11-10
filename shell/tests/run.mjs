@@ -692,6 +692,9 @@ test("files: grouping", () => {
     assert.equal(Arr.groupOf(f("x", { size: 0 }), "size", now).label, "Empty");
     assert.equal(Arr.groupOf(f(".bashrc"), "name", now).label, "B");
     assert.equal(Arr.groupOf(f("2024 taxes"), "name", now).label, "0–9");
+    assert.equal(Arr.groupOf(f("a", { tags: ["Work", "Urgent"] }), "tag", now).label, "Work", "its first tag");
+    assert.equal(Arr.groupOf(f("a"), "tag", now).label, "No tags");
+    assert.ok(Arr.groupOf(f("a"), "tag", now).key > Arr.groupOf(f("b", { tags: ["Zed"] }), "tag", now).key, "untagged last");
     assert.equal(Arr.arrange(items, "", false, now), items, "no grouping: as it was");
     assert.equal(items[0].group, undefined, "the originals untouched");
 });

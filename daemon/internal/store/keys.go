@@ -231,6 +231,9 @@ var Known = map[string]Key{
 		}
 		return nil
 	})},
+	// Tags (Files): their names and colours, in the order shown. The tags
+	// themselves are on the files (user.xdg.tags).
+	"files.tags":        {Default: json.RawMessage(`[{"name":"Important","colour":"red"},{"name":"Work","colour":"blue"},{"name":"Personal","colour":"green"}]`), Check: into(tagList)},
 	"files.foldersAt":   {Default: json.RawMessage(`"first"`), Check: into(oneOf("first", "mixed", "last"))},
 	"files.columns":     {Default: json.RawMessage(`["size","modified","kind"]`), Check: into(listColumns)},
 	"files.widths":      {Default: json.RawMessage(`{}`), Check: into(columnWidths)},
@@ -242,7 +245,7 @@ var Known = map[string]Key{
 		if err := oneOf("name", "size", "modified", "created", "kind")(v.SortBy); err != nil {
 			return err
 		}
-		return oneOf("", "kind", "modified", "size", "name")(v.Group)
+		return oneOf("", "kind", "modified", "size", "name", "tag")(v.Group)
 	})},
 	// The search index: drives too (not just home), folders left out, and
 	// when it was last asked to be made again (unix ms; Files does it).
@@ -346,10 +349,37 @@ type FilesView struct {
 	Group      string `json:"group"`
 }
 
+// A tag in files.tags.
+type FilesTag struct {
+	Name   string `json:"name"`
+	Colour string `json:"colour"`
+}
+
+func tagList(tags []FilesTag) error {
+	if len(tags) > 100 {
+		return errors.New("at most 100 tags")
+	}
+	seen := map[string]bool{}
+	for _, t := range tags {
+		n := strings.TrimSpace(t.Name)
+		if n == "" || n != t.Name || len(n) > 60 || strings.ContainsAny(n, ",\n\t") {
+			return fmt.Errorf("%q: not a tag name", t.Name)
+		}
+		if seen[strings.ToLower(n)] {
+			return fmt.Errorf("%q twice", n)
+		}
+		seen[strings.ToLower(n)] = true
+		if err := oneOf("rose", "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "grey")(t.Colour); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func listColumns(cols []string) error {
 	seen := map[string]bool{}
 	for _, c := range cols {
-		if err := oneOf("size", "modified", "created", "kind")(c); err != nil {
+		if err := oneOf("size", "modified", "created", "kind", "tags")(c); err != nil {
 			return err
 		}
 		if seen[c] {

@@ -53,7 +53,7 @@ Column {
             Choice {
                 value: page.dv.group
                 options: [{ label: "Nothing", value: "" }, { label: "Kind", value: "kind" }, { label: "Date modified", value: "modified" },
-                          { label: "Size", value: "size" }, { label: "Name", value: "name" }]
+                          { label: "Size", value: "size" }, { label: "Name", value: "name" }, { label: "Tag", value: "tag" }]
                 onPicked: v => page.setView({ group: v })
             }
         }

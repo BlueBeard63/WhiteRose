@@ -32,6 +32,8 @@ fn main() {
             "qml/CardCell.qml",
             "qml/GroupedGrid.qml",
             "qml/GroupHeading.qml",
+            "qml/TagDots.qml",
+            "qml/TagDialog.qml",
         ]
         .map(QmlFile::from),
     );

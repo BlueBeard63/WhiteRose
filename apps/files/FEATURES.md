@@ -47,7 +47,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Recycle Bin/Trash integration and restore (MVP) — every Trash (home and drives) in one view: where from, when; restore (folder remade, renamed if taken), delete for good, empty
 - [x] File and folder properties, permissions and attributes (MVP) — kind, location, size (folders counted live), dates, owner and group, read / change / run for you, group and everyone
 - [ ] Copy file paths, quoted paths and shortcuts (Next)
-- [ ] Custom file tags with colours and multiple labels (Next)
+- [x] Custom file tags with colours and multiple labels (Next) — on the file itself (user.xdg.tags, as Dolphin), dots in every view, a Tags column, Sidebar section, tag: search, group by tag, drop onto a tag
 - [ ] File hashing with MD5, SHA-1 and SHA-256 (Next)
 - [ ] Archive create, extract and in-place browse (Next)
 - [ ] Password-protected ZIP/7z and split archives (Advanced)

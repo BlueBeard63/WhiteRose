@@ -33,6 +33,11 @@ function groupOf(e, by, now) {
             : s > 0 ? { key: "5", label: "Tiny (under 100 kB)" }
             : { key: "6", label: "Empty" };
     }
+    if (by === "tag") {
+        // In its first tag's group (untagged last).
+        const t = (e.tags ?? [])[0];
+        return t ? { key: "0" + t.toLowerCase(), label: t } : { key: "1", label: "No tags" };
+    }
     if (by === "name") {
         const c = (e.name.replace(/^\./, "")[0] ?? "#").toUpperCase();
         return /[A-Z]/.test(c) ? { key: "1" + c, label: c } : /[0-9]/.test(c) ? { key: "0", label: "0–9" } : { key: "2", label: "#" };

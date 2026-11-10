@@ -13,23 +13,50 @@ Rectangle {
     signal chosen(string path)
     // Files dropped on a place (the Trash trashes them).
     signal dropped(var paths, string dest)
-    function refresh() { side.places = JSON.parse(Fs.places()) }
+    function refresh() { side.places = JSON.parse(Fs.places()); side.counts = JSON.parse(Fs.tagCounts()) }
+    // How many files have each tag; the tags shown: Files' own, then any
+    // found on files (from other apps).
+    property var counts: ({})
+    readonly property var tagList: Session.tagDefs.map(t => t.name).concat(Object.keys(side.counts).filter(n => !Session.tagDefs.some(d => d.name === n)))
+    // Right-click on a tag.
+    signal tagMenu(string name, real x, real y)
     Component.onCompleted: refresh()
     // Drives come and go (a USB stick): look again every few seconds.
     Timer { interval: 4000; repeat: true; running: Qt.application.state === Qt.ApplicationActive; onTriggered: side.refresh() }
     color: Theme.sidebar
 
-    component Heading: Text {
-        leftPadding: 18; topPadding: 14; bottomPadding: 4
-        color: Theme.faint
-        font { family: Theme.font; pointSize: Theme.pt(10.5); weight: Font.Medium; letterSpacing: 0.8; capitalization: Font.AllUppercase }
+    // A section's heading: click to fold the section away (remembered).
+    component Heading: Item {
+        id: hd
+        property string text
+        readonly property bool folded: Session.sidebarFolded.includes(hd.text)
+        width: side.width; height: label.implicitHeight + 18
+        Text {
+            id: label
+            x: 18; y: 14
+            text: hd.text
+            color: hdArea.containsMouse ? Theme.muted : Theme.faint
+            font { family: Theme.font; pointSize: Theme.pt(10.5); weight: Font.Medium; letterSpacing: 0.8; capitalization: Font.AllUppercase }
+        }
+        Icon {
+            anchors { right: parent.right; rightMargin: 16; verticalCenter: label.verticalCenter }
+            visible: hdArea.containsMouse || hd.folded
+            name: hd.folded ? "chevR" : "chevDown"
+            size: 11
+            color: Theme.faint
+        }
+        MouseArea { id: hdArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Session.foldSidebar(hd.text) }
     }
+    function open(section) { return !Session.sidebarFolded.includes(section) }
     component PlaceRow: Rectangle {
         id: pr
         property string name
         property string path
         property string icon
         property var look: null
+        // A tag: its colour (a dot for an icon) and how many files have it.
+        property color dot: "transparent"
+        property int count: -1
         property real total: 0
         property real free: 0
         signal secondary()
@@ -44,16 +71,31 @@ Rectangle {
             width: 18; height: 18
             sourceSize: Qt.size(36, 36)
             source: pr.icon ? "file://" + pr.icon : ""
-            visible: !pr.look
+            visible: !pr.look && pr.dot.a === 0
+        }
+        Rectangle {
+            visible: pr.dot.a > 0
+            anchors.centerIn: prIcon
+            width: 11; height: 11; radius: 5.5
+            color: pr.dot
         }
         FolderIcon { visible: !!pr.look; anchors.fill: prIcon; size: prIcon.width; look: pr.look ?? ({}) }
         Text {
-            anchors { left: prIcon.right; leftMargin: 10; right: parent.right; rightMargin: 10 }
+            anchors { left: prIcon.right; leftMargin: 10; right: countText.left; rightMargin: 6 }
             y: pr.total > 0 ? 7 : (pr.height - height) / 2
             text: pr.name
             elide: Text.ElideRight
             color: Theme.text
             font { family: Theme.font; pointSize: Theme.pt(12.5); weight: pr.on ? Font.Medium : Font.Normal }
+        }
+        Text {
+            id: countText
+            anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            visible: pr.count >= 0
+            width: visible ? implicitWidth : 0
+            text: pr.count
+            color: Theme.faint
+            font { family: Theme.font; pointSize: Theme.pt(11) }
         }
         // A drive: how full, and what's free.
         Rectangle {
@@ -91,12 +133,12 @@ Rectangle {
             spacing: 2
             Heading { text: "Places" }
             Repeater {
-                model: side.places.folders
+                model: side.open("Places") ? side.places.folders : []
                 delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null }
             }
             Heading { visible: side.places.bookmarks.length > 0; text: "Bookmarks" }
             Repeater {
-                model: side.places.bookmarks
+                model: side.open("Bookmarks") ? side.places.bookmarks : []
                 delegate: PlaceRow {
                     required property var modelData
                     name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null
@@ -107,11 +149,24 @@ Rectangle {
                     }
                 }
             }
+            Heading { visible: side.tagList.length > 0; text: "Tags" }
+            Repeater {
+                model: side.open("Tags") ? side.tagList : []
+                delegate: PlaceRow {
+                    id: tagRow
+                    required property string modelData
+                    name: modelData
+                    path: "tag:" + modelData
+                    dot: Session.tagColour(modelData)
+                    count: side.counts[modelData] ?? 0
+                    onSecondary: { const p = tagRow.mapToItem(side, 24, tagRow.height - 2); side.tagMenu(modelData, p.x, p.y) }
+                }
+            }
             Heading { text: "Drives" }
             // Every drive at once, how full.
-            PlaceRow { name: "Storage"; path: "drives:"; icon: Fs.icon("drive-multidisk", 20) || Fs.icon("drive-harddisk", 20) }
+            PlaceRow { visible: side.open("Drives"); name: "Storage"; path: "drives:"; icon: Fs.icon("drive-multidisk", 20) || Fs.icon("drive-harddisk", 20) }
             Repeater {
-                model: side.places.drives
+                model: side.open("Drives") ? side.places.drives : []
                 delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon; total: modelData.total; free: modelData.free }
             }
         }

@@ -50,13 +50,32 @@ pub struct Ask {
 pub struct Query {
     pub words: Vec<String>,
     pub exts: Vec<String>,
+    /// tag:work: the file must have these tags (as written, any case).
+    pub tags: Vec<String>,
+}
+
+impl Query {
+    /// The file at `p` has every tag asked for.
+    pub fn tagged(&self, p: &Path) -> bool {
+        if self.tags.is_empty() {
+            return true;
+        }
+        let on: Vec<String> = crate::tags::read(p)
+            .iter()
+            .map(|t| t.to_lowercase())
+            .collect();
+        self.tags.iter().all(|t| on.contains(t))
+    }
 }
 
 pub fn parse(text: &str) -> Query {
     let mut q = Query::default();
     for w in text.split_whitespace() {
         let lw = w.to_lowercase();
-        if let Some(e) = lw.strip_prefix("ext:").or_else(|| lw.strip_prefix("*.")) {
+        if let Some(t) = lw.strip_prefix("tag:") {
+            q.tags
+                .extend(t.split(',').filter(|t| !t.is_empty()).map(str::to_string));
+        } else if let Some(e) = lw.strip_prefix("ext:").or_else(|| lw.strip_prefix("*.")) {
             q.exts.extend(
                 e.split(',')
                     .filter(|e| !e.is_empty())
@@ -285,7 +304,7 @@ pub fn walk(
                 queue.push_back(e.path());
             }
             let Some(s) = score(&name, q) else { continue };
-            if !f.pass(|| mime(&name), is_dir, m.len(), m.mtime()) {
+            if !f.pass(|| mime(&name), is_dir, m.len(), m.mtime()) || !q.tagged(&e.path()) {
                 continue;
             }
             hits.push(Hit {
@@ -339,11 +358,23 @@ pub fn build(roots: &[PathBuf], file: &Path, stop: &AtomicBool) -> Result<usize,
 }
 
 /// As build, leaving out the folders in `exclude` (and what's in them).
+#[cfg(test)]
 pub fn build_leaving(
     roots: &[PathBuf],
     exclude: &[PathBuf],
     file: &Path,
     stop: &AtomicBool,
+) -> Result<usize, String> {
+    build_tagged(roots, exclude, file, stop, &mut vec![])
+}
+
+/// As build_leaving, also gathering the tags found on files ([path, tags]).
+pub fn build_tagged(
+    roots: &[PathBuf],
+    exclude: &[PathBuf],
+    file: &Path,
+    stop: &AtomicBool,
+    tagged: &mut Vec<(String, Vec<String>)>,
 ) -> Result<usize, String> {
     use std::os::unix::ffi::OsStrExt;
     let mut head = MAGIC.to_vec();
@@ -391,6 +422,10 @@ pub fn build_leaving(
                 if is_dir {
                     folders.push(body.len() as u64);
                     queue.push_back(((folders.len() - 1) as u32, e.path()));
+                }
+                let t = crate::tags::read(&e.path());
+                if !t.is_empty() {
+                    tagged.push((e.path().to_string_lossy().into_owned(), t));
                 }
                 body.extend_from_slice(&num.to_le_bytes());
                 body.push(u8::from(is_dir) | if m.file_type().is_symlink() { 2 } else { 0 });
@@ -718,10 +753,17 @@ mod tests {
             parse("Budget  Report *.pdf"),
             Query {
                 words: vec!["budget".into(), "report".into()],
-                exts: vec!["pdf".into()]
+                exts: vec!["pdf".into()],
+                tags: vec![],
             }
         );
         assert_eq!(parse("ext:jpg,png").exts, vec!["jpg", "png"]);
+        assert_eq!(parse("tag:Work,urgent notes").tags, vec!["work", "urgent"]);
+        assert_eq!(
+            parse("tag:Work notes").words,
+            vec!["notes"],
+            "tags aren't name words"
+        );
         let q = parse("report");
         assert!(
             score("Report.pdf", &q) > score("my report.pdf", &q),
@@ -825,7 +867,13 @@ mod tests {
         let n = build(&[home.clone(), usb.clone()], &file, &stop).unwrap();
         // Left out on request: Photos.
         let file2 = d.join("cache/index2");
-        build_leaving(std::slice::from_ref(&home), &[home.join("Photos")], &file2, &stop).unwrap();
+        build_leaving(
+            std::slice::from_ref(&home),
+            &[home.join("Photos")],
+            &file2,
+            &stop,
+        )
+        .unwrap();
         let ix2 = Index::open(&file2).unwrap();
         let none = |_: &Path| true;
         let (hits, _) = ix2.find(&parse("beach"), &any(), &none, &mime, &stop, 10);
