@@ -9,7 +9,7 @@ use whiterose_wm::ipc::Event;
 #[test]
 fn a_window_under_the_island_covers_it_and_moving_it_away_uncovers_it() {
     let mut h = Headless::new(true);
-    assert_eq!(h.state.island_event(), Event::Island { covered: false }, "empty desktop");
+    assert_eq!(h.state.island_event(), Event::Island { covered: vec![] }, "empty desktop");
     h.drive(|conn, ask| {
         let mut c = Client::connect(&conn);
         c.open_bar(); // reserves the 26 px the island hangs below
@@ -27,7 +27,25 @@ fn a_window_under_the_island_covers_it_and_moving_it_away_uncovers_it() {
             st.space.map_element(w, (W / 2 - 300, 300), false);
             st.island_event()
         });
-        assert_eq!(under, Event::Island { covered: true });
-        assert_eq!(below, Event::Island { covered: false });
+        assert_eq!(under, Event::Island { covered: vec!["TEST-1".into()] });
+        assert_eq!(below, Event::Island { covered: vec![] });
+    });
+}
+
+#[test]
+fn each_screen_has_its_own_island() {
+    let mut h = Headless::new(true);
+    h.add_output("TEST-2", (W, 0));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        let (surface, _t) = c.open_window();
+        c.attach_buffer(&surface, 600, 400);
+        // Under the second screen's island (its top centre): only that one tucks.
+        let second = ask.run(|st| {
+            let w = st.space.elements().next().unwrap().clone();
+            st.space.map_element(w, (W + W / 2 - 300, 0), false);
+            st.island_event()
+        });
+        assert_eq!(second, Event::Island { covered: vec!["TEST-2".into()] });
     });
 }

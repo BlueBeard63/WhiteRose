@@ -30,7 +30,8 @@ Singleton {
     // Newest screenshots in the Screenshots folder (absolute paths).
     property var screenshots: []
     // A window sits right under the idle island (e.g. a maximized title bar).
-    property bool islandCovered: false
+    // Screens (by name) whose idle island has a window right under it.
+    property var islandCovered: []
 
     // Connected monitors, built-in first: { id, strong, connector, make, model,
     // builtin, physical_mm, modes: [{ width, height, refresh (mHz), preferred }],
@@ -136,7 +137,7 @@ Singleton {
             root.activeLayout = msg.active;
             break;
         case "island":
-            root.islandCovered = msg.covered;
+            root.islandCovered = Array.isArray(msg.covered) ? msg.covered : [];
             break;
         case "lock":
             // A restarted shell finds the session still locked: lock again.

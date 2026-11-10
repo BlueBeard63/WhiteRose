@@ -40,7 +40,9 @@ Item {
         else unpeek.restart();
     }
     Timer { id: unpeek; interval: 300; onTriggered: root.peeking = false }
-    readonly property bool tucked: idle && Compositor.islandCovered && !peeking
+    // The screen this island is on (its bar's), e.g. "DP-1".
+    property string screenName: ""
+    readonly property bool tucked: idle && Compositor.islandCovered.includes(screenName) && !peeking
 
     readonly property real targetWidth: idle || !current?.item ? 170 : current.item.implicitWidth
     readonly property real targetHeight: tucked ? 0 : idle || !current?.item ? 18 : current.item.implicitHeight

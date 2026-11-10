@@ -91,6 +91,7 @@ PanelWindow {
 
     Island {
         id: island
+        screenName: root.modelData?.name ?? ""
         anchors { top: bar.bottom; horizontalCenter: parent.horizontalCenter }
     }
 

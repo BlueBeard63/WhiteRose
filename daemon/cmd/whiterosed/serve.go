@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 	"whiterose/daemon/internal/accounts"
+	"whiterose/daemon/internal/audio"
 
 	"github.com/godbus/dbus/v5"
 
@@ -324,6 +325,12 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			defer conn.Close()
 			return nil, power.SetLimit(conn, r.On)
 		},
+	}
+	// Sound (Settings › Sound): every place sound can go or come from,
+	// including ones in another setup of the sound card.
+	srv.Ops["audio_ports"] = func(server.Request) (any, error) { return audio.List(audio.Exec) }
+	srv.Ops["audio_use"] = func(r server.Request) (any, error) {
+		return nil, audio.Use(audio.Exec, r.Key, 3*time.Second)
 	}
 	// Fingerprints (Settings › Users › Fingerprints).
 	for name, op := range prints.ops() {

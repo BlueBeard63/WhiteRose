@@ -74,10 +74,11 @@ pub enum Event {
     Lock {
         locked: bool,
     },
-    /// A window sits right under the idle island (a maximized window's
-    /// title bar): the shell tucks the island into the bar.
+    /// The outputs (by name, e.g. "DP-1") where a window sits right under
+    /// the idle island (a maximized window's title bar): the shell tucks
+    /// that screen's island into its bar.
     Island {
-        covered: bool,
+        covered: Vec<String>,
     },
     /// Every connected output and what this backend can change about them
     /// (the Displays page); `trial_until` while a layout is being tried out.
@@ -641,12 +642,16 @@ impl WhiteRose {
     }
 
     pub fn island_event(&self) -> Event {
-        let Some(output) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) else {
-            return Event::Island { covered: false };
-        };
-        let bar_bottom = self.usable_area().loc.y;
         let windows: Vec<_> = self.space.elements().filter_map(|w| self.space.element_geometry(w)).collect();
-        Event::Island { covered: island_covered(&windows, output, bar_bottom) }
+        let covered = self
+            .space
+            .outputs()
+            .filter(|o| {
+                self.space.output_geometry(o).is_some_and(|g| island_covered(&windows, g, self.usable_area_on(o).loc.y))
+            })
+            .map(|o| o.name())
+            .collect();
+        Event::Island { covered }
     }
 
     /// Re-checks the area under the island (windows mapped, moved, resized).

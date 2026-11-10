@@ -1,5 +1,8 @@
 // Sound: where sound goes and comes from (PipeWire), their volumes, and each
-// app that's playing.
+// app that's playing. The places come from the daemon ("audio_ports"): it
+// also lists ones in another setup of the sound card (a laptop's Speaker
+// when the Headphones setup is on) and marks unplugged ones, which can't be
+// picked. Picking one switches the card's setup first if needed.
 import QtQuick
 import Quickshell
 import Quickshell.Services.Pipewire
@@ -11,11 +14,46 @@ Column {
     spacing: 16
 
     readonly property var nodes: Pipewire.nodes.values.filter(n => n.audio)
-    readonly property var outputs: nodes.filter(n => n.isSink && !n.isStream)
-    readonly property var inputs: nodes.filter(n => !n.isSink && !n.isStream && !(n.name ?? "").endsWith(".monitor"))
     readonly property var apps: nodes.filter(n => n.isStream && n.isSink)
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
+
+    // [{ key, label, direction, available, node }] from the daemon.
+    property var ports: []
+    property string error: ""
+    property string switching: ""
+    function load() {
+        Daemon.request({ op: "audio_ports" }, (v, err) => { if (!err && v) page.ports = v });
+    }
+    // Asked again whenever PipeWire's devices change (a setup switched,
+    // something plugged in), a moment later so the change has settled.
+    Timer { id: reload; interval: 300; onTriggered: page.load() }
+    readonly property int nodeCount: Pipewire.nodes.values.length
+    onNodeCountChanged: reload.restart()
+    Component.onCompleted: load()
+
+    function portOptions(dir) {
+        // Unplugged ones last.
+        const ps = page.ports.filter(p => p.direction === dir);
+        return ps.filter(p => p.available !== "no").concat(ps.filter(p => p.available === "no")).map(p => ({
+            label: p.label, value: p.key,
+            hint: p.available === "no" ? "Unplugged" : "",
+            disabled: p.available === "no",
+        }));
+    }
+    function current(dir, node) {
+        const p = page.ports.find(p => p.direction === dir && node && p.node === node.name);
+        return p ? p.key : "";
+    }
+    function use(key) {
+        page.error = "";
+        page.switching = key;
+        Daemon.request({ op: "audio_use", key: key }, (v, err) => {
+            page.switching = "";
+            if (err) page.error = String(err);
+            page.load();
+        });
+    }
 
     // Keeps every shown node's volume live.
     PwObjectTracker { objects: page.nodes }
@@ -31,10 +69,12 @@ Column {
         SettingRow {
             divider: false
             title: "Play sound through"
+            subtitle: page.error
             Choice {
-                value: page.sink
-                options: page.outputs.map(n => ({ label: page.label(n), value: n }))
-                onPicked: n => Pipewire.preferredDefaultAudioSink = n
+                enabled: page.switching === ""
+                value: page.current("out", page.sink)
+                options: page.portOptions("out")
+                onPicked: k => page.use(k)
             }
         }
         SettingRow {
@@ -62,10 +102,10 @@ Column {
             divider: false
             title: "Microphone"
             Choice {
-                enabled: page.inputs.length > 0
-                value: page.source
-                options: page.inputs.map(n => ({ label: page.label(n), value: n }))
-                onPicked: n => Pipewire.preferredDefaultAudioSource = n
+                enabled: page.switching === "" && page.ports.some(p => p.direction === "in")
+                value: page.current("in", page.source)
+                options: page.portOptions("in")
+                onPicked: k => page.use(k)
             }
         }
         SettingRow {
