@@ -82,6 +82,9 @@ pub struct Control {
     pub archive: std::sync::Mutex<(Option<String>, u64)>,
     /// Syncing: what to copy and what to move to the Trash.
     pub sync: std::sync::Mutex<Option<crate::compare::Plan>>,
+    /// Folders onto folders merge without asking (carrying on with an
+    /// interrupted transfer: they're its own, half made).
+    pub merge_folders: bool,
     /// The home Trash to use (None: the real one; tests use their own).
     pub home_trash: Option<PathBuf>,
 }
@@ -291,6 +294,14 @@ impl<'a, R: Report> Run<'a, R> {
                 }
                 return None;
             }
+        }
+        if self.ctl.merge_folders
+            && there.is_dir()
+            && fs::symlink_metadata(src)
+                .map(|m| m.is_dir())
+                .unwrap_or(false)
+        {
+            return Some(target);
         }
         let mut choice = self.ask(src, &target);
         if choice == Choice::Newer {

@@ -16,6 +16,7 @@
 // a terminal here.
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import WhiteRose.Kit
 import WhiteRose.Files
 import "Format.js" as F
@@ -595,6 +596,8 @@ AppWindow {
                     { separator: true },
                     { label: "Settings…", run: () => Session.openSettings("") },
                     { label: "Keyboard shortcuts…", run: () => keysDialog.open() },
+                    { label: "Export settings…", run: () => exportDialog.open() },
+                    { label: "Import settings…", run: () => importDialog.open() },
                     { label: "Help", items: [
                         { label: "Copy diagnostics", run: () => {
                             const keys = ["files.startIn", "files.openWith", "files.hidden", "files.git", "files.adaptive", "files.zoom", "files.foldersAt",
@@ -890,6 +893,58 @@ AppWindow {
             anchors { right: parent.right; bottom: parent.bottom; margins: 14 }
             z: 20
             onDeleteInstead: paths => win.askDelete(paths)
+        }
+        // Copies and moves that didn't finish last time (Files closed, or
+        // the computer went off part way): carry on, or forget them.
+        Column {
+            anchors { right: parent.right; bottom: transfers.top; margins: 14; bottomMargin: 8 }
+            width: 360
+            spacing: 8
+            z: 21
+            Repeater {
+                model: win.unfinished
+                delegate: Rectangle {
+                    id: uf
+                    required property var modelData
+                    width: 360; height: ufCol.implicitHeight + 28
+                    radius: 14
+                    color: Theme.surface1
+                    border { width: 1; color: Theme.surface2 }
+                    Column {
+                        id: ufCol
+                        x: 14; y: 14; width: parent.width - 28
+                        spacing: 8
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.Wrap
+                            text: (uf.modelData.kind === "move" ? "Moving " : "Copying ") + uf.modelData.remaining.length + (uf.modelData.remaining.length === 1 ? " item" : " items")
+                                + " to " + uf.modelData.dest.substring(uf.modelData.dest.lastIndexOf("/") + 1) + " didn't finish"
+                            color: Theme.text
+                            font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
+                        }
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.Wrap
+                            text: "Started " + F.date(uf.modelData.started * 1000, Date.now()) + ". Carrying on skips what's already there and finishes the rest."
+                            color: Theme.muted
+                            font { family: Theme.font; pointSize: Theme.pt(11) }
+                        }
+                        Row {
+                            anchors.right: parent.right
+                            spacing: 6
+                            Button { text: "Forget it"; kind: "ghost"; onClicked: { Ops.forgetTransfer(uf.modelData.key); win.unfinished = win.unfinished.filter(x => x.key !== uf.modelData.key) } }
+                            Button {
+                                text: "Carry on"; kind: "primary"
+                                onClicked: {
+                                    const id = Ops.resumeTransfer(uf.modelData.key);
+                                    if (id < 0) win.info = "Nothing was left to do";
+                                    win.unfinished = win.unfinished.filter(x => x.key !== uf.modelData.key);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1221,6 +1276,38 @@ AppWindow {
     }
     // Extract jobs running (id: where to), for asking a password and trying again.
     property var extracting: ({})
+    // ---- reliability ---------------------------------------------------------------
+    // Interrupted transfers (looked at once, shortly after starting).
+    property var unfinished: []
+    Timer { running: true; interval: 1200; onTriggered: win.unfinished = JSON.parse(Ops.interrupted()) }
+    FileDialog {
+        id: exportDialog
+        title: "Export Files' settings"
+        fileMode: FileDialog.SaveFile
+        currentFolder: "file://" + Fs.home()
+        selectedFile: "file://" + Fs.home() + "/whiterose-files-settings.json"
+        nameFilters: ["Files settings (*.json)"]
+        onAccepted: {
+            const err = Ops.exportSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")));
+            if (err) win.notice = err; else win.info = "Settings exported (no passwords: those stay in your keyring)";
+        }
+    }
+    FileDialog {
+        id: importDialog
+        title: "Import Files' settings"
+        currentFolder: "file://" + Fs.home()
+        nameFilters: ["Files settings (*.json)"]
+        onAccepted: {
+            const r = JSON.parse(Ops.importSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, ""))));
+            if (!r.ok) { win.notice = r.error; return }
+            if (r.failed.length > 0) win.notice = "Imported, but " + r.failed.length + " settings weren't taken: " + r.failed[0];
+            else win.info = "Imported " + r.settings + " settings and " + r.files + " lists (what you had is kept in before-import.json)";
+            win.refreshViews();
+            sidebar.refresh();
+            sidebar.refreshServers();
+        }
+    }
+
     // ---- git -------------------------------------------------------------------------
     // Jobs in flight: {id: what}, and what to say when each is done.
     property var gitJobs: ({})

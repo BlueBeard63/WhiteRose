@@ -198,6 +198,27 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "containerCommand"]
         fn container_command(self: &Ops, what: &QString, id: &QString) -> QString;
+        /// Copies and moves that didn't finish last time (journal.rs):
+        /// [{key, kind, dest, started, remaining: [path]}].
+        #[qinvokable]
+        fn interrupted(self: &Ops) -> QString;
+        /// Carries on with one (half-written files cleared): its job id, -1
+        /// if nothing's left to do.
+        #[qinvokable]
+        #[cxx_name = "resumeTransfer"]
+        fn resume_transfer(self: Pin<&mut Ops>, key: &QString) -> i32;
+        #[qinvokable]
+        #[cxx_name = "forgetTransfer"]
+        fn forget_transfer(self: &Ops, key: &QString);
+        /// Saves Files' settings to `path` (prefs.rs): "" or why not.
+        #[qinvokable]
+        #[cxx_name = "exportSettings"]
+        fn export_settings(self: &Ops, path: &QString) -> QString;
+        /// Brings settings in from `path` (what was there is kept in
+        /// before-import.json): {ok, settings, files} or {ok: false, error}.
+        #[qinvokable]
+        #[cxx_name = "importSettings"]
+        fn import_settings(self: &Ops, path: &QString) -> QString;
         /// Hosts named in ~/.ssh/config (JSON [name]).
         #[qinvokable]
         #[cxx_name = "sshHosts"]
@@ -660,6 +681,34 @@ impl qobject::Ops {
         });
         self.as_mut().publish();
 
+        // Copies and moves are written down until they end (journal.rs).
+        let journal_key = (matches!(kind, Kind::Copy | Kind::Move)
+            && sources.iter().all(|p| p.is_absolute())
+            && dest.is_some())
+        .then(|| {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let key = format!("{now}-{}-{id}", std::process::id());
+            crate::journal::start(
+                &crate::journal::file(),
+                crate::journal::Entry {
+                    key: key.clone(),
+                    kind: kind_name(kind).into(),
+                    sources: sources
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect(),
+                    dest: dest
+                        .as_ref()
+                        .map(|d| d.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    started: now,
+                },
+            );
+            key
+        });
         let list = self.list.clone();
         let transfers = self.transfers.clone();
         let thread = self.qt_thread();
@@ -677,6 +726,9 @@ impl qobject::Ops {
             });
             w.publish();
             let out = ops::run(kind, &sources, dest.as_deref(), &control, &mut w);
+            if let Some(k) = &journal_key {
+                crate::journal::finish(&crate::journal::file(), k);
+            }
             // Folders' colours and icons go where they went (or go with them).
             if !out.moved.is_empty() || !out.gone.is_empty() {
                 crate::looks::change(|l| {
@@ -1613,6 +1665,105 @@ impl qobject::Ops {
                 .unwrap_or_default()
                 .as_str(),
         )
+    }
+
+    pub fn interrupted(&self) -> QString {
+        let f = crate::journal::file();
+        let mine = format!("-{}-", std::process::id());
+        let v: Vec<Value> = crate::journal::load(&f)
+            .into_iter()
+            // (Not this run's own transfers, still going.)
+            .filter(|e| !e.key.contains(&mine))
+            .filter_map(|e| {
+                let rem = crate::journal::remaining(&e);
+                if rem.is_empty() {
+                    crate::journal::finish(&f, &e.key);
+                    return None;
+                }
+                Some(json!({"key": e.key, "kind": e.kind, "dest": e.dest, "started": e.started, "remaining": rem}))
+            })
+            .collect();
+        q(json!(v))
+    }
+
+    pub fn resume_transfer(self: Pin<&mut Self>, key: &QString) -> i32 {
+        let f = crate::journal::file();
+        let key = key.to_string();
+        let Some(e) = crate::journal::load(&f).into_iter().find(|e| e.key == key) else {
+            return -1;
+        };
+        let rem = crate::journal::remaining(&e);
+        crate::journal::clear_parts(&e);
+        crate::journal::finish(&f, &key);
+        if rem.is_empty() {
+            return -1;
+        }
+        let Some(kind) = Kind::parse(&e.kind) else {
+            return -1;
+        };
+        crate::log::info(&format!(
+            "carrying on with an interrupted {} to {}",
+            e.kind, e.dest
+        ));
+        let control = Control {
+            merge_folders: true,
+            ..Default::default()
+        };
+        self.launch(
+            kind,
+            &e.kind,
+            &q(json!(rem)),
+            &QString::from(e.dest.as_str()),
+            control,
+        )
+    }
+
+    pub fn forget_transfer(&self, key: &QString) {
+        crate::journal::finish(&crate::journal::file(), &key.to_string());
+    }
+
+    pub fn export_settings(&self, path: &QString) -> QString {
+        let settings = whiterose_kit::daemon::request(json!({"op": "all"}), Duration::from_secs(5))
+            .unwrap_or(Value::Null);
+        let v = crate::prefs::export(&settings, &crate::prefs::parts());
+        let p = PathBuf::from(path.to_string());
+        let r = std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap_or_default())
+            .map_err(|e| e.to_string());
+        QString::from(r.err().unwrap_or_default().as_str())
+    }
+
+    pub fn import_settings(&self, path: &QString) -> QString {
+        use crate::prefs;
+        let r = (|| -> Result<Value, String> {
+            let text = std::fs::read_to_string(path.to_string()).map_err(|e| e.to_string())?;
+            let v: Value = serde_json::from_str(&text)
+                .map_err(|_| "That isn't a Files settings export".to_string())?;
+            let (settings, files) = prefs::read(&v)?;
+            // What's there now, kept first.
+            let now = whiterose_kit::daemon::request(json!({"op": "all"}), Duration::from_secs(5))
+                .unwrap_or(Value::Null);
+            let backup = prefs::export(&now, &prefs::parts());
+            let _ = std::fs::create_dir_all(crate::session::dir());
+            std::fs::write(
+                prefs::backup_file(),
+                serde_json::to_string_pretty(&backup).unwrap_or_default(),
+            )
+            .map_err(|e| e.to_string())?;
+            let n = prefs::write_files(&files, &prefs::parts())?;
+            let mut failed = vec![];
+            for (k, val) in &settings {
+                if let Err(e) = whiterose_kit::daemon::request(
+                    json!({"op": "set", "key": k, "value": val}),
+                    Duration::from_secs(5),
+                ) {
+                    failed.push(format!("{k}: {e}"));
+                }
+            }
+            Ok(
+                json!({"ok": true, "settings": settings.len() - failed.len(), "files": n, "failed": failed}),
+            )
+        })();
+        q(r.unwrap_or_else(|e| json!({"ok": false, "error": e})))
     }
 
     pub fn ssh_hosts(&self) -> QString {

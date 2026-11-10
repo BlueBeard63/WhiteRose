@@ -117,9 +117,9 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Safe archive extraction and path validation (MVP) — zip and tar (gz/xz/bz2/zst): escaping names refuse the whole archive, links kept inside, no devices or setuid, stops before the drive fills
 - [x] Archive create, extract and in-place browse (Next) — Compress… (zip, 7z, tar.gz/xz/zst), Extract here, and opening an archive like a folder
 - [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the Trash only after "I trust this file"; launchers from there never run
-- [ ] Recovery after interrupted file transfers (Next)
+- [x] Recovery after interrupted file transfers (Next) — copies and moves are written down until they end; one cut short (Files closed, a crash, power off) is offered at the next start: Carry on clears the half-written file, skips what's already there and finishes the rest
 - [x] Application logging and diagnostics (MVP) — files.log (0600, rolled at 1 MB); ☰ › Help › Copy diagnostics / Open the log
-- [ ] Export/import settings and preferences (Next)
+- [x] Export/import settings and preferences (Next) — ☰ › Export / Import settings: every files.* setting, folder views, workspaces, folder colours and icons, saved servers (never passwords) and bookmarks in one file; importing keeps what was there in before-import.json
 - [x] Signed application updates (Next) — Files ships in WhiteRose's signed, health-checked updates (Settings › Updates)
 - [-] Extension/plugin API for third-party actions (Advanced) — comes with the module API (roadmap 1.2: Files extensions)
 - [-] User-defined automation and batch workflows (Advanced) — not doing for now
