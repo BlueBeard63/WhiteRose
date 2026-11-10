@@ -36,7 +36,9 @@ FocusScope {
     // Not a real folder: nothing can be made, pasted or dropped here.
     // The Start page ("start:"): StartMode draws it.
     readonly property bool inStart: path === "start:"
-    readonly property bool special: inTrash || inDrives || inStart
+    // Clean up ("cleanup:"): CleanupMode draws it.
+    readonly property bool inCleanup: path === "cleanup:"
+    readonly property bool special: inTrash || inDrives || inStart || inCleanup
     // A tag's files ("tag:Name"): real files, but nothing can be made or
     // pasted here; dropping things here tags them.
     readonly property bool inTag: path.startsWith("tag:")
@@ -71,7 +73,7 @@ FocusScope {
     // Folder sizes as they're worked out ({path: {bytes, items}}).
     property var sizes: ({})
     property var sizesSoon: ({})
-    readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash" : inRecent ? "Recent" : inStart ? "Start"
+    readonly property string title: searching ? "Search" : path === Fs.home() ? "Home" : path === "/" ? "/" : inTrash ? "Trash" : inRecent ? "Recent" : inStart ? "Start" : inCleanup ? "Clean up"
         : JSON.parse(Fs.crumbs(path)).slice(-1)[0]?.name ?? path.substring(path.lastIndexOf("/") + 1)
     // Searching (Search.qml asks, its hits replace the listing): {text,
     // scope, kind, size, modified}; null when not.
@@ -195,7 +197,7 @@ FocusScope {
     function load() {
         // Searching: the same search again (things may have changed).
         if (pane.searching) { pane.find({}); return }
-        if (pane.inStart) { pane.error = ""; pane.entries = []; pane.stamp = 0; return }
+        if (pane.inStart || pane.inCleanup) { pane.error = ""; pane.entries = []; pane.stamp = 0; return }
         if (pane.inDrives) {
             const text = Fs.storage();
             pane.error = "";
@@ -330,7 +332,7 @@ FocusScope {
         anchors.fill: parent
         focus: true
         // Search results come as a list (where each is matters).
-        sourceComponent: pane.inStart ? startView : pane.inDrives ? drivesView
+        sourceComponent: pane.inStart ? startView : pane.inCleanup ? cleanupView : pane.inDrives ? drivesView
             : pane.mode === "list" || pane.searching ? listView
             : pane.grouped && pane.mode === "grid" ? groupedGridView
             : pane.grouped && pane.mode === "cards" ? groupedCardsView
@@ -342,6 +344,7 @@ FocusScope {
     Component { id: columnsView; ColumnsMode { pane: view.parent } }
     Component { id: drivesView; DrivesMode { pane: view.parent } }
     Component { id: startView; StartMode { pane: view.parent } }
+    Component { id: cleanupView; CleanupMode { pane: view.parent } }
     Component { id: groupedGridView; GroupedGrid { pane: view.parent } }
     Component { id: groupedCardsView; GroupedGrid { pane: view.parent; cards: true } }
     Component { id: galleryView; GalleryMode { pane: view.parent } }
@@ -413,7 +416,7 @@ FocusScope {
     // Empty, or can't be opened.
     Column {
         anchors.centerIn: parent
-        visible: !pane.inStart && (pane.error !== "" || (pane.shownEntries.length === 0 && (pane.mode !== "columns" || pane.searching)))
+        visible: !pane.inStart && !pane.inCleanup && (pane.error !== "" || (pane.shownEntries.length === 0 && (pane.mode !== "columns" || pane.searching)))
         spacing: 8
         Icon {
             anchors.horizontalCenter: parent.horizontalCenter

@@ -66,11 +66,11 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Live folder size calculation (MVP) — list view's Size column fills in folder sizes in the background (idle priority, kept a minute)
 - [x] Recursive size calculation with background caching (Next) — the list's Size column and Properties (see Storage)
 - [x] Disk usage treemap visualisation (Next) — the disk-usage view
-- [ ] Largest files browser (Next)
-- [ ] Duplicate file finder (Next)
+- [x] Largest files browser (Next) — Clean up › Largest files: the 200 largest under home, a drive or a folder (hidden ones too), on its own drive
+- [x] Duplicate file finder (Next) — Clean up › Duplicates: same size, same start, then same contents (SHA-256); hard links aren't copies; "Keep the oldest of each"
 - [x] Disk capacity and free-space dashboard (MVP) — Storage page (sidebar › Drives): every drive, how full, free of total
-- [ ] Safe deletion/cleanup with confirmation and recovery (Next)
-- [ ] Project build-cache and dependency cleanup (Advanced)
+- [x] Safe deletion/cleanup with confirmation and recovery (Next) — Clean up moves to the Trash by default (recoverable); deleting asks first
+- [x] Project build-cache and dependency cleanup (Advanced) — Clean up › Build caches: node_modules, Rust target, virtualenvs, __pycache__, JS/Gradle/Zig/.NET build output (each only beside its project file), and home's download caches (pip, npm, Cargo, Go, Gradle, Maven...)
 
 ## 6. Appearance & personalisation
 - [x] Native light, dark and system modes (MVP) — follows the desktop theme via the kit

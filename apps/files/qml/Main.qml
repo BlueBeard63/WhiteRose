@@ -479,7 +479,7 @@ AppWindow {
         Segmented {
             id: views
             // (Nothing to show differently on the Start page.)
-            visible: !(win.current?.inStart ?? false)
+            visible: !(win.current?.inStart ?? false) && !(win.current?.inCleanup ?? false)
             anchors { right: searchButton.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
             options: [{ icon: "grid", label: "Grid (Ctrl+1)", value: "grid" }, { icon: "viewList", label: "List (Ctrl+2)", value: "list" },
@@ -709,7 +709,8 @@ AppWindow {
     // ---- the selection, previewed (Alt+P) and looked at closely (Space) -------------------------
     DetailsPanel {
         id: details
-        visible: Session.details && win.width > 760
+        // (Nothing to show beside Start or Clean up.)
+        visible: Session.details && win.width > 760 && !(win.current?.inStart ?? false) && !(win.current?.inCleanup ?? false)
         anchors { right: parent.right; top: searchRow.bottom; bottom: status.top }
         width: Math.min(320, Math.max(240, win.width * 0.26))
         pane: win.current
@@ -751,9 +752,10 @@ AppWindow {
             // Files of one kind: the apps for it (the default marked).
             // (Only while it's open: it reads the installed apps.)
             readonly property var openWith: itemMenu.visible ? win.openWithItems(itemMenu.sel) : []
-            items: win.current?.inDrives ? (!itemMenu.entry ? [] : [
+            items: win.current?.inDrives ? (!itemMenu.entry ? [{ label: "Clean up…", run: () => win.cleanUp("") }] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
                 { label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) },
+                { label: "Clean up…", run: () => win.cleanUp(itemMenu.entry.path) },
                 ...itemMenu.openIn,
                 { separator: true },
                 { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
@@ -778,6 +780,7 @@ AppWindow {
                 { separator: true },
                 { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                 { label: "Copy this folder's path", run: () => Ops.setClipboardText(win.current.path) },
+                { label: "Find what takes room here…", run: () => win.cleanUp(win.current.path) },
                 { label: "Colour and icon…", run: () => looks.show(win.current.path, win.current.title) },
                 { label: "Properties", run: () => props.show([win.current.path]) },
             ] : [
@@ -837,7 +840,7 @@ AppWindow {
                 if (win.notice !== "") return win.notice;
                 if (win.info !== "") return win.info;
                 const p = win.current;
-                if (!p || p.inStart) return "";
+                if (!p || p.inStart || p.inCleanup) return "";
                 if (p.searching) {
                     const n = p.results.length;
                     return (n === 1 ? "1 result" : n + " results") + (p.searchDone ? "" : " · looking…");
@@ -946,6 +949,8 @@ AppWindow {
         if (sel.length === 0 || !other || other.special || win.current.inDrives) return;
         win.run(kind, sel.map(e => e.path), other.path);
     }
+    // Clean up, looking under `root` (home if "").
+    function cleanUp(root) { Session.cleanupRoot = root ?? ""; win.current?.go("cleanup:") }
     function openWithItems(sel) {
         if (!sel || sel.length === 0 || sel.some(e => e.dir) || sel.some(e => e.mime !== sel[0].mime)) return [];
         const paths = sel.map(e => e.path);

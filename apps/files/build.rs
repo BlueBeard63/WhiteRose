@@ -38,6 +38,7 @@ fn main() {
             "qml/RunDialog.qml",
             "qml/SearchOption.qml",
             "qml/StartMode.qml",
+            "qml/CleanupMode.qml",
         ]
         .map(QmlFile::from),
     );

@@ -88,6 +88,20 @@ pub mod qobject {
         #[qsignal]
         fn measured(self: Pin<&mut Ops>, id: i32, result: QString);
 
+        /// Clean up's scans (cleanup.rs) of `root` in the background: kind
+        /// largest | duplicates | caches. `cleanupFound` brings {done: false,
+        /// scanned} as it goes, then {done: true, files} (largest, caches:
+        /// [{path, size, modified, what}]) or {done: true, groups: [{size,
+        /// files}]} (duplicates). Returns its id; `stopCleanup` stops it.
+        #[qinvokable]
+        fn cleanup(self: Pin<&mut Ops>, kind: &QString, root: &QString) -> i32;
+        #[qinvokable]
+        #[cxx_name = "stopCleanup"]
+        fn stop_cleanup(self: &Ops, id: i32);
+        #[qsignal]
+        #[cxx_name = "cleanupFound"]
+        fn cleanup_found(self: Pin<&mut Ops>, id: i32, result: QString);
+
         /// Sizes these folders (all the way down), one after another in the
         /// background; `folderSized` for each. Asking again drops what's
         /// still waiting; sizes from the last minute come straight back.
@@ -776,6 +790,91 @@ impl qobject::Ops {
 }
 
 impl qobject::Ops {
+    pub fn cleanup(mut self: Pin<&mut Self>, kind: &QString, root: &QString) -> i32 {
+        use crate::cleanup;
+        let kind = kind.to_string();
+        let root = PathBuf::from(root.to_string());
+        self.as_mut().rust_mut().next += 1;
+        let id = self.next;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.measuring.lock().unwrap().insert(id, stop.clone());
+        let measuring = self.measuring.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            crate::finder::background();
+            let send = |v: Value| {
+                let r = v.to_string();
+                let _ = thread.queue(move |mut obj| {
+                    obj.as_mut().cleanup_found(id, QString::from(r.as_str()))
+                });
+            };
+            let mut last = Instant::now();
+            let mut tell = |n: u64| {
+                if last.elapsed() > Duration::from_millis(250) {
+                    last = Instant::now();
+                    send(json!({"done": false, "scanned": n}));
+                }
+            };
+            let result = match kind.as_str() {
+                "duplicates" => {
+                    json!({"groups": cleanup::duplicates(&root, 1 << 20, &stop, &mut tell)})
+                }
+                "caches" => {
+                    json!({"files": cleanup::caches(&root, &crate::places::home(), &stop, &mut tell)})
+                }
+                _ => json!({"files": cleanup::largest(&root, 200, &stop, &mut tell)}),
+            };
+            if !stop.load(Ordering::Relaxed) {
+                let mut r = result;
+                // Each with its icon (a file's type's, a cache's folder's).
+                let ic = whiterose_kit::icons::shared();
+                let icon = |path: &str, dir: bool| -> String {
+                    let name = Path::new(path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let p = if dir {
+                        ic.lookup("folder", 24, 1)
+                    } else {
+                        ic.mime
+                            .icon_names(ic.mime.type_of(&name))
+                            .iter()
+                            .find_map(|n| ic.lookup(n, 24, 1))
+                    };
+                    p.map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                };
+                let dirs = kind == "caches";
+                let fill = |files: &mut Value| {
+                    if let Some(a) = files.as_array_mut() {
+                        for f in a {
+                            let path = f["path"].as_str().unwrap_or("").to_string();
+                            f["icon"] = json!(icon(&path, dirs));
+                        }
+                    }
+                };
+                if let Some(fs) = r.get_mut("files") {
+                    fill(fs);
+                }
+                if let Some(gs) = r.get_mut("groups").and_then(Value::as_array_mut) {
+                    for g in gs {
+                        fill(&mut g["files"]);
+                    }
+                }
+                r["done"] = json!(true);
+                send(r);
+            }
+            measuring.lock().unwrap().remove(&id);
+        });
+        id
+    }
+
+    pub fn stop_cleanup(&self, id: i32) {
+        if let Some(s) = self.measuring.lock().unwrap().remove(&id) {
+            s.store(true, Ordering::Relaxed);
+        }
+    }
+
     pub fn markdown(&self, path: &QString, dark: bool, ink: &QString) -> QString {
         use crate::markdown as md;
         let p = path.to_string();

@@ -96,6 +96,8 @@ Rectangle {
         property string path
         property string icon
         property var look: null
+        // One of WhiteRose's own icons instead of the theme's.
+        property string glyph: ""
         // In the tree: how deep, and whether it has folders to open (-1: not a tree row).
         property int depth: 0
         property bool more: false
@@ -136,7 +138,13 @@ Rectangle {
             sourceSize: Qt.size(36, 36)
             // (An icon theme's file, or one of Files' own: qrc:.)
             source: !pr.icon ? "" : pr.icon.startsWith("qrc:") ? pr.icon : "file://" + pr.icon
-            visible: !pr.look && pr.dot.a === 0
+            visible: !pr.look && pr.dot.a === 0 && pr.glyph === ""
+        }
+        Icon {
+            visible: pr.glyph !== ""
+            anchors.centerIn: prIcon
+            name: pr.glyph; size: 16
+            color: pr.on ? Theme.rose : Theme.muted
         }
         Rectangle {
             visible: pr.dot.a > 0
@@ -256,6 +264,7 @@ Rectangle {
             }
             Heading { text: "Drives" }
             // Every drive at once, how full.
+            PlaceRow { visible: side.open("Drives"); name: "Clean up"; path: "cleanup:"; glyph: "gauge" }
             PlaceRow { visible: side.open("Drives"); name: "Storage"; path: "drives:"; icon: Fs.icon("drive-multidisk", 20) || Fs.icon("drive-harddisk", 20) }
             Repeater {
                 model: side.open("Drives") ? side.places.drives : []

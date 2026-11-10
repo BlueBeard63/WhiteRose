@@ -286,6 +286,8 @@ const DRIVES: &str = "drives:";
 const RECENT: &str = "recent:";
 /// The Start page (StartMode.qml draws it; nothing is listed).
 const START: &str = "start:";
+/// Clean up (CleanupMode.qml; cleanup.rs looks).
+const CLEANUP: &str = "cleanup:";
 
 #[derive(Default)]
 pub struct FsRust;
@@ -404,7 +406,7 @@ impl qobject::Fs {
             Ok(scattered(tags::files_with(tag), &mut origins, &|n| {
                 ic.mime.type_of(n).to_string()
             }))
-        } else if path == START {
+        } else if path == START || path == CLEANUP {
             Ok(vec![])
         } else if path == RECENT {
             // Recent: opened lately, or changed in the last two weeks.
@@ -544,6 +546,11 @@ impl qobject::Fs {
         }
         if path == START {
             return q(json!([{"name": "Start", "path": START}]));
+        }
+        if path == CLEANUP {
+            return q(
+                json!([{"name": "Storage", "path": DRIVES}, {"name": "Clean up", "path": CLEANUP}]),
+            );
         }
         if let Some(tag) = path.strip_prefix(TAG) {
             return q(json!([{"name": "Tags", "path": ""}, {"name": tag, "path": path}]));
@@ -772,7 +779,7 @@ impl qobject::Fs {
         if t.trim_end_matches('/') == DRIVES {
             return QString::from(DRIVES);
         }
-        for special in [RECENT, START] {
+        for special in [RECENT, START, CLEANUP] {
             if t.trim_end_matches('/') == special {
                 return QString::from(special);
             }
@@ -813,6 +820,9 @@ impl qobject::Fs {
                 }
                 if a.starts_with(START) {
                     return PathBuf::from(START);
+                }
+                if a.starts_with(CLEANUP) {
+                    return PathBuf::from(CLEANUP);
                 }
                 if a.starts_with(TAG) {
                     return PathBuf::from(&a);

@@ -160,6 +160,9 @@ QtObject {
     // Settings › Files (at a sub-page: general, views, search, apps, shortcuts).
     function openSettings(sub) { const e = Fs.openSettings("files" + (sub ? "/" + sub : "")); if (e) console.warn(e) }
 
+    // Clean up looks under this (the folder it was asked from; "" = home).
+    property string cleanupRoot: ""
+
     // ---- workspaces: what's open, saved under a name (workspaces.rs) ------------------
     signal workspacesChanged()
     // Saves every open window as `name`: "" or why not.
