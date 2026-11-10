@@ -111,6 +111,10 @@ pub struct Backend {
     screens: HashMap<crtc::Handle, Screen>,
     cursors: Cursors,
     active: bool,
+    /// Screens the scanner saw plugged in that couldn't be set up yet (no
+    /// modes while another console had the screens, say): tried again on
+    /// every scan, as the scanner won't report them twice.
+    waiting: Vec<(connector::Handle, crtc::Handle)>,
 }
 
 type Shared = Rc<RefCell<Backend>>;
@@ -200,7 +204,15 @@ pub fn init_drm(
     let udev = UdevBackend::new(&seat)?;
     let b = backend.clone();
     event_loop.handle().insert_source(udev, move |event, _, state| match event {
-        UdevEvent::Changed { device_id } if device_id == b.borrow().node.dev_id() => scan(&b, state),
+        // (Paused, another console has the screens: what's plugged in can't be
+        // read properly then. Getting the session back scans anyway.)
+        UdevEvent::Changed { device_id } if device_id == b.borrow().node.dev_id() => {
+            if b.borrow().active {
+                scan(&b, state)
+            } else {
+                tracing::info!("screens changed while paused: looked at on resume");
+            }
+        }
         UdevEvent::Added { path, .. } => tracing::info!(path = %path.display(), "another GPU appeared (not used)"),
         _ => {}
     })?;
@@ -275,6 +287,7 @@ fn open_gpu(
         renderer,
         manager,
         scanner: DrmScanner::new(),
+        waiting: Vec::new(),
         screens: HashMap::new(),
         cursors: Cursors::new(&cursor.0, cursor.1),
         active: true,
@@ -323,17 +336,32 @@ fn mode_info(m: &smithay::reexports::drm::control::Mode) -> ModeInfo {
 
 /// Looks for screens plugged in or out, and sets up the new ones.
 fn scan(backend: &Shared, state: &mut WhiteRose) {
-    let events = {
+    let (mut events, retry) = {
         let mut b = backend.borrow_mut();
         let b = &mut *b;
-        match b.scanner.scan_connectors(b.manager.device()) {
+        let events = match b.scanner.scan_connectors(b.manager.device()) {
             Ok(r) => r.into_iter().collect::<Vec<_>>(),
             Err(err) => {
                 tracing::warn!(?err, "connector scan failed");
                 return;
             }
-        }
+        };
+        // Ones that couldn't be set up before: looked at again (probed).
+        let retry: Vec<(connector::Info, crtc::Handle)> = std::mem::take(&mut b.waiting)
+            .into_iter()
+            .filter(|(c, _)| {
+                !events
+                    .iter()
+                    .any(|e| matches!(e, DrmScanEvent::Disconnected { connector, .. } if connector.handle() == *c))
+            })
+            .filter_map(|(c, crtc)| b.manager.device().get_connector(c, true).ok().map(|i| (i, crtc)))
+            .filter(|(i, _)| i.state() == connector::State::Connected)
+            .collect();
+        (events, retry)
     };
+    for (connector, crtc) in retry {
+        events.push(DrmScanEvent::Connected { connector, crtc: Some(crtc) });
+    }
     if events.is_empty() {
         return;
     }
@@ -341,12 +369,22 @@ fn scan(backend: &Shared, state: &mut WhiteRose) {
     for event in events {
         match event {
             DrmScanEvent::Connected { connector, crtc: Some(crtc) } => {
-                if let Some(s) = connected(backend, state, &connector, crtc) {
-                    added.push(crtc);
-                    backend.borrow_mut().screens.insert(crtc, s);
+                if backend.borrow().screens.contains_key(&crtc) {
+                    continue;
+                }
+                match connected(backend, state, &connector, crtc) {
+                    Some(s) => {
+                        added.push(crtc);
+                        backend.borrow_mut().screens.insert(crtc, s);
+                    }
+                    None => {
+                        tracing::info!(connector = ?connector.interface(), "a screen is plugged in but can't be set up yet: trying again later");
+                        backend.borrow_mut().waiting.push((connector.handle(), crtc));
+                    }
                 }
             }
             DrmScanEvent::Disconnected { crtc: Some(crtc), connector } => {
+                backend.borrow_mut().waiting.retain(|(c, _)| *c != connector.handle());
                 let removed = backend.borrow_mut().screens.remove(&crtc);
                 if let Some(s) = removed {
                     tracing::info!(connector = s.connector_name, "screen unplugged");
@@ -355,7 +393,6 @@ fn scan(backend: &Shared, state: &mut WhiteRose) {
                     state.display_handle.remove_global::<WhiteRose>(s.global);
                     drop(s.surface);
                 }
-                let _ = connector;
             }
             _ => {}
         }
@@ -403,8 +440,10 @@ fn connected(backend: &Shared, state: &mut WhiteRose, conn: &connector::Info, cr
     let b = backend.borrow();
     let dev = b.manager.device();
     let name = format!("{}-{}", conn.interface().as_str(), conn.interface_id());
-    // Headsets (non-desktop) are for VR runtimes, not the desktop.
+    // No modes: a headset (non-desktop, for VR runtimes), or one that can't
+    // be read yet.
     if conn.modes().is_empty() {
+        tracing::info!(connector = name, "screen has no modes (yet)");
         return None;
     }
     let edid = connector_blob(dev, conn.handle(), "EDID").and_then(|d| monitor_id::parse(&d));
