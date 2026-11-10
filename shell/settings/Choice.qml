@@ -54,7 +54,9 @@ Rectangle {
         readonly property bool above: atY + root.height + 4 + full > winH - margins && atY - 4 - full >= margins
         height: Math.min(full, Math.max(80, above ? atY - 4 - margins : winH - margins - atY - root.height - 4))
         y: above ? -height - 4 : root.height + 4
-        x: root.width - width
+        // Right edges lined up, unless that runs off the left: then left edges.
+        readonly property real atX: opened || visible ? root.mapToItem(null, 0, 0).x : 0
+        x: atX + root.width - width < margins ? 0 : root.width - width
         width: Math.max(root.width, list.implicitWidth + 12)
         padding: 6
         background: Rectangle { color: Theme.surface1; radius: 12; border { width: 1; color: Theme.surface2 } }

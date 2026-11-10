@@ -549,6 +549,8 @@ AppWindow {
                     { label: "This folder", items: [
                         { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark it", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                         { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => looks.show(win.current.path, win.current.title) },
+                        { label: win.tab?.other && !win.tab.other.special && !win.tab.other.inArchive ? "Compare with the other side…" : "Compare with…",
+                          enabled: !(win.current?.special ?? true) && !(win.current?.inArchive ?? false), run: () => win.compare() },
                         { separator: true },
                         { label: "Use its view in subfolders", checked: win.current?.viewInfo.subfolders ?? false,
                           run: () => { Fs.setViewForSubfolders(win.current.path, !win.current.viewInfo.subfolders); win.refreshViews() } },
@@ -955,6 +957,11 @@ AppWindow {
     TagDialog { id: tagDialog; onDone: win.refreshTags(); onClosed: win.current?.focusView() }
 
     // The selection to the folder on the other side of a split tab.
+    // Compare & sync: this folder and the other side's (or one to choose).
+    function compare() {
+        const o = win.tab?.other;
+        compareDialog.show_(win.current.path, o && !o.special && !o.inArchive ? o.path : "");
+    }
     function toOther(kind) {
         const sel = win.current?.selection ?? [];
         const other = win.tab?.other;
@@ -1143,6 +1150,8 @@ AppWindow {
     }
     // Extract jobs running (id: where to), for asking a password and trying again.
     property var extracting: ({})
+    // (A sync shows in Transfers like any copy.)
+    CompareDialog { id: compareDialog }
     BulkRename {
         id: bulkRename
         onRenamed: paths => {

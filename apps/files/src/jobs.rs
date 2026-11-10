@@ -130,6 +130,30 @@ pub mod qobject {
         #[cxx_name = "cleanupFound"]
         fn cleanup_found(self: Pin<&mut Ops>, id: i32, result: QString);
 
+        /// Compares two folders in the background (compare.rs), byte by
+        /// byte when `content`. `compared` brings {done: false, scanned} as
+        /// it goes, then {done: true, entries}. Returns its id; stopped with
+        /// `stopCleanup`.
+        #[qinvokable]
+        fn compare(self: Pin<&mut Ops>, left: &QString, right: &QString, content: bool) -> i32;
+        #[qsignal]
+        fn compared(self: Pin<&mut Ops>, id: i32, result: QString);
+        /// What a sync would do with compared `entries` (JSON): mode update |
+        /// mirror | two-way, towards right | left. A compare::Plan.
+        #[qinvokable]
+        #[cxx_name = "syncPlan"]
+        fn sync_plan(
+            self: &Ops,
+            left: &QString,
+            right: &QString,
+            entries: &QString,
+            mode: &QString,
+            towards: &QString,
+        ) -> QString;
+        /// Carries out a plan from `syncPlan` as a job. Returns its id.
+        #[qinvokable]
+        fn sync(self: Pin<&mut Ops>, plan: &QString) -> i32;
+
         /// Sizes these folders (all the way down), one after another in the
         /// background; `folderSized` for each. Asking again drops what's
         /// still waiting; sizes from the last minute come straight back.
@@ -311,6 +335,7 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Purge => "purge",
         Kind::Extract => "extract",
         Kind::Compress => "compress",
+        Kind::Sync => "sync",
     }
 }
 
@@ -343,6 +368,10 @@ fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Purge => format!("Deleting {what} for good"),
         Kind::Extract => format!("Extracting {what}"),
         Kind::Compress => format!("Compressing {what} into {to}"),
+        Kind::Sync => match sources {
+            [l, r] => format!("Syncing “{}” and “{}”", shown_name(l), shown_name(r)),
+            _ => "Syncing".into(),
+        },
     }
 }
 
@@ -480,7 +509,7 @@ impl qobject::Ops {
         self.as_mut().rust_mut().next += 1;
         let id = self.next;
         let control = Arc::new(control);
-        let queued = matches!(kind, Kind::Copy | Kind::Move);
+        let queued = matches!(kind, Kind::Copy | Kind::Move | Kind::Sync);
         self.list.lock().unwrap().push(Job {
             id,
             kind: kind_name(kind),
@@ -950,6 +979,77 @@ impl qobject::Ops {
             measuring.lock().unwrap().remove(&id);
         });
         id
+    }
+
+    pub fn compare(
+        mut self: Pin<&mut Self>,
+        left: &QString,
+        right: &QString,
+        content: bool,
+    ) -> i32 {
+        let (left, right) = (
+            PathBuf::from(left.to_string()),
+            PathBuf::from(right.to_string()),
+        );
+        self.as_mut().rust_mut().next += 1;
+        let id = self.next;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.measuring.lock().unwrap().insert(id, stop.clone());
+        let measuring = self.measuring.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            crate::finder::background();
+            let send = |v: Value| {
+                let r = v.to_string();
+                let _ = thread
+                    .queue(move |mut obj| obj.as_mut().compared(id, QString::from(r.as_str())));
+            };
+            let mut last = Instant::now();
+            let entries = crate::compare::compare(&left, &right, content, &stop, &mut |n| {
+                if last.elapsed() > Duration::from_millis(250) {
+                    last = Instant::now();
+                    send(json!({"done": false, "scanned": n}));
+                }
+            });
+            if !stop.load(Ordering::Relaxed) {
+                send(json!({"done": true, "entries": entries}));
+            }
+            measuring.lock().unwrap().remove(&id);
+        });
+        id
+    }
+
+    pub fn sync_plan(
+        &self,
+        left: &QString,
+        right: &QString,
+        entries: &QString,
+        mode: &QString,
+        towards: &QString,
+    ) -> QString {
+        let entries: Vec<crate::compare::Entry> =
+            serde_json::from_str(&entries.to_string()).unwrap_or_default();
+        let p = crate::compare::plan(
+            Path::new(&left.to_string()),
+            Path::new(&right.to_string()),
+            &entries,
+            &mode.to_string(),
+            &towards.to_string(),
+        );
+        q(json!(p))
+    }
+
+    pub fn sync(self: Pin<&mut Self>, plan: &QString) -> i32 {
+        let Ok(plan) = serde_json::from_str::<crate::compare::Plan>(&plan.to_string()) else {
+            return -1;
+        };
+        if !plan.left.is_absolute() || !plan.right.is_absolute() {
+            return -1;
+        }
+        let sources = q(json!([plan.left, plan.right]));
+        let control = Control::default();
+        *control.sync.lock().unwrap() = Some(plan);
+        self.launch(Kind::Sync, "sync", &sources, &QString::from(""), control)
     }
 
     pub fn stop_cleanup(&self, id: i32) {

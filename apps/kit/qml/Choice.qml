@@ -1,8 +1,11 @@
-// A dropdown: shows the current option; click for the list.
-// options: [{ label, value }] (or plain strings).
+// A dropdown: shows the current option; click for the list. The list opens
+// below, or above when there isn't room below, and always stays inside the
+// window (scrolling when it's taller than that).
+// options: [{ label, value, hint?, disabled? }] (or plain strings). `hint`
+// is shown faintly after the label (e.g. "Unplugged"); disabled options
+// can't be picked.
 import QtQuick
 import QtQuick.Controls
-
 
 Rectangle {
     id: root
@@ -42,40 +45,64 @@ Rectangle {
     }
     Popup {
         id: menu
-        y: root.height + 4
-        x: root.width - width
+        // Kept this far inside the window.
+        margins: 8
+        readonly property real full: list.implicitHeight + topPadding + bottomPadding
+        readonly property real winH: root.Window.window ? root.Window.window.height : 10000
+        readonly property real atY: opened || visible ? root.mapToItem(null, 0, 0).y : 0
+        readonly property bool above: atY + root.height + 4 + full > winH - margins && atY - 4 - full >= margins
+        height: Math.min(full, Math.max(80, above ? atY - 4 - margins : winH - margins - atY - root.height - 4))
+        y: above ? -height - 4 : root.height + 4
+        // Right edges lined up, unless that runs off the left: then left edges.
+        readonly property real atX: opened || visible ? root.mapToItem(null, 0, 0).x : 0
+        x: atX + root.width - width < margins ? 0 : root.width - width
         width: Math.max(root.width, list.implicitWidth + 12)
         padding: 6
         background: Rectangle { color: Theme.surface1; radius: 12; border { width: 1; color: Theme.surface2 } }
-        contentItem: Column {
-            id: list
-            spacing: 2
-            Repeater {
-                model: root.items
-                delegate: Rectangle {
-                    required property var modelData
-                    width: Math.max(menu.width - 12, optText.implicitWidth + 40)
-                    height: 30
-                    radius: 8
-                    color: optMouse.containsMouse ? Theme.surface2 : "transparent"
-                    Icon {
-                        anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
-                        visible: modelData.value === root.value
-                        name: "check"; size: 12; color: Theme.rose
-                    }
-                    Text {
-                        id: optText
-                        anchors { left: parent.left; leftMargin: 28; verticalCenter: parent.verticalCenter }
-                        text: modelData.label
-                        color: Theme.text
-                        font { family: Theme.font; pointSize: Theme.pt(12) }
-                    }
-                    MouseArea {
-                        id: optMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: { menu.close(); if (modelData.value !== root.value) root.picked(modelData.value) }
+        contentItem: Flickable {
+            clip: true
+            contentHeight: list.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            Column {
+                id: list
+                spacing: 2
+                Repeater {
+                    model: root.items
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: Math.max(menu.width - 12, optText.implicitWidth + hintText.implicitWidth + 52)
+                        height: 30
+                        radius: 8
+                        opacity: modelData.disabled ? 0.45 : 1
+                        color: optMouse.containsMouse && !modelData.disabled ? Theme.surface2 : "transparent"
+                        Icon {
+                            anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                            visible: modelData.value === root.value
+                            name: "check"; size: 12; color: Theme.rose
+                        }
+                        Text {
+                            id: optText
+                            anchors { left: parent.left; leftMargin: 28; verticalCenter: parent.verticalCenter }
+                            text: modelData.label
+                            color: Theme.text
+                            font { family: Theme.font; pointSize: Theme.pt(12) }
+                        }
+                        Text {
+                            id: hintText
+                            anchors { left: optText.right; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                            text: modelData.hint ?? ""
+                            color: Theme.faint
+                            font { family: Theme.font; pointSize: Theme.pt(11) }
+                        }
+                        MouseArea {
+                            id: optMouse
+                            anchors.fill: parent
+                            enabled: !modelData.disabled
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { menu.close(); if (modelData.value !== root.value) root.picked(modelData.value) }
+                        }
                     }
                 }
             }

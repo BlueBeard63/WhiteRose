@@ -8,7 +8,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Reorder, duplicate, tear off and restore tabs (MVP) — drag or Ctrl+Shift+PgUp/PgDn; tab menu; drag out of the bar for a new window, or onto another Files window's title bar to move it there (across processes too); Ctrl+Shift+T, and every window's tabs come back next launch
 - [x] Dual-pane browsing, horizontal and vertical (MVP) — per tab (F3), side by side or one above the other, resizable; restored with the tabs
 - [x] Copy/move files between panes using shortcuts or drag and drop (MVP) — F5 / F6, the right-click menu, or dragging
-- [ ] Compare folders and one-way/two-way/mirror sync (Advanced)
+- [x] Compare folders and one-way/two-way/mirror sync (Advanced) — ☰ › This folder › Compare with… (the other side when split): only-here/only-there/newer/different, all the way down, by size and time or byte by byte; update either way, two-way (unclear ones left alone and counted), or mirror (extras to the Trash, after asking); runs as a transfer
 - [x] Icon/grid, details/list and column views (MVP)
 - [x] Gallery view (Next) — one item as large as it fits, arrows on hover, "3 of 9" (no filmstrip, by choice)
 - [x] Disk usage view as a file browsing mode (Advanced) — a treemap of the folder, sized as folders are measured

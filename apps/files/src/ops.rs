@@ -32,6 +32,8 @@ pub enum Kind {
     Extract,
     /// An archive made of the sources (`dest`: the archive; options in Control).
     Compress,
+    /// Two folders synced by a plan (compare.rs; the plan in Control).
+    Sync,
 }
 
 impl Kind {
@@ -75,6 +77,10 @@ pub struct Control {
     pub pause: AtomicBool,
     /// Making an archive: its password and part size (0: whole).
     pub archive: std::sync::Mutex<(Option<String>, u64)>,
+    /// Syncing: what to copy and what to move to the Trash.
+    pub sync: std::sync::Mutex<Option<crate::compare::Plan>>,
+    /// The home Trash to use (None: the real one; tests use their own).
+    pub home_trash: Option<PathBuf>,
 }
 
 impl Control {
@@ -533,6 +539,10 @@ pub fn run<R: Report>(
     ctl: &Control,
     report: &mut R,
 ) -> Outcome {
+    if kind == Kind::Sync {
+        let plan = ctl.sync.lock().unwrap().clone().unwrap_or_default();
+        return sync(&plan, ctl, report);
+    }
     let mut prog = Progress::default();
     for s in sources {
         if kind == Kind::Extract {
@@ -714,7 +724,7 @@ pub fn run<R: Report>(
                 }
             }
             // (Made whole above.)
-            Kind::Compress => {}
+            Kind::Compress | Kind::Sync => {}
             Kind::Extract => {
                 run.tell(src);
                 // Progress is the archive's bytes read; it starts from what's
@@ -759,6 +769,91 @@ pub fn run<R: Report>(
                 run.prog.bytes_done = before + size;
                 run.prog.items_done += 1;
             }
+        }
+    }
+    run.report.progress(&run.prog);
+    run.out
+}
+
+/// Carries out a sync plan: copies replace what's there (a file is only
+/// swapped in once whole), a file where a folder was (or the other way
+/// round) sends the old one to the Trash first, and what the plan removes
+/// goes to the Trash, never deleted for good.
+fn sync<R: Report>(plan: &crate::compare::Plan, ctl: &Control, report: &mut R) -> Outcome {
+    let home_trash = ctl
+        .home_trash
+        .clone()
+        .unwrap_or_else(crate::trash::home_trash);
+    let mut prog = Progress::default();
+    for (rels, from) in [(&plan.to_right, &plan.left), (&plan.to_left, &plan.right)] {
+        for r in rels {
+            measure(&from.join(r), &mut prog.bytes_total, &mut prog.items_total);
+        }
+    }
+    prog.items_total += (plan.trash_right.len() + plan.trash_left.len()) as u64;
+    let mut run = Run {
+        report,
+        ctl,
+        prog,
+        // Every copy replaces: the plan already decided.
+        all: Some(Choice::Replace),
+        out: Outcome::default(),
+    };
+    run.report.progress(&run.prog);
+    for (rels, from, to) in [
+        (&plan.to_right, &plan.left, &plan.right),
+        (&plan.to_left, &plan.right, &plan.left),
+    ] {
+        for r in rels {
+            if !ctl.go_on() {
+                run.out.cancelled = true;
+                return run.out;
+            }
+            let (src, dst) = (from.join(r), to.join(r));
+            let Ok(sm) = fs::symlink_metadata(&src) else {
+                run.fail(&src, "it's gone".into());
+                continue;
+            };
+            if let Some(parent) = dst.parent() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    run.fail(&dst, friendly(e));
+                    continue;
+                }
+            }
+            if let Ok(dm) = fs::symlink_metadata(&dst) {
+                if dm.is_dir() != sm.is_dir() {
+                    if let Err(e) = crate::trash::put_with(&dst, &home_trash) {
+                        run.fail(&dst, e);
+                        continue;
+                    }
+                }
+            }
+            if !run.copy(&src, &dst) {
+                run.out.cancelled = true;
+                return run.out;
+            }
+            run.out.done.push(dst.to_string_lossy().into_owned());
+        }
+    }
+    for (rels, root) in [
+        (&plan.trash_right, &plan.right),
+        (&plan.trash_left, &plan.left),
+    ] {
+        for r in rels {
+            if !ctl.go_on() {
+                run.out.cancelled = true;
+                return run.out;
+            }
+            let p = root.join(r);
+            run.tell(&p);
+            match crate::trash::put_with(&p, &home_trash) {
+                Ok(t) => run.out.moved.push((
+                    p.to_string_lossy().into_owned(),
+                    t.to_string_lossy().into_owned(),
+                )),
+                Err(e) => run.fail(&p, e),
+            }
+            run.prog.items_done += 1;
         }
     }
     run.report.progress(&run.prog);
@@ -847,6 +942,56 @@ mod tests {
         fs::write(root.join("src/sub/b.txt"), "bb").unwrap();
         symlink("a.txt", root.join("src/link")).unwrap();
         fs::set_permissions(root.join("src/a.txt"), fs::Permissions::from_mode(0o640)).unwrap();
+    }
+
+    #[test]
+    fn syncs_by_a_plan_into_the_trash_not_away() {
+        use crate::compare::{compare, plan};
+        let d = scratch("sync");
+        let (l, r) = (d.join("l"), d.join("r"));
+        for (p, body) in [
+            ("l/new.txt", "new"),
+            ("l/docs/a.txt", "left a"),
+            ("l/kind", "a file"),
+            ("r/old.txt", "old"),
+            ("r/kind/x", "in a folder"),
+        ] {
+            fs::create_dir_all(d.join(p).parent().unwrap()).unwrap();
+            fs::write(d.join(p), body).unwrap();
+        }
+        let stop = AtomicBool::new(false);
+        let entries = compare(&l, &r, true, &stop, &mut |_| {});
+        // Mirror left onto right: right ends up just like left.
+        let p = plan(&l, &r, &entries, "mirror", "right");
+        let ctl = Control {
+            home_trash: Some(d.join("Trash")),
+            ..Default::default()
+        };
+        *ctl.sync.lock().unwrap() = Some(p);
+        let out = run(
+            Kind::Sync,
+            &[l.clone(), r.clone()],
+            None,
+            &ctl,
+            &mut Auto::new(Choice::Skip),
+        );
+        assert!(out.failed.is_empty(), "{:?}", out.failed);
+        assert_eq!(fs::read_to_string(r.join("new.txt")).unwrap(), "new");
+        assert_eq!(fs::read_to_string(r.join("docs/a.txt")).unwrap(), "left a");
+        // A folder where the file goes: the folder went to the Trash first.
+        assert_eq!(fs::read_to_string(r.join("kind")).unwrap(), "a file");
+        assert!(!r.join("old.txt").exists());
+        let trashed: Vec<String> = fs::read_dir(d.join("Trash/files"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            trashed.contains(&"old.txt".to_string()) && trashed.contains(&"kind".to_string()),
+            "{trashed:?}"
+        );
+        // Nothing differs any more.
+        assert!(compare(&l, &r, true, &stop, &mut |_| {}).is_empty());
+        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
