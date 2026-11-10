@@ -85,10 +85,10 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [~] Accessibility, keyboard navigation and scaling (MVP) — arrows/Enter/Backspace, shortcuts for everything so far
 
 ## 7. Developer tools & automation
-- [x] Git status badges beside files (Next) — modified, new, untracked, conflict; folders show the worst inside; ignored dimmed
-- [x] Current Git branch in path/navigation bar (Next) — in the status bar, with ahead / behind
-- [x] Git clone, init, fetch, pull, push and sync (Advanced) — ☰ › This folder › Start a git repository / Clone a repository here (with progress); the status bar's branch: fetch, pull, push (publish a new branch), sync; your git, credential helper and SSH keys; failures said plainly
-- [x] Git branch switching and repository operations (Advanced) — switch to local or remote branches, make new ones; right-click › Git: stage, unstage, commit, throw away changes (what you had goes to the Trash)
+- [x] Git status badges beside files (Next) — taken out by choice: Files says a folder is a git repository and shows its branch; what's changed is for your editor and terminal
+- [x] Current Git branch in path/navigation bar (Next) — in the status bar, with ahead / behind (shown, not clickable)
+- [x] Git clone, init, fetch, pull, push and sync (Advanced) — taken out by choice: git is run from the terminal or editor, not Files
+- [x] Git branch switching and repository operations (Advanced) — taken out by choice, as above
 - [x] Project type recognition / script discovery (Advanced) — Rust, Node (npm/pnpm/yarn/bun scripts), Go, Python (pyproject scripts, uv), Make and just targets, CMake, Compose
 - [x] Run project scripts from an inspector (Advanced) — the details panel's Scripts: each runs in your terminal and stays open with how it ended; in untrusted places only after "I trust this project"
 - [x] Open folders in terminal (MVP) — F4 or right-click; terminal chosen in Settings › Apps

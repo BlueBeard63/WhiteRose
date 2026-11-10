@@ -53,14 +53,6 @@ Item {
         color: Theme.surface2
         Icon { anchors.centerIn: parent; name: "link"; size: 10; color: Theme.text }
     }
-    // Git: a mark at the icon's corner; ignored things dimmed.
-    readonly property string gitState: cell.pane.gitOf(cell.modelData)
-    opacity: cell.gitState === "ignored" ? 0.5 : 1
-    GitBadge {
-        state: cell.gitState
-        size: 14 * cell.view.k
-        anchors { right: icon.left; rightMargin: -8 * cell.view.k; bottom: icon.bottom }
-    }
     // Sync client: its state at the other corner.
     CloudBadge {
         state: cell.pane.cloudOf(cell.modelData)

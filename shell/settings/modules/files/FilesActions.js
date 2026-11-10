@@ -34,7 +34,6 @@ var menu = [
     { id: "looks", label: "Colour and icon…" },
     { id: "shelf", label: "Put on the shelf" },
     { id: "tags", label: "Tags" },
-    { id: "git", label: "Git" },
     { id: "delete", label: "Delete permanently…" },
 ];
 

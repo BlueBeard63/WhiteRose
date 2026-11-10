@@ -55,16 +55,11 @@ FocusScope {
     readonly property bool inCollection: inTag || inRecent
     // Nothing can be made, pasted, renamed or deleted here.
     readonly property bool readOnly: inCollection || inArchive
-    // Git (Settings › Files › General): {root, branch, ahead, behind,
-    // ignored, entries: {name: state}}; root "" when not in a repository.
+    // Git (Settings › Files › General): the branch of the repository this
+    // is in, shown in the status bar: {root, branch, ahead, behind, ...};
+    // root "" when not in one.
     property var git: ({ root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} })
     readonly property bool wantsGit: Session.git && !pane.special && !pane.readOnly && !pane.searching && pane.path.startsWith("/")
-    // An entry's state ("" none; inside an ignored folder: ignored).
-    function gitOf(e) {
-        if (!pane.wantsGit || pane.git.root === "" || !e) return "";
-        if (pane.git.ignored) return "ignored";
-        return pane.git.entries[e.name] ?? "";
-    }
     function askGit() { if (pane.wantsGit && pane.visible) Ops.askGit(pane.path) }
     onWantsGitChanged: if (!pane.wantsGit) pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; else pane.askGit()
     Connections {

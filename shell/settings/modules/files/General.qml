@@ -69,8 +69,8 @@ Column {
             Toggle { checked: Daemon.setting("files.hidden", false); onToggled: on => Daemon.set("files.hidden", on) }
         }
         SettingRow {
-            title: "Git status"
-            subtitle: "Marks on changed files and the branch at the bottom, in git repositories"
+            title: "Git branch"
+            subtitle: "In a git repository, its branch at the bottom of the window"
             Toggle { checked: Daemon.setting("files.git", true); onToggled: on => Daemon.set("files.git", on) }
         }
         SettingRow {

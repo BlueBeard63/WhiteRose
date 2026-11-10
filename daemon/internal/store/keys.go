@@ -245,7 +245,7 @@ var Known = map[string]Key{
 	"files.menuHide": {Default: json.RawMessage(`[]`), Check: into(idList)},
 	// Files' right-click menu: your own actions (a command run on what's chosen).
 	"files.actions": {Default: json.RawMessage(`[]`), Check: into(actionList)},
-	// Git status marks and the branch in Files.
+	// The git branch in Files' status bar.
 	"files.git": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Files' sidebar: shown, and the sections folded away.
 	"files.sidebar":       {Default: json.RawMessage(`true`), Check: into[bool](nil)},
