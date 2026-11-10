@@ -748,6 +748,9 @@ AppWindow {
             readonly property bool many: sel.length > 1
             readonly property bool trashed: win.current?.inTrash ?? false
             readonly property var openIn: win.openInItems(itemMenu.entry)
+            // Files of one kind: the apps for it (the default marked).
+            // (Only while it's open: it reads the installed apps.)
+            readonly property var openWith: itemMenu.visible ? win.openWithItems(itemMenu.sel) : []
             items: win.current?.inDrives ? (!itemMenu.entry ? [] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
                 { label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) },
@@ -782,6 +785,7 @@ AppWindow {
                 { label: "Quick look", shortcut: "Space", enabled: !itemMenu.many, run: () => win.quickLook() },
                 ...(win.current?.searching || win.current?.inCollection ? [{ label: "Show in folder", run: () => win.showInFolder(itemMenu.entry) }] : []),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Open in new tab", run: () => win.newTab({ path: itemMenu.entry.path }, win.currentIndex + 1) }] : []),
+                ...(itemMenu.openWith.length > 1 ? [{ label: "Open with", items: itemMenu.openWith }] : []),
                 ...(itemMenu.many ? [] : itemMenu.openIn),
                 { separator: true },
                 { label: "Cut", shortcut: "Ctrl+X", run: () => win.toClipboard(true) },
@@ -941,6 +945,14 @@ AppWindow {
         const other = win.tab?.other;
         if (sel.length === 0 || !other || other.special || win.current.inDrives) return;
         win.run(kind, sel.map(e => e.path), other.path);
+    }
+    function openWithItems(sel) {
+        if (!sel || sel.length === 0 || sel.some(e => e.dir) || sel.some(e => e.mime !== sel[0].mime)) return [];
+        const paths = sel.map(e => e.path);
+        return JSON.parse(Fs.appsFor(sel[0].mime)).slice(0, 12).map(a => ({
+            label: a.name + (a.default ? "  (default)" : ""),
+            run: () => { const err = Fs.openWith(a.id, JSON.stringify(paths)); if (err) win.notice = err }
+        }));
     }
     // The selection's paths as text: plain, quoted for a shell, file:// links, or names.
     function copyPaths(how) {

@@ -60,7 +60,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Syntax-highlighted source code and config previews (Next) — KDE's syntax-highlighting (about 300 formats), chosen by file name, light and dark
 - [x] JSON/JSONC/JSON5 formatted viewer (Next) — comments, trailing commas, unquoted keys read; shown formatted in its own order; where it's broken if it doesn't parse
 - [ ] Browse and extract individual items from archives (Next)
-- [ ] Inspector with editable metadata and default app (Next)
+- [x] Inspector with editable metadata and default app (Next) — Properties: rename in place, a comment kept on the file (user.xdg.comment), Opens with: the default app for every file of the kind (mimeapps.list, so every app agrees); Open with › any app for it in the menu
 
 ## 5. Storage & cleanup
 - [x] Live folder size calculation (MVP) — list view's Size column fills in folder sizes in the background (idle priority, kept a minute)

@@ -98,6 +98,66 @@ pub fn write(p: &Path, tags: &[String]) -> Result<(), String> {
     })
 }
 
+/// The comment on a file (user.xdg.comment, as other file managers keep it).
+pub fn comment(p: &Path) -> String {
+    let Some(c) = c_path(p) else {
+        return String::new();
+    };
+    let name = CString::new("user.xdg.comment").unwrap();
+    let mut buf = vec![0u8; 4096];
+    // SAFETY: valid C strings and a buffer of the given length.
+    let n = unsafe {
+        libc::getxattr(
+            c.as_ptr(),
+            name.as_ptr(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+        )
+    };
+    if n <= 0 {
+        return String::new();
+    }
+    String::from_utf8_lossy(&buf[..n as usize]).into_owned()
+}
+
+/// Sets (or, empty, removes) a file's comment.
+pub fn set_comment(p: &Path, text: &str) -> Result<(), String> {
+    let c = c_path(p).ok_or("bad path")?;
+    let name = CString::new("user.xdg.comment").unwrap();
+    let text = text.trim();
+    if text.len() > 4000 {
+        return Err("That's too long for a comment".into());
+    }
+    // SAFETY: valid C strings and a value of the given length.
+    let r = unsafe {
+        if text.is_empty() {
+            let r = libc::removexattr(c.as_ptr(), name.as_ptr());
+            if r != 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ENODATA) {
+                0
+            } else {
+                r
+            }
+        } else {
+            libc::setxattr(
+                c.as_ptr(),
+                name.as_ptr(),
+                text.as_ptr().cast(),
+                text.len(),
+                0,
+            )
+        }
+    };
+    if r == 0 {
+        return Ok(());
+    }
+    let e = std::io::Error::last_os_error();
+    Err(match e.raw_os_error() {
+        Some(libc::ENOTSUP) => "this drive can't hold comments".into(),
+        Some(libc::EACCES) | Some(libc::EPERM) => "permission denied".into(),
+        _ => e.to_string(),
+    })
+}
+
 /// Copies the tags of `from` onto `to` (when Files copies a file).
 pub fn copy(from: &Path, to: &Path) {
     let t = read(from);
@@ -279,6 +339,23 @@ pub fn on(paths: &[PathBuf]) -> BTreeMap<String, usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comments_on_files() {
+        let d = scratch("comment");
+        let f = d.join("note.txt");
+        std::fs::write(&f, "x").unwrap();
+        match set_comment(&f, "  Plans for spring  ") {
+            // (A drive without extended attributes: nothing to check.)
+            Err(e) if e.contains("can't hold") => return,
+            r => r.unwrap(),
+        }
+        assert_eq!(comment(&f), "Plans for spring");
+        set_comment(&f, "").unwrap();
+        assert_eq!(comment(&f), "");
+        set_comment(&f, "").unwrap(); // removing nothing is fine
+        assert!(set_comment(&f, &"x".repeat(5000)).is_err());
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("wr-tags-{name}-{}", std::process::id()));

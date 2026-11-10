@@ -15,6 +15,28 @@ Popup {
     property var count: ({ bytes: 0, files: 0, folders: 0, done: true })
     property int measuring: -1
     property string error: ""
+    // The apps for its kind of file, the default first (one file).
+    property var apps: []
+    readonly property var defaultApp: root.apps.find(a => a.default) ?? null
+    // What's typed in the name and comment boxes is saved when you're done.
+    function saveName() {
+        const n = nameField.text.trim();
+        if (!root.canChange && !root.canRename) return;
+        if (n === "" || n === root.info.name) { nameField.text = root.info.name ?? ""; return }
+        const r = JSON.parse(Ops.rename(root.info.path, n));
+        if (!r.ok) { root.error = r.error; nameField.text = root.info.name ?? ""; return }
+        root.error = "";
+        root.paths = [r.path];
+        root.info = JSON.parse(Fs.info(r.path));
+    }
+    function saveComment() {
+        if (commentField.text === root.comment) return;
+        const err = Fs.setComment(root.info.path, commentField.text);
+        root.error = err;
+        if (err === "") root.comment = commentField.text.trim();
+    }
+    property string comment: ""
+    readonly property bool canRename: root.one && !root.info.origin
     // Checksums, worked out when asked (they read the whole file).
     property var sums: null
     property real sumDone: -1
@@ -29,6 +51,10 @@ Popup {
         root.sums = null;
         root.sumDone = -1;
         pasted.text = "";
+        root.comment = paths.length === 1 ? Fs.comment(paths[0]) : "";
+        commentField.text = root.comment;
+        nameField.text = root.info.name ?? "";
+        root.apps = paths.length === 1 && !root.info.dir ? JSON.parse(Fs.appsFor(root.info.mime ?? "")) : [];
         root.count = { bytes: 0, files: 0, folders: 0, done: false };
         root.measuring = Ops.measure(JSON.stringify(paths));
         root.open();
@@ -51,7 +77,11 @@ Popup {
             if (r.error) root.error = r.error; else root.sums = r;
         }
     }
-    onClosed: { Ops.stopMeasuring(root.measuring); root.measuring = -1; Ops.hash("") }
+    onClosed: {
+        Ops.stopMeasuring(root.measuring); root.measuring = -1; Ops.hash("");
+        // (Closed while typing: what's typed is kept.)
+        if (root.one) { root.saveName(); root.saveComment() }
+    }
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -97,11 +127,20 @@ Popup {
                 width: parent.width - 62
                 spacing: 2
                 Text {
+                    visible: !root.canRename
                     width: parent.width
                     text: root.one ? (root.info.name ?? "") : root.paths.length + " items"
                     elide: Text.ElideMiddle
                     color: Theme.text
                     font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
+                }
+                // One of yours: its name, to change (Enter, or leaving the box).
+                Field {
+                    id: nameField
+                    visible: root.canRename
+                    width: parent.width
+                    onAccepted: root.saveName()
+                    onEditingChanged: if (!editing && root.visible) root.saveName()
                 }
                 Text {
                     visible: root.one
@@ -129,6 +168,22 @@ Popup {
                     return parts.join(", ") + (c.bytes > 0 || c.done ? ", " + F.size(c.bytes) : "") + (c.done ? "" : "…");
                 }
             }
+            // Opens with: the default for every file of this kind (mimeapps.list).
+            Row {
+                visible: root.one && !root.info.dir && root.apps.length > 0 && !root.info.origin
+                width: parent.width
+                spacing: 12
+                Text { width: 110; anchors.verticalCenter: parent.verticalCenter; text: "Opens with"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
+                Choice {
+                    value: root.defaultApp?.id ?? ""
+                    options: root.apps.map(a => ({ label: a.name, value: a.id }))
+                    onPicked: v => {
+                        Fs.setDefaultApp(root.info.mime, v);
+                        root.apps = JSON.parse(Fs.appsFor(root.info.mime));
+                    }
+                }
+            }
+            Line { label: ""; value: root.one && !root.info.dir && root.apps.length > 0 && !root.info.origin ? "For every " + F.kind(root.info.mime ?? "").toLowerCase() + " file (" + (root.info.mime ?? "") + ")" : "" }
             Line { label: "Location"; value: root.one && !root.info.origin ? String(root.info.location ?? "").replace(Fs.home(), "~") : "" }
             Line { label: "Link to"; value: root.one && root.info.target ? root.info.target : "" }
             Line { label: "From"; value: root.one && root.info.origin ? String(root.info.origin).replace(Fs.home(), "~") : "" }
@@ -136,6 +191,20 @@ Popup {
             Line { label: "Modified"; value: root.one ? F.fullDate(root.info.modified) : "" }
             Line { label: "Opened"; value: root.one ? F.fullDate(root.info.accessed) : "" }
             Line { label: "Created"; value: root.one ? F.fullDate(root.info.created) : "" }
+            // A note kept on the file itself (other file managers show it too).
+            Row {
+                visible: root.canRename
+                width: parent.width
+                spacing: 12
+                Text { width: 110; anchors.verticalCenter: parent.verticalCenter; text: "Comment"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
+                Field {
+                    id: commentField
+                    width: parent.width - 122
+                    placeholder: "Add a comment"
+                    onAccepted: root.saveComment()
+                    onEditingChanged: if (!editing && root.visible) root.saveComment()
+                }
+            }
         }
 
         // ---- checksums (one file; on request) ------------------------------------------------

@@ -57,6 +57,25 @@ pub mod qobject {
         #[qinvokable]
         fn subfolders(self: &Fs, path: &QString, hidden: bool) -> QString;
         /// Puts a bookmark at position `to` (others keep their order).
+        /// The apps that open `mime`, the default first: [{id, name, icon, default}].
+        #[qinvokable]
+        #[cxx_name = "appsFor"]
+        fn apps_for(self: &Fs, mime: &QString) -> QString;
+        /// Makes app `id` the default for `mime` (for every app: mimeapps.list).
+        #[qinvokable]
+        #[cxx_name = "setDefaultApp"]
+        fn set_default_app(self: &Fs, mime: &QString, id: &QString) -> bool;
+        /// Opens these files ([path]) with app `id`: "" or what went wrong.
+        #[qinvokable]
+        #[cxx_name = "openWith"]
+        fn open_with(self: &Fs, id: &QString, paths: &QString) -> QString;
+        /// A file's comment ("" if none).
+        #[qinvokable]
+        fn comment(self: &Fs, path: &QString) -> QString;
+        /// "" or why not.
+        #[qinvokable]
+        #[cxx_name = "setComment"]
+        fn set_comment(self: &Fs, path: &QString, text: &QString) -> QString;
         /// A JSON, JSONC or JSON5 file formatted: {ok, text} or {ok: false, error}.
         #[qinvokable]
         #[cxx_name = "prettyJson"]
@@ -616,6 +635,51 @@ impl qobject::Fs {
             Path::new(&path.to_string()),
             hidden
         )))
+    }
+
+    pub fn apps_for(&self, mime: &QString) -> QString {
+        let ic = icons::shared();
+        let held = crate::apps::cached();
+        let mut v = crate::apps::for_mime(&mime.to_string(), &held.0, &held.1);
+        for c in v.iter_mut() {
+            // The icon's file (a theme name or a path).
+            c.icon = if c.icon.starts_with('/') {
+                c.icon.clone()
+            } else {
+                icon_path(
+                    ic.lookup(&c.icon, 32, 1)
+                        .or_else(|| ic.lookup("application-x-executable", 32, 1)),
+                )
+            };
+        }
+        q(json!(v))
+    }
+
+    pub fn set_default_app(&self, mime: &QString, id: &QString) -> bool {
+        let file = crate::apps::list_files().remove(0);
+        let ok = crate::apps::set_default(&file, &mime.to_string(), &id.to_string()).is_ok();
+        crate::apps::forget();
+        ok
+    }
+
+    pub fn open_with(&self, id: &QString, paths: &QString) -> QString {
+        let paths: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let term = launch::pick(launch::TERMINALS, "", launch::installed).map(|t| t.id);
+        match crate::apps::open_with(&id.to_string(), &paths, term) {
+            Ok(()) => QString::from(""),
+            Err(e) => QString::from(e.as_str()),
+        }
+    }
+
+    pub fn comment(&self, path: &QString) -> QString {
+        QString::from(tags::comment(Path::new(&path.to_string())).as_str())
+    }
+
+    pub fn set_comment(&self, path: &QString, text: &QString) -> QString {
+        match tags::set_comment(Path::new(&path.to_string()), &text.to_string()) {
+            Ok(()) => QString::from(""),
+            Err(e) => QString::from(e.as_str()),
+        }
     }
 
     pub fn pretty_json(&self, path: &QString) -> QString {
