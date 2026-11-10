@@ -63,6 +63,11 @@ Column {
             Toggle { checked: Daemon.setting("files.hidden", false); onToggled: on => Daemon.set("files.hidden", on) }
         }
         SettingRow {
+            title: "Sidebar"
+            subtitle: "Places, bookmarks, tags and drives (Ctrl+B in Files; click a heading there to fold it)"
+            Toggle { checked: Daemon.setting("files.sidebar", true); onToggled: on => Daemon.set("files.sidebar", on) }
+        }
+        SettingRow {
             title: "Details panel"
             subtitle: "A preview of the selected file beside the folder (Alt+P)"
             Toggle { checked: Daemon.setting("files.details", false); onToggled: on => Daemon.set("files.details", on) }

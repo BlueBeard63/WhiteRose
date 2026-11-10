@@ -459,6 +459,7 @@ AppWindow {
                     { label: "New window", shortcut: "Ctrl+N", run: () => Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) },
                     { label: win.tab?.split ? "Close split" : "Split", shortcut: "F3", run: () => win.tab.setSplit(!win.tab.split) },
                     { label: (Session.details ? "Hide" : "Show") + " details", shortcut: "Alt+P", run: () => Session.setDetails(!Session.details) },
+                    { label: (Session.sidebar ? "Hide" : "Show") + " sidebar", shortcut: "Ctrl+B", run: () => Session.setSidebar(!Session.sidebar) },
                     { label: "Keyboard shortcuts…", run: () => keysDialog.open() },
                     { label: "Files settings…", run: () => Session.openSettings("") },
                     ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
@@ -1073,6 +1074,7 @@ AppWindow {
     // (Space is the type-to-filter's once it has letters.)
     Shortcut { sequence: win.keys("quick-look", "Space"); enabled: !win.typing && (win.current?.filter ?? "") === ""; onActivated: win.quickLook() }
     Shortcut { sequence: win.keys("details", "Alt+P"); onActivated: Session.setDetails(!Session.details) }
+    Shortcut { sequence: win.keys("sidebar", "Ctrl+B"); onActivated: Session.setSidebar(!Session.sidebar) }
     Shortcut { sequence: win.keys("terminal", "F4"); enabled: !win.typing && !!win.current && !win.current.special; onActivated: win.openTerminal(win.current.path) }
     Shortcut { sequence: win.keys("grid", "Ctrl+1"); onActivated: win.current?.setView({ mode: "grid" }) }
     Shortcut { sequence: win.keys("list", "Ctrl+2"); onActivated: win.current?.setView({ mode: "list" }) }

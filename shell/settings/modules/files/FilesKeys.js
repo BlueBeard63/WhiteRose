@@ -21,6 +21,7 @@ var list = [
     { id: "search", label: "Search", keys: "Ctrl+F" },
     { id: "quick-look", label: "Quick look", keys: "Space" },
     { id: "details", label: "Details panel", keys: "Alt+P" },
+    { id: "sidebar", label: "Sidebar", keys: "Ctrl+B" },
     { id: "terminal", label: "Open terminal here", keys: "F4" },
     { id: "grid", label: "Grid view", keys: "Ctrl+1" },
     { id: "list", label: "List view", keys: "Ctrl+2" },
