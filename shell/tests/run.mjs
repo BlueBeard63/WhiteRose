@@ -21,7 +21,7 @@ const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "c
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
-const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen"]);
+const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
@@ -579,6 +579,21 @@ test("users: suggested usernames, checks, last seen", () => {
     assert.equal(U.lastSeen(new Date(2026, 10, 5).getTime() / 1000, now), "Signed in 4 days ago");
     assert.equal(U.lastSeen(new Date(2026, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct");
     assert.equal(U.lastSeen(new Date(2025, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct 2025");
+});
+
+test("fingerprint names and progress", () => {
+    assert.equal(U.fingerName("right-index-finger"), "Right index finger");
+    assert.equal(U.fingerName("left-thumb"), "Left thumb");
+    assert.equal(U.nextFinger([]), "right-index-finger");
+    assert.equal(U.nextFinger(["right-index-finger"]), "left-index-finger");
+    assert.equal(U.nextFinger(U.fingers), "");
+    assert.equal(U.enrollText(null, "press"), "Touch the reader");
+    assert.equal(U.enrollText({ state: "stage", stage: 0, stages: 16 }, "swipe"), "Swipe your finger across the reader");
+    assert.match(U.enrollText({ state: "stage", stage: 3, stages: 16 }, "press"), /Lift and touch again/);
+    assert.equal(U.enrollText({ state: "retry", message: "Put your finger in the middle" }, "press"), "Put your finger in the middle");
+    assert.equal(U.enrollFraction({ stage: 4, stages: 16 }), 0.25);
+    assert.equal(U.enrollFraction({ stage: 20, stages: 16 }), 1);
+    assert.equal(U.enrollFraction(null), 0);
 });
 
 // ---- Files (Format.js) ----------------------------------------------------------

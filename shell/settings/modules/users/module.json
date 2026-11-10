@@ -7,5 +7,9 @@
   "order": 30,
   "version": "1.0.0",
   "core": true,
-  "keywords": ["users", "user", "account", "accounts", "password", "picture", "avatar", "name", "administrator", "admin", "add user", "remove user", "people"]
+  "keywords": ["users", "user", "account", "accounts", "password", "picture", "avatar", "name", "administrator", "admin", "add user", "remove user", "people"],
+  "pages": [
+    { "id": "fingerprints", "name": "Fingerprints", "icon": "fingerprint", "file": "Fingerprints.qml",
+      "keywords": ["fingerprint", "fingerprints", "finger", "reader", "biometric", "biometrics", "fprintd", "unlock", "sudo", "sign in", "login"] }
+  ]
 }

@@ -206,6 +206,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		broadcast: srv.Broadcast,
 		done:      func() { _ = st.Set("apps.setupDone", json.RawMessage(`true`)) },
 	}
+	prints := &fingerprints{broadcast: srv.Broadcast}
 	srv.Ops = map[string]func(server.Request) (any, error){
 		"battery": func(server.Request) (any, error) {
 			conn, err := dbus.ConnectSystemBus()
@@ -323,6 +324,10 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			defer conn.Close()
 			return nil, power.SetLimit(conn, r.On)
 		},
+	}
+	// Fingerprints (Settings › Users › Fingerprints).
+	for name, op := range prints.ops() {
+		srv.Ops[name] = op
 	}
 	every := func(d time.Duration, fn func()) {
 		for {

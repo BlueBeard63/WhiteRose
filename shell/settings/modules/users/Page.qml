@@ -23,6 +23,7 @@ Column {
 
     function refresh() {
         Daemon.request({ op: "users" }, (v, err) => {
+            if (!page) return; // (left the page meanwhile)
             page.loadError = err ?? "";
             if (!err) page.users = v ?? [];
         });
@@ -105,6 +106,7 @@ Column {
             Row {
                 anchors { right: parent.right; rightMargin: 18; verticalCenter: parent.verticalCenter }
                 spacing: 8
+                Button { text: "Fingerprints"; icon: "fingerprint"; onClicked: SettingsState.open("users/fingerprints") }
                 Button { text: "Change password"; icon: "lock"; onClicked: passwordDialog.openFor(page.me) }
             }
         }

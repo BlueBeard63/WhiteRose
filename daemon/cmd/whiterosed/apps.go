@@ -115,7 +115,7 @@ func (s *appSetup) install(ids []string) (any, error) {
 	ctx := context.Background()
 	var rootErr error
 	if len(ids) > 0 {
-		self, err := os.Executable()
+		self, err := rootSelf()
 		if err != nil {
 			return nil, err
 		}

@@ -22,6 +22,8 @@ Singleton {
 
     // App setup progress: { step, apps, state: running|done|failed, line, error }.
     signal appsEvent(var e)
+    // Adding a fingerprint: { finger, state: stage|retry|done|failed|cancelled, stage, stages, message }.
+    signal fingerprintEvent(var e)
     signal lockRequested()
     signal unlockRequested()
 
@@ -81,6 +83,7 @@ Singleton {
         case "state": root.state = msg; break;
         case "lock": root.lockRequested(); break;
         case "apps": root.appsEvent(msg); break;
+        case "fingerprint": root.fingerprintEvent(msg); break;
         case "unlock": root.unlockRequested(); break;
         }
     }

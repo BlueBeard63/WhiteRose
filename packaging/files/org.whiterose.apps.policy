@@ -15,4 +15,16 @@
     <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/whiterosed</annotate>
     <annotate key="org.freedesktop.policykit.exec.argv1">apps-root</annotate>
   </action>
+  <action id="org.whiterose.fingerprint.login">
+    <description>Use fingerprints to sign in</description>
+    <message>Changing how everyone signs in needs your password</message>
+    <icon_name>fingerprint</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/whiterosed</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">fingerprint-root</annotate>
+  </action>
 </policyconfig>

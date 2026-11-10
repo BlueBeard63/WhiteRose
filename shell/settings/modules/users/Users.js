@@ -38,3 +38,38 @@ function lastSeen(unix, nowMs) {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return "Signed in on " + then.getDate() + " " + months[then.getMonth()] + (then.getFullYear() !== now.getFullYear() ? " " + then.getFullYear() : "");
 }
+
+// ---- fingerprints ----------------------------------------------------------------------
+
+// fprintd's finger names, in the order they're offered.
+const fingers = [
+    "right-index-finger", "left-index-finger", "right-thumb", "left-thumb",
+    "right-middle-finger", "left-middle-finger", "right-ring-finger", "left-ring-finger",
+    "right-little-finger", "left-little-finger",
+];
+
+// "right-index-finger" -> "Right index finger"; "left-thumb" -> "Left thumb".
+function fingerName(f) {
+    const s = String(f).replace(/-/g, " ");
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// The first finger not added yet ("" when all ten are).
+function nextFinger(enrolled) {
+    return fingers.find(f => !(enrolled ?? []).includes(f)) ?? "";
+}
+
+// What to say while adding one (`e` is the latest "fingerprint" event).
+function enrollText(e, scan) {
+    const verb = scan === "swipe" ? "Swipe your finger across" : "Touch";
+    if (!e) return verb + " the reader";
+    if (e.state === "retry" || e.state === "failed" || e.state === "done") return e.message;
+    if (!e.stage) return verb + " the reader";
+    return scan === "swipe" ? "Again, a few more times" : "Lift and touch again, moving it a little";
+}
+
+// 0..1 of the touches done.
+function enrollFraction(e) {
+    if (!e || !e.stages) return 0;
+    return Math.max(0, Math.min(1, e.stage / e.stages));
+}

@@ -10,6 +10,7 @@
 //	whiterosed airplane on|off
 //	whiterosed release-key PUB          make the release signing key (once)
 //	whiterosed sign-release DIR PUB     sign the packages in DIR for a release
+//	whiterosed fingerprint-root on|off  fingerprint for sign-in and sudo (as root, via pkexec)
 package main
 
 import (
@@ -55,6 +56,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdReleaseKey(args[1:], stdout, stderr)
 	case "sign-release":
 		return cmdSignRelease(args[1:], stdout, stderr)
+	case "fingerprint-root":
+		return cmdFingerprintRoot(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
@@ -77,6 +80,7 @@ commands:
   airplane       on|off: block or unblock every radio
   calendar       list | add NAME URL|FILE [#COLOUR] | remove N | events FROM TO
   apps-root      ID...: install apps from the setup (as root, through pkexec)
+  fingerprint-root on|off: fingerprint for sign-in, sudo and admin prompts (as root, through pkexec)
 `)
 }
 
