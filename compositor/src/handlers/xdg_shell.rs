@@ -34,15 +34,17 @@ impl XdgShellHandler for WhiteRose {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let window = Window::new_wayland_window(surface);
-        // A new window must be visible, so leave fullscreen on this workspace.
-        if let Some(fs) = self.active_fullscreen().cloned() {
+        // It opens on the output under the pointer, and must be visible
+        // there, so leave fullscreen on that output.
+        let output = self.pointer_output();
+        if let Some(fs) = output.as_ref().and_then(|o| self.fullscreen_on(o)).cloned() {
             self.unfullscreen(&fs);
         }
         // Cascade new windows so they don't stack exactly on top of each other.
         // A real placement policy (tiling / centring) replaces this later.
         let n = self.workspaces.active_windows().len() as i32;
         // Start inside the area the bar doesn't reserve.
-        let area = self.usable_area().loc;
+        let area = output.map(|o| self.usable_area_on(&o)).unwrap_or_default().loc;
         let loc = (area.x + 48 + 32 * (n % 8), area.y + 48 + 32 * (n % 8));
         self.space.map_element(window.clone(), loc, false);
         self.assign_window_id(&window);
@@ -156,10 +158,10 @@ impl XdgShellHandler for WhiteRose {
         }
     }
 
-    fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<wl_output::WlOutput>) {
-        // Single output for now; the requested output is honoured once there are several.
+    fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<wl_output::WlOutput>) {
+        // On the output asked for, else the one the window is on.
         if let Some(w) = self.window_for_surface(surface.wl_surface()) {
-            self.fullscreen(&w);
+            self.fullscreen_to(&w, output.as_ref().and_then(smithay::output::Output::from_resource));
         } else {
             surface.send_configure();
         }
@@ -236,7 +238,8 @@ impl WhiteRose {
             return;
         };
 
-        let Some(output_geo) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) else {
+        // Kept on the output its window is on.
+        let Some(output_geo) = self.output_of(window).and_then(|o| self.space.output_geometry(&o)) else {
             return;
         };
         let window_geo = self.space.element_geometry(window).unwrap();

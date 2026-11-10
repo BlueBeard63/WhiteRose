@@ -4,10 +4,13 @@
 //! A fullscreen window covers the whole output, bar included; while one is
 //! showing, the renderer draws only it plus overlay-layer surfaces (e.g. the
 //! screenshot overlay), which is also the cheapest frame to compose.
-//! Both remember the floating geometry and restore it.
+//! Both remember the floating geometry and restore it. Each output has its
+//! own: a window fills the output it's on (or the one asked for), and a
+//! fullscreen window on one output leaves the others as they were.
 
 use smithay::{
     desktop::Window,
+    output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState,
     utils::{Logical, Rectangle},
 };
@@ -15,13 +18,21 @@ use smithay::{
 use crate::state::WhiteRose;
 
 impl WhiteRose {
-    /// The fullscreen window on the visible workspace, if any.
-    pub fn active_fullscreen(&self) -> Option<&Window> {
-        self.fullscreen.as_ref().filter(|w| self.space.element_location(w).is_some())
+    /// The fullscreen window showing on `output` (visible workspace), if any.
+    pub fn fullscreen_on(&self, output: &Output) -> Option<&Window> {
+        self.fullscreen
+            .iter()
+            .find(|w| self.space.element_location(w).is_some() && self.output_of(w).as_ref() == Some(output))
     }
 
-    fn output_rect(&self) -> Rectangle<i32, Logical> {
-        self.space.outputs().next().and_then(|o| self.space.output_geometry(o)).unwrap_or_default()
+    fn output_rect(&self, o: &Output) -> Rectangle<i32, Logical> {
+        self.space.output_geometry(o).unwrap_or_default()
+    }
+
+    /// Remembers which output `w` fills from now on.
+    fn fill(&mut self, w: &Window, o: Output) {
+        self.filling.retain(|(f, _)| f != w);
+        self.filling.push((w.clone(), o));
     }
 
     fn remember_floating(&mut self, w: &Window) {
@@ -65,8 +76,10 @@ impl WhiteRose {
         if Self::has_state(w, ToplevelState::Maximized) {
             return;
         }
+        let Some(o) = self.output_of(w) else { return };
         self.remember_floating(w);
-        let area = self.usable_area();
+        let area = self.usable_area_on(&o);
+        self.fill(w, o);
         self.apply(w, ToplevelState::Maximized, true, Some(area));
     }
 
@@ -77,23 +90,36 @@ impl WhiteRose {
         let rect = if Self::has_state(w, ToplevelState::Fullscreen) {
             None // still fullscreen; only clear the flag
         } else {
+            self.filling.retain(|(f, _)| f != w);
             self.take_floating(w)
         };
         self.apply(w, ToplevelState::Maximized, false, rect);
     }
 
     pub fn fullscreen(&mut self, w: &Window) {
-        if Self::has_state(w, ToplevelState::Fullscreen) {
+        self.fullscreen_to(w, None);
+    }
+
+    /// Fullscreen on `target`, or the output the window is on.
+    pub fn fullscreen_to(&mut self, w: &Window, target: Option<Output>) {
+        let Some(o) = target.filter(|o| self.space.output_geometry(o).is_some()).or_else(|| self.output_of(w)) else {
+            return;
+        };
+        let already = Self::has_state(w, ToplevelState::Fullscreen);
+        if already && self.output_of(w).as_ref() == Some(&o) {
             return;
         }
-        // Only one fullscreen window at a time.
-        if let Some(prev) = self.fullscreen.clone().filter(|p| p != w) {
+        // One fullscreen window per output.
+        if let Some(prev) = self.fullscreen_on(&o).filter(|p| *p != w).cloned() {
             self.unfullscreen(&prev);
         }
         self.remember_floating(w);
-        let rect = self.output_rect();
+        let rect = self.output_rect(&o);
+        self.fill(w, o);
         self.apply(w, ToplevelState::Fullscreen, true, Some(rect));
-        self.fullscreen = Some(w.clone());
+        if !self.fullscreen.contains(w) {
+            self.fullscreen.push(w.clone());
+        }
         self.space.raise_element(w, true);
     }
 
@@ -101,12 +127,12 @@ impl WhiteRose {
         if !Self::has_state(w, ToplevelState::Fullscreen) {
             return;
         }
-        if self.fullscreen.as_ref() == Some(w) {
-            self.fullscreen = None;
-        }
+        self.fullscreen.retain(|f| f != w);
         let rect = if Self::has_state(w, ToplevelState::Maximized) {
-            Some(self.usable_area()) // back to maximized, not floating
+            // Back to maximized (not floating), on the same output.
+            self.output_of(w).map(|o| self.usable_area_on(&o))
         } else {
+            self.filling.retain(|(f, _)| f != w);
             self.take_floating(w)
         };
         self.apply(w, ToplevelState::Fullscreen, false, rect);
@@ -125,27 +151,30 @@ impl WhiteRose {
     /// Cheap when nothing changed: the bar commits often (clock, EQ), so this
     /// only reconfigures windows when the geometry really moved.
     pub fn refit_windows(&mut self) {
-        let area = self.usable_area();
-        let output = self.output_rect();
-        if self.fitted_to == Some((output, area)) {
+        let outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        let fitted: Vec<_> = outputs.iter().map(|o| (self.output_rect(o), self.usable_area_on(o))).collect();
+        if self.fitted_to == fitted {
             return;
         }
-        self.fitted_to = Some((output, area));
+        self.fitted_to = fitted;
         let windows: Vec<Window> = self.space.elements().cloned().collect();
         for w in windows {
-            if Self::has_state(&w, ToplevelState::Fullscreen) {
-                self.apply(&w, ToplevelState::Fullscreen, true, Some(output));
-            } else if Self::has_state(&w, ToplevelState::Maximized) {
-                self.apply(&w, ToplevelState::Maximized, true, Some(area));
+            let fs = Self::has_state(&w, ToplevelState::Fullscreen);
+            if !fs && !Self::has_state(&w, ToplevelState::Maximized) {
+                continue;
             }
+            // Its output may be gone: then it moves to the one it overlaps.
+            let Some(o) = self.output_of(&w) else { continue };
+            self.fill(&w, o.clone());
+            let rect = if fs { self.output_rect(&o) } else { self.usable_area_on(&o) };
+            self.apply(&w, if fs { ToplevelState::Fullscreen } else { ToplevelState::Maximized }, true, Some(rect));
         }
     }
 
     /// Drops all maximize/fullscreen bookkeeping for a closed window.
     pub(crate) fn forget_window_state(&mut self, w: &Window) {
         self.restore_geometry.retain(|(r, _)| r != w);
-        if self.fullscreen.as_ref() == Some(w) {
-            self.fullscreen = None;
-        }
+        self.fullscreen.retain(|f| f != w);
+        self.filling.retain(|(f, _)| f != w);
     }
 }

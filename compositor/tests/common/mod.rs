@@ -90,6 +90,26 @@ impl Headless {
         Headless { event_loop, state, output }
     }
 
+    /// Another W x H output, at `at` in the global space (e.g. a monitor
+    /// plugged in to the right of the first).
+    pub fn add_output(&mut self, name: &str, at: (i32, i32)) -> Output {
+        let output = Output::new(
+            name.into(),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "T".into(),
+                model: "T".into(),
+            },
+        );
+        let _ = output.create_global::<WhiteRose>(&self.state.display_handle);
+        let mode = Mode { size: (W, H).into(), refresh: 60_000 };
+        output.change_current_state(Some(mode), Some(Transform::Normal), None, Some(at.into()));
+        output.set_preferred(mode);
+        self.state.space.map_output(&output, at);
+        output
+    }
+
     /// One event-loop iteration, exactly as the real loop runs it.
     pub fn dispatch(&mut self) {
         self.event_loop.dispatch(Some(Duration::from_millis(2)), &mut self.state).unwrap();

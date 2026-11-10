@@ -74,7 +74,11 @@ pub struct WhiteRose {
     pub hidden_at: Vec<(Window, Point<i32, Logical>)>,
     /// Floating geometry of maximized/fullscreen windows, for restoring.
     pub restore_geometry: Vec<(Window, smithay::utils::Rectangle<i32, Logical>)>,
-    pub fullscreen: Option<Window>,
+    /// Fullscreen windows: at most one per output.
+    pub fullscreen: Vec<Window>,
+    /// The output each maximized/fullscreen window fills, so re-arranging
+    /// or resizing outputs refits it there (not wherever it now overlaps).
+    pub filling: Vec<(Window, smithay::output::Output)>,
     /// Minimised windows: hidden until focused again (dock, ALT+TAB).
     pub minimized: Vec<Window>,
     /// Output and usable area last used to fit maximized/fullscreen windows.
@@ -91,7 +95,8 @@ pub struct WhiteRose {
     pub switcher: Option<(crate::switcher::Switcher, crate::keybind::Mods)>,
     /// Modifiers of the shortcut that triggered the current action.
     pub shortcut_mods: crate::keybind::Mods,
-    pub fitted_to: Option<(smithay::utils::Rectangle<i32, Logical>, smithay::utils::Rectangle<i32, Logical>)>,
+    /// Per output: (whole, usable) rectangles last used to fit them.
+    pub fitted_to: Vec<(smithay::utils::Rectangle<i32, Logical>, smithay::utils::Rectangle<i32, Logical>)>,
 
     pub bindings: Bindings,
     /// Keys whose press was a shortcut; their release is swallowed too.
@@ -238,9 +243,10 @@ impl WhiteRose {
             workspaces: Workspaces::new(WORKSPACES),
             hidden_at: Vec::new(),
             restore_geometry: Vec::new(),
-            fullscreen: None,
+            fullscreen: Vec::new(),
+            filling: Vec::new(),
             minimized: Vec::new(),
-            fitted_to: None,
+            fitted_to: Vec::new(),
             next_window_id: 1,
             switcher: None,
             shortcut_mods: crate::keybind::Mods::NONE,
@@ -372,7 +378,7 @@ impl WhiteRose {
             })
         };
 
-        if self.active_fullscreen().is_some() {
+        if self.output_at(pos).is_some_and(|o| self.fullscreen_on(&o).is_some()) {
             return layer_hit(Layer::Overlay).or_else(window_hit);
         }
         layer_hit(Layer::Overlay)
@@ -403,15 +409,46 @@ impl WhiteRose {
 
     /// The part of the first output not reserved by panels (e.g. the bar).
     pub fn usable_area(&self) -> smithay::utils::Rectangle<i32, Logical> {
+        self.space.outputs().next().map(|o| self.usable_area_on(o)).unwrap_or_default()
+    }
+
+    /// The part of `output` not reserved by panels, in global coordinates.
+    pub fn usable_area_on(&self, output: &smithay::output::Output) -> smithay::utils::Rectangle<i32, Logical> {
+        let origin = self.space.output_geometry(output).map(|g| g.loc).unwrap_or_default();
+        let zone = layer_map_for_output(output).non_exclusive_zone();
+        smithay::utils::Rectangle::new(origin + zone.loc, zone.size)
+    }
+
+    /// The output under a point.
+    pub fn output_at(&self, pos: Point<f64, Logical>) -> Option<smithay::output::Output> {
+        self.space.outputs().find(|o| self.space.output_geometry(o).is_some_and(|g| g.to_f64().contains(pos))).cloned()
+    }
+
+    /// The output under the pointer: where new windows open.
+    pub fn pointer_output(&self) -> Option<smithay::output::Output> {
+        let at = self.seat.get_pointer()?.current_location();
+        self.output_at(at).or_else(|| self.space.outputs().next().cloned())
+    }
+
+    /// The output a window is on: the one it fills if maximized or
+    /// fullscreen, else the one it overlaps most (the first if none).
+    pub fn output_of(&self, w: &Window) -> Option<smithay::output::Output> {
+        if let Some((_, o)) = self.filling.iter().find(|(f, o)| f == w && self.space.output_geometry(o).is_some()) {
+            return Some(o.clone());
+        }
+        let geo = self.space.element_geometry(w);
+        let area = |o: &smithay::output::Output| {
+            geo.zip(self.space.output_geometry(o))
+                .and_then(|(g, og)| g.intersection(og))
+                .map(|r| r.size.w as i64 * r.size.h as i64)
+                .unwrap_or(0)
+        };
         self.space
             .outputs()
-            .next()
-            .map(|o| {
-                let origin = self.space.output_geometry(o).map(|g| g.loc).unwrap_or_default();
-                let zone = layer_map_for_output(o).non_exclusive_zone();
-                smithay::utils::Rectangle::new(origin + zone.loc, zone.size)
-            })
-            .unwrap_or_default()
+            .max_by_key(|o| area(o))
+            .filter(|o| area(o) > 0)
+            .or_else(|| self.space.outputs().next())
+            .cloned()
     }
 
     pub fn keyboard_focus(&self) -> Option<WlSurface> {
@@ -514,7 +551,7 @@ impl WhiteRose {
         if self.minimized.contains(w) {
             return;
         }
-        if self.fullscreen.as_ref() == Some(w) {
+        if self.fullscreen.contains(w) {
             self.unfullscreen(w);
         }
         self.minimized.push(w.clone());

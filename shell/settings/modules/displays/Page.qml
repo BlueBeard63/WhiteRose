@@ -124,25 +124,46 @@ Column {
     }
 
     // ---- arrangement ------------------------------------------------------------
+    // Drag a monitor to move it (edges snap together; hold Shift for fine
+    // moves without snapping), or click one and nudge it with the arrow keys
+    // (1 px, Shift 10 px). Tiles can't be dragged out of the card.
     Rectangle {
         id: arrange
         width: parent.width
-        height: 170
+        height: Math.round(Math.max(240, Math.min(380, width * 0.4)))
         radius: 16
         color: Theme.surface1
+        border { width: activeFocus ? 1 : 0; color: Theme.surface2 }
+        activeFocusOnTab: page.several && page.caps.position
 
-        // Fit the layout (logical pixels) into the card.
+        // Fit the layout (logical pixels) into the card, leaving room around
+        // it to drag a monitor to any side of the others.
         readonly property var rects: page.draft.map(d => Object.assign({ on: d.enabled }, D.logicalSize(d), { x: d.position[0], y: d.position[1] }))
         readonly property real minX: Math.min(...rects.map(r => r.x))
         readonly property real minY: Math.min(...rects.map(r => r.y))
         readonly property real maxX: Math.max(...rects.map(r => r.x + r.w))
         readonly property real maxY: Math.max(...rects.map(r => r.y + r.h))
+        // The bottom strip holds the hint.
+        readonly property real hintHeight: 34
         readonly property real k: rects.length === 0 ? 0.05
-            : Math.min((width - 80) / Math.max(1, maxX - minX), (height - 64) / Math.max(1, maxY - minY), 0.08)
+            : Math.min(width * (page.several ? 0.6 : 0.8) / Math.max(1, maxX - minX),
+                       (height - hintHeight - 24) * (page.several ? 0.62 : 0.8) / Math.max(1, maxY - minY), 0.15)
         readonly property real ox: (width - (maxX - minX) * k) / 2
-        readonly property real oy: 18 + (height - 50 - (maxY - minY) * k) / 2
-        // Snap distance: 14 px on screen, in logical pixels.
-        readonly property real reach: 14 / Math.max(k, 0.001)
+        readonly property real oy: (height - hintHeight - (maxY - minY) * k) / 2
+        // Snap distance: 12 px on screen, in logical pixels.
+        readonly property real reach: 12 / Math.max(k, 0.001)
+
+        function nudge(dx, dy) {
+            const d = page.draft[page.selected];
+            if (!d || !page.several || !page.caps.position) return;
+            page.draft = D.place(page.draft, page.selected, d.position[0] + dx, d.position[1] + dy, 0);
+        }
+        Keys.onPressed: e => {
+            const step = (e.modifiers & Qt.ShiftModifier) ? 10 : 1;
+            const moves = { [Qt.Key_Left]: [-step, 0], [Qt.Key_Right]: [step, 0], [Qt.Key_Up]: [0, -step], [Qt.Key_Down]: [0, step] };
+            const m = moves[e.key];
+            if (m) { arrange.nudge(m[0], m[1]); e.accepted = true }
+        }
 
         Repeater {
             model: page.draft
@@ -152,7 +173,7 @@ Column {
                 required property int index
                 readonly property var r: arrange.rects[index] ?? { x: 0, y: 0, w: 0, h: 0 }
                 readonly property bool on: index === page.selected
-                readonly property bool dragging: drag.drag.active
+                property bool dragging: false
                 // Where the drag would put it (logical), snapped.
                 property var preview: null
                 // Dragging moves the tile by hand; afterwards it follows the layout again.
@@ -166,7 +187,7 @@ Column {
                 radius: 10
                 z: dragging ? 2 : on ? 1 : 0
                 color: on ? Theme.tint(0.1) : Theme.bg
-                opacity: modelData.enabled ? 1 : 0.45
+                opacity: modelData.enabled ? (dragging ? 0.92 : 1) : 0.45
                 border { width: on ? 1.5 : 1; color: on ? Theme.pearl : Theme.surface2 }
 
                 Column {
@@ -204,43 +225,76 @@ Column {
                 }
 
                 MouseArea {
-                    id: drag
+                    id: grab
+                    readonly property bool movable: page.several && page.caps.position
+                    // Where the press was (in the card) and where the tile was then.
+                    property point from
+                    property point start
                     anchors.fill: parent
-                    cursorShape: page.several && page.caps.position ? (drag.drag.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor) : Qt.PointingHandCursor
-                    drag.target: page.several && page.caps.position ? tile : null
-                    drag.threshold: 4
-                    onPressed: page.selected = tile.index
-                    onPositionChanged: if (drag.drag.active) {
-                        const lx = (tile.x - arrange.ox) / arrange.k + arrange.minX;
-                        const ly = (tile.y - arrange.oy) / arrange.k + arrange.minY;
+                    // The page scrolls: without this an up/down drag scrolls it instead.
+                    preventStealing: grab.movable
+                    cursorShape: grab.movable ? (tile.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor) : Qt.PointingHandCursor
+                    onPressed: m => {
+                        page.selected = tile.index;
+                        arrange.forceActiveFocus();
+                        grab.from = grab.mapToItem(arrange, m.x, m.y);
+                        grab.start = Qt.point(tile.x, tile.y);
+                    }
+                    onPositionChanged: m => {
+                        if (!grab.movable || !grab.pressed) return;
+                        const at = grab.mapToItem(arrange, m.x, m.y);
+                        const dx = at.x - grab.from.x, dy = at.y - grab.from.y;
+                        if (!tile.dragging && Math.abs(dx) + Math.abs(dy) < 4) return;
+                        tile.dragging = true;
+                        const fine = (m.modifiers & Qt.ShiftModifier) !== 0;
+                        const p = D.dragTo(grab.start.x, grab.start.y, dx, dy, fine,
+                                           arrange.width - tile.width, arrange.height - arrange.hintHeight - tile.height);
+                        const lx = (p.x - arrange.ox) / arrange.k + arrange.minX;
+                        const ly = (p.y - arrange.oy) / arrange.k + arrange.minY;
                         const others = page.draft.filter((d, i) => i !== tile.index && d.enabled)
                             .map(d => Object.assign({ x: d.position[0], y: d.position[1] }, D.logicalSize(d)));
-                        tile.preview = D.snap({ x: lx, y: ly, w: tile.r.w, h: tile.r.h }, others, arrange.reach);
+                        const snapped = fine ? { x: Math.round(lx), y: Math.round(ly) }
+                            : D.snap({ x: lx, y: ly, w: tile.r.w, h: tile.r.h }, others, arrange.reach);
+                        // Never on top of another monitor: shown sliding round it, where it will land.
+                        const sn = D.resolveOverlap({ x: snapped.x, y: snapped.y, w: tile.r.w, h: tile.r.h }, others);
+                        tile.preview = { x: Math.round(sn.x), y: Math.round(sn.y), fine: fine };
+                        // Shown where it will land (snapped), still inside the card.
+                        const c = D.dragTo(arrange.ox + (sn.x - arrange.minX) * arrange.k, arrange.oy + (sn.y - arrange.minY) * arrange.k,
+                                           0, 0, false, arrange.width - tile.width, arrange.height - arrange.hintHeight - tile.height);
+                        tile.x = c.x;
+                        tile.y = c.y;
                     }
                     onReleased: {
                         const p = tile.preview;
                         tile.preview = null;
-                        if (p) page.draft = D.place(page.draft, tile.index, p.x, p.y, arrange.reach);
+                        tile.dragging = false;
                         tile.follow();
+                        // Last: a new draft makes new tiles (this one included).
+                        if (p) page.draft = D.place(page.draft, tile.index, p.x, p.y, p.fine ? 0 : arrange.reach);
                     }
+                    // Also sent as the tile goes away (a new draft): nothing to undo then.
+                    onCanceled: if (tile.dragging) { tile.preview = null; tile.dragging = false; tile.follow() }
                 }
 
                 // The snapped position while dragging (Figma: "x 2560  y -24").
                 Badge {
                     visible: tile.dragging && tile.preview !== null
-                    anchors { verticalCenter: undefined; top: parent.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
+                    anchors { verticalCenter: undefined; horizontalCenter: parent.horizontalCenter }
+                    // Below the tile, or above it near the bottom of the card.
+                    y: tile.y + tile.height + 28 < arrange.height - arrange.hintHeight ? parent.height + 6 : -height - 6
                     tint: Theme.pearl; ink: Theme.bg
-                    text: tile.preview ? "x " + Math.round(tile.preview.x) + "   y " + Math.round(tile.preview.y) : ""
+                    text: tile.preview ? "x " + tile.preview.x + "   y " + tile.preview.y : ""
                 }
             }
         }
 
         Text {
-            anchors { left: parent.left; leftMargin: 16; bottom: parent.bottom; bottomMargin: 12 }
+            anchors { left: parent.left; leftMargin: 16; right: parent.right; rightMargin: 16; bottom: parent.bottom; bottomMargin: 12 }
+            elide: Text.ElideRight
             text: !page.several ? ""
                 : !page.caps.position ? "This backend can't arrange monitors"
                 : !D.connected(page.draft) ? "Every monitor must touch another, so the pointer can move between them"
-                : "Drag to arrange · edges snap together"
+                : "Drag to arrange · edges snap together · hold Shift for fine moves · arrow keys nudge the selected monitor"
             color: D.connected(page.draft) ? Theme.faint : Theme.rose
             font { family: Theme.font; pointSize: Theme.pt(10.5) }
         }

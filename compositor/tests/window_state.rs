@@ -74,7 +74,8 @@ fn fullscreen_covers_the_bar_and_takes_the_pointer() {
             assert_eq!((w, h), (W, H), "fullscreen size should be the whole output");
             assert!(states.contains(&FULLSCREEN), "states: {states:?}");
 
-            let fs = state.active_fullscreen().cloned().expect("compositor tracks the fullscreen window");
+            let out = state.space.outputs().next().unwrap().clone();
+            let fs = state.fullscreen_on(&out).cloned().expect("compositor tracks the fullscreen window");
             assert_eq!(state.space.element_location(&fs), Some(Point::from((0, 0))));
             // A point inside the bar's strip now belongs to the window, not the bar.
             let bar_strip = Point::from((300.0, 10.0));
@@ -93,6 +94,7 @@ fn super_f_toggles_fullscreen_on_the_focused_window() {
             c.open_window();
         },
         |state, ()| {
+            let out = state.space.outputs().next().unwrap().clone();
             let w = state.focused_window().expect("new window is focused");
             let fullscreen = |w: &smithay::desktop::Window| {
                 w.toplevel().unwrap().with_pending_state(|s| s.states.contains(ServerState::Fullscreen))
@@ -100,11 +102,11 @@ fn super_f_toggles_fullscreen_on_the_focused_window() {
 
             state.run_action(Action::ToggleFullscreen);
             assert!(fullscreen(&w));
-            assert_eq!(state.active_fullscreen(), Some(&w));
+            assert_eq!(state.fullscreen_on(&out), Some(&w));
 
             state.run_action(Action::ToggleFullscreen);
             assert!(!fullscreen(&w));
-            assert_eq!(state.active_fullscreen(), None);
+            assert_eq!(state.fullscreen_on(&out), None);
         },
     );
 }
@@ -125,7 +127,8 @@ fn opening_a_window_leaves_fullscreen() {
             c.queue.roundtrip(&mut c.app).unwrap();
         },
         |state, ()| {
-            assert_eq!(state.active_fullscreen(), None, "fullscreen should end when a new window opens");
+            let out = state.space.outputs().next().unwrap().clone();
+            assert_eq!(state.fullscreen_on(&out), None, "fullscreen should end when a new window opens");
             assert_eq!(state.space.elements().count(), 2);
         },
     );
@@ -146,11 +149,92 @@ fn closing_a_fullscreen_window_clears_fullscreen() {
             c.queue.roundtrip(&mut c.app).unwrap();
         },
         |state, ()| {
-            assert_eq!(state.active_fullscreen(), None);
-            assert!(state.fullscreen.is_none(), "stale fullscreen reference kept");
+            assert!(state.fullscreen.is_empty(), "stale fullscreen reference kept");
+            assert!(state.filling.is_empty(), "stale output kept");
             assert!(state.restore_geometry.is_empty(), "stale restore geometry kept");
         },
     );
+}
+
+/// A window on the second monitor (to the right of the first).
+fn on_second_output(state: &mut whiterose_wm::WhiteRose) -> smithay::desktop::Window {
+    let w = state.space.elements().next().unwrap().clone();
+    state.space.map_element(w.clone(), (W + 100, 200), false);
+    w
+}
+
+#[test]
+fn fullscreen_fills_the_monitor_the_window_is_on() {
+    let mut h = Headless::new(true);
+    let second = h.add_output("TEST-2", (W, 0));
+    h.run(
+        |conn| {
+            let mut c = Client::connect(&conn);
+            let (surface, _t) = c.open_window();
+            c.attach_buffer(&surface, 400, 300);
+        },
+        |state, ()| {
+            on_second_output(state);
+        },
+    );
+    let w = h.state.space.elements().next().unwrap().clone();
+    h.state.fullscreen(&w);
+    let first = h.output.clone().unwrap();
+    assert_eq!(h.state.space.element_location(&w), Some(Point::from((W, 0))), "fills the second monitor");
+    assert_eq!(h.state.fullscreen_on(&second), Some(&w));
+    assert_eq!(h.state.fullscreen_on(&first), None, "the first monitor carries on as it was");
+    // Windows and the bar on the first monitor still take the pointer.
+    assert!(h.state.output_at(Point::from((10.0, 10.0))).as_ref() == Some(&first));
+
+    // Back: where it was, on the second monitor.
+    h.state.unfullscreen(&w);
+    assert_eq!(h.state.space.element_location(&w), Some(Point::from((W + 100, 200))));
+    assert!(h.state.filling.is_empty());
+}
+
+#[test]
+fn fullscreen_goes_to_the_monitor_asked_for_and_follows_it() {
+    let mut h = Headless::new(true);
+    let second = h.add_output("TEST-2", (W, 0));
+    h.run(
+        |conn| {
+            let mut c = Client::connect(&conn);
+            let (surface, _t) = c.open_window();
+            c.attach_buffer(&surface, 400, 300);
+        },
+        |_, ()| {},
+    );
+    let w = h.state.space.elements().next().unwrap().clone();
+    h.state.fullscreen_to(&w, Some(second.clone()));
+    assert_eq!(h.state.space.element_location(&w), Some(Point::from((W, 0))));
+
+    // The second monitor is moved to the left of the first: the window goes with it.
+    h.state.space.map_output(&second, (-W, 0));
+    h.state.refit_windows();
+    assert_eq!(h.state.space.element_location(&w), Some(Point::from((-W, 0))));
+    assert_eq!(h.state.fullscreen_on(&second), Some(&w));
+}
+
+#[test]
+fn maximize_fills_the_monitor_the_window_is_on() {
+    let mut h = Headless::new(true);
+    let second = h.add_output("TEST-2", (W, 0));
+    h.run(
+        |conn| {
+            let mut c = Client::connect(&conn);
+            let (surface, _t) = c.open_window();
+            c.attach_buffer(&surface, 400, 300);
+        },
+        |state, ()| {
+            on_second_output(state);
+        },
+    );
+    let w = h.state.space.elements().next().unwrap().clone();
+    h.state.maximize(&w);
+    assert_eq!(h.state.output_of(&w), Some(second));
+    assert_eq!(h.state.space.element_location(&w), Some(Point::from((W, 0))));
+    h.state.unmaximize(&w);
+    assert_eq!(h.state.space.element_location(&w), Some(Point::from((W + 100, 200))));
 }
 
 #[test]

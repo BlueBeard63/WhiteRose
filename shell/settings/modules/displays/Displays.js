@@ -120,6 +120,16 @@ function snap(r, others, threshold) {
     };
 }
 
+// Where a dragged tile goes (screen pixels in the arrangement card): from
+// where it started, by how far the pointer moved (a quarter as far for
+// `fine` moves), kept inside the card (`maxX`, `maxY`: the furthest its
+// top-left can go).
+function dragTo(startX, startY, dx, dy, fine, maxX, maxY) {
+    const f = fine ? 0.25 : 1;
+    const clamp = (v, hi) => Math.max(0, Math.min(Math.max(0, hi), v));
+    return { x: clamp(startX + dx * f, maxX), y: clamp(startY + dy * f, maxY) };
+}
+
 // Moves `r` the least distance needed so it overlaps none of `others`.
 function resolveOverlap(r, others) {
     for (let guard = 0; guard < others.length * 2 + 1; guard++) {

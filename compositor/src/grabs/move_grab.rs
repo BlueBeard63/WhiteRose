@@ -12,6 +12,12 @@ use smithay::{
     utils::{Logical, Point},
 };
 
+/// A window's top at `y`, kept at or below `top` (the top of the area the
+/// bar doesn't reserve on the output being dragged over).
+pub fn keep_below(y: i32, top: i32) -> i32 {
+    y.max(top)
+}
+
 pub struct MoveSurfaceGrab {
     pub start_data: PointerGrabStartData<WhiteRose>,
     pub window: Window,
@@ -30,8 +36,13 @@ impl PointerGrab<WhiteRose> for MoveSurfaceGrab {
         handle.motion(data, None, event);
 
         let delta = event.location - self.start_data.location;
-        let new_location = self.initial_window_location.to_f64() + delta;
-        data.space.map_element(self.window.clone(), new_location.to_i32_round(), true);
+        let mut at = (self.initial_window_location.to_f64() + delta).to_i32_round();
+        // Never under the bar: its title bar would be covered there and
+        // the window couldn't be grabbed again.
+        if let Some(o) = data.output_at(event.location) {
+            at.y = keep_below(at.y, data.usable_area_on(&o).loc.y);
+        }
+        data.space.map_element(self.window.clone(), at, true);
         data.island_sync(); // dragged under (or away from) the island
     }
 
@@ -143,4 +154,16 @@ impl PointerGrab<WhiteRose> for MoveSurfaceGrab {
     }
 
     fn unset(&mut self, _data: &mut WhiteRose) {}
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn stays_below_the_bar() {
+        assert_eq!(super::keep_below(-40, 32), 32);
+        assert_eq!(super::keep_below(10, 32), 32);
+        assert_eq!(super::keep_below(200, 32), 200);
+        // A second output below the first: its own top.
+        assert_eq!(super::keep_below(1100, 1112), 1112);
+    }
 }

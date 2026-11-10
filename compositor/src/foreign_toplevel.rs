@@ -238,7 +238,9 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, u64> for WhiteRose {
             }
             Request::SetMaximized => state.maximize(&w),
             Request::UnsetMaximized => state.unmaximize(&w),
-            Request::SetFullscreen { .. } => state.fullscreen(&w),
+            Request::SetFullscreen { output } => {
+                state.fullscreen_to(&w, output.as_ref().and_then(smithay::output::Output::from_resource))
+            }
             Request::UnsetFullscreen => state.unfullscreen(&w),
             // WhiteRose has no minimized state; windows live on workspaces instead.
             Request::SetMinimized | Request::UnsetMinimized | Request::SetRectangle { .. } => {}

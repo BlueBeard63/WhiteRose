@@ -91,7 +91,7 @@ pub fn output_elements(
         );
     }
 
-    match state.active_fullscreen() {
+    match state.fullscreen_on(output) {
         Some(window) => {
             {
                 let map = layer_map_for_output(output);
@@ -178,7 +178,7 @@ pub fn send_scale(surface: &smithay::reexports::wayland_server::protocol::wl_sur
 /// visible surfaces get a callback, so hidden ones (the bar under a fullscreen
 /// video, windows behind it) stop drawing entirely.
 pub fn send_frame_callbacks(output: &Output, state: &mut WhiteRose) {
-    let fullscreen = state.active_fullscreen().cloned();
+    let fullscreen = state.fullscreen_on(output).cloned();
     let elapsed = state.start_time.elapsed();
     // Locked: only the lock screen draws; everything else waits, unseen.
     if state.is_locked() {

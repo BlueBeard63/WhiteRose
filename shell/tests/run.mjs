@@ -16,7 +16,7 @@ const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent"
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
-const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
+const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "dragTo", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
 const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "newId", "parseLayouts", "searchLayouts"]);
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
@@ -422,6 +422,15 @@ test("differs notices changes and only changes", () => {
     assert.ok(!D.differs(a, b));
     b[0].scale = 2;
     assert.ok(D.differs(a, b));
+});
+
+test("a dragged tile stays inside the card; fine moves go a quarter as far", () => {
+    const eq = (a, b, m) => assert.deepEqual(a, b, m);
+    eq(D.dragTo(100, 50, 40, -20, false, 500, 200), { x: 140, y: 30 }, "drag: follows the pointer");
+    eq(D.dragTo(100, 50, 40, -20, true, 500, 200), { x: 110, y: 45 }, "drag: fine moves a quarter as far");
+    eq(D.dragTo(100, 50, -400, 900, false, 500, 200), { x: 0, y: 200 }, "drag: can't leave the card");
+    eq(D.dragTo(100, 50, 900, -400, false, 500, 200), { x: 500, y: 0 }, "drag: nor off the other sides");
+    eq(D.dragTo(10, 10, 5, 5, false, -20, -20), { x: 0, y: 0 }, "drag: a tile bigger than the card stays at its corner");
 });
 
 // ---- Keys (Keyboard & Shortcuts) -------------------------------------------
