@@ -45,6 +45,7 @@ fn main() {
             "qml/DiffView.qml",
             "qml/ConnectDialog.qml",
             "qml/CloudBadge.qml",
+            "qml/CloudAccountDialog.qml",
             "qml/ArchivePassword.qml",
         ]
         .map(QmlFile::from),

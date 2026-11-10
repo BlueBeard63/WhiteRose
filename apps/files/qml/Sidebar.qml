@@ -83,6 +83,7 @@ Rectangle {
     // A server clicked (not mounted), Connect to server…, a right-click.
     signal openServer(var server)
     signal connectServer()
+    signal addCloud()
     signal serverMenu(var server, real x, real y)
     // A plugged-in drive clicked (not mounted yet), or its eject button.
     signal mountDrive(string device)
@@ -354,7 +355,7 @@ Rectangle {
                     name: modelData.name
                     // Mounted: its folder; else its address (a click connects).
                     path: modelData.path || modelData.uri
-                    glyph: modelData.account || modelData.uri.startsWith("dav") || modelData.uri.startsWith("onedrive") ? "cloud" : modelData.uri.startsWith("sftp") ? "terminal" : "globe"
+                    glyph: modelData.account || modelData.rclone || modelData.uri.startsWith("dav") || modelData.uri.startsWith("onedrive") ? "cloud" : modelData.uri.startsWith("sftp") ? "terminal" : "globe"
                     opacity: modelData.path ? 1 : 0.6
                     clickInstead: modelData.path ? null : () => side.openServer(serverRow.modelData)
                     onSecondary: { const p = serverRow.mapToItem(side, 24, serverRow.height - 2); side.serverMenu(serverRow.modelData, p.x, p.y) }
@@ -367,6 +368,7 @@ Rectangle {
                 }
             }
             PlaceRow { visible: side.open("Network"); name: "Connect to server…"; path: "connect:"; glyph: "plus"; clickInstead: () => side.connectServer() }
+            PlaceRow { visible: side.open("Network"); name: "Add cloud account…"; path: "cloud:"; glyph: "cloud"; clickInstead: () => side.addCloud() }
         }
     }
 }

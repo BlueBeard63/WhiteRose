@@ -105,6 +105,12 @@ var Catalog = []App{
 		Ubuntu: {Kind: Flatpak, Package: "com.discordapp.Discord", Community: true},
 		Fedora: {Kind: Flatpak, Package: "com.discordapp.Discord", Community: true},
 	}},
+	// Files' cloud accounts (Google Drive, OneDrive, Dropbox, iCloud, S3)
+	// are rclone mounts; fuse3 lets them open as folders.
+	{ID: "rclone", Name: "rclone", What: "Cloud drives in Files", Command: "rclone", Sources: map[Distro]Source{
+		Ubuntu: {Kind: Native, Package: "rclone fuse3"},
+		Fedora: {Kind: Native, Package: "rclone fuse3"},
+	}},
 	{ID: "signal", Name: "Signal", What: "Private messages", Command: "signal-desktop", Sources: map[Distro]Source{
 		Ubuntu: {Kind: Vendor, Package: "signal-desktop", Repo: "signal"},
 		// Signal has no Fedora package: Flathub's community build.

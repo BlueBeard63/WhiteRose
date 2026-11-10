@@ -155,6 +155,22 @@ pub mod qobject {
         /// remembered, saved, account, path}] (path: "" if not mounted).
         #[qinvokable]
         fn servers(self: &Ops) -> QString;
+        /// Cloud accounts through rclone (cloudremotes.rs): {rclone: is it
+        /// installed, providers: [{kind, name}]}.
+        #[qinvokable]
+        #[cxx_name = "cloudProviders"]
+        fn cloud_providers(self: &Ops) -> QString;
+        /// One step of adding a cloud account, in the background: `request`
+        /// {name, kind, params: {key: value}} to start, or {name, state,
+        /// answer} to carry on. `cloudSetupStep` brings {note} (a sign-in
+        /// link) along the way, then {step: done | ask {...} | failed {error}}.
+        /// Stopped with stopCleanup.
+        #[qinvokable]
+        #[cxx_name = "cloudSetup"]
+        fn cloud_setup(self: Pin<&mut Ops>, request: &QString) -> i32;
+        #[qsignal]
+        #[cxx_name = "cloudSetupStep"]
+        fn cloud_setup_step(self: Pin<&mut Ops>, id: i32, result: QString);
         /// Hosts named in ~/.ssh/config (JSON [name]).
         #[qinvokable]
         #[cxx_name = "sshHosts"]
@@ -1117,6 +1133,20 @@ impl qobject::Ops {
                 let _ = thread
                     .queue(move |mut obj| obj.as_mut().connected(id, QString::from(r.as_str())));
             };
+            // A cloud account (rclone): opened as a folder.
+            if let Some(name) = req.get("rclone").and_then(Value::as_str) {
+                let run = std::env::var_os("XDG_RUNTIME_DIR")
+                    .map(PathBuf::from)
+                    .unwrap_or_default();
+                let dir = crate::cloudremotes::mount_dir(&run, name);
+                let v = match crate::cloudremotes::mount("rclone", name, &dir) {
+                    Ok(()) => json!({"result": "ok", "path": dir, "uri": format!("rclone:{name}")}),
+                    Err(e) => {
+                        json!({"result": "failed", "error": e, "uri": format!("rclone:{name}")})
+                    }
+                };
+                return send(v);
+            }
             // An online account's drive: its own sign-in.
             if let Some(acc) = req.get("account").and_then(Value::as_str) {
                 let a = shares::Account {
@@ -1212,7 +1242,17 @@ impl qobject::Ops {
     }
 
     pub fn disconnect(&self, uri: &QString) -> QString {
-        match crate::shares::unmount("gio", &uri.to_string()) {
+        let uri = uri.to_string();
+        if let Some(name) = uri.strip_prefix("rclone:") {
+            let run = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            return match crate::cloudremotes::unmount(&crate::cloudremotes::mount_dir(&run, name)) {
+                Ok(()) => QString::from(""),
+                Err(e) => QString::from(e.as_str()),
+            };
+        }
+        match crate::shares::unmount("gio", &uri) {
             Ok(()) => QString::from(""),
             Err(e) => QString::from(e.as_str()),
         }
@@ -1243,6 +1283,21 @@ impl qobject::Ops {
             .iter()
             .map(|s| json!({"name": s.name, "uri": s.uri, "user": s.user, "domain": s.domain, "remembered": s.remembered, "saved": true, "path": path_of(&s.uri)}))
             .collect();
+        // Cloud accounts (rclone).
+        if crate::launch::installed("rclone") {
+            let run = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            for r in crate::cloudremotes::remotes("rclone") {
+                let dir = crate::cloudremotes::mount_dir(&run, &r.name);
+                let path = if crate::cloudremotes::mounted(&dir) {
+                    dir.to_string_lossy().into_owned()
+                } else {
+                    String::new()
+                };
+                out.push(json!({"name": r.name, "uri": format!("rclone:{}", r.name), "kind": r.kind, "what": crate::cloudremotes::provider_name(&r.kind), "rclone": r.name, "saved": true, "path": path}));
+            }
+        }
         // Online accounts' drives (mounted or not).
         let accounts = shares::accounts();
         for a in &accounts {
@@ -1269,6 +1324,63 @@ impl qobject::Ops {
         q(json!(out))
     }
 
+    pub fn cloud_providers(&self) -> QString {
+        let p: Vec<Value> = crate::cloudremotes::PROVIDERS
+            .iter()
+            .map(|(k, n)| json!({"kind": k, "name": n}))
+            .collect();
+        q(json!({"rclone": crate::launch::installed("rclone"), "providers": p}))
+    }
+
+    pub fn cloud_setup(mut self: Pin<&mut Self>, request: &QString) -> i32 {
+        let req: Value = serde_json::from_str(&request.to_string()).unwrap_or(Value::Null);
+        self.as_mut().rust_mut().next += 1;
+        let id = self.next;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.measuring.lock().unwrap().insert(id, stop.clone());
+        let measuring = self.measuring.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let send = |v: Value| {
+                let r = v.to_string();
+                let _ = thread.queue(move |mut obj| {
+                    obj.as_mut().cloud_setup_step(id, QString::from(r.as_str()))
+                });
+            };
+            let s = |k: &str| req.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            let params: Vec<(String, String)> = req
+                .get("params")
+                .and_then(Value::as_object)
+                .map(|o| {
+                    o.iter()
+                        .filter_map(|(k, v)| {
+                            v.as_str()
+                                .filter(|v| !v.is_empty())
+                                .map(|v| (k.clone(), v.to_string()))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let (state, answer) = (s("state"), s("answer"));
+            let cont = req
+                .get("state")
+                .is_some()
+                .then_some((state.as_str(), answer.as_str()));
+            let step = crate::cloudremotes::setup(
+                "rclone",
+                &s("name"),
+                &s("kind"),
+                &params,
+                cont,
+                &stop,
+                &mut |n| send(json!({"note": n})),
+            );
+            measuring.lock().unwrap().remove(&id);
+            send(json!(step));
+        });
+        id
+    }
+
     pub fn ssh_hosts(&self) -> QString {
         let cfg =
             std::fs::read_to_string(crate::places::home().join(".ssh/config")).unwrap_or_default();
@@ -1277,6 +1389,18 @@ impl qobject::Ops {
 
     pub fn forget_server(&self, uri: &QString) {
         use crate::shares;
+        // A cloud account: closed, and taken out of rclone's config.
+        if let Some(name) = uri.to_string().strip_prefix("rclone:") {
+            let run = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            let dir = crate::cloudremotes::mount_dir(&run, name);
+            if crate::cloudremotes::mounted(&dir) {
+                let _ = crate::cloudremotes::unmount(&dir);
+            }
+            let _ = crate::cloudremotes::remove("rclone", name);
+            return;
+        }
         let file = shares::servers_file();
         let mut list = shares::load(&file);
         let uri = uri.to_string();

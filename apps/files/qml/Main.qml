@@ -405,10 +405,12 @@ AppWindow {
         // it needs anything more.
         onOpenServer: server => {
             win.info = "Connecting to " + server.name + "…";
-            win.serverJob = { id: Ops.connectServer(JSON.stringify(server.account ? { account: server.account, address: server.uri }
+            win.serverJob = { id: Ops.connectServer(JSON.stringify(server.rclone ? { rclone: server.rclone }
+                                                                                  : server.account ? { account: server.account, address: server.uri }
                                                                                   : { address: server.uri, user: server.user, domain: server.domain })), server: server };
         }
         onConnectServer: connectDialog.show(null)
+        onAddCloud: cloudDialog.show()
         onServerMenu: (server, x, y) => { serverMenu.server = server; serverMenu.openAt(x, y) }
         onEjectDrive: device => { win.info = "Ejecting…"; Ops.eject(device) }
         Menu {
@@ -418,7 +420,7 @@ AppWindow {
                 ...(serverMenu.server.path ? [{ label: "Disconnect", run: () => { const e = Ops.disconnectServer(serverMenu.server.uri); if (e) win.notice = e; sidebar.refreshServers() } }]
                                            : [{ label: "Connect", run: () => sidebar.openServer(serverMenu.server) }]),
                 { label: "Copy address", run: () => { Ops.setClipboardText(serverMenu.server.uri); win.info = "Copied" } },
-                ...(serverMenu.server.saved ? [{ separator: true }, { label: "Remove from the sidebar", danger: true, run: () => {
+                ...(serverMenu.server.saved ? [{ separator: true }, { label: serverMenu.server.rclone ? "Remove this account (the files stay in the cloud)" : "Remove from the sidebar", danger: true, run: () => {
                     if (serverMenu.server.path) Ops.disconnectServer(serverMenu.server.uri);
                     Ops.forgetServer(serverMenu.server.uri);
                     sidebar.refreshServers();
@@ -570,6 +572,7 @@ AppWindow {
                     ] },
                     { label: "Workspaces", items: win.workspaceMenu },
                     { label: "Connect to server…", run: () => connectDialog.show(null) },
+                    { label: "Add cloud account…", run: () => cloudDialog.show() },
                     { label: "This folder", items: [
                         { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark it", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                         { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => looks.show(win.current.path, win.current.title) },
@@ -1202,9 +1205,15 @@ AppWindow {
             win.info = "";
             sidebar.refreshServers();
             if (r.result === "ok") { win.current?.go(r.path); win.current?.focusView() }
+            else if (server.rclone) win.notice = "Couldn't open " + server.name + ": " + r.error
             else if (server.account) win.notice = "Couldn't open " + server.name + ": " + (r.error ?? "it needs signing in again in Settings › Online Accounts")
             else { connectDialog.show(server); connectDialog.error = r.result === "failed" ? r.error : r.result === "question" ? "" : "This server needs a password"; connectDialog.question = r.result === "question" ? r.text : "" }
         }
+    }
+    CloudAccountDialog {
+        id: cloudDialog
+        // Added: shown in the sidebar, and opened.
+        onAdded: name => { sidebar.refreshServers(); sidebar.openServer({ name: name, rclone: name, uri: "rclone:" + name }) }
     }
     ConnectDialog {
         id: connectDialog

@@ -6,6 +6,7 @@ mod apps;
 mod archive;
 mod bulk_rename;
 mod cleanup;
+mod cloudremotes;
 mod cloudsync;
 mod compare;
 mod core;
