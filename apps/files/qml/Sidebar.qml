@@ -5,6 +5,7 @@ import QtQuick.Controls.Basic
 import WhiteRose.Kit
 import WhiteRose.Files
 import "Format.js" as F
+import "Reorder.js" as R
 
 Rectangle {
     id: side
@@ -53,9 +54,23 @@ Rectangle {
     // How many files have each tag; the tags shown: Files' own, then any
     // found on files (from other apps).
     property var counts: ({})
-    // A bookmark being dragged to a new place: which, and by how many rows.
+    // A bookmark being dragged to a new place: which (its index), where it
+    // would land (its new index), and how tall it is with any folders open
+    // under it (the gap the others open for it).
     property string dragging: ""
-    property int dragShift: 0
+    property int dragFrom: -1
+    property int dragTo: -1
+    property real dragSize: 0
+    // The rows in the Bookmarks section, in the list's coordinates.
+    function bookmarkRows() { return col.children.filter(c => c.visible && c.inBookmarks).sort((a, b) => a.y - b.y) }
+    // How far a row moves aside while another bookmark is dragged.
+    function shiftFor(group) {
+        if (side.dragFrom < 0 || group === side.dragFrom) return 0;
+        if (side.dragFrom < side.dragTo && group > side.dragFrom && group <= side.dragTo) return -side.dragSize;
+        if (side.dragTo < side.dragFrom && group >= side.dragTo && group < side.dragFrom) return side.dragSize;
+        return 0;
+    }
+    function moveBookmark(path, to) { Fs.moveBookmark(path, to); side.refresh() }
     readonly property var tagList: Session.tagDefs.map(t => t.name).concat(Object.keys(side.counts).filter(n => !Session.tagDefs.some(d => d.name === n)))
     // Right-click on a tag.
     signal tagMenu(string name, real x, real y)
@@ -105,7 +120,22 @@ Rectangle {
         readonly property bool open: Session.sidebarOpen.includes(pr.path)
         // A bookmark: dragged up or down to reorder (index in its list).
         property int order: -1
-        signal reordered(int to)
+        // In the Bookmarks section (a bookmark or a folder opened under one),
+        // and which bookmark it belongs to (its index).
+        property bool inBookmarks: false
+        property int group: -1
+        readonly property bool lifted: side.dragging === pr.path && pr.order >= 0
+        // Folders open under the bookmark being dragged go with it (hidden).
+        readonly property bool carried: side.dragFrom >= 0 && pr.group === side.dragFrom && pr.order < 0
+        // While dragged it follows the pointer, above the other rows; the
+        // others slide aside to show where it will land.
+        property real lift: 0
+        transform: Translate {
+            y: pr.lifted ? pr.lift : pr.inBookmarks ? side.shiftFor(pr.group) : 0
+            Behavior on y { enabled: !pr.lifted; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        }
+        z: pr.lifted ? 10 : 0
+        opacity: pr.carried ? 0 : 1
         // A tag: its colour (a dot for an icon) and how many files have it.
         property color dot: "transparent"
         property int count: -1
@@ -118,7 +148,7 @@ Rectangle {
         x: 8; width: side.width - 16
         height: total > 0 ? 44 : 32
         radius: 9
-        color: on || prDrop.over ? Theme.surface1 : prArea.containsMouse ? Qt.rgba(Theme.surface1.r, Theme.surface1.g, Theme.surface1.b, 0.6) : "transparent"
+        color: on || prDrop.over || pr.lifted ? Theme.surface1 : prArea.containsMouse ? Qt.rgba(Theme.surface1.r, Theme.surface1.g, Theme.surface1.b, 0.6) : "transparent"
         // Open or close the folders under it.
         Item {
             visible: pr.tree && pr.more
@@ -181,34 +211,54 @@ Rectangle {
                 color: (pr.free / Math.max(1, pr.total)) < 0.1 ? Theme.rose : Theme.muted
             }
         }
-        border { width: prDrop.over ? 1 : 0; color: Theme.tint(0.6) }
+        border { width: prDrop.over || pr.lifted ? 1 : 0; color: pr.lifted ? Theme.surface2 : Theme.tint(0.6) }
+        // A bookmark can be dragged: a grip shows where to hold it.
+        Icon {
+            visible: pr.order >= 0 && (prArea.containsMouse || pr.lifted) && pr.count < 0
+            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            name: "grip"; size: 12
+            color: pr.lifted ? Theme.text : Theme.faint
+        }
         FolderDrop { id: prDrop; anchors.fill: parent; dest: pr.path; onFilesDropped: (p, d) => side.dropped(p, d) }
         MouseArea {
             id: prArea
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            // Dragging a bookmark up or down moves it (rows of this height).
+            // Dragging a bookmark up or down moves it. The sidebar scrolls,
+            // so it mustn't take the drag over once a bookmark is moving.
+            preventStealing: pr.order >= 0
+            cursorShape: pr.order >= 0 ? (moving ? Qt.ClosedHandCursor : Qt.PointingHandCursor) : Qt.ArrowCursor
             property real startY: 0
             property bool moving: false
-            onPressed: m => { startY = m.y; moving = false }
+            onPressed: m => { startY = prArea.mapToItem(col, m.x, m.y).y; moving = false }
             onPositionChanged: m => {
-                if (!pressed || pr.order < 0) return;
-                if (!moving && Math.abs(m.y - startY) > 8) moving = true;
-                if (moving) side.dragShift = Math.round((m.y - startY) / pr.height);
+                if (!pressed || pr.order < 0 || !(m.buttons & Qt.LeftButton)) return;
+                const at = prArea.mapToItem(col, m.x, m.y).y;
+                if (!moving && Math.abs(at - startY) > 4) {
+                    moving = true;
+                    // Its block: the row and any folders open under it.
+                    const block = side.bookmarkRows().filter(r => r.group === pr.order);
+                    side.dragSize = Math.max(...block.map(r => r.y + r.height)) - pr.y + col.spacing;
+                    side.dragFrom = pr.order;
+                    side.dragging = pr.path;
+                }
+                if (!moving) return;
+                pr.lift = at - startY;
+                // The other bookmarks as they'd sit with this one taken out.
+                const others = side.bookmarkRows().filter(r => r.order >= 0 && r !== pr)
+                    .map(r => ({ y: r.y > pr.y ? r.y - side.dragSize : r.y, height: r.height }));
+                side.dragTo = R.slot(others, pr.y + pr.lift + pr.height / 2);
             }
             onReleased: {
-                if (moving) { pr.reordered(Math.max(0, pr.order + side.dragShift)); side.dragShift = 0; side.dragging = "" }
+                if (!moving) return;
+                const to = side.dragTo, path = pr.path, from = pr.order;
+                side.dragging = ""; side.dragFrom = -1; side.dragTo = -1; pr.lift = 0;
+                // Last: moving it remakes the rows (this one included).
+                if (to >= 0 && to !== from) side.moveBookmark(path, to);
             }
-            onMovingChanged: if (moving) side.dragging = pr.path
-            onClicked: m => { if (moving) return; m.button === Qt.RightButton ? pr.secondary() : pr.clickInstead ? pr.clickInstead() : side.chosen(pr.path) }
-        }
-        // Where a dragged bookmark would land.
-        Rectangle {
-            visible: side.dragging === pr.path && side.dragShift !== 0
-            x: 6; width: parent.width - 12; height: 2; radius: 1
-            y: side.dragShift > 0 ? pr.height * (side.dragShift + 1) - 1 : pr.height * side.dragShift - 1
-            color: Theme.rose
+            onCanceled: { if (moving) { side.dragging = ""; side.dragFrom = -1; side.dragTo = -1; pr.lift = 0 } moving = false }
+            onClicked: m => { if (moving) { moving = false; return } m.button === Qt.RightButton ? pr.secondary() : pr.clickInstead ? pr.clickInstead() : side.chosen(pr.path) }
         }
         ToolTip.visible: prArea.containsMouse && pr.total > 0
         ToolTip.delay: 600
@@ -240,7 +290,9 @@ Rectangle {
                     tree: true; depth: modelData.depth; more: modelData.more
                     // Only the bookmarks themselves move (not folders opened under them).
                     order: modelData.depth === 0 ? side.places.bookmarks.findIndex(b => b.path === modelData.path) : -1
-                    onReordered: to => { Fs.moveBookmark(modelData.path, to); side.refresh() }
+                    inBookmarks: true
+                    // The bookmark it's under (folders opened in the sidebar sit under theirs).
+                    group: side.places.bookmarks.findIndex(b => modelData.path === b.path || modelData.path.startsWith(b.path.replace(/\/$/, "") + "/"))
                     name: modelData.name; path: modelData.path; icon: modelData.icon; look: modelData.look ?? null
                     onSecondary: bookmarkMenu.openAt(24, height - 2)
                     Menu {

@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js and Tabs.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js and Reorder.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,7 @@ const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline"
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
+const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
@@ -431,6 +432,15 @@ test("a dragged tile stays inside the card; fine moves go a quarter as far", () 
     eq(D.dragTo(100, 50, -400, 900, false, 500, 200), { x: 0, y: 200 }, "drag: can't leave the card");
     eq(D.dragTo(100, 50, 900, -400, false, 500, 200), { x: 500, y: 0 }, "drag: nor off the other sides");
     eq(D.dragTo(10, 10, 5, 5, false, -20, -20), { x: 0, y: 0 }, "drag: a tile bigger than the card stays at its corner");
+});
+
+test("a dragged bookmark lands before the first row whose middle is below the pointer", () => {
+    // Three other bookmarks, 32 tall, 2 apart; the second has a folder open under it (rows 102-134).
+    const others = [{ y: 0, height: 32 }, { y: 34, height: 32 }, { y: 136, height: 32 }];
+    assert.equal(Reorder.slot(others, -10), 0, "above everything: first");
+    assert.equal(Reorder.slot(others, 20), 1, "past the first one's middle");
+    assert.equal(Reorder.slot(others, 110), 2, "over the open folder: after its bookmark");
+    assert.equal(Reorder.slot(others, 400), 3, "below everything: last");
 });
 
 // ---- Keys (Keyboard & Shortcuts) -------------------------------------------
