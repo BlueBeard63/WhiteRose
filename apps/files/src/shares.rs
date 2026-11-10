@@ -437,6 +437,176 @@ fn parse_mounts(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// An online account's drive (GNOME Online Accounts: Nextcloud, OneDrive,
+/// ...), mounted with the account's own sign-in.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Account {
+    /// The volume's id in GOA's volume monitor (to mount it).
+    pub id: String,
+    pub name: String,
+    /// Where it is (davs://..., onedrive://...).
+    pub uri: String,
+}
+
+const GOA: [&str; 6] = [
+    "--session",
+    "--dest",
+    "org.gtk.vfs.GoaVolumeMonitor",
+    "--object-path",
+    "/org/gtk/Private/RemoteVolumeMonitor",
+    "--method",
+];
+
+/// The online accounts' drives (none without GNOME Online Accounts).
+pub fn accounts() -> Vec<Account> {
+    let Ok(out) = Command::new("gdbus")
+        .args(["call", "--timeout", "5"])
+        .args(GOA)
+        .arg("org.gtk.Private.RemoteVolumeMonitor.List")
+        .stderr(Stdio::null())
+        .output()
+    else {
+        return vec![];
+    };
+    parse_accounts(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Mounts an account's drive: GOA signs in with the account.
+pub fn mount_account(a: &Account) -> Mounted {
+    if let Some(p) = local_path("gio", &a.uri) {
+        return Mounted::Ok {
+            path: p.to_string_lossy().into_owned(),
+        };
+    }
+    let out = Command::new("gdbus")
+        .args(["call", "--timeout", "60"])
+        .args(GOA)
+        .arg("org.gtk.Private.RemoteVolumeMonitor.VolumeMount")
+        .args([a.id.as_str(), "", "0", ""])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => match local_path("gio", &a.uri) {
+            Some(p) => Mounted::Ok {
+                path: p.to_string_lossy().into_owned(),
+            },
+            None => Mounted::Failed {
+                error:
+                    "Signed in, but it can't be opened as a folder (GVfs's FUSE part isn't running)"
+                        .into(),
+            },
+        },
+        Ok(o) => Mounted::Failed {
+            error: String::from_utf8_lossy(&o.stderr)
+                .lines()
+                .last()
+                .unwrap_or("Couldn't sign in")
+                .trim_start_matches("Error: ")
+                .to_string(),
+        },
+        Err(e) => Mounted::Failed {
+            error: format!("Can't run gdbus: {e}"),
+        },
+    }
+}
+
+/// Splits GVariant text at commas that aren't inside brackets or quotes.
+fn split_top(s: &str) -> Vec<&str> {
+    let (mut out, mut depth, mut start, mut quote, mut esc) =
+        (vec![], 0i32, 0usize, None::<char>, false);
+    for (i, c) in s.char_indices() {
+        if let Some(q) = quote {
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '\'' | '"' => quote = Some(c),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if !s[start..].trim().is_empty() {
+        out.push(s[start..].trim());
+    }
+    out
+}
+
+fn unwrap(s: &str, open: char, close: char) -> Option<&str> {
+    let s = s.trim();
+    // A typed empty array: "@a(ss) []".
+    let s = match s.find(open) {
+        Some(i) if s.starts_with('@') => &s[i..],
+        _ => s,
+    };
+    s.strip_prefix(open)?.strip_suffix(close)
+}
+
+fn unquote(s: &str) -> String {
+    let s = s.trim();
+    let s = s
+        .strip_prefix('\'')
+        .and_then(|x| x.strip_suffix('\''))
+        .unwrap_or(s);
+    s.replace("\\'", "'")
+}
+
+fn parse_accounts(text: &str) -> Vec<Account> {
+    // (drives, volumes, mounts)
+    let Some(all) = unwrap(text, '(', ')') else {
+        return vec![];
+    };
+    let parts = split_top(all);
+    let Some(volumes) = parts.get(1).and_then(|v| unwrap(v, '[', ']')) else {
+        return vec![];
+    };
+    split_top(volumes)
+        .into_iter()
+        .filter_map(|t| {
+            let f = split_top(unwrap(t, '(', ')')?);
+            // (id, name, icon, symbolic icon, uuid, activation root, ...)
+            let (id, name, uri) = (unquote(f.first()?), unquote(f.get(1)?), unquote(f.get(5)?));
+            (!uri.is_empty()).then(|| Account {
+                id,
+                name,
+                uri: uri.trim_end_matches('/').to_string(),
+            })
+        })
+        .collect()
+}
+
+/// The hosts named in an SSH config ("Host build nas", not patterns like
+/// "*.example.com"): `ssh` (and so SFTP here) knows their user, port and
+/// key, so `sftp://build` is all it takes.
+pub fn ssh_hosts(config: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for line in config.lines() {
+        let l = line.trim();
+        let Some((k, v)) = l.split_once(|c: char| c.is_whitespace() || c == '=') else {
+            continue;
+        };
+        if !k.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        for h in v.split_whitespace() {
+            let h = h.trim_matches('"');
+            if !h.contains(['*', '?', '!']) && !h.is_empty() && !out.iter().any(|x| x == h) {
+                out.push(h.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// A server kept in the sidebar.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Server {
@@ -548,6 +718,35 @@ mod tests {
                 ("sftp://jack@build".into(), "jack on build".into())
             ]
         );
+    }
+
+    #[test]
+    fn reads_online_accounts() {
+        // As gdbus prints it (from a machine with a Nextcloud account).
+        let text = "(@a(ssssbbbbbbbbuasa{ss}sa{sv}) [], [('0x7387680041c0', 'jack@storage.bluebeard.site', '. GThemedIcon network-server network', '. GThemedIcon network-server-symbolic', 'davs://jack@storage.bluebeard.site:443/remote.php/webdav/', 'davs://jack@storage.bluebeard.site/remote.php/webdav', true, false, '', '', {'class': 'network', 'uuid': 'davs://x'}, '', {'always-call-mount': <true>}), ('0x2', 'Jack\\'s OneDrive', '', '', '', 'onedrive://jack/', true, false, '', '', {}, '', {})], @a(ssssssbsassa{sv}) [])\n";
+        assert_eq!(
+            parse_accounts(text),
+            vec![
+                Account {
+                    id: "0x7387680041c0".into(),
+                    name: "jack@storage.bluebeard.site".into(),
+                    uri: "davs://jack@storage.bluebeard.site/remote.php/webdav".into()
+                },
+                Account {
+                    id: "0x2".into(),
+                    name: "Jack's OneDrive".into(),
+                    uri: "onedrive://jack".into()
+                },
+            ]
+        );
+        assert!(parse_accounts("(@a(s) [], @a(s) [], @a(s) [])").is_empty());
+        assert!(parse_accounts("Error: no such name").is_empty());
+    }
+
+    #[test]
+    fn hosts_from_the_ssh_config() {
+        let cfg = "# mine\nHost build nas\n  User jack\nHost *.corp !bad\nhost=pi \"web\"\nHostName ignored.example\nHost build\n";
+        assert_eq!(ssh_hosts(cfg), ["build", "nas", "pi", "web"]);
     }
 
     #[test]

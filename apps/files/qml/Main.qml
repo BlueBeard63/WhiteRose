@@ -405,7 +405,8 @@ AppWindow {
         // it needs anything more.
         onOpenServer: server => {
             win.info = "Connecting to " + server.name + "…";
-            win.serverJob = { id: Ops.connectServer(JSON.stringify({ address: server.uri, user: server.user, domain: server.domain })), server: server };
+            win.serverJob = { id: Ops.connectServer(JSON.stringify(server.account ? { account: server.account, address: server.uri }
+                                                                                  : { address: server.uri, user: server.user, domain: server.domain })), server: server };
         }
         onConnectServer: connectDialog.show(null)
         onServerMenu: (server, x, y) => { serverMenu.server = server; serverMenu.openAt(x, y) }
@@ -848,6 +849,14 @@ AppWindow {
                 ...(win.current?.searching || win.current?.inCollection ? [] : [{ label: "New folder with selection…", run: () => win.askName("group") }]),
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
                 { label: "Tags", items: win.tagItems(itemMenu.sel.map(e => e.path)) },
+                // In a folder a sync client keeps (Nextcloud, ownCloud).
+                ...(win.current?.cloud.client ? [{ label: win.current.cloud.client, items: [
+                    { label: "Keep on this device", run: () => win.cloudAct("local") },
+                    { label: "Free up space (keep only in the cloud)", run: () => win.cloudAct("online") },
+                    { separator: true },
+                    { label: "Share…", enabled: !itemMenu.many, run: () => win.cloudAct("share") },
+                    { label: "Copy link", enabled: !itemMenu.many, run: () => win.cloudAct("link") },
+                ] }] : []),
                 { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
                 { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
                 { separator: true },
@@ -1002,6 +1011,15 @@ AppWindow {
         }));
     }
     // The selection's paths as text: plain, quoted for a shell, file:// links, or names.
+    // Asks the sync client (Nextcloud, ownCloud) to act on the selection.
+    function cloudAct(what) {
+        const sel = win.current?.selection ?? [];
+        if (sel.length === 0) return;
+        const err = Ops.cloudAct(what, JSON.stringify(sel.map(e => e.path)));
+        if (err) { win.notice = err; return }
+        win.info = ({ local: "Downloading to keep on this device…", online: "Freeing up space…", share: "", link: "Link copied" })[what];
+        Qt.callLater(() => win.current?.askCloud());
+    }
     function copyPaths(how) {
         const sel = win.current?.selection ?? [];
         if (sel.length === 0) return;
@@ -1184,6 +1202,7 @@ AppWindow {
             win.info = "";
             sidebar.refreshServers();
             if (r.result === "ok") { win.current?.go(r.path); win.current?.focusView() }
+            else if (server.account) win.notice = "Couldn't open " + server.name + ": " + (r.error ?? "it needs signing in again in Settings › Online Accounts")
             else { connectDialog.show(server); connectDialog.error = r.result === "failed" ? r.error : r.result === "question" ? "" : "This server needs a password"; connectDialog.question = r.result === "question" ? r.text : "" }
         }
     }

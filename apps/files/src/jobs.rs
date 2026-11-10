@@ -137,7 +137,7 @@ pub mod qobject {
 
         /// Connects to a network share (shares.rs) in the background:
         /// `request` {address, user, domain, password, remember, save,
-        /// accept}. `connected` brings {result: ok, path, uri, name} |
+        /// accept}, or {account: id, address} for an online account's drive. `connected` brings {result: ok, path, uri, name} |
         /// password {wrong} | question {text} | failed {error}.
         #[qinvokable]
         #[cxx_name = "connectServer"]
@@ -150,10 +150,15 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "disconnectServer"]
         fn disconnect(self: &Ops, uri: &QString) -> QString;
-        /// Saved servers and shares mounted now: [{name, uri, user,
-        /// remembered, saved, path}] (path: "" if not mounted).
+        /// Saved servers, online accounts' drives (GNOME Online Accounts:
+        /// {account: id}) and shares mounted now: [{name, uri, user,
+        /// remembered, saved, account, path}] (path: "" if not mounted).
         #[qinvokable]
         fn servers(self: &Ops) -> QString;
+        /// Hosts named in ~/.ssh/config (JSON [name]).
+        #[qinvokable]
+        #[cxx_name = "sshHosts"]
+        fn ssh_hosts(self: &Ops) -> QString;
         /// Takes a server off the list (and its password out of the keyring).
         #[qinvokable]
         #[cxx_name = "forgetServer"]
@@ -192,6 +197,22 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "folderSized"]
         fn folder_sized(self: Pin<&mut Ops>, path: QString, bytes: f64, items: f64);
+
+        /// Sync-client state of what's in `dir` (cloudsync.rs) in the
+        /// background; `cloudStatus` brings {client, root, entries: {name:
+        /// state}}, client "" when no sync client keeps it.
+        #[qinvokable]
+        #[cxx_name = "askCloud"]
+        fn ask_cloud(self: &Ops, dir: &QString);
+        #[qsignal]
+        #[cxx_name = "cloudStatus"]
+        fn cloud_status(self: Pin<&mut Ops>, dir: QString, result: QString);
+        /// Asks the sync client to keep `paths` (JSON) on this device
+        /// ("local"), free up their space ("online"), share or copy a link
+        /// to the first ("share", "link"): "" or why not.
+        #[qinvokable]
+        #[cxx_name = "cloudAct"]
+        fn cloud_act(self: &Ops, what: &QString, paths: &QString) -> QString;
 
         /// Git status of `dir` in the background; `gitStatus` brings
         /// {root, branch, ahead, behind, ignored, entries: {name: state}}.
@@ -903,6 +924,41 @@ impl qobject::Ops {
         });
     }
 
+    pub fn ask_cloud(&self, dir: &QString) {
+        let dir = dir.to_string();
+        if !dir.starts_with('/') {
+            return;
+        }
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            crate::finder::background();
+            let run = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            let st = crate::cloudsync::status(&run, Path::new(&dir), 2000).unwrap_or_default();
+            let r = serde_json::to_string(&st).unwrap_or_default();
+            let _ = thread.queue(move |mut obj| {
+                obj.as_mut()
+                    .cloud_status(QString::from(dir.as_str()), QString::from(r.as_str()))
+            });
+        });
+    }
+
+    pub fn cloud_act(&self, what: &QString, paths: &QString) -> QString {
+        let paths: Vec<PathBuf> = serde_json::from_str::<Vec<String>>(&paths.to_string())
+            .unwrap_or_default()
+            .into_iter()
+            .map(PathBuf::from)
+            .collect();
+        let run = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        match crate::cloudsync::act(&run, &what.to_string(), &paths) {
+            Ok(()) => QString::from(""),
+            Err(e) => QString::from(e.as_str()),
+        }
+    }
+
     pub fn ask_git(&self, dir: &QString) {
         let dir = dir.to_string();
         if !dir.starts_with('/') {
@@ -1061,6 +1117,17 @@ impl qobject::Ops {
                 let _ = thread
                     .queue(move |mut obj| obj.as_mut().connected(id, QString::from(r.as_str())));
             };
+            // An online account's drive: its own sign-in.
+            if let Some(acc) = req.get("account").and_then(Value::as_str) {
+                let a = shares::Account {
+                    id: acc.to_string(),
+                    name: String::new(),
+                    uri: address.clone(),
+                };
+                let mut v = json!(shares::mount_account(&a));
+                v["uri"] = json!(address);
+                return send(v);
+            }
             let a = match shares::parse(&address) {
                 Ok(a) => a,
                 Err(e) => return send(json!({"result": "failed", "error": e})),
@@ -1176,9 +1243,23 @@ impl qobject::Ops {
             .iter()
             .map(|s| json!({"name": s.name, "uri": s.uri, "user": s.user, "domain": s.domain, "remembered": s.remembered, "saved": true, "path": path_of(&s.uri)}))
             .collect();
+        // Online accounts' drives (mounted or not).
+        let accounts = shares::accounts();
+        for a in &accounts {
+            if !saved.iter().any(|s| s.uri == bare(&a.uri)) {
+                let path = if now.iter().any(|(u, _)| bare(u) == bare(&a.uri)) {
+                    shares::local_path("gio", &a.uri)
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                out.push(json!({"name": a.name, "uri": a.uri, "user": "", "domain": "", "remembered": false, "saved": false, "account": a.id, "path": path}));
+            }
+        }
         for (u, name) in &now {
             let b = bare(u);
-            if !saved.iter().any(|s| s.uri == b) {
+            if !saved.iter().any(|s| s.uri == b) && !accounts.iter().any(|a| bare(&a.uri) == b) {
                 let path = shares::local_path("gio", u)
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_default();
@@ -1186,6 +1267,12 @@ impl qobject::Ops {
             }
         }
         q(json!(out))
+    }
+
+    pub fn ssh_hosts(&self) -> QString {
+        let cfg =
+            std::fs::read_to_string(crate::places::home().join(".ssh/config")).unwrap_or_default();
+        q(json!(crate::shares::ssh_hosts(&cfg)))
     }
 
     pub fn forget_server(&self, uri: &QString) {

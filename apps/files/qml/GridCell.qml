@@ -61,6 +61,12 @@ Item {
         size: 14 * cell.view.k
         anchors { right: icon.left; rightMargin: -8 * cell.view.k; bottom: icon.bottom }
     }
+    // Sync client: its state at the other corner.
+    CloudBadge {
+        state: cell.pane.cloudOf(cell.modelData)
+        size: 14 * cell.view.k
+        anchors { left: icon.right; leftMargin: -8 * cell.view.k; bottom: icon.bottom }
+    }
     // Its tags: dots at the icon's corner.
     TagDots {
         tags: cell.modelData.tags ?? []

@@ -101,14 +101,14 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 ## 8. Cloud, remote & network
 - [x] Local drives and removable media (MVP) — plugged-in drives listed, a click mounts (udisks), eject unmounts and powers off
 - [x] SMB and other network share browsing (Next) — Connect to server… (☰ or the sidebar's Network): smb:// or \\server\share, ftp://, davs:// (WebDAV), nfs:// through GVfs, browsed as ordinary folders; saved servers and any share mounted now in the sidebar (eject, right-click to forget); passwords in the keyring through whiterosed
-- [ ] Cloud-synced folders and sync-state badges (Next)
+- [x] Cloud-synced folders and sync-state badges (Next) — folders the Nextcloud or ownCloud desktop client keeps: synced / syncing / waiting to upload / couldn't sync / only in the cloud, on every file (the clients' own socket, as Nautilus and Dolphin use)
 - [ ] OneDrive, Google Drive and iCloud integration (Next)
-- [ ] Cloud offline/download/evict actions (Advanced)
-- [ ] FTP server support (Next)
+- [x] Cloud offline/download/evict actions (Advanced) — right-click › Nextcloud: Keep on this device, Free up space, Share…, Copy link (virtual files)
+- [x] FTP server support (Next) — ftp:// and ftps:// through Connect to server (guest or with a password)
 - [x] SFTP and SSH server browsing (Next) — sftp://user@host (SSH keys and the agent work as with ssh; or a password); a host key not seen before is shown and only trusted when you say so
 - [ ] S3-compatible object storage browsing (Advanced)
-- [ ] Remote upload/download/copy/move/delete (Next)
-- [ ] SSH config, agent and keychain/credential integration (Advanced)
+- [x] Remote upload/download/copy/move/delete (Next) — a connected share is an ordinary folder: every copy, move, delete and preview works there, with progress and clash handling
+- [x] SSH config, agent and keychain/credential integration (Advanced) — Connect to server offers the hosts in ~/.ssh/config (their user, port and key apply); SSH keys and the agent work as with ssh; share passwords in the keyring
 
 ## 9. Privacy, reliability & extensibility
 - [x] Private/local-first file indexing (MVP) — one file in your cache folder, 0600; hidden folders, node_modules and Go's cache left out

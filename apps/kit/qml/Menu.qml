@@ -108,12 +108,14 @@ Popup {
                         onContainsMouseChanged: if (containsMouse) { subTimer.want = entry.sub ? entry.index : -1; subTimer.restart() }
                         onClicked: {
                             if (entry.sub) { subTimer.stop(); menu.openIndex = entry.index; return }
-                            // Every menu closes first; the action runs after (it may
-                            // change what the menus hold, and they go with it).
+                            // The action runs once every menu has closed (it may
+                            // change what the menus hold, and they go with it). It's
+                            // queued first: closing a parent menu destroys its
+                            // submenus, this one included, mid-click.
                             const run = modelData.run;
-                            menu.chosen();
-                            menu.close();
                             Qt.callLater(run);
+                            menu.close();
+                            menu.chosen();
                         }
                     }
                     // The submenu (made when first opened; Menu.qml can't hold itself directly).
@@ -129,8 +131,10 @@ Popup {
                             const room = (entry.Window.window?.width ?? 10000) - right;
                             m.x = room >= m.width ? entry.width + 10 : -m.width - 10;
                             m.y = -6;
-                            m.chosen.connect(() => { menu.close(); menu.chosen() });
-                            m.closed.connect(() => { if (menu.openIndex === entry.index) menu.openIndex = -1 });
+                            // (Held here: by the time these run, this delegate may be gone.)
+                            const owner = menu, at = entry.index;
+                            m.chosen.connect(() => { owner.close(); owner.chosen() });
+                            m.closed.connect(() => { if (owner.openIndex === at) owner.openIndex = -1 });
                             m.open();
                         }
                     }

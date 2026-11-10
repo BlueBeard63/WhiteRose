@@ -21,6 +21,8 @@ Popup {
     // A server's question waiting for an answer.
     property string question: ""
     property bool wrong: false
+    // Hosts from ~/.ssh/config (ssh knows their user, port and key).
+    property var sshHosts: []
     readonly property string scheme: (address.text.match(/^\s*([a-z]+):\/\//i)?.[1] ?? (address.text.trim().startsWith("\\\\") || address.text.trim() !== "" ? "smb" : "")).toLowerCase()
 
     // Fresh, or for a saved server that needs its password.
@@ -32,6 +34,7 @@ Popup {
         password.text = "";
         remember.checked = true;
         keep.checked = true;
+        root.sshHosts = JSON.parse(Ops.sshHosts());
         root.open();
         (server ? password : address).focusField();
     }
@@ -98,10 +101,27 @@ Popup {
             color: Theme.faint
             font { family: Theme.font; pointSize: Theme.pt(10.5) }
         }
+        // One click for a host in the SSH config.
+        Flow {
+            visible: root.sshHosts.length > 0 && !root.busy
+            x: 106; width: 330
+            spacing: 6
+            Text { text: "From your SSH config:"; color: Theme.faint; height: 24; verticalAlignment: Text.AlignVCenter; font { family: Theme.font; pointSize: Theme.pt(10.5) } }
+            Repeater {
+                model: root.sshHosts
+                delegate: Rectangle {
+                    required property string modelData
+                    width: hostText.implicitWidth + 16; height: 24; radius: 8
+                    color: hostMouse.containsMouse ? Theme.grip : Theme.surface2
+                    Text { id: hostText; anchors.centerIn: parent; text: parent.modelData; color: Theme.text; font { family: Theme.mono; pointSize: Theme.pt(10.5) } }
+                    MouseArea { id: hostMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { address.text = "sftp://" + parent.modelData; user.text = ""; password.focusField() } }
+                }
+            }
+        }
         Row {
             spacing: 10
             Label { text: "Username" }
-            Field { id: user; width: 330; placeholder: root.scheme === "sftp" ? "Yours on the server" : "Leave empty to sign in as a guest"; onAccepted: root.go(false) }
+            Field { id: user; width: 330; placeholder: root.scheme === "sftp" ? "Yours on the server (or from the SSH config)" : "Leave empty to sign in as a guest"; onAccepted: root.go(false) }
         }
         Row {
             visible: root.scheme === "smb"

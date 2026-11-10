@@ -354,7 +354,7 @@ Rectangle {
                     name: modelData.name
                     // Mounted: its folder; else its address (a click connects).
                     path: modelData.path || modelData.uri
-                    glyph: modelData.uri.startsWith("sftp") ? "terminal" : modelData.uri.startsWith("dav") ? "cloud" : "globe"
+                    glyph: modelData.account || modelData.uri.startsWith("dav") || modelData.uri.startsWith("onedrive") ? "cloud" : modelData.uri.startsWith("sftp") ? "terminal" : "globe"
                     opacity: modelData.path ? 1 : 0.6
                     clickInstead: modelData.path ? null : () => side.openServer(serverRow.modelData)
                     onSecondary: { const p = serverRow.mapToItem(side, 24, serverRow.height - 2); side.serverMenu(serverRow.modelData, p.x, p.y) }

@@ -44,6 +44,7 @@ Item {
             }
             FolderIcon { visible: !!cell.modelData.look; anchors.centerIn: parent; size: parent.width * 0.85; look: cell.modelData.look ?? ({}) }
             GitBadge { state: cell.gitState; size: 14 * cell.view.k; anchors { right: parent.right; bottom: parent.bottom } }
+            CloudBadge { state: cell.pane.cloudOf(cell.modelData); size: 14 * cell.view.k; anchors { left: parent.left; bottom: parent.bottom } }
         }
         Column {
             anchors { left: thumb.right; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }

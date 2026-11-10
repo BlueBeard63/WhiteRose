@@ -165,6 +165,7 @@ FocusScope {
             x: 8; width: list.width - 16; height: hiddenByFold ? 0 : 32 * Session.zoom
             visible: !hiddenByFold
             readonly property string gitState: root.pane.gitOf(modelData)
+            readonly property string cloudState: root.pane.cloudOf(modelData)
             opacity: gitState === "ignored" ? 0.5 : 1
             radius: 8
             color: on || drop.over ? Theme.tint(0.22) : rowArea.containsMouse ? Theme.surface1 : "transparent"
@@ -192,15 +193,20 @@ FocusScope {
                     }
                     Text {
                         id: nameText
-                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: row.gitState && row.gitState !== "ignored" ? 30 : 8; verticalCenter: parent.verticalCenter }
+                        anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: 8 + (row.gitState && row.gitState !== "ignored" ? 22 : 0) + (row.cloudState ? 22 : 0); verticalCenter: parent.verticalCenter }
                         text: row.modelData.name + (row.modelData.link ? "  →" : "")
                         elide: Text.ElideMiddle
                         color: row.modelData.hidden ? Theme.muted : Theme.text
                         font { family: Theme.font; pointSize: Theme.pt(12.5 * Math.sqrt(Session.zoom)) }
                     }
                     GitBadge {
+                        id: gitMark
                         state: row.gitState
                         anchors { left: parent.left; leftMargin: ic.width + 10 + Math.min(nameText.implicitWidth, nameText.width) + 8; verticalCenter: parent.verticalCenter }
+                    }
+                    CloudBadge {
+                        state: row.cloudState
+                        anchors { left: parent.left; leftMargin: ic.width + 10 + Math.min(nameText.implicitWidth, nameText.width) + 8 + (gitMark.visible ? 20 : 0); verticalCenter: parent.verticalCenter }
                     }
                 }
                 Repeater {

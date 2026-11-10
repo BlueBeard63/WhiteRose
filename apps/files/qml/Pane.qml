@@ -75,6 +75,22 @@ FocusScope {
         running: pane.visible && pane.git.root !== "" && pane.wantsGit && Qt.application.state === Qt.ApplicationActive
         onTriggered: pane.askGit()
     }
+    // A folder a sync client keeps (Nextcloud, ownCloud): {client, root,
+    // entries: {name: state}}; client "" otherwise. Asked like git.
+    property var cloud: ({ client: "", root: "", entries: {} })
+    readonly property bool wantsCloud: !pane.special && !pane.readOnly && !pane.searching && pane.path.startsWith("/")
+    function cloudOf(e) { return pane.cloud.client === "" || !e ? "" : (pane.cloud.entries[e.name] ?? "") }
+    function askCloud() { if (pane.wantsCloud && pane.visible) Ops.askCloud(pane.path) }
+    Connections {
+        target: Ops
+        function onCloudStatus(dir, result) { if (dir === pane.path) pane.cloud = JSON.parse(result) }
+    }
+    Timer {
+        interval: 4000
+        repeat: true
+        running: pane.visible && pane.cloud.client !== "" && Qt.application.state === Qt.ApplicationActive
+        onTriggered: pane.askCloud()
+    }
     // Folder sizes as they're worked out ({path: {bytes, items}}).
     property var sizes: ({})
     property var sizesSoon: ({})
@@ -222,6 +238,7 @@ FocusScope {
         pane.current = Math.min(pane.current, Math.max(0, r.entries.length - 1));
         pane.adapt();
         pane.askGit();
+        pane.askCloud();
     }
     function go(p, keepForward) {
         pane.activated();
