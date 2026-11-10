@@ -770,17 +770,19 @@ AppWindow {
     }
 
     // ---- the selection, previewed (Alt+P) and looked at closely (Space) -------------------------
-    DetailsPanel {
+    Sheet {
         id: details
         // (Nothing to show beside Start or Clean up.)
         visible: Session.details && win.width > 760 && !(win.current?.ownView ?? false)
         anchors { right: parent.right; top: searchRow.bottom; bottom: shelfBar.top }
-        width: Math.min(320, Math.max(240, win.width * 0.26))
+        width: Math.min(340, Math.max(260, win.width * 0.27))
         pane: win.current
         onRunScript: (dir, command) => {
             const err = Fs.runInTerminal(dir, command, win.choice("apps.terminal"));
             if (err) win.notice = err; else win.info = "Running “" + command + "” in the terminal";
         }
+        onTagsEdited: win.refreshTags()
+        onCloseIt: { Session.setDetails(false); win.current?.focusView() }
     }
     QuickLook {
         id: quick
@@ -859,7 +861,7 @@ AppWindow {
                 { label: "Copy this folder's path", run: () => Ops.setClipboardText(win.current.path) },
                 { label: "Find what takes room here…", run: () => win.cleanUp(win.current.path) },
                 { label: "Colour and icon…", run: () => looks.show(win.current.path, win.current.title) },
-                { label: "Properties", run: () => props.show([win.current.path]) },
+                { label: "Properties", run: () => { win.current.selected = {}; win.properties() } },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
                 { label: "Quick look", shortcut: "Space", enabled: !itemMenu.many, run: () => win.quickLook() },
@@ -1039,7 +1041,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: tagDialog.visible || keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.visible || props.visible || searchField.editing || quick.visible
+    readonly property bool typing: tagDialog.visible || keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.visible || details.typing || searchField.editing || quick.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -1182,7 +1184,10 @@ AppWindow {
         const sel = win.current?.selection ?? [];
         // (The Trash itself has none.)
         if (sel.length === 0 && win.current?.special) return;
-        props.show(sel.length > 0 ? sel.map(e => e.path) : [win.current.path]);
+        // In the Sheet, beside the files.
+        details.tab = "info";
+        Session.setDetails(true);
+        details.refresh();
     }
     // A line for the status bar, for a few seconds (not a problem: not logged).
     property string info: ""
@@ -1236,7 +1241,6 @@ AppWindow {
         onClosed: win.current?.focusView()
     }
     Timer { running: win.notice !== ""; interval: 6000; onTriggered: win.notice = "" }
-    Properties { id: props; onClosed: win.current?.focusView() }
     // "rename", "folder" or "file".
     function askName(what) {
         const p = win.current;

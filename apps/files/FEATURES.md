@@ -48,7 +48,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] File and folder properties, permissions and attributes (MVP) — kind, location, size (folders counted live), dates, owner and group, read / change / run for you, group and everyone
 - [x] Copy file paths, quoted paths and shortcuts (Next) — Copy path › path, quoted for a terminal, file:// links, names; and this folder's path
 - [x] Custom file tags with colours and multiple labels (Next) — on the file itself (user.xdg.tags, as Dolphin), dots in every view, a Tags column, Sidebar section, tag: search, group by tag, drop onto a tag
-- [x] File hashing with MD5, SHA-1 and SHA-256 (Next) — Properties › Checksums (one read for all three), copy each, paste one to compare
+- [x] File hashing with MD5, SHA-1 and SHA-256 (Next) — the Sheet’s Info › Checksums (one read for all three), copy each, paste one to compare
 - [x] Password-protected ZIP/7z and split archives (Advanced) — Compress… makes zip or 7z with an AES-256 password and splits any archive into parts (100 MB, 700 MB, 4 GB); extracting asks for the password (memory only) and takes split parts from the .001
 
 ## 4. Previews & file inspection
@@ -60,11 +60,11 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Syntax-highlighted source code and config previews (Next) — KDE's syntax-highlighting (about 300 formats), chosen by file name, light and dark
 - [x] JSON/JSONC/JSON5 formatted viewer (Next) — comments, trailing commas, unquoted keys read; shown formatted in its own order; where it's broken if it doesn't parse
 - [x] Browse and extract individual items from archives (Next) — an archive opens like a folder (zip, 7z, tar.*, split; a password asked for if its names are hidden); open or preview what's inside; Extract beside it, to the other side, or drag out onto any folder
-- [x] Inspector with editable metadata and default app (Next) — Properties: rename in place, a comment kept on the file (user.xdg.comment), Opens with: the default app for every file of the kind (mimeapps.list, so every app agrees); Open with › any app for it in the menu
+- [x] Inspector with editable metadata and default app (Next) — the Sheet’s Info (Alt+P, or Properties): rename by clicking the name, a comment kept on the file (user.xdg.comment), Opens with: the default app for every file of the kind (mimeapps.list, so every app agrees); Open with › any app for it in the menu
 
 ## 5. Storage & cleanup
 - [x] Live folder size calculation (MVP) — list view's Size column fills in folder sizes in the background (idle priority, kept a minute)
-- [x] Recursive size calculation with background caching (Next) — the list's Size column and Properties (see Storage)
+- [x] Recursive size calculation with background caching (Next) — the list's Size column and the Sheet’s Info (see Storage)
 - [x] Disk usage treemap visualisation (Next) — the disk-usage view
 - [x] Largest files browser (Next) — Clean up › Largest files: the 200 largest under home, a drive or a folder (hidden ones too), on its own drive
 - [x] Duplicate file finder (Next) — Clean up › Duplicates: same size, same start, then same contents (SHA-256); hard links aren't copies; "Keep the oldest of each"
@@ -90,7 +90,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Git clone, init, fetch, pull, push and sync (Advanced) — taken out by choice: git is run from the terminal or editor, not Files
 - [x] Git branch switching and repository operations (Advanced) — taken out by choice, as above
 - [x] Project type recognition / script discovery (Advanced) — Rust, Node (npm/pnpm/yarn/bun scripts), Go, Python (pyproject scripts, uv), Make and just targets, CMake, Compose
-- [x] Run project scripts from an inspector (Advanced) — the details panel's Scripts: each runs in your terminal and stays open with how it ended; in untrusted places only after "I trust this project"
+- [x] Run project scripts from an inspector (Advanced) — the Sheet’s Scripts tab: each runs in your terminal and stays open with how it ended; in untrusted places only after "I trust this project"
 - [x] Open folders in terminal (MVP) — F4 or right-click; terminal chosen in Settings › Apps
 - [x] Open current folder or repo in preferred code editor (MVP) — and text files; "Open repository in …" from inside a git repo
 - [-] Built-in terminal integration (Next) — not doing: Open in terminal (F4) instead
