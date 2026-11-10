@@ -35,6 +35,7 @@ fn main() {
             "qml/TagDots.qml",
             "qml/TagDialog.qml",
             "qml/GitBadge.qml",
+            "qml/RunDialog.qml",
         ]
         .map(QmlFile::from),
     );

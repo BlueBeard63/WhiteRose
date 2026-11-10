@@ -26,6 +26,11 @@ void setClipboardFiles(rust::Str uris, bool cut)
     QGuiApplication::clipboard()->setMimeData(data);
 }
 
+void setClipboardText(rust::Str text)
+{
+    QGuiApplication::clipboard()->setText(QString::fromUtf8(text.data(), qsizetype(text.size())));
+}
+
 int keyboardModifiers()
 {
     return int(QGuiApplication::queryKeyboardModifiers());

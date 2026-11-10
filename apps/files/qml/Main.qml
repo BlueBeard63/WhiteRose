@@ -46,7 +46,7 @@ AppWindow {
         TabView {
             anchors.fill: parent
             visible: false
-            onOpenFile: entry => Qt.openUrlExternally("file://" + entry.path)
+            onOpenFile: entry => win.openFile(entry)
             onMenuAt: (entry, x, y) => win.showMenu(entry, x, y)
             onDropped: (paths, dest) => win.drop(paths, dest)
             onChanged: Session.changed()
@@ -357,6 +357,8 @@ AppWindow {
         onChosen: p => { win.current?.go(p); win.current?.focusView() }
         onDropped: (paths, dest) => win.drop(paths, dest)
         onTagMenu: (name, x, y) => { tagMenu.tag = name; tagMenu.openAt(x, y) }
+        onMountDrive: device => { win.info = "Opening the drive…"; Ops.mount(device) }
+        onEjectDrive: device => { win.info = "Ejecting…"; Ops.eject(device) }
         Menu {
             id: tagMenu
             property string tag
@@ -454,27 +456,41 @@ AppWindow {
             Menu {
                 id: viewMenu
                 readonly property bool bookmarked: sidebar.places.bookmarks.some(b => b.path === win.current?.path)
+                // Short, with the rest in submenus.
                 items: [
                     { label: "New tab", shortcut: "Ctrl+T", run: () => win.newTab({ path: win.current?.path ?? "" }) },
                     { label: "New window", shortcut: "Ctrl+N", run: () => Session.open({ tabs: [{ path: win.current?.path ?? "" }], current: 0 }) },
-                    { label: win.tab?.split ? "Close split" : "Split", shortcut: "F3", run: () => win.tab.setSplit(!win.tab.split) },
-                    { label: (Session.details ? "Hide" : "Show") + " details", shortcut: "Alt+P", run: () => Session.setDetails(!Session.details) },
-                    { label: (Session.sidebar ? "Hide" : "Show") + " sidebar", shortcut: "Ctrl+B", run: () => Session.setSidebar(!Session.sidebar) },
-                    { label: "Keyboard shortcuts…", run: () => keysDialog.open() },
-                    { label: "Files settings…", run: () => Session.openSettings("") },
-                    ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
-                    { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
-                    { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark this folder", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
                     { separator: true },
-                    { label: "Pick views to suit each folder", checked: Session.adaptive, run: () => { Session.setAdaptive(!Session.adaptive); win.refreshViews() } },
+                    { label: "Show", items: [
+                        { label: "Sidebar", shortcut: "Ctrl+B", checked: Session.sidebar, run: () => Session.setSidebar(!Session.sidebar) },
+                        { label: "Details panel", shortcut: "Alt+P", checked: Session.details, run: () => Session.setDetails(!Session.details) },
+                        { label: "Hidden files", shortcut: "Ctrl+H", checked: Session.hidden, run: () => Session.setHidden(!Session.hidden) },
+                        { label: "Split", shortcut: "F3", checked: win.tab?.split ?? false, run: () => win.tab.setSplit(!win.tab.split) },
+                        ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
+                        { separator: true },
+                        { label: "Zoom", stepper: { value: Math.round(Session.zoom * 100) + "%",
+                                                    minus: () => Session.setZoom(Session.zoom - 0.1), plus: () => Session.setZoom(Session.zoom + 0.1) } },
+                        { label: "Pick views to suit each folder", checked: Session.adaptive, run: () => Session.setAdaptive(!Session.adaptive) },
+                        { separator: true },
+                        { label: "List columns", items: [
+                            { label: "Size", checked: Session.columns.includes("size"), run: () => Session.toggleColumn("size") },
+                            { label: "Modified", checked: Session.columns.includes("modified"), run: () => Session.toggleColumn("modified") },
+                            { label: "Created", checked: Session.columns.includes("created"), run: () => Session.toggleColumn("created") },
+                            { label: "Kind", checked: Session.columns.includes("kind"), run: () => Session.toggleColumn("kind") },
+                            { label: "Tags", checked: Session.columns.includes("tags"), run: () => Session.toggleColumn("tags") },
+                        ] },
+                    ] },
                     { label: "Sort by", items: [
                         { label: "Name", checked: win.current?.sortBy === "name", run: () => win.current.setView({ sortBy: "name", descending: false }) },
                         { label: "Size", checked: win.current?.sortBy === "size", run: () => win.current.setView({ sortBy: "size", descending: true }) },
                         { label: "Date modified", checked: win.current?.sortBy === "modified", run: () => win.current.setView({ sortBy: "modified", descending: true }) },
                         { label: "Date created", checked: win.current?.sortBy === "created", run: () => win.current.setView({ sortBy: "created", descending: true }) },
                         { label: "Kind", checked: win.current?.sortBy === "kind", run: () => win.current.setView({ sortBy: "kind", descending: false }) },
-                        { separator: true },
                         { label: "Reversed", checked: win.current?.descending ?? false, run: () => win.current.setView({ descending: !win.current.descending }) },
+                        { separator: true },
+                        { label: "Folders first", checked: Session.foldersAt === "first", run: () => Session.setFoldersAt("first") },
+                        { label: "Folders mixed in", checked: Session.foldersAt === "mixed", run: () => Session.setFoldersAt("mixed") },
+                        { label: "Folders last", checked: Session.foldersAt === "last", run: () => Session.setFoldersAt("last") },
                     ] },
                     { label: "Group by", items: [
                         { label: "Nothing", checked: (win.current?.group ?? "") === "", run: () => win.current.setView({ group: "" }) },
@@ -484,28 +500,31 @@ AppWindow {
                         { label: "Name", checked: win.current?.group === "name", run: () => win.current.setView({ group: "name" }) },
                         { label: "Tag", checked: win.current?.group === "tag", run: () => win.current.setView({ group: "tag" }) },
                     ] },
-                    { label: "Folders", items: [
-                        { label: "First", checked: Session.foldersAt === "first", run: () => Session.setFoldersAt("first") },
-                        { label: "Mixed in with files", checked: Session.foldersAt === "mixed", run: () => Session.setFoldersAt("mixed") },
-                        { label: "Last", checked: Session.foldersAt === "last", run: () => Session.setFoldersAt("last") },
-                    ] },
-                    { label: "List columns", items: [
-                        { label: "Size", checked: Session.columns.includes("size"), run: () => Session.toggleColumn("size") },
-                        { label: "Modified", checked: Session.columns.includes("modified"), run: () => Session.toggleColumn("modified") },
-                        { label: "Created", checked: Session.columns.includes("created"), run: () => Session.toggleColumn("created") },
-                        { label: "Kind", checked: Session.columns.includes("kind"), run: () => Session.toggleColumn("kind") },
-                        { label: "Tags", checked: Session.columns.includes("tags"), run: () => Session.toggleColumn("tags") },
+                    { label: "This folder", items: [
+                        { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark it", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
+                        { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => looks.show(win.current.path, win.current.title) },
+                        { separator: true },
+                        { label: "Use its view in subfolders", checked: win.current?.viewInfo.subfolders ?? false,
+                          run: () => { Fs.setViewForSubfolders(win.current.path, !win.current.viewInfo.subfolders); win.refreshViews() } },
+                        { label: "Use its view everywhere",
+                          run: () => { Fs.resetView(win.current.path); Session.setDefaultView({ mode: win.current.mode, sortBy: win.current.sortBy, descending: win.current.descending, group: win.current.group }) } },
+                        { label: "Reset its view", enabled: win.current?.viewInfo.own ?? false,
+                          run: () => { Fs.resetView(win.current.path); win.refreshViews() } },
                     ] },
                     { separator: true },
-                    { label: "Bigger items", shortcut: "Ctrl+=", run: () => Session.setZoom(Session.zoom + 0.1) },
-                    { label: "Smaller items", shortcut: "Ctrl+-", run: () => Session.setZoom(Session.zoom - 0.1) },
-                    { separator: true },
-                    { label: (win.current?.viewInfo.subfolders ? "Stop using this view in subfolders" : "Use this view in subfolders"),
-                      run: () => { Fs.setViewForSubfolders(win.current.path, !win.current.viewInfo.subfolders); win.refreshViews() } },
-                    { label: "Use this view everywhere",
-                      run: () => { Fs.resetView(win.current.path); Session.setDefaultView({ mode: win.current.mode, sortBy: win.current.sortBy, descending: win.current.descending, group: win.current.group }) } },
-                    { label: "Reset this folder's view", enabled: win.current?.viewInfo.own ?? false,
-                      run: () => { Fs.resetView(win.current.path); win.refreshViews() } },
+                    { label: "Settings…", run: () => Session.openSettings("") },
+                    { label: "Keyboard shortcuts…", run: () => keysDialog.open() },
+                    { label: "Help", items: [
+                        { label: "Copy diagnostics", run: () => {
+                            const keys = ["files.startIn", "files.openWith", "files.hidden", "files.git", "files.adaptive", "files.zoom", "files.foldersAt",
+                                          "files.columns", "files.defaultView", "files.indexDrives", "files.folderSizes", "apps.terminal", "apps.editor"];
+                            const settings = {};
+                            for (const k of keys) settings[k] = Session.setting(k, null);
+                            Ops.setClipboardText(Fs.diagnostics(JSON.stringify(settings)));
+                            win.info = "Diagnostics copied: paste them into a bug report";
+                        } },
+                        { label: "Open the log", run: () => win.showContents({ path: Fs.logFile() }) },
+                    ] },
                 ]
             }
         }
@@ -719,6 +738,8 @@ AppWindow {
                 { label: "Copy", shortcut: "Ctrl+C", run: () => win.toClipboard(false) },
                 ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Paste into folder", enabled: win.clipFiles.length > 0, run: () => win.paste(itemMenu.entry.path) }] : []),
                 { label: "Duplicate", run: () => win.run("copy", itemMenu.sel.map(e => e.path), win.current.path) },
+                ...(itemMenu.sel.length > 0 && itemMenu.sel.every(e => !e.dir && Fs.isArchive(e.name)) && !win.current?.inTrash
+                    ? [{ label: "Extract here", run: () => win.run("extract", itemMenu.sel.map(e => e.path), win.current.path) }] : []),
                 ...(win.tab?.other ? [
                     { label: "Copy to other side", shortcut: "F5", run: () => win.toOther("copy") },
                     { label: "Move to other side", shortcut: "F6", run: () => win.toOther("move") },
@@ -753,6 +774,7 @@ AppWindow {
             anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
             text: {
                 if (win.notice !== "") return win.notice;
+                if (win.info !== "") return win.info;
                 const p = win.current;
                 if (!p) return "";
                 if (p.searching) {
@@ -909,8 +931,44 @@ AppWindow {
         if (sel.length === 0 && win.current?.special) return;
         props.show(sel.length > 0 ? sel.map(e => e.path) : [win.current.path]);
     }
+    // A line for the status bar, for a few seconds (not a problem: not logged).
+    property string info: ""
+    Timer { running: win.info !== ""; interval: 5000; onTriggered: win.info = "" }
     // A line for the status bar, for a few seconds.
     property string notice: ""
+    // (Notices are problems: they go in the log too.)
+    onNoticeChanged: if (win.notice !== "") Fs.log("warn", win.notice)
+
+    // ---- drives: mounted (then opened) and ejected ----------------------------------------
+    Connections {
+        target: Ops
+        function onDriveDone(result) {
+            const r = JSON.parse(result);
+            sidebar.refresh();
+            win.info = "";
+            if (r.error) { win.notice = (r.action === "mount" ? "Couldn't open the drive: " : "Couldn't eject it: ") + r.error; return }
+            if (r.action === "mount") { win.current?.go(r.path); win.current?.focusView(); return }
+            win.info = "You can unplug it now";
+        }
+    }
+
+    // ---- opening files: programs ask first ---------------------------------------------
+    function openFile(entry) {
+        const info = JSON.parse(Fs.runInfo(entry.path, entry.mime ?? ""));
+        if (info.kind === "none") { Qt.openUrlExternally("file://" + entry.path); return }
+        runDialog.ask(entry, info);
+    }
+    // As text, in Notepad (or the code editor).
+    function showContents(entry) {
+        const err = Fs.openEditor(entry.path, "whiterose-notepad");
+        if (err) win.notice = "Couldn't show it: " + err;
+    }
+    RunDialog {
+        id: runDialog
+        onRun: entry => { const err = Fs.runProgram(entry.path); if (err) win.notice = "Couldn't run it: " + err }
+        onShowContents: entry => win.showContents(entry)
+        onClosed: win.current?.focusView()
+    }
     Timer { running: win.notice !== ""; interval: 6000; onTriggered: win.notice = "" }
     Properties { id: props; onClosed: win.current?.focusView() }
     // "rename", "folder" or "file".

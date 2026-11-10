@@ -121,6 +121,29 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "checkTag"]
         fn check_tag(self: &Fs, name: &QString) -> QString;
+        /// Would opening it run code? {kind: none | program | script |
+        /// launcher, why: "" or why where it is is untrusted}.
+        #[qinvokable]
+        #[cxx_name = "runInfo"]
+        fn run_info(self: &Fs, path: &QString, mime: &QString) -> QString;
+        /// Runs a program or script (asked first, in Files): "" or what went wrong.
+        #[qinvokable]
+        #[cxx_name = "runProgram"]
+        fn run_program(self: &Fs, path: &QString) -> QString;
+        /// An archive Files can extract.
+        #[qinvokable]
+        #[cxx_name = "isArchive"]
+        fn is_archive(self: &Fs, name: &QString) -> bool;
+        /// A line in Files' log (level: info | warn | error).
+        #[qinvokable]
+        fn log(self: &Fs, level: &QString, message: &QString);
+        /// What Files is running on, its settings and the end of its log, to
+        /// paste into a bug report.
+        #[qinvokable]
+        fn diagnostics(self: &Fs, settings: &QString) -> QString;
+        #[qinvokable]
+        #[cxx_name = "logFile"]
+        fn log_file(self: &Fs) -> QString;
         /// Installed terminals / code editors: [{id, name}].
         #[qinvokable]
         fn terminals(self: &Fs) -> QString;
@@ -192,7 +215,7 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 use whiterose_kit::icons;
 
-use crate::{launch, listing, looks, places, session, tags, trash, views};
+use crate::{launch, listing, looks, places, search, session, tags, trash, views};
 
 /// The Trash, as a place to go.
 const TRASH: &str = "trash:";
@@ -820,6 +843,129 @@ impl qobject::Fs {
             Ok(n) => q(json!({"ok": true, "name": n})),
             Err(e) => q(json!({"ok": false, "error": e})),
         }
+    }
+
+    pub fn run_info(&self, path: &QString, mime: &QString) -> QString {
+        let p = PathBuf::from(path.to_string());
+        let kind = crate::run::kind_of(&p, &mime.to_string());
+        let why = if kind == crate::run::Kind::None {
+            String::new()
+        } else {
+            let home = places::home();
+            let downloads = places::user_dirs(
+                &std::fs::read_to_string(places::config_dir().join("user-dirs.dirs"))
+                    .unwrap_or_default(),
+                &home,
+            )
+            .into_iter()
+            .find(|(k, _)| k == "DOWNLOAD")
+            .map(|(_, p)| p)
+            .unwrap_or_else(|| home.join("Downloads"));
+            let removable: Vec<String> = places::drives()
+                .into_iter()
+                .filter(|d| d.removable)
+                .map(|d| d.path)
+                .collect();
+            crate::run::untrusted(&p, &home, Some(&downloads), &removable)
+        };
+        q(json!({"kind": kind, "why": why}))
+    }
+
+    pub fn run_program(&self, path: &QString) -> QString {
+        let p = path.to_string();
+        let dir = Path::new(&p)
+            .parent()
+            .map(|d| d.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        crate::log::info(&format!("ran {p} (asked first)"));
+        let r = launch::spawn(&p, &[], &dir);
+        if let Err(e) = &r {
+            crate::log::warn(&format!("couldn't run {p}: {e}"));
+        }
+        QString::from(r.err().unwrap_or_default().as_str())
+    }
+
+    pub fn is_archive(&self, name: &QString) -> bool {
+        crate::archive::format_of(&name.to_string()).is_some()
+    }
+
+    pub fn log(&self, level: &QString, message: &QString) {
+        let m = message.to_string();
+        match level.to_string().as_str() {
+            "error" => crate::log::error(&m),
+            "warn" => crate::log::warn(&m),
+            _ => crate::log::info(&m),
+        }
+    }
+
+    pub fn log_file(&self) -> QString {
+        QString::from(crate::log::file().to_string_lossy().as_ref())
+    }
+
+    pub fn diagnostics(&self, settings: &QString) -> QString {
+        let os = std::fs::read_to_string("/etc/os-release")
+            .unwrap_or_default()
+            .lines()
+            .find_map(|l| {
+                l.strip_prefix("PRETTY_NAME=")
+                    .map(|v| v.trim_matches('"').to_string())
+            })
+            .unwrap_or_default();
+        let env = |k: &str| std::env::var(k).unwrap_or_default();
+        let index = search::index_file();
+        let tools: Vec<String> = [
+            "git",
+            "udisksctl",
+            "lsblk",
+            "whiterose-notepad",
+            "whiterose-settings",
+        ]
+        .iter()
+        .map(|t| format!("{t}: {}", if launch::installed(t) { "yes" } else { "no" }))
+        .collect();
+        let mut t = String::new();
+        t.push_str(&format!(
+            "WhiteRose Files {}
+",
+            env!("CARGO_PKG_VERSION")
+        ));
+        t.push_str(&format!(
+            "System: {os}; desktop {}; {}
+",
+            env("XDG_CURRENT_DESKTOP"),
+            env("XDG_SESSION_TYPE")
+        ));
+        t.push_str(&format!(
+            "Search index: {} bytes, made {}
+",
+            std::fs::metadata(&index).map(|m| m.len()).unwrap_or(0),
+            crate::log::stamp_of(search::index_age(&index))
+        ));
+        t.push_str(&format!(
+            "Tools: {}
+",
+            tools.join(", ")
+        ));
+        t.push_str(&format!(
+            "Tagged files: {}
+",
+            tags::load().files.len()
+        ));
+        t.push_str(&format!(
+            "Settings: {}
+",
+            settings
+        ));
+        t.push_str(
+            "
+Log (last 60 lines):
+",
+        );
+        for l in crate::log::tail_of(&crate::log::file(), 60) {
+            t.push_str(&l);
+            t.push('\n');
+        }
+        QString::from(t.as_str())
     }
 
     pub fn terminals(&self) -> QString {

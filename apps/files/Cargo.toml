@@ -16,6 +16,12 @@ cxx-qt-lib.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 libc = "0.2"
+zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "lzma"] }
+tar = "0.4"
+flate2 = "1"
+xz2 = "0.1"
+bzip2 = "0.4"
+zstd = "0.13"
 
 [build-dependencies]
 cxx-qt-build.workspace = true

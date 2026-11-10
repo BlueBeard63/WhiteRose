@@ -2,15 +2,18 @@
 
 extern crate whiterose_kit;
 
+mod archive;
 mod core;
 mod finder;
 mod git;
 mod jobs;
 mod launch;
 mod listing;
+mod log;
 mod looks;
 mod ops;
 mod places;
+mod run;
 mod search;
 mod session;
 mod tags;

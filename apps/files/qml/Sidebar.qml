@@ -20,6 +20,9 @@ Rectangle {
     readonly property var tagList: Session.tagDefs.map(t => t.name).concat(Object.keys(side.counts).filter(n => !Session.tagDefs.some(d => d.name === n)))
     // Right-click on a tag.
     signal tagMenu(string name, real x, real y)
+    // A plugged-in drive clicked (not mounted yet), or its eject button.
+    signal mountDrive(string device)
+    signal ejectDrive(string device)
     Component.onCompleted: refresh()
     // Drives come and go (a USB stick): look again every few seconds.
     Timer { interval: 4000; repeat: true; running: Qt.application.state === Qt.ApplicationActive; onTriggered: side.refresh() }
@@ -60,6 +63,8 @@ Rectangle {
         property real total: 0
         property real free: 0
         signal secondary()
+        // Instead of going to `path` on a click (a drive to mount first).
+        property var clickInstead: null
         readonly property bool on: side.current === path
         x: 8; width: side.width - 16
         height: total > 0 ? 44 : 32
@@ -115,7 +120,7 @@ Rectangle {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: m => m.button === Qt.RightButton ? pr.secondary() : side.chosen(pr.path)
+            onClicked: m => m.button === Qt.RightButton ? pr.secondary() : pr.clickInstead ? pr.clickInstead() : side.chosen(pr.path)
         }
         ToolTip.visible: prArea.containsMouse && pr.total > 0
         ToolTip.delay: 600
@@ -167,7 +172,20 @@ Rectangle {
             PlaceRow { visible: side.open("Drives"); name: "Storage"; path: "drives:"; icon: Fs.icon("drive-multidisk", 20) || Fs.icon("drive-harddisk", 20) }
             Repeater {
                 model: side.open("Drives") ? side.places.drives : []
-                delegate: PlaceRow { required property var modelData; name: modelData.name; path: modelData.path; icon: modelData.icon; total: modelData.total; free: modelData.free }
+                delegate: PlaceRow {
+                    id: driveRow
+                    required property var modelData
+                    name: modelData.name; path: modelData.path; icon: modelData.icon; total: modelData.total; free: modelData.free
+                    // Not mounted: dimmed; a click mounts it.
+                    opacity: modelData.mounted ? 1 : 0.6
+                    clickInstead: modelData.mounted ? null : () => side.mountDrive(driveRow.modelData.device)
+                    IconButton {
+                        visible: driveRow.modelData.ejectable && driveRow.modelData.mounted
+                        anchors { right: parent.right; rightMargin: 4; top: parent.top; topMargin: 4 }
+                        width: 24; height: 24; icon: "eject"; iconSize: 12; fill: "transparent"
+                        onClicked: side.ejectDrive(driveRow.modelData.device)
+                    }
+                }
             }
         }
     }

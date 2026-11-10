@@ -8,5 +8,7 @@
 void setClipboardFiles(rust::Str uris, bool cut);
 // "cut" or "copy", then one file:// URI per line ("" without files).
 rust::String clipboardFiles();
+// Plain text on the clipboard.
+void setClipboardText(rust::Str text);
 // Ctrl / Shift / Alt held right now (Qt::KeyboardModifiers), for a drop.
 int keyboardModifiers();

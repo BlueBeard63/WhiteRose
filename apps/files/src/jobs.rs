@@ -19,6 +19,8 @@ pub mod qobject {
         fn clipboard_files() -> String;
         #[cxx_name = "keyboardModifiers"]
         fn keyboard_modifiers() -> i32;
+        #[cxx_name = "setClipboardText"]
+        fn set_clipboard_text(text: &str);
     }
 
     extern "RustQt" {
@@ -57,6 +59,9 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setClipboard"]
         fn set_clipboard(self: &Ops, paths: &QString, cut: bool);
+        #[qinvokable]
+        #[cxx_name = "setClipboardText"]
+        fn copy_text(self: &Ops, text: &QString);
         /// {cut, paths} from the clipboard (paths empty if it holds no files).
         #[qinvokable]
         fn clipboard(self: &Ops) -> QString;
@@ -97,6 +102,17 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "gitStatus"]
         fn git_status(self: Pin<&mut Ops>, dir: QString, result: QString);
+
+        /// Mounts a plugged-in drive in the background (the desktop may ask for
+        /// your password); `driveDone` brings {device, path} or {device, error}.
+        #[qinvokable]
+        fn mount(self: &Ops, device: &QString);
+        /// Unmounts and powers off a drive, likewise.
+        #[qinvokable]
+        fn eject(self: &Ops, device: &QString);
+        #[qsignal]
+        #[cxx_name = "driveDone"]
+        fn drive_done(self: Pin<&mut Ops>, result: QString);
 
         /// A job finished: {kind, done: [path], failed: [[path, why]], cancelled}.
         #[qsignal]
@@ -220,6 +236,7 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Trash => "trash",
         Kind::Delete => "delete",
         Kind::Purge => "purge",
+        Kind::Extract => "extract",
     }
 }
 
@@ -242,6 +259,7 @@ fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Trash => format!("Moving {what} to the Trash"),
         Kind::Delete => format!("Deleting {what}"),
         Kind::Purge => format!("Deleting {what} for good"),
+        Kind::Extract => format!("Extracting {what}"),
     }
 }
 
@@ -410,6 +428,25 @@ impl qobject::Ops {
                 j.failed = out.failed.clone();
                 j.cancelled = out.cancelled;
             });
+            // In the log: what was done, and anything that went wrong.
+            let what = format!(
+                "{} {} item(s){}: {} done{}",
+                kind_name(kind),
+                sources.len(),
+                dest.as_deref()
+                    .map(|d| format!(" to {}", d.display()))
+                    .unwrap_or_default(),
+                out.done.len(),
+                if out.cancelled { ", cancelled" } else { "" }
+            );
+            if out.failed.is_empty() {
+                crate::log::info(&what);
+            } else {
+                crate::log::warn(&what);
+                for (p, why) in out.failed.iter().take(20) {
+                    crate::log::warn(&format!("  {p}: {why}"));
+                }
+            }
             let result = json!({
                 "kind": kind_name(kind),
                 "done": out.done,
@@ -617,6 +654,44 @@ impl qobject::Ops {
         });
     }
 
+    pub fn mount(&self, device: &QString) {
+        let device = device.to_string();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let r = match crate::places::mount(&device) {
+                Ok(p) => {
+                    crate::log::info(&format!("mounted {device} at {p}"));
+                    json!({"device": device, "action": "mount", "path": p})
+                }
+                Err(e) => {
+                    crate::log::warn(&format!("couldn't mount {device}: {e}"));
+                    json!({"device": device, "action": "mount", "error": e})
+                }
+            }
+            .to_string();
+            let _ = thread.queue(move |mut obj| obj.as_mut().drive_done(QString::from(r.as_str())));
+        });
+    }
+
+    pub fn eject(&self, device: &QString) {
+        let device = device.to_string();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let r = match crate::places::eject(&device) {
+                Ok(()) => {
+                    crate::log::info(&format!("ejected {device}"));
+                    json!({"device": device, "action": "eject"})
+                }
+                Err(e) => {
+                    crate::log::warn(&format!("couldn't eject {device}: {e}"));
+                    json!({"device": device, "action": "eject", "error": e})
+                }
+            }
+            .to_string();
+            let _ = thread.queue(move |mut obj| obj.as_mut().drive_done(QString::from(r.as_str())));
+        });
+    }
+
     pub fn ask_git(&self, dir: &QString) {
         let dir = dir.to_string();
         if !dir.starts_with('/') {
@@ -637,6 +712,10 @@ impl qobject::Ops {
         if let Some(f) = self.measuring.lock().unwrap().get(&id) {
             f.store(true, Ordering::Relaxed);
         }
+    }
+
+    pub fn copy_text(&self, text: &QString) {
+        qobject::set_clipboard_text(&text.to_string());
     }
 
     pub fn set_clipboard(&self, paths: &QString, cut: bool) {

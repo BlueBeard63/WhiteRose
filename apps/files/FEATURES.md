@@ -49,7 +49,6 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Copy file paths, quoted paths and shortcuts (Next)
 - [x] Custom file tags with colours and multiple labels (Next) — on the file itself (user.xdg.tags, as Dolphin), dots in every view, a Tags column, Sidebar section, tag: search, group by tag, drop onto a tag
 - [ ] File hashing with MD5, SHA-1 and SHA-256 (Next)
-- [ ] Archive create, extract and in-place browse (Next)
 - [ ] Password-protected ZIP/7z and split archives (Advanced)
 
 ## 4. Previews & file inspection
@@ -100,7 +99,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [ ] Command-line launcher and file search (Next)
 
 ## 8. Cloud, remote & network
-- [~] Local drives and removable media (MVP) — mounted drives listed; no mount/eject yet
+- [x] Local drives and removable media (MVP) — plugged-in drives listed, a click mounts (udisks), eject unmounts and powers off
 - [ ] SMB and other network share browsing (Next)
 - [ ] Cloud-synced folders and sync-state badges (Next)
 - [ ] OneDrive, Google Drive and iCloud integration (Next)
@@ -115,10 +114,11 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Private/local-first file indexing (MVP) — one file in your cache folder, 0600; hidden folders, node_modules and Go's cache left out
 - [ ] Encrypted local indexes and operation history (Next)
 - [ ] System credential vault for secrets (Next)
-- [ ] Safe archive extraction and path validation (MVP)
-- [ ] Prevent unsafe code execution from untrusted folders (MVP)
+- [x] Safe archive extraction and path validation (MVP) — zip and tar (gz/xz/bz2/zst): escaping names refuse the whole archive, links kept inside, no devices or setuid, stops before the drive fills
+- [~] Archive create, extract and in-place browse (Next) — extract here; creating and browsing later
+- [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the Trash only after "I trust this file"; launchers from there never run
 - [ ] Recovery after interrupted file transfers (Next)
-- [ ] Application logging and diagnostics (MVP)
+- [x] Application logging and diagnostics (MVP) — files.log (0600, rolled at 1 MB); ☰ › Help › Copy diagnostics / Open the log
 - [ ] Export/import settings and preferences (Next)
 - [ ] Signed application updates (Next)
 - [ ] Extension/plugin API for third-party actions (Advanced)

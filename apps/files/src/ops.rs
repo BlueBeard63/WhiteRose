@@ -28,6 +28,8 @@ pub enum Kind {
     Delete,
     /// Deleting things in the Trash for good (their Trash records too).
     Purge,
+    /// Archives unpacked, each into a new folder (archive.rs).
+    Extract,
 }
 
 impl Kind {
@@ -38,6 +40,7 @@ impl Kind {
             "trash" => Kind::Trash,
             "delete" => Kind::Delete,
             "purge" | "empty" => Kind::Purge,
+            "extract" => Kind::Extract,
             _ => return None,
         })
     }
@@ -507,7 +510,13 @@ pub fn run<R: Report>(
 ) -> Outcome {
     let mut prog = Progress::default();
     for s in sources {
-        measure(s, &mut prog.bytes_total, &mut prog.items_total);
+        if kind == Kind::Extract {
+            // (The archives themselves: what's in them isn't known yet.)
+            prog.bytes_total += fs::metadata(s).map(|m| m.len()).unwrap_or(0);
+            prog.items_total += 1;
+        } else {
+            measure(s, &mut prog.bytes_total, &mut prog.items_total);
+        }
     }
     let mut run = Run {
         report,
@@ -591,6 +600,50 @@ pub fn run<R: Report>(
                         let _ = fs::remove_file(i);
                     }
                 }
+            }
+            Kind::Extract => {
+                run.tell(src);
+                // Progress is the archive's bytes read; it starts from what's
+                // been done with the archives before it.
+                let before = run.prog.bytes_done;
+                struct Along<'b, 'a, R: Report> {
+                    run: &'b mut Run<'a, R>,
+                    before: u64,
+                }
+                impl<R: Report> crate::archive::Progress for Along<'_, '_, R> {
+                    fn at(&mut self, done: u64, _total: u64, entry: &str) {
+                        self.run.prog.bytes_done = self.before + done;
+                        self.run.prog.current = entry
+                            .rsplit('/')
+                            .find(|p| !p.is_empty())
+                            .unwrap_or(entry)
+                            .to_string();
+                        self.run.report.progress(&self.run.prog);
+                    }
+                    fn go_on(&mut self) -> bool {
+                        self.run.ctl.go_on()
+                    }
+                }
+                let size = fs::metadata(src).map(|m| m.len()).unwrap_or(0);
+                let mut along = Along {
+                    run: &mut run,
+                    before,
+                };
+                match crate::archive::extract(src, dest, &mut along) {
+                    Ok(Some((made, skipped))) => {
+                        for (e, why) in skipped {
+                            run.fail(&made.join(&e), why);
+                        }
+                        run.out.done.push(made.to_string_lossy().into_owned());
+                    }
+                    Ok(None) => {
+                        run.out.cancelled = true;
+                        break;
+                    }
+                    Err(e) => run.fail(src, e),
+                }
+                run.prog.bytes_done = before + size;
+                run.prog.items_done += 1;
             }
         }
     }

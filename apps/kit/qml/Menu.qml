@@ -4,6 +4,8 @@
 // An item with `items` of its own (and no run) is a submenu: › on it, and
 // it opens beside it on hover or click (to the left if there's no room on
 // the right). Open with openAt(x, y) (in its parent's coordinates) or open().
+// An item with `stepper` ({ value, minus, plus }) shows − value + buttons
+// that act without closing the menu.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
@@ -38,7 +40,7 @@ Popup {
                 required property var modelData
                 required property int index
                 readonly property bool sub: !!modelData.items
-                readonly property real need: labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0) + (sub ? 20 : 0) + (dot.visible ? 18 : 0)
+                readonly property real need: (modelData.stepper ? 110 : 0) + labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0) + (sub ? 20 : 0) + (dot.visible ? 18 : 0)
                 width: menu.width - 12
                 height: modelData.separator ? 9 : 30
                 Rectangle { visible: !!modelData.separator; anchors.centerIn: parent; width: parent.width - 8; height: 1; color: Theme.surface2 }
@@ -79,9 +81,27 @@ Popup {
                         }
                         Icon { visible: entry.sub; name: "chevR"; size: 12; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
                     }
+                    // − value +
+                    Row {
+                        visible: !!modelData.stepper
+                        anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                        spacing: 2
+                        z: 2
+                        IconButton { width: 24; height: 24; icon: "minus"; iconSize: 11; onClicked: modelData.stepper.minus() }
+                        Text {
+                            width: 44
+                            anchors.verticalCenter: parent.verticalCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            text: modelData.stepper?.value ?? ""
+                            color: Theme.text
+                            font { family: Theme.mono; pointSize: Theme.pt(10.5) }
+                        }
+                        IconButton { width: 24; height: 24; icon: "plus"; iconSize: 11; onClicked: modelData.stepper.plus() }
+                    }
                     MouseArea {
                         id: area
                         anchors.fill: parent
+                        visible: !modelData.stepper
                         hoverEnabled: true
                         enabled: modelData.enabled !== false
                         // Hovering: its submenu opens (another's closes) after a moment.

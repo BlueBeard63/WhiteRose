@@ -27,7 +27,7 @@ pub fn home() -> PathBuf {
         .unwrap_or_else(|| "/".into())
 }
 
-fn config_dir() -> PathBuf {
+pub fn config_dir() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".config"))
@@ -199,6 +199,65 @@ pub struct Drive {
     pub total: u64,
     pub free: u64,
     pub removable: bool,
+    /// Its block device ("" for This computer).
+    pub device: String,
+    /// Shown but not mounted: click to mount (path is "" until then).
+    pub mounted: bool,
+    /// Plugged in (USB stick, card): can be ejected.
+    pub ejectable: bool,
+}
+
+/// A filesystem on a plugged-in drive, from `lsblk -J -l -b`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Dev {
+    pub path: String,
+    pub label: Option<String>,
+    pub size: Option<u64>,
+    pub fstype: Option<String>,
+    pub mountpoint: Option<String>,
+    #[serde(default)]
+    pub rm: bool,
+    #[serde(default)]
+    pub hotplug: bool,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub pkname: Option<String>,
+}
+
+/// Filesystems on removable / hot-plugged drives in lsblk's JSON (swap,
+/// encrypted and ones with no filesystem left out).
+pub fn plugged(lsblk_json: &str) -> Vec<Dev> {
+    #[derive(serde::Deserialize)]
+    struct All {
+        blockdevices: Vec<Dev>,
+    }
+    let Ok(all) = serde_json::from_str::<All>(lsblk_json) else {
+        return vec![];
+    };
+    all.blockdevices
+        .into_iter()
+        .filter(|d| (d.rm || d.hotplug) && (d.kind == "part" || d.kind == "disk"))
+        .filter(|d| {
+            d.fstype
+                .as_deref()
+                .is_some_and(|f| !["swap", "crypto_LUKS", "LVM2_member", ""].contains(&f))
+        })
+        .collect()
+}
+
+fn lsblk() -> Vec<Dev> {
+    let out = std::process::Command::new("lsblk")
+        .args([
+            "-J",
+            "-l",
+            "-b",
+            "-o",
+            "PATH,LABEL,SIZE,FSTYPE,MOUNTPOINT,RM,HOTPLUG,TYPE,PKNAME",
+        ])
+        .stderr(std::process::Stdio::null())
+        .output();
+    out.map(|o| plugged(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default()
 }
 
 /// Mount points from /proc/self/mountinfo text that the sidebar shows.
@@ -246,9 +305,13 @@ pub fn drives() -> Vec<Drive> {
         total,
         free,
         removable: false,
+        device: String::new(),
+        mounted: true,
+        ejectable: false,
     }];
+    let devs = lsblk();
     let info = fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
-    for (mount, _) in drive_mounts(&info) {
+    for (mount, source) in drive_mounts(&info) {
         let (total, free) = space(&mount);
         let name = Path::new(&mount)
             .file_name()
@@ -261,9 +324,109 @@ pub fn drives() -> Vec<Drive> {
             total,
             free,
             removable: true,
+            ejectable: devs.iter().any(|d| d.path == source),
+            device: source,
+            mounted: true,
+        });
+    }
+    // Plugged in but not mounted: shown, to mount with a click.
+    let shown: Vec<String> = v.iter().map(|x| x.device.clone()).collect();
+    for d in devs
+        .iter()
+        .filter(|d| d.mountpoint.is_none() && !shown.contains(&d.path))
+    {
+        let gb = d.size.unwrap_or(0) as f64 / 1e9;
+        v.push(Drive {
+            name: d
+                .label
+                .clone()
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(|| format!("{:.0} GB drive", gb.max(1.0))),
+            path: String::new(),
+            icon: "drive-removable-media".into(),
+            total: 0,
+            free: 0,
+            removable: true,
+            device: d.path.clone(),
+            mounted: false,
+            ejectable: true,
         });
     }
     v
+}
+
+/// Mounts a plugged-in drive (the desktop may ask for your password):
+/// where it's mounted, or what went wrong.
+pub fn mount(device: &str) -> Result<String, String> {
+    if !device.starts_with("/dev/") {
+        return Err("not a drive".into());
+    }
+    let out = std::process::Command::new("udisksctl")
+        .args(["mount", "-b", device])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|_| "udisksctl isn't installed".to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    if !out.status.success() {
+        return Err(friendly_udisks(&String::from_utf8_lossy(&out.stderr)));
+    }
+    // "Mounted /dev/sdb1 at /media/me/USB"
+    text.split(" at ")
+        .nth(1)
+        .map(|p| p.trim().trim_end_matches('.').to_string())
+        .ok_or_else(|| text.trim().to_string())
+}
+
+/// Unmounts a drive and, when nothing else on it is mounted, powers it off
+/// so it can be pulled out.
+pub fn eject(device: &str) -> Result<(), String> {
+    if !device.starts_with("/dev/") {
+        return Err("not a drive".into());
+    }
+    let run = |args: &[&str]| {
+        std::process::Command::new("udisksctl")
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .output()
+    };
+    let out =
+        run(&["unmount", "-b", device]).map_err(|_| "udisksctl isn't installed".to_string())?;
+    if !out.status.success() {
+        let e = String::from_utf8_lossy(&out.stderr);
+        if !e.contains("not mounted") {
+            return Err(friendly_udisks(&e));
+        }
+    }
+    // The whole drive, once none of it is mounted.
+    let devs = lsblk();
+    let parent = devs
+        .iter()
+        .find(|d| d.path == device)
+        .and_then(|d| d.pkname.clone())
+        .map(|p| format!("/dev/{p}"));
+    let whole = parent.unwrap_or_else(|| device.to_string());
+    let on_it = |d: &Dev| {
+        d.path == whole
+            || d.pkname.as_deref().map(|p| format!("/dev/{p}")).as_deref() == Some(whole.as_str())
+    };
+    if !devs.iter().any(|d| d.mountpoint.is_some() && on_it(d)) {
+        let _ = run(&["power-off", "-b", &whole]);
+    }
+    Ok(())
+}
+
+fn friendly_udisks(e: &str) -> String {
+    if e.contains("busy") {
+        "something is still using it (a file open, or a terminal in it)".into()
+    } else if e.contains("NotAuthorized") || e.contains("not authorized") {
+        "not allowed".into()
+    } else {
+        e.lines()
+            .last()
+            .unwrap_or("it didn't work")
+            .trim()
+            .to_string()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -434,5 +597,23 @@ mod tests {
             "or when typed"
         );
         fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn plugged_drives() {
+        let j = r#"{"blockdevices":[
+            {"path":"/dev/nvme0n1p2","label":null,"size":500,"fstype":"ext4","mountpoint":"/","rm":false,"hotplug":false,"type":"part","pkname":"nvme0n1"},
+            {"path":"/dev/sdb","label":null,"size":32000000000,"fstype":null,"mountpoint":null,"rm":true,"hotplug":true,"type":"disk","pkname":null},
+            {"path":"/dev/sdb1","label":"USB","size":32000000000,"fstype":"vfat","mountpoint":null,"rm":true,"hotplug":true,"type":"part","pkname":"sdb"},
+            {"path":"/dev/sdc1","label":"Secret","size":1,"fstype":"crypto_LUKS","mountpoint":null,"rm":false,"hotplug":true,"type":"part","pkname":"sdc"},
+            {"path":"/dev/loop0","label":null,"size":1,"fstype":"squashfs","mountpoint":"/snap/x","rm":false,"hotplug":false,"type":"loop","pkname":null}
+        ]}"#;
+        let p = plugged(j);
+        assert_eq!(p.len(), 1, "the USB stick's filesystem only");
+        assert_eq!(
+            (p[0].path.as_str(), p[0].label.as_deref()),
+            ("/dev/sdb1", Some("USB"))
+        );
+        assert!(plugged("garbage").is_empty());
     }
 }
