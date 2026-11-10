@@ -176,6 +176,14 @@ docs/         screenshots and design exports for this page
 
 ---
 
+## Roadmap
+
+Window management comes next (snap layouts, tiling, scrollable columns), then overview and gestures, look and feel, WhiteRose's own login screen, online accounts, and more distributions. **1.0 is a complete daily driver**, and a sandboxed **Go / Rust / QML module API** follows in 1.x.
+
+[![The WhiteRose roadmap](docs/roadmap.png)](ROADMAP.md)
+
+Every feature in detail: [ROADMAP.md](ROADMAP.md). The module API's design: [API.md](API.md).
+
 ## Status
 
 WhiteRose is a personal project in active development, and it's the desktop I use day to day. Expect rough edges, and expect things to change.
@@ -183,3 +191,7 @@ WhiteRose is a personal project in active development, and it's the desktop I us
 ## Thanks
 
 WhiteRose stands on [Smithay](https://github.com/Smithay/smithay), [QuickShell](https://quickshell.org), [Qt](https://www.qt.io), [cxx-qt](https://github.com/KDAB/cxx-qt), [godbus](https://github.com/godbus/dbus), the [Lucide](https://lucide.dev) icons, and the Geist typeface.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
