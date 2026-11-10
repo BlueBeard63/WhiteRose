@@ -55,6 +55,8 @@ pub enum Choice {
     Replace,
     KeepBoth,
     Skip,
+    /// Replace only if what's coming is newer (else skip).
+    Newer,
 }
 
 impl Choice {
@@ -62,6 +64,7 @@ impl Choice {
         match s {
             "replace" => Choice::Replace,
             "keep" => Choice::KeepBoth,
+            "newer" => Choice::Newer,
             _ => Choice::Skip,
         }
     }
@@ -230,6 +233,8 @@ fn measure(p: &Path, bytes: &mut u64, items: &mut u64) {
 struct Run<'a, R: Report> {
     report: &'a mut R,
     ctl: &'a Control,
+    /// A move (a file already there, the same, means the original goes).
+    moving: bool,
     prog: Progress,
     all: Option<Choice>,
     out: Outcome,
@@ -273,7 +278,33 @@ impl<'a, R: Report> Run<'a, R> {
         let Ok(there) = fs::symlink_metadata(&target) else {
             return Some(target);
         };
-        match self.ask(src, &target) {
+        // The very same file already there: nothing to ask or copy (and
+        // a move just lets the original go).
+        if let Ok(here) = fs::symlink_metadata(src) {
+            if identical(src, &here, &target, &there) {
+                self.prog.bytes_done += here.len();
+                self.prog.items_done += 1;
+                if self.moving {
+                    if let Err(e) = fs::remove_file(src) {
+                        self.fail(src, friendly(e));
+                    }
+                }
+                return None;
+            }
+        }
+        let mut choice = self.ask(src, &target);
+        if choice == Choice::Newer {
+            // Folders onto folders merge (what's inside is decided one by one).
+            let newer =
+                fs::symlink_metadata(src).map(|m| m.mtime()).unwrap_or(0) > there.mtime() + 2;
+            choice = if there.is_dir() || newer {
+                Choice::Replace
+            } else {
+                Choice::Skip
+            };
+        }
+        match choice {
+            Choice::Newer => unreachable!("decided above"),
             Choice::Replace => {
                 let src_dir = fs::symlink_metadata(src)
                     .map(|m| m.is_dir())
@@ -556,6 +587,7 @@ pub fn run<R: Report>(
     let mut run = Run {
         report,
         ctl,
+        moving: kind == Kind::Move,
         prog,
         all: None,
         out: Outcome::default(),
@@ -775,6 +807,24 @@ pub fn run<R: Report>(
     run.out
 }
 
+/// The same file in two places: both plain files of the same size with
+/// the same bytes (up to 64 MB read and compared), or bigger and with the
+/// same modification time too (reading gigabytes twice to merge folders
+/// costs more than it's worth; it's what rsync assumes).
+fn identical(a: &Path, am: &fs::Metadata, b: &Path, bm: &fs::Metadata) -> bool {
+    if !am.is_file()
+        || !bm.is_file()
+        || am.len() != bm.len()
+        || (am.dev() == bm.dev() && am.ino() == bm.ino())
+    {
+        return false;
+    }
+    if am.len() > 64 << 20 {
+        return (am.mtime() - bm.mtime()).abs() <= 2;
+    }
+    crate::compare::same_content(a, b, &AtomicBool::new(false))
+}
+
 /// Carries out a sync plan: copies replace what's there (a file is only
 /// swapped in once whole), a file where a folder was (or the other way
 /// round) sends the old one to the Trash first, and what the plan removes
@@ -794,6 +844,7 @@ fn sync<R: Report>(plan: &crate::compare::Plan, ctl: &Control, report: &mut R) -
     let mut run = Run {
         report,
         ctl,
+        moving: false,
         prog,
         // Every copy replaces: the plan already decided.
         all: Some(Choice::Replace),
@@ -991,6 +1042,85 @@ mod tests {
         );
         // Nothing differs any more.
         assert!(compare(&l, &r, true, &stop, &mut |_| {}).is_empty());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn merging_skips_identical_files_and_keeps_newer() {
+        use std::time::{Duration, SystemTime};
+        let d = scratch("merge");
+        let age = |p: &Path, secs: u64| {
+            fs::File::options()
+                .write(true)
+                .open(p)
+                .unwrap()
+                .set_modified(SystemTime::now() - Duration::from_secs(secs))
+                .unwrap()
+        };
+        let put = |p: &str, body: &str, secs: u64| {
+            let p = d.join(p);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, body).unwrap();
+            age(&p, secs);
+        };
+        put("src/f/same.txt", "same", 50);
+        put("dst/f/same.txt", "same", 900); // same bytes, other time: still the same
+        put("src/f/newer.txt", "new", 10);
+        put("dst/f/newer.txt", "old", 1000);
+        put("src/f/older.txt", "stale", 1000);
+        put("dst/f/older.txt", "fresh", 10);
+        put("src/f/new.txt", "n", 10);
+        let ctl = Control::default();
+        // "Keep newer" for everything, starting with the folder itself.
+        let mut r = Auto::new(Choice::Newer);
+        r.all = true;
+        let out = run(
+            Kind::Copy,
+            &[d.join("src/f")],
+            Some(&d.join("dst")),
+            &ctl,
+            &mut r,
+        );
+        assert!(out.failed.is_empty(), "{:?}", out.failed);
+        // Asked once (the folder; "for all" covers the rest), never about the identical file.
+        assert_eq!(r.asked, 1);
+        assert_eq!(
+            fs::read_to_string(d.join("dst/f/newer.txt")).unwrap(),
+            "new"
+        );
+        assert_eq!(
+            fs::read_to_string(d.join("dst/f/older.txt")).unwrap(),
+            "fresh"
+        );
+        assert_eq!(fs::read_to_string(d.join("dst/f/new.txt")).unwrap(), "n");
+        assert_eq!(r.last.items_done, r.last.items_total, "progress adds up");
+
+        // Moving onto an identical file: the original goes, nothing asked.
+        put("m/a.txt", "x", 10);
+        put("n/a.txt", "x", 10);
+        let mut r = Auto::new(Choice::Skip);
+        run(
+            Kind::Move,
+            &[d.join("m/a.txt")],
+            Some(&d.join("n")),
+            &ctl,
+            &mut r,
+        );
+        assert_eq!(r.asked, 0);
+        assert!(!d.join("m/a.txt").exists() && d.join("n/a.txt").exists());
+        // Different contents: still asked.
+        put("m/b.txt", "1", 10);
+        put("n/b.txt", "2", 10);
+        let mut r = Auto::new(Choice::Skip);
+        run(
+            Kind::Move,
+            &[d.join("m/b.txt")],
+            Some(&d.join("n")),
+            &ctl,
+            &mut r,
+        );
+        assert_eq!(r.asked, 1);
+        assert!(d.join("m/b.txt").exists());
         fs::remove_dir_all(&d).unwrap();
     }
 

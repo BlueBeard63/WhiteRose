@@ -71,6 +71,11 @@ pub mod qobject {
         /// {ok, path} or {ok: false, error}.
         #[qinvokable]
         fn rename(self: &Ops, path: &QString, name: &QString) -> QString;
+        /// What changes, line by line, if `there` is replaced by `coming` (text
+        /// files up to 1 MB): {ok, hunks: [[{kind, text, old, new}]], added,
+        /// removed} or {ok: false, error}.
+        #[qinvokable]
+        fn diff(self: &Ops, there: &QString, coming: &QString) -> QString;
         /// Rename… with several: every new name under the rules
         /// (bulk_rename::Rules, JSON), in the order given, with problems:
         /// {ok, items: [{from, to, problem}]} or {ok: false, error}.
@@ -242,6 +247,8 @@ struct Conflict {
     src_modified: f64,
     dst_modified: f64,
     folders: bool,
+    /// Both small text files: their lines can be compared (Ops.diff).
+    text: bool,
 }
 
 #[derive(Serialize)]
@@ -433,8 +440,19 @@ impl Report for Worker {
             dst_size: b.as_ref().map(|m| m.len()).unwrap_or(0),
             src_modified: a.as_ref().map(modified).unwrap_or(0.0),
             dst_modified: b.as_ref().map(modified).unwrap_or(0.0),
-            folders: a.map(|m| m.is_dir()).unwrap_or(false)
-                && b.map(|m| m.is_dir()).unwrap_or(false),
+            folders: a.as_ref().map(|m| m.is_dir()).unwrap_or(false)
+                && b.as_ref().map(|m| m.is_dir()).unwrap_or(false),
+            text: [(src, &a), (dst, &b)].iter().all(|(p, m)| {
+                m.as_ref()
+                    .is_some_and(|m| m.is_file() && m.len() <= crate::diff::MAX)
+                    && std::fs::File::open(p)
+                        .and_then(|mut f| {
+                            let mut head = vec![0u8; 8192];
+                            let n = std::io::Read::read(&mut f, &mut head)?;
+                            Ok(crate::diff::is_text(&head[..n]))
+                        })
+                        .unwrap_or(false)
+            }),
         };
         self.update(|j| {
             j.state = "conflict";
@@ -643,6 +661,18 @@ impl qobject::Ops {
                 crate::looks::change(|l| l.moved(&from, &to));
                 crate::tags::change(|r| r.moved(&from, &to));
                 q(json!({"ok": true, "path": p}))
+            }
+            Err(e) => q(json!({"ok": false, "error": e})),
+        }
+    }
+
+    pub fn diff(&self, there: &QString, coming: &QString) -> QString {
+        match crate::diff::files(
+            Path::new(&there.to_string()),
+            Path::new(&coming.to_string()),
+        ) {
+            Ok(d) => {
+                q(json!({"ok": true, "hunks": d.hunks, "added": d.added, "removed": d.removed}))
             }
             Err(e) => q(json!({"ok": false, "error": e})),
         }

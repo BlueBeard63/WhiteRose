@@ -37,8 +37,8 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Background transfer queue with progress (MVP)
 - [x] Pause, resume and cancel transfers (Next)
 - [x] Side-by-side conflict resolution (Next) — size and date of both, replace / keep both / skip, same for the rest
-- [ ] Text diffs when resolving overwrites (Advanced)
-- [~] Merge directories intelligently (Next) — folder onto folder merges, asking about each clash inside
+- [x] Text diffs when resolving overwrites (Advanced) — a clash between two text files (up to 1 MB) offers Show changes: a line-by-line diff (Myers, as git) of what's there against what's coming, with Skip / Keep both / Replace right there
+- [x] Merge directories intelligently (Next) — folder onto folder merges; files already there and the same (same bytes; over 64 MB, same size and time) are skipped without asking (a move lets the original go); Keep newer / Merge, keep newer replaces only older files
 - [x] Optional checksum verification of copies (Next) — Settings › Files › Verify copies: each file is read back from the drive (cache dropped) and checked; a mismatch keeps nothing
 - [-] Persistent undo/redo operation history (Advanced) — not doing for now
 - [x] Batch rename with regex, numbering, case and preview (Next) — Rename… (F2) with several selected: find and replace (text or regex with $1 groups, case, first only), case, text before/after, numbering in view order (position, start, step, digits, separator), extension kept/lowercased/changed; live preview with clashes and taken names shown and skipped; swaps and shifts (1→2, 2→3) handled

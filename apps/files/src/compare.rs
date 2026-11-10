@@ -87,7 +87,7 @@ fn whole(p: &Path, s: &mut Side, stop: &AtomicBool) {
     }
 }
 
-fn same_content(a: &Path, b: &Path, stop: &AtomicBool) -> bool {
+pub fn same_content(a: &Path, b: &Path, stop: &AtomicBool) -> bool {
     let (Ok(mut x), Ok(mut y)) = (fs::File::open(a), fs::File::open(b)) else {
         return false;
     };

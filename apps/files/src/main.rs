@@ -8,6 +8,7 @@ mod bulk_rename;
 mod cleanup;
 mod compare;
 mod core;
+mod diff;
 mod finder;
 mod git;
 mod hash;

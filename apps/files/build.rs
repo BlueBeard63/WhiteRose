@@ -42,6 +42,7 @@ fn main() {
             "qml/CompressDialog.qml",
             "qml/BulkRename.qml",
             "qml/CompareDialog.qml",
+            "qml/DiffView.qml",
             "qml/ArchivePassword.qml",
         ]
         .map(QmlFile::from),

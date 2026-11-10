@@ -11,6 +11,12 @@ import "Format.js" as F
 
 Column {
     id: root
+    // A clash's "Show changes" (answers from there go to that job).
+    DiffView {
+        id: diffView
+        property var answer: null
+        onAnswered: choice => { if (diffView.answer) diffView.answer(choice) }
+    }
     readonly property var jobs: JSON.parse(Ops.jobs || "[]")
     readonly property real now: Date.now()
     // Asked to delete what couldn't go to the Trash.
@@ -162,11 +168,35 @@ Column {
                         Toggle { checked: card.forAll; onToggled: on => card.forAll = on }
                         Text { anchors.verticalCenter: parent.verticalCenter; text: "Same for the rest"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11.5) } }
                     }
+                    Text {
+                        visible: parent.c.folders
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        text: "Merging puts both together; files that are already there and the same are skipped without asking."
+                        color: Theme.faint
+                        font { family: Theme.font; pointSize: Theme.pt(10.5) }
+                    }
                     Row {
                         anchors.right: parent.right
                         spacing: 6
+                        // Text files: what replacing would change, line by line.
+                        Button {
+                            visible: !!parent.parent.c.text
+                            text: "Show changes"; kind: "ghost"
+                            onClicked: {
+                                const c = parent.parent.c, id = card.job.id;
+                                diffView.answer = choice => Ops.answer(id, choice, false);
+                                diffView.show(c.dst, c.src);
+                            }
+                        }
                         Button { text: "Skip"; kind: "ghost"; onClicked: Ops.answer(card.job.id, "skip", card.forAll) }
                         Button { text: "Keep both"; onClicked: Ops.answer(card.job.id, "keep", card.forAll) }
+                        // A folder: merge, replacing only older files inside.
+                        Button {
+                            text: parent.parent.c.folders ? "Merge, keep newer" : "Keep newer"
+                            visible: parent.parent.c.folders || parent.parent.c.srcModified !== parent.parent.c.dstModified
+                            onClicked: Ops.answer(card.job.id, "newer", card.forAll || parent.parent.c.folders)
+                        }
                         Button { text: parent.parent.c.folders ? "Merge" : "Replace"; kind: "primary"; onClicked: Ops.answer(card.job.id, "replace", card.forAll) }
                     }
                 }
