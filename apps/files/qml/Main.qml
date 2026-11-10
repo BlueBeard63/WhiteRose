@@ -21,6 +21,7 @@ import WhiteRose.Files
 import "Format.js" as F
 import "Tabs.js" as Tabs
 import "Drops.js" as Drops
+import "FilesKeys.js" as FilesKeys
 
 AppWindow {
     id: win
@@ -428,6 +429,7 @@ AppWindow {
                     { label: win.tab?.split ? "Close split" : "Split", shortcut: "F3", run: () => win.tab.setSplit(!win.tab.split) },
                     { label: (Session.details ? "Hide" : "Show") + " details", shortcut: "Alt+P", run: () => Session.setDetails(!Session.details) },
                     { label: "Keyboard shortcuts…", run: () => keysDialog.open() },
+                    { label: "Files settings…", run: () => Session.openSettings("") },
                     ...(win.tab?.split ? [{ label: win.tab.vertical ? "Side by side" : "One above the other", run: () => win.tab.setVertical(!win.tab.vertical) }] : []),
                     { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                     { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark this folder", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
@@ -467,7 +469,7 @@ AppWindow {
                     { label: (win.current?.viewInfo.subfolders ? "Stop using this view in subfolders" : "Use this view in subfolders"),
                       run: () => { Fs.setViewForSubfolders(win.current.path, !win.current.viewInfo.subfolders); win.refreshViews() } },
                     { label: "Use this view everywhere",
-                      run: () => { Fs.setDefaultView(win.current.path, JSON.stringify({ mode: win.current.mode, sortBy: win.current.sortBy, descending: win.current.descending })); win.refreshViews() } },
+                      run: () => { Fs.resetView(win.current.path); Session.setDefaultView({ mode: win.current.mode, sortBy: win.current.sortBy, descending: win.current.descending, group: win.current.group }) } },
                     { label: "Reset this folder's view", enabled: win.current?.viewInfo.own ?? false,
                       run: () => { Fs.resetView(win.current.path); win.refreshViews() } },
                 ]
@@ -533,7 +535,7 @@ AppWindow {
             IconButton {
                 visible: !Search.indexing
                 width: 26; height: 26; icon: "restart"; iconSize: 12; fill: "transparent"
-                onClicked: Search.reindex()
+                onClicked: Search.reindex(JSON.stringify(Session.indexOpts))
             }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.surface1 }
@@ -793,6 +795,8 @@ AppWindow {
         // In the Trash, Delete means for good.
         if (win.current?.inDrives) return;
         if (win.current?.inTrash) win.askDelete(sel.map(e => e.path), "purge");
+        // (Settings › Files › General: ask first.)
+        else if (Session.confirmTrash) win.askDelete(sel.map(e => e.path), "trash");
         else win.run("trash", sel.map(e => e.path));
     }
     // kind: "delete" (anywhere), "purge" (things in the Trash), "empty" (all of it).
@@ -930,6 +934,7 @@ AppWindow {
             Text {
                 width: 340
                 text: confirm.kind === "empty" ? "Empty the Trash?"
+                    : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the Trash?" : "Move " + confirm.paths.length + " items to the Trash?")
                     : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” permanently?"
                     : "Delete " + confirm.paths.length + " items permanently?"
                 wrapMode: Text.Wrap
@@ -938,7 +943,8 @@ AppWindow {
             }
             Text {
                 width: 340
-                text: confirm.kind === "delete" ? "They won't go to the Trash, so they can't be brought back."
+                text: confirm.kind === "trash" ? "You can bring them back from the Trash."
+                    : confirm.kind === "delete" ? "They won't go to the Trash, so they can't be brought back."
                     : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") is deleted for good."
                     : "They can't be brought back after this."
                 wrapMode: Text.Wrap
@@ -951,8 +957,8 @@ AppWindow {
                 Button { text: "Cancel"; kind: "ghost"; onClicked: confirm.close() }
                 Button {
                     id: deleteButton
-                    text: confirm.kind === "empty" ? "Empty Trash" : "Delete"
-                    kind: "danger"
+                    text: confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
+                    kind: confirm.kind === "trash" ? "primary" : "danger"
                     // After the key is handled: closing in the middle of it crashes Qt.
                     Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
                     Keys.onEscapePressed: confirm.close()
@@ -965,52 +971,7 @@ AppWindow {
     // ---- keys -------------------------------------------------------------------------------
     // Every shortcut, with its default; files.keys ({id: "Ctrl+…"}, set in
     // the Keyboard shortcuts dialog) changes any of them.
-    readonly property var keyList: [
-        { id: "new-tab", label: "New tab", keys: "Ctrl+T" },
-        { id: "reopen-tab", label: "Reopen closed tab", keys: "Ctrl+Shift+T" },
-        { id: "next-tab", label: "Next tab", keys: "Ctrl+PgDown" },
-        { id: "previous-tab", label: "Previous tab", keys: "Ctrl+PgUp" },
-        { id: "move-tab-right", label: "Move tab right", keys: "Ctrl+Shift+PgDown" },
-        { id: "move-tab-left", label: "Move tab left", keys: "Ctrl+Shift+PgUp" },
-        { id: "new-window", label: "New window", keys: "Ctrl+N" },
-        { id: "close-tab", label: "Close tab", keys: "Ctrl+W" },
-        { id: "next-tab-2", label: "Next tab (also)", keys: "Ctrl+Tab" },
-        { id: "previous-tab-2", label: "Previous tab (also)", keys: "Ctrl+Shift+Tab" },
-        { id: "type-path", label: "Type a location", keys: "Ctrl+L" },
-        { id: "back", label: "Back", keys: "Alt+Left" },
-        { id: "forward", label: "Forward", keys: "Alt+Right" },
-        { id: "up", label: "Up a folder", keys: "Alt+Up" },
-        { id: "up-2", label: "Up a folder (also)", keys: "Backspace" },
-        { id: "search", label: "Search", keys: "Ctrl+F" },
-        { id: "quick-look", label: "Quick look", keys: "Space" },
-        { id: "details", label: "Details panel", keys: "Alt+P" },
-        { id: "terminal", label: "Open terminal here", keys: "F4" },
-        { id: "grid", label: "Grid view", keys: "Ctrl+1" },
-        { id: "list", label: "List view", keys: "Ctrl+2" },
-        { id: "columns", label: "Columns view", keys: "Ctrl+3" },
-        { id: "gallery", label: "Gallery view", keys: "Ctrl+4" },
-        { id: "cards", label: "Cards view", keys: "Ctrl+5" },
-        { id: "usage", label: "Disk usage view", keys: "Ctrl+6" },
-        { id: "bigger", label: "Bigger items", keys: "Ctrl+=" },
-        { id: "smaller", label: "Smaller items", keys: "Ctrl+-" },
-        { id: "normal-size", label: "Normal size items", keys: "Ctrl+0" },
-        { id: "hidden", label: "Show hidden files", keys: "Ctrl+H" },
-        { id: "select-all", label: "Select all", keys: "Ctrl+A" },
-        { id: "bookmark", label: "Bookmark this folder", keys: "Ctrl+D" },
-        { id: "copy-other", label: "Copy to other side (or reload)", keys: "F5" },
-        { id: "move-other", label: "Move to other side", keys: "F6" },
-        { id: "split", label: "Split", keys: "F3" },
-        { id: "other-side", label: "Other side", keys: "Tab" },
-        { id: "reload", label: "Reload", keys: "Ctrl+R" },
-        { id: "copy", label: "Copy", keys: "Ctrl+C" },
-        { id: "cut", label: "Cut", keys: "Ctrl+X" },
-        { id: "paste", label: "Paste", keys: "Ctrl+V" },
-        { id: "trash", label: "Move to Trash", keys: "Delete" },
-        { id: "delete", label: "Delete permanently", keys: "Shift+Del" },
-        { id: "rename", label: "Rename", keys: "F2" },
-        { id: "new-folder", label: "New folder", keys: "Ctrl+Shift+N" },
-        { id: "properties", label: "Properties", keys: "Alt+Return" },
-    ]
+    readonly property var keyList: FilesKeys.list
     property var keyOverrides: win.readKeys()
     function readKeys() { try { return JSON.parse(Desktop.setting("files.keys")) ?? {} } catch (e) { return {} } }
     function keys(id, fallback) { return win.keyOverrides[id] ?? fallback }

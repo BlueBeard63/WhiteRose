@@ -9,20 +9,28 @@ import qs
 Singleton {
     id: root
 
-    // [{ id, name, description, icon, category, order, version, core, keywords, dir, builtin }]
+    // [{ id, name, description, icon, category, order, version, core, keywords, dir, builtin,
+    //    pages? [{ id, name, icon, file, keywords }] }]: a module's sub-pages.
     property var modules: []
     readonly property var disabled: Daemon.setting("settings.modules.disabled", [])
     readonly property var enabled: modules.filter(m => m.core || !disabled.includes(m.id))
     readonly property string userModules: (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/whiterose/modules"
 
     property string page: ""
+    // The open sub-page of that module ("": its own Page.qml).
+    property string sub: ""
     // Asked for before the modules were found (IPC, or WHITEROSE_SETTINGS_PAGE).
     property string wanted: Quickshell.env("WHITEROSE_SETTINGS_PAGE") ?? ""
     readonly property var current: modules.find(m => m.id === page) ?? null
+    readonly property var currentSub: (current?.pages ?? []).find(p => p.id === sub) ?? null
 
+    // "module" or "module/sub-page".
     function open(id) {
-        if (modules.some(m => m.id === id)) page = id;
-        else wanted = id;
+        const [m, s] = String(id).split("/");
+        if (modules.some(x => x.id === m)) {
+            page = m;
+            sub = (modules.find(x => x.id === m).pages ?? []).some(p => p.id === s) ? s : "";
+        } else wanted = id;
     }
     // A page switched off while open: go to the first one still on.
     onEnabledChanged: if (page !== "" && !enabled.some(m => m.id === page)) page = enabled[0]?.id ?? ""
@@ -48,7 +56,8 @@ Singleton {
                 found.sort((a, b) => (a.order ?? 50) - (b.order ?? 50) || a.name.localeCompare(b.name));
                 root.modules = found;
                 if (root.page === "" || !found.some(m => m.id === root.page))
-                    root.page = found.some(m => m.id === root.wanted) ? root.wanted : (root.enabled[0]?.id ?? "");
+                    if (found.some(m => m.id === String(root.wanted).split("/")[0])) root.open(root.wanted);
+                    else root.page = root.enabled[0]?.id ?? "";
             }
         }
     }

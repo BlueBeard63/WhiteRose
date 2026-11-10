@@ -11,6 +11,8 @@ Rectangle {
     property bool error: false
     property bool reveal: false
     signal accepted()
+    // Enter pressed or the field left.
+    signal editingDone()
     function focusField() { input.forceActiveFocus() }
     implicitWidth: 260
     implicitHeight: 36
@@ -30,6 +32,7 @@ Rectangle {
         passwordCharacter: "•"
         font { family: root.mono ? Theme.mono : Theme.font; pointSize: Theme.pt(12.5) }
         onAccepted: root.accepted()
+        onEditingFinished: root.editingDone()
         Text {
             anchors.verticalCenter: parent.verticalCenter
             visible: input.text === "" && !input.activeFocus

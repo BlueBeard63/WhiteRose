@@ -106,7 +106,7 @@ FocusScope {
                             root.pane.menuAt(block.e, p.x, p.y);
                             return;
                         }
-                        root.pane.clickAt(i, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
+                        root.pane.pick(i, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
                     }
                     onDoubleClicked: root.pane.activate(block.e)
                 }

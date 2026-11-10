@@ -333,7 +333,18 @@ fn put_name(out: &mut Vec<u8>, name: &[u8]) {
 
 /// Writes the index of `roots` to `file` (hidden folders and those
 /// skip_dir names left out); returns how many entries.
+#[cfg(test)]
 pub fn build(roots: &[PathBuf], file: &Path, stop: &AtomicBool) -> Result<usize, String> {
+    build_leaving(roots, &[], file, stop)
+}
+
+/// As build, leaving out the folders in `exclude` (and what's in them).
+pub fn build_leaving(
+    roots: &[PathBuf],
+    exclude: &[PathBuf],
+    file: &Path,
+    stop: &AtomicBool,
+) -> Result<usize, String> {
     use std::os::unix::ffi::OsStrExt;
     let mut head = MAGIC.to_vec();
     head.extend_from_slice(&(roots.len() as u32).to_le_bytes());
@@ -372,7 +383,8 @@ pub fn build(roots: &[PathBuf], file: &Path, stop: &AtomicBool) -> Result<usize,
                 let is_dir = m.is_dir();
                 if is_dir
                     && (skip_dir(&name_s, false)
-                        || SKIP_UNDER_ROOT.iter().any(|s| e.path() == root.join(s)))
+                        || SKIP_UNDER_ROOT.iter().any(|s| e.path() == root.join(s))
+                        || exclude.iter().any(|x| e.path() == *x))
                 {
                     continue;
                 }
@@ -811,6 +823,13 @@ mod tests {
         let file = d.join("cache/index");
         let stop = AtomicBool::new(false);
         let n = build(&[home.clone(), usb.clone()], &file, &stop).unwrap();
+        // Left out on request: Photos.
+        let file2 = d.join("cache/index2");
+        build_leaving(std::slice::from_ref(&home), &[home.join("Photos")], &file2, &stop).unwrap();
+        let ix2 = Index::open(&file2).unwrap();
+        let none = |_: &Path| true;
+        let (hits, _) = ix2.find(&parse("beach"), &any(), &none, &mime, &stop, 10);
+        assert!(hits.is_empty(), "a left-out folder isn't searched");
         assert!(n >= 10);
         assert_eq!(
             fs::metadata(&file).unwrap().mode() & 0o777,

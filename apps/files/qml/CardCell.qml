@@ -90,7 +90,7 @@ Item {
                 cell.pane.menuAt(cell.modelData, p.x, p.y);
                 return;
             }
-            cell.pane.clickAt(cell.at, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
+            cell.pane.pick(cell.at, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
         }
         onDoubleClicked: cell.pane.activate(cell.modelData)
     }

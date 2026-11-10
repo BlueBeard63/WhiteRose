@@ -74,11 +74,14 @@ dev-apps:            ## Settings, Notepad and Files in your launcher, run from t
 	sed "s|^Exec=whiterose-settings|Exec=$(CURDIR)/shell/bin/whiterose-settings|" packaging/files/whiterose-settings.desktop \
 		> $(HOME)/.local/share/applications/whiterose-settings.desktop
 	cp -r packaging/icons/hicolor $(HOME)/.local/share/icons/
+	# (Files opens Settings › Files with it.)
+	mkdir -p $(HOME)/.local/bin && ln -sf $(CURDIR)/shell/bin/whiterose-settings $(HOME)/.local/bin/whiterose-settings
 	-update-desktop-database -q $(HOME)/.local/share/applications 2>/dev/null
 
 dev-apps-remove:     ## Takes dev-apps' launcher entries and icons out again
 	rm -f $(HOME)/.local/share/applications/whiterose-notepad.desktop $(HOME)/.local/share/applications/whiterose-files.desktop \
 		$(HOME)/.local/share/applications/whiterose-settings.desktop
+	rm -f $(HOME)/.local/bin/whiterose-settings
 	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-files.png $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-notepad.png \
 		$(HOME)/.local/share/icons/hicolor/*/apps/whiterose-settings.png
 

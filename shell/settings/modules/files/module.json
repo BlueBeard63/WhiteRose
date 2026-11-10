@@ -1,0 +1,23 @@
+{
+  "id": "files",
+  "name": "Files",
+  "description": "How the file manager starts, shows folders, searches and opens things",
+  "icon": "folder",
+  "category": "desktop",
+  "order": 16,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["files", "file manager", "folders", "explorer"],
+  "pages": [
+    { "id": "general", "name": "General", "icon": "gear", "file": "General.qml",
+      "keywords": ["start", "open", "single click", "double click", "trash", "hidden files", "details", "preview"] },
+    { "id": "views", "name": "Views & lists", "icon": "grid", "file": "Views.qml",
+      "keywords": ["view", "grid", "list", "columns", "gallery", "cards", "sort", "group", "folders first", "size", "zoom", "adaptive", "folder sizes"] },
+    { "id": "search", "name": "Search", "icon": "search", "file": "Search.qml",
+      "keywords": ["search", "index", "indexing", "exclude", "drives", "rebuild"] },
+    { "id": "apps", "name": "Open with", "icon": "terminal", "file": "Apps.qml",
+      "keywords": ["terminal", "editor", "code", "vs code", "ghostty", "open in"] },
+    { "id": "shortcuts", "name": "Shortcuts", "icon": "keyboard", "file": "Shortcuts.qml",
+      "keywords": ["shortcuts", "keys", "keyboard", "hotkeys", "bindings"] }
+  ]
+}

@@ -104,6 +104,12 @@ func TestValidation(t *testing.T) {
 		"apps.terminal":                `"ghostty --title x"`,
 		"apps.editor":                  `"/usr/bin/code"`,
 		"files.keys":                   `{"new-tab":"Ctrl+T; rm"}`,
+		"files.startIn":                `"somewhere"`,
+		"files.startFolder":            `"relative/dir"`,
+		"files.zoom":                   `3`,
+		"files.columns":                `["size","size"]`,
+		"files.widths":                 `{"size":5}`,
+		"files.defaultView":            `{"mode":"huge","sortBy":"name","descending":false,"group":""}`,
 		"nope.unknown":                 `1`,
 		"Bad Key":                      `1`,
 		"module.x":                     `{not json`,
@@ -132,6 +138,13 @@ func TestValidation(t *testing.T) {
 		"apps.terminal":           `"ghostty"`,
 		"apps.editor":             `""`,
 		"files.keys":              `{"new-tab":"Ctrl+Shift+Y","copy-other":"F7"}`,
+		"files.startIn":           `"folder"`,
+		"files.startFolder":       `"~/Projects"`,
+		"files.zoom":              `1.2`,
+		"files.columns":           `["kind","created"]`,
+		"files.widths":            `{"kind":140}`,
+		"files.defaultView":       `{"mode":"list","sortBy":"modified","descending":true,"group":"modified"}`,
+		"files.indexExclude":      `["~/Videos/Raw"]`,
 	}
 	for k, v := range good {
 		if err := s.Set(k, json.RawMessage(v)); err != nil {

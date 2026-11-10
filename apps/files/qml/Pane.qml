@@ -78,7 +78,7 @@ FocusScope {
     onPathChanged: { pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
     function applyView() {
-        const v = JSON.parse(Fs.view(pane.path));
+        const v = JSON.parse(Fs.view(pane.path, JSON.stringify(Session.defaultView)));
         pane.applying = true;
         pane.mode = v.mode;
         pane.sortBy = v.sortBy;
@@ -93,7 +93,7 @@ FocusScope {
     property bool picked: false
     function adapt() {
         if (!Session.adaptive || pane.viewInfo.own || pane.viewInfo.from !== "" || pane.special || pane.searching) return;
-        const m = Layout.adaptive(pane.entries, JSON.parse(Fs.view(pane.path)).mode);
+        const m = Layout.adaptive(pane.entries, JSON.parse(Fs.view(pane.path, JSON.stringify(Session.defaultView))).mode);
         if (m !== pane.mode) { pane.applying = true; pane.mode = m; pane.applying = false }
         pane.picked = true;
     }
@@ -162,7 +162,7 @@ FocusScope {
             pane.entries = JSON.parse(text).map(d => Object.assign(d, { dir: true, mime: "inode/directory", size: 0, modified: 0, hidden: false, link: false }));
             return;
         }
-        const r = JSON.parse(Fs.list(pane.path, pane.hidden, pane.sortBy, pane.descending, 48));
+        const r = JSON.parse(Fs.list(pane.path, pane.hidden, pane.sortBy, pane.descending, 48, Session.foldersAt));
         if (!r.ok) { pane.error = r.error; pane.entries = []; return }
         pane.error = "";
         pane.entries = r.entries;
@@ -216,6 +216,15 @@ FocusScope {
         if (!entry) return;
         if (entry.dir) pane.go(entry.path);
         else pane.openFile(entry);
+    }
+    // A click: selects, or (Settings › Files › General: single click) opens
+    // what's clicked unless Ctrl or Shift is held.
+    function pick(i, ctrl, shift) {
+        pane.clickAt(i, ctrl, shift);
+        if (Session.openWith === "single" && !ctrl && !shift && pane.shownEntries[i]) {
+            const e = pane.shownEntries[i];
+            Qt.callLater(() => pane.activate(e));
+        }
     }
     function clickAt(i, ctrl, shift) {
         pane.activated();
@@ -298,7 +307,7 @@ FocusScope {
 
     // Folder sizes for the list's Size column, worked out in the background
     // (not for / : that would be the whole system).
-    readonly property bool wantsSizes: ["list", "usage", "cards"].includes(pane.mode) && !pane.special && !pane.searching && pane.path !== "/"
+    readonly property bool wantsSizes: (["list", "cards"].includes(pane.mode) && Session.folderSizes || pane.mode === "usage") && !pane.special && !pane.searching && pane.path !== "/"
     onEntriesChanged: pane.askSizes()
     onWantsSizesChanged: pane.askSizes()
     function askSizes() {

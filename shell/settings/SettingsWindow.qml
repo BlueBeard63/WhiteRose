@@ -20,7 +20,12 @@ FloatingWindow {
     function matches(m) {
         const q = win.query.trim().toLowerCase();
         if (q === "") return true;
-        return [m.name, m.description ?? "", ...(m.keywords ?? [])].some(s => s.toLowerCase().includes(q));
+        return [m.name, m.description ?? "", ...(m.keywords ?? [])].some(s => s.toLowerCase().includes(q))
+            || (m.pages ?? []).some(p => win.subMatches(p));
+    }
+    function subMatches(p) {
+        const q = win.query.trim().toLowerCase();
+        return q !== "" && [p.name, ...(p.keywords ?? [])].some(s => s.toLowerCase().includes(q));
     }
     readonly property var groups: [
         { id: "system", label: "System" },
@@ -70,7 +75,9 @@ FloatingWindow {
                 Keys.onEscapePressed: text = ""
                 Keys.onReturnPressed: {
                     const first = SettingsState.enabled.find(m => win.matches(m));
-                    if (first) SettingsState.open(first.id);
+                    if (!first) return;
+                    const sub = (first.pages ?? []).find(p => win.subMatches(p));
+                    SettingsState.open(sub ? first.id + "/" + sub.id : first.id);
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -90,7 +97,14 @@ FloatingWindow {
         }
 
         Flickable {
+            id: navFlick
             anchors { top: searchBox.bottom; topMargin: 14; bottom: footer.top; bottomMargin: 8; left: parent.left; right: parent.right }
+            // Scrolls `item` (in the list) fully into sight.
+            function reveal(item) {
+                const y = item.mapToItem(navCol, 0, 0).y;
+                if (y + item.height > navFlick.contentY + navFlick.height) navFlick.contentY = Math.min(navCol.height - navFlick.height, y + item.height - navFlick.height + 8);
+                else if (y < navFlick.contentY) navFlick.contentY = Math.max(0, y - 8);
+            }
             contentHeight: navCol.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -118,7 +132,22 @@ FloatingWindow {
                         }
                         Repeater {
                             model: group.items
-                            delegate: NavItem { required property var modelData; module: modelData }
+                            delegate: Column {
+                                id: navGroup
+                                required property var modelData
+                                width: parent.width
+                                spacing: 2
+                                NavItem { module: navGroup.modelData }
+                                // Opened: its sub-pages come into sight.
+                                readonly property bool open: SettingsState.page === navGroup.modelData.id && (navGroup.modelData.pages ?? []).length > 0
+                                onOpenChanged: if (open) Qt.callLater(() => navFlick.reveal(navGroup))
+                                onHeightChanged: if (open) Qt.callLater(() => navFlick.reveal(navGroup))
+                                // Its sub-pages, while it's open (or they match a search).
+                                Repeater {
+                                    model: (navGroup.modelData.pages ?? []).filter(p => SettingsState.page === navGroup.modelData.id || win.subMatches(p))
+                                    delegate: SubNavItem { required property var modelData; module: navGroup.modelData; pageInfo: modelData }
+                                }
+                            }
                         }
                     }
                 }
@@ -141,19 +170,40 @@ FloatingWindow {
     component NavItem: Rectangle {
         id: nav
         property var module
-        readonly property bool on: SettingsState.page === module.id
+        readonly property bool on: SettingsState.page === module.id && SettingsState.sub === ""
         width: parent?.width ?? 0
         height: 34
         radius: 9
         color: on ? Theme.surface2 : navMouse.containsMouse ? Theme.surface1 : "transparent"
-        Icon { x: 9; anchors.verticalCenter: parent.verticalCenter; name: nav.module.icon; size: 15; color: nav.on ? Theme.rose : Theme.muted }
+        // (One of its sub-pages open: its icon stays lit.)
+        readonly property bool within: SettingsState.page === module.id
+        Icon { x: 9; anchors.verticalCenter: parent.verticalCenter; name: nav.module.icon; size: 15; color: nav.within ? Theme.rose : Theme.muted }
         Text {
             x: 36; anchors.verticalCenter: parent.verticalCenter
             text: nav.module.name
             color: Theme.text
-            font { family: Theme.font; pointSize: Theme.pt(12.5); weight: nav.on ? Font.Medium : Font.Normal }
+            font { family: Theme.font; pointSize: Theme.pt(12.5); weight: nav.within ? Font.Medium : Font.Normal }
         }
         MouseArea { id: navMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: SettingsState.open(nav.module.id) }
+    }
+
+    component SubNavItem: Rectangle {
+        id: subnav
+        property var module
+        property var pageInfo
+        readonly property bool on: SettingsState.page === module.id && SettingsState.sub === pageInfo.id
+        width: parent?.width ?? 0
+        height: 30
+        radius: 8
+        color: on ? Theme.surface2 : subMouse.containsMouse ? Theme.surface1 : "transparent"
+        Icon { x: 30; anchors.verticalCenter: parent.verticalCenter; name: subnav.pageInfo.icon ?? "chevR"; size: 13; color: subnav.on ? Theme.rose : Theme.faint }
+        Text {
+            x: 52; anchors.verticalCenter: parent.verticalCenter
+            text: subnav.pageInfo.name
+            color: subnav.on ? Theme.text : Theme.muted
+            font { family: Theme.font; pointSize: Theme.pt(12); weight: subnav.on ? Font.Medium : Font.Normal }
+        }
+        MouseArea { id: subMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: SettingsState.open(subnav.module.id + "/" + subnav.pageInfo.id) }
     }
 
     // The open page: loaded on entry, unloaded on leaving (Modules page).
@@ -172,7 +222,7 @@ FloatingWindow {
             // (The page area starts below the window buttons.)
             x: 28; y: 14
             width: scroller.width - 56
-            source: SettingsState.current ? "file://" + SettingsState.current.dir + "/Page.qml" : ""
+            source: SettingsState.current ? "file://" + SettingsState.current.dir + "/" + (SettingsState.currentSub?.file ?? "Page.qml") : ""
             onSourceChanged: scroller.contentY = 0
             onStatusChanged: if (status === Loader.Error) console.warn("settings: page failed to load:", source)
         }

@@ -28,13 +28,14 @@ pub mod qobject {
         fn find(self: Pin<&mut Search>, ask: &QString) -> i32;
         #[qinvokable]
         fn stop(self: &Search);
-        /// Makes the index again now.
+        /// Makes the index again now. `opts` (JSON, Settings › Files ›
+        /// Search): {drives: bool, exclude: [path]}.
         #[qinvokable]
-        fn reindex(self: Pin<&mut Search>);
-        /// Makes it if it's missing or old.
+        fn reindex(self: Pin<&mut Search>, opts: &QString);
+        /// Makes it if it's missing, old, or asked for since (`asked`, unix ms).
         #[qinvokable]
         #[cxx_name = "keepFresh"]
-        fn keep_fresh(self: Pin<&mut Search>);
+        fn keep_fresh(self: Pin<&mut Search>, opts: &QString, asked: f64);
 
         /// {hits: [entry], seen, done}: entries like a listing's.
         #[qsignal]
@@ -81,11 +82,19 @@ fn now() -> i64 {
         .unwrap_or(0)
 }
 
-/// What's indexed: home, and the drives in the sidebar other than the system's.
-fn roots() -> Vec<PathBuf> {
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+struct Opts {
+    drives: bool,
+    exclude: Vec<String>,
+}
+
+/// What's indexed: home, and (with `drives`) the drives in the sidebar
+/// other than the system's.
+fn roots(drives: bool) -> Vec<PathBuf> {
     let home = places::home();
     let mut v = vec![home.clone()];
-    for d in places::drives() {
+    for d in places::drives().into_iter().filter(|_| drives) {
         let p = PathBuf::from(&d.path);
         if p != Path::new("/") && !home.starts_with(&p) && !v.contains(&p) {
             v.push(p);
@@ -175,10 +184,20 @@ impl qobject::Search {
         }
     }
 
-    pub fn reindex(mut self: Pin<&mut Self>) {
+    pub fn reindex(mut self: Pin<&mut Self>, opts: &QString) {
         if self.indexing {
             return;
         }
+        let opts: Opts = serde_json::from_str(&opts.to_string()).unwrap_or_default();
+        let home = places::home();
+        let exclude: Vec<PathBuf> = opts
+            .exclude
+            .iter()
+            .map(|p| match p.strip_prefix("~/") {
+                Some(rest) => home.join(rest),
+                None => PathBuf::from(p),
+            })
+            .collect();
         self.as_mut().set_indexing(true);
         let stop = Arc::new(AtomicBool::new(false));
         self.as_mut().rust_mut().building = Some(stop.clone());
@@ -186,7 +205,7 @@ impl qobject::Search {
         std::thread::spawn(move || {
             background();
             let file = search::index_file();
-            let _ = search::build(&roots(), &file, &stop);
+            let _ = search::build_leaving(&roots(opts.drives), &exclude, &file, &stop);
             let at = search::index_age(&file) as f64 * 1000.0;
             let _ = thread.queue(move |mut obj| {
                 obj.as_mut().set_indexed(at);
@@ -195,11 +214,11 @@ impl qobject::Search {
         });
     }
 
-    pub fn keep_fresh(mut self: Pin<&mut Self>) {
+    pub fn keep_fresh(mut self: Pin<&mut Self>, opts: &QString, asked: f64) {
         let age = search::index_age(&search::index_file());
         self.as_mut().set_indexed(age as f64 * 1000.0);
-        if age == 0 || now() - age > STALE {
-            self.reindex();
+        if age == 0 || now() - age > STALE || asked > age as f64 * 1000.0 {
+            self.reindex(opts);
         }
     }
 }

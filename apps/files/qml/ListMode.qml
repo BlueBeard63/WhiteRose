@@ -227,7 +227,7 @@ FocusScope {
                         root.pane.menuAt(row.modelData, p.x, p.y);
                         return;
                     }
-                    root.pane.clickAt(row.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
+                    root.pane.pick(row.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
                 }
                 onDoubleClicked: root.pane.activate(row.modelData)
             }

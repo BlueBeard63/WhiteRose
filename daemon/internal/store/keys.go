@@ -216,6 +216,39 @@ var Known = map[string]Key{
 	"apps.editor":   {Default: json.RawMessage(`""`), Check: into(commandName)},
 	// WhiteRose Files' shortcuts changed from their defaults: {"new-tab": "Ctrl+T", …}.
 	"files.keys": {Default: json.RawMessage(`{}`), Check: into(appKeys)},
+	// WhiteRose Files (Settings › Files): where it starts, how items open,
+	// what shows, folders without a view of their own, lists, the search index.
+	"files.startIn":      {Default: json.RawMessage(`"last"`), Check: into(oneOf("last", "home", "folder"))},
+	"files.startFolder":  {Default: json.RawMessage(`""`), Check: into(pathOrEmpty)},
+	"files.openWith":     {Default: json.RawMessage(`"double"`), Check: into(oneOf("double", "single"))},
+	"files.confirmTrash": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"files.hidden":       {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"files.details":      {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"files.adaptive":     {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"files.zoom": {Default: json.RawMessage(`1`), Check: into(func(v float64) error {
+		if v < 0.75 || v > 1.6 {
+			return errors.New("must be 0.75 to 1.6")
+		}
+		return nil
+	})},
+	"files.foldersAt":   {Default: json.RawMessage(`"first"`), Check: into(oneOf("first", "mixed", "last"))},
+	"files.columns":     {Default: json.RawMessage(`["size","modified","kind"]`), Check: into(listColumns)},
+	"files.widths":      {Default: json.RawMessage(`{}`), Check: into(columnWidths)},
+	"files.folderSizes": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"files.defaultView": {Default: json.RawMessage(`{"mode":"grid","sortBy":"name","descending":false,"group":""}`), Check: into(func(v FilesView) error {
+		if err := oneOf("grid", "list", "columns", "gallery", "cards", "usage")(v.Mode); err != nil {
+			return err
+		}
+		if err := oneOf("name", "size", "modified", "created", "kind")(v.SortBy); err != nil {
+			return err
+		}
+		return oneOf("", "kind", "modified", "size", "name")(v.Group)
+	})},
+	// The search index: drives too (not just home), folders left out, and
+	// when it was last asked to be made again (unix ms; Files does it).
+	"files.indexDrives":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"files.indexExclude": {Default: json.RawMessage(`[]`), Check: into(paths(100))},
+	"files.reindex":      {Default: json.RawMessage(`0`), Check: into[float64](nil)},
 	// Privacy: lock after this many idle minutes (0: never), screens off
 	// after this many (0: never), lock before sleeping, and what's remembered.
 	"privacy.lockAfter":        {Default: json.RawMessage(`5`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
@@ -303,6 +336,50 @@ type CustomShortcut struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
 	Keys    []string `json:"keys"`
+}
+
+// A folder view: grid, sorted by name, and so on (files.defaultView).
+type FilesView struct {
+	Mode       string `json:"mode"`
+	SortBy     string `json:"sortBy"`
+	Descending bool   `json:"descending"`
+	Group      string `json:"group"`
+}
+
+func listColumns(cols []string) error {
+	seen := map[string]bool{}
+	for _, c := range cols {
+		if err := oneOf("size", "modified", "created", "kind")(c); err != nil {
+			return err
+		}
+		if seen[c] {
+			return fmt.Errorf("%s twice", c)
+		}
+		seen[c] = true
+	}
+	return nil
+}
+
+func columnWidths(m map[string]float64) error {
+	for k, w := range m {
+		if err := oneOf("size", "modified", "created", "kind")(k); err != nil {
+			return err
+		}
+		if w < 60 || w > 600 {
+			return fmt.Errorf("%s: width must be 60 to 600", k)
+		}
+	}
+	return nil
+}
+
+func pathOrEmpty(s string) error {
+	if s == "" || strings.HasPrefix(s, "/") || strings.HasPrefix(s, "~/") {
+		if len(s) > 4096 {
+			return errors.New("too long")
+		}
+		return nil
+	}
+	return errors.New("must be an absolute path")
 }
 
 // An app's own shortcuts: short ids to Qt key sequences ("Ctrl+Shift+T", "F5").

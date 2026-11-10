@@ -14,7 +14,7 @@ FocusScope {
     readonly property var lists: {
         void pane.stamp; void pane.hidden;
         return chain.slice(0, -1).map(c => {
-            const r = JSON.parse(Fs.list(c.path, pane.hidden, "name", false, 20));
+            const r = JSON.parse(Fs.list(c.path, pane.hidden, "name", false, 20, Session.foldersAt));
             return r.ok ? r.entries : [];
         });
     }
@@ -123,7 +123,7 @@ FocusScope {
                                 return;
                             }
                             if (row.modelData.dir) root.pane.go(row.modelData.path);
-                            else if (col.last) root.pane.clickAt(row.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
+                            else if (col.last) root.pane.pick(row.index, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier);
                             else root.pane.go(root.chain[col.index].path);
                         }
                         onDoubleClicked: if (!row.modelData.dir) root.pane.activate(row.modelData)

@@ -31,6 +31,7 @@ pub mod qobject {
             sort: &QString,
             descending: bool,
             icon_size: i32,
+            folders: &QString,
         ) -> QString;
         /// Changes when entries are added, removed or renamed (to re-list).
         #[qinvokable]
@@ -114,6 +115,11 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openEditor"]
         fn open_editor(self: &Fs, path: &QString, chosen: &QString) -> QString;
+        /// Opens WhiteRose Settings at `page` ("files", "files/search", ...);
+        /// "" or what went wrong.
+        #[qinvokable]
+        #[cxx_name = "openSettings"]
+        fn open_settings(self: &Fs, page: &QString) -> QString;
         /// The git repository `path` is in ("" if none).
         #[qinvokable]
         #[cxx_name = "gitRoot"]
@@ -131,7 +137,7 @@ pub mod qobject {
 
         /// How `path` is shown: {mode, sortBy, descending, own, subfolders, from}.
         #[qinvokable]
-        fn view(self: &Fs, path: &QString) -> QString;
+        fn view(self: &Fs, path: &QString, fallback: &QString) -> QString;
         /// Remembers {mode, sortBy, descending} for this folder.
         #[qinvokable]
         #[cxx_name = "setView"]
@@ -140,58 +146,13 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setViewForSubfolders"]
         fn set_view_for_subfolders(self: &Fs, path: &QString, on: bool) -> bool;
-        /// This view for every folder without one of its own.
-        #[qinvokable]
-        #[cxx_name = "setDefaultView"]
-        fn set_default_view(self: &Fs, path: &QString, json: &QString) -> bool;
         #[qinvokable]
         #[cxx_name = "resetView"]
         fn reset_view(self: &Fs, path: &QString) -> bool;
-        /// Hidden files shown (everywhere).
-        #[qinvokable]
-        #[cxx_name = "showsHidden"]
-        fn shows_hidden(self: &Fs) -> bool;
-        #[qinvokable]
-        #[cxx_name = "setShowsHidden"]
-        fn set_shows_hidden(self: &Fs, on: bool) -> bool;
         /// An image's size: "4032 × 3024" ("" if it can't be read).
         #[qinvokable]
         #[cxx_name = "imageSize"]
         fn image_dimensions(self: &Fs, path: &QString) -> QString;
-        /// Views picked to suit a folder's contents (when it has none of its own).
-        #[qinvokable]
-        fn adaptive(self: &Fs) -> bool;
-        #[qinvokable]
-        #[cxx_name = "setAdaptive"]
-        fn set_adaptive(self: &Fs, on: bool) -> bool;
-        /// How big items are drawn (0.75–1.6).
-        #[qinvokable]
-        fn zoom(self: &Fs) -> f64;
-        #[qinvokable]
-        #[cxx_name = "setZoom"]
-        fn set_zoom(self: &Fs, zoom: f64) -> f64;
-        /// How lists are laid out everywhere: {foldersAt, columns, widths}.
-        #[qinvokable]
-        fn arrangement(self: &Fs) -> QString;
-        /// Folders among files: first | mixed | last.
-        #[qinvokable]
-        #[cxx_name = "setFoldersAt"]
-        fn set_folders_at(self: &Fs, at: &QString) -> bool;
-        /// The list's columns after Name, in order (JSON list of size,
-        /// modified, created, kind).
-        #[qinvokable]
-        #[cxx_name = "setColumns"]
-        fn set_columns(self: &Fs, json: &QString) -> bool;
-        #[qinvokable]
-        #[cxx_name = "setColumnWidth"]
-        fn set_column_width(self: &Fs, column: &QString, width: f64) -> bool;
-        /// The details panel shown (everywhere).
-        #[qinvokable]
-        #[cxx_name = "showsDetails"]
-        fn shows_details(self: &Fs) -> bool;
-        #[qinvokable]
-        #[cxx_name = "setShowsDetails"]
-        fn set_shows_details(self: &Fs, on: bool) -> bool;
         /// The start of a text file, to preview: {ok, text, more} or
         /// {ok: false} (not text: has NULs or isn't UTF-8).
         #[qinvokable]
@@ -236,6 +197,7 @@ impl qobject::Fs {
         sort: &QString,
         descending: bool,
         icon_size: i32,
+        folders: &QString,
     ) -> QString {
         let path = path.to_string();
         let ic = icons::shared();
@@ -289,7 +251,7 @@ impl qobject::Fs {
             "created" => listing::Sort::Created,
             _ => listing::Sort::Name,
         };
-        let folders = listing::Folders::parse(&views::load_from(&views::file()).folders_at);
+        let folders = listing::Folders::parse(&folders.to_string());
         listing::sort_with(&mut entries, by, descending, folders);
         let size = icon_size.clamp(16, 256) as u32;
         let looks = looks::load();
@@ -517,8 +479,14 @@ impl qobject::Fs {
         }
     }
 
-    pub fn view(&self, path: &QString) -> QString {
-        let found = views::load_from(&views::file()).find(&path.to_string());
+    pub fn view(&self, path: &QString, fallback: &QString) -> QString {
+        let mut found = views::load_from(&views::file()).find(&path.to_string());
+        // Nothing of its own or lent: the default (whiterosed's files.defaultView).
+        if !found.own && found.from.is_empty() {
+            if let Ok(v) = serde_json::from_str::<views::View>(&fallback.to_string()) {
+                found.view = v.checked();
+            }
+        }
         q(serde_json::to_value(found).unwrap_or_default())
     }
 
@@ -533,76 +501,12 @@ impl qobject::Fs {
         views::change(|all| all.set_subfolders(&path.to_string(), on))
     }
 
-    pub fn set_default_view(&self, path: &QString, json: &QString) -> bool {
-        let Ok(v) = serde_json::from_str::<views::View>(&json.to_string()) else {
-            return false;
-        };
-        views::change(|all| all.set_default(&path.to_string(), v))
-    }
-
     pub fn reset_view(&self, path: &QString) -> bool {
         views::change(|all| all.reset(&path.to_string()))
     }
 
     pub fn image_dimensions(&self, path: &QString) -> QString {
         QString::from(qobject::image_size(&path.to_string()).as_str())
-    }
-
-    pub fn adaptive(&self) -> bool {
-        views::load_from(&views::file()).adaptive
-    }
-
-    pub fn set_adaptive(&self, on: bool) -> bool {
-        views::change(|all| all.adaptive = on)
-    }
-
-    pub fn zoom(&self) -> f64 {
-        views::zoom_checked(views::load_from(&views::file()).zoom)
-    }
-
-    pub fn set_zoom(&self, zoom: f64) -> f64 {
-        let z = views::zoom_checked(zoom);
-        views::change(|all| all.zoom = z);
-        z
-    }
-
-    pub fn arrangement(&self) -> QString {
-        let v = views::load_from(&views::file());
-        q(
-            json!({"foldersAt": v.folders_at, "columns": views::columns_checked(v.columns), "widths": v.widths}),
-        )
-    }
-
-    pub fn set_folders_at(&self, at: &QString) -> bool {
-        let at = match at.to_string().as_str() {
-            "mixed" => "mixed",
-            "last" => "last",
-            _ => "first",
-        };
-        views::change(|v| v.folders_at = at.into())
-    }
-
-    pub fn set_columns(&self, json: &QString) -> bool {
-        let cols: Vec<String> = serde_json::from_str(&json.to_string()).unwrap_or_default();
-        views::change(|v| v.columns = views::columns_checked(cols))
-    }
-
-    pub fn set_column_width(&self, column: &QString, width: f64) -> bool {
-        let c = column.to_string();
-        if !views::COLUMNS.contains(&c.as_str()) && c != "name" || !width.is_finite() {
-            return false;
-        }
-        views::change(|v| {
-            v.widths.insert(c, width.clamp(60.0, 600.0));
-        })
-    }
-
-    pub fn shows_details(&self) -> bool {
-        views::load_from(&views::file()).details
-    }
-
-    pub fn set_shows_details(&self, on: bool) -> bool {
-        views::change(|all| all.details = on)
     }
 
     pub fn read_text(&self, path: &QString, limit: i32) -> QString {
@@ -613,14 +517,6 @@ impl qobject::Fs {
             Some((text, more)) => q(json!({"ok": true, "text": text, "more": more})),
             None => q(json!({"ok": false})),
         }
-    }
-
-    pub fn shows_hidden(&self) -> bool {
-        views::load_from(&views::file()).hidden
-    }
-
-    pub fn set_shows_hidden(&self, on: bool) -> bool {
-        views::change(|all| all.hidden = on)
     }
 
     pub fn up(&self, path: &QString) -> QString {
@@ -811,6 +707,22 @@ impl qobject::Fs {
                 .unwrap_or_default()
         };
         let r = launch::spawn(e.id, &[path], &dir);
+        QString::from(r.err().unwrap_or_default().as_str())
+    }
+
+    pub fn open_settings(&self, page: &QString) -> QString {
+        let page = page.to_string();
+        if !page
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-')
+        {
+            return QString::from("not a page");
+        }
+        if !launch::installed("whiterose-settings") {
+            return QString::from("WhiteRose Settings isn't installed");
+        }
+        let home = places::home().to_string_lossy().into_owned();
+        let r = launch::spawn("whiterose-settings", &[page], &home);
         QString::from(r.err().unwrap_or_default().as_str())
     }
 

@@ -5,7 +5,8 @@
 //!
 //!   the folder's own view → the nearest folder above lending its view → the default
 //!
-//! Showing hidden files is one setting for everywhere, kept here too.
+//! The default, and everything else about how Files looks, is in whiterosed
+//! (Settings › Files).
 
 use std::{
     collections::BTreeMap,
@@ -39,7 +40,7 @@ impl Default for View {
 }
 
 impl View {
-    fn checked(self) -> View {
+    pub fn checked(self) -> View {
         View {
             mode: match self.mode.as_str() {
                 "list" | "columns" | "gallery" | "cards" | "usage" => self.mode,
@@ -69,66 +70,13 @@ pub struct Folder {
     pub stamp: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+/// Folders' own views. (Everything else about how Files looks is in
+/// whiterosed: Settings › Files.)
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
 pub struct Views {
-    pub default: View,
-    pub hidden: bool,
-    /// The details panel shown (everywhere).
-    pub details: bool,
-    /// A folder with no view of its own (and none lent) gets one to suit
-    /// what's in it: photos a gallery, and so on.
-    pub adaptive: bool,
-    /// How big items are drawn (0.75–1.6).
-    pub zoom: f64,
-    /// Folders among files: first, mixed or last.
-    pub folders_at: String,
-    /// The list's columns shown after Name, in order.
-    pub columns: Vec<String>,
-    /// Their widths (px at normal size), by column.
-    pub widths: BTreeMap<String, f64>,
     pub folders: BTreeMap<String, Folder>,
     next: u64,
-}
-
-impl Default for Views {
-    fn default() -> Self {
-        Views {
-            default: View::default(),
-            hidden: false,
-            details: false,
-            adaptive: true,
-            zoom: 1.0,
-            folders_at: "first".into(),
-            columns: vec!["size".into(), "modified".into(), "kind".into()],
-            widths: BTreeMap::new(),
-            folders: BTreeMap::new(),
-            next: 0,
-        }
-    }
-}
-
-/// The list columns that can be shown.
-pub const COLUMNS: &[&str] = &["size", "modified", "created", "kind"];
-
-/// Only known columns, once each; widths within reason.
-pub fn columns_checked(cols: Vec<String>) -> Vec<String> {
-    let mut out: Vec<String> = vec![];
-    for c in cols {
-        if COLUMNS.contains(&c.as_str()) && !out.contains(&c) {
-            out.push(c);
-        }
-    }
-    out
-}
-
-/// Zoom kept to what's drawable.
-pub fn zoom_checked(z: f64) -> f64 {
-    if z.is_finite() {
-        z.clamp(0.75, 1.6)
-    } else {
-        1.0
-    }
 }
 
 /// The view a folder gets, and where it comes from.
@@ -170,7 +118,7 @@ impl Views {
             p = up.parent();
         }
         Found {
-            view: self.default.clone(),
+            view: View::default(),
             own: false,
             subfolders: false,
             from: String::new(),
@@ -205,14 +153,6 @@ impl Views {
             });
         f.subfolders = on;
         f.stamp = stamp;
-    }
-
-    /// The view for every folder without one; this folder goes back to it.
-    pub fn set_default(&mut self, path: &str, view: View) {
-        self.default = view.checked();
-        if self.folders.get(path).is_some_and(|f| !f.subfolders) {
-            self.folders.remove(path);
-        }
     }
 
     /// Back to what it would get without a view of its own.
@@ -342,18 +282,11 @@ mod tests {
     }
 
     #[test]
-    fn default_and_reset() {
+    fn reset() {
         let mut v = Views::default();
-        v.set("/a", view("list"));
-        v.set_default("/a", view("columns"));
-        assert!(
-            !v.folders.contains_key("/a"),
-            "the folder goes back to the default"
-        );
-        assert_eq!(v.find("/anything").view.mode, "columns");
         v.set("/b", view("list"));
         v.reset("/b");
-        assert_eq!(v.find("/b").view.mode, "columns");
+        assert!(!v.find("/b").own, "back to the default (whiterosed's)");
     }
 
     #[test]
@@ -392,29 +325,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         let f = d.join("views.json");
         assert_eq!(load_from(&f), Views::default());
-        let mut v = Views {
-            hidden: true,
-            ..Views::default()
-        };
+        let mut v = Views::default();
         v.set("/a", view("columns"));
         save_to(&f, &v).unwrap();
         assert_eq!(load_from(&f), v);
     }
 
     #[test]
-    fn new_views_and_settings() {
+    fn new_views() {
         let mut v = Views::default();
-        assert!(v.adaptive, "adaptive unless turned off");
         for m in ["gallery", "cards", "usage"] {
             v.set("/a", view(m));
             assert_eq!(v.find("/a").view.mode, m);
         }
-        assert_eq!(zoom_checked(9.0), 1.6);
-        assert_eq!(zoom_checked(f64::NAN), 1.0);
-        let old: Views = serde_json::from_str(r#"{"hidden":true}"#).unwrap();
+        let old: Views = serde_json::from_str(r#"{"hidden":true,"zoom":2}"#).unwrap();
         assert!(
-            old.adaptive && old.zoom == 1.0,
-            "older files get the defaults"
+            old.folders.is_empty(),
+            "older files' settings (now in whiterosed) are left aside"
         );
     }
 
@@ -442,15 +369,5 @@ mod tests {
             },
         );
         assert_eq!(v.find("/b").view.group, "", "unknown grouping: none");
-        assert_eq!(v.folders_at, "first");
-        assert_eq!(
-            columns_checked(vec![
-                "kind".into(),
-                "nope".into(),
-                "size".into(),
-                "kind".into()
-            ]),
-            vec!["kind".to_string(), "size".to_string()]
-        );
     }
 }

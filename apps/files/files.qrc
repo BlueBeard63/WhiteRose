@@ -5,6 +5,8 @@
     <file>qml/Drops.js</file>
     <file>qml/Layout.js</file>
     <file>qml/Arrange.js</file>
+    <!-- The shortcut list, shared with Settings › Files › Shortcuts. -->
+    <file alias="qml/FilesKeys.js">../../shell/settings/modules/files/FilesKeys.js</file>
     <!-- Loaded only when needed, so not compiled ahead: they need Qt
          modules that may not be installed. -->
     <file>qml/MediaPreview.qml</file>

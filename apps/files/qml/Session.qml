@@ -6,50 +6,79 @@
 // keeps it up to date); one opened on a folder from elsewhere leaves it be.
 pragma Singleton
 import QtQuick
+import WhiteRose.Kit
 import WhiteRose.Files
 
 QtObject {
     id: session
     property bool owner: false
     // Hidden files shown, everywhere.
-    property bool hidden: Fs.showsHidden()
-    function setHidden(on) { Fs.setShowsHidden(on); session.hidden = on }
-    // Qt's multimedia / PDF modules found missing (previews show icons).
-    property bool noMedia: false
-    property bool noPdf: false
-    // Views to suit a folder's contents, and how big things are drawn.
-    property bool adaptive: Fs.adaptive()
-    function setAdaptive(on) { Fs.setAdaptive(on); session.adaptive = on }
-    property real zoom: Fs.zoom()
-    function setZoom(z) { session.zoom = Fs.setZoom(Math.round(z * 100) / 100) }
-    // How lists are laid out everywhere: folders first / mixed / last, the
-    // list's columns and their widths.
-    readonly property var arrangement: JSON.parse(Fs.arrangement())
-    property string foldersAt: session.arrangement.foldersAt
-    property var columns: session.arrangement.columns
-    property var widths: session.arrangement.widths
-    function setFoldersAt(at) {
-        Fs.setFoldersAt(at);
-        session.foldersAt = at;
-        for (const w of session.windows) for (const t of w.tabs) for (const p of t.panes) p.load();
+    // ---- settings (whiterosed, Settings › Files): followed as they change -----
+    // A setting's value, or `fallback` if it isn't there (no daemon).
+    function setting(key, fallback) {
+        try { const v = JSON.parse(Desktop.setting(key)); return v === null || v === undefined ? fallback : v } catch (e) { return fallback }
     }
+    function set(key, value) { Desktop.set(key, JSON.stringify(value)) }
+    property bool hidden: session.setting("files.hidden", false)
+    property bool details: session.setting("files.details", false)
+    property bool adaptive: session.setting("files.adaptive", true)
+    property real zoom: session.setting("files.zoom", 1)
+    property string foldersAt: session.setting("files.foldersAt", "first")
+    property var columns: session.setting("files.columns", ["size", "modified", "kind"])
+    property var widths: session.setting("files.widths", ({}))
+    property bool folderSizes: session.setting("files.folderSizes", true)
+    property string openWith: session.setting("files.openWith", "double")
+    property bool confirmTrash: session.setting("files.confirmTrash", false)
+    property var defaultView: session.setting("files.defaultView", ({ mode: "grid", sortBy: "name", descending: false, group: "" }))
+    readonly property var indexOpts: ({ drives: session.setting("files.indexDrives", true), exclude: session.setting("files.indexExclude", []) })
+    // Changed (here, in Settings, or in another Files): every window shows it.
+    property Connections watch: Connections {
+        target: Desktop
+        function onSettingChanged(key) {
+            if (!key.startsWith("files.")) return;
+            const v = (k, f) => session.setting(k, f);
+            switch (key) {
+            case "files.hidden": session.hidden = v(key, false); break;
+            case "files.details": session.details = v(key, false); break;
+            case "files.adaptive": session.adaptive = v(key, true); session.reload(true); break;
+            case "files.zoom": session.zoom = v(key, 1); break;
+            case "files.foldersAt": session.foldersAt = v(key, "first"); session.reload(false); break;
+            case "files.columns": session.columns = v(key, ["size", "modified", "kind"]); break;
+            case "files.widths": session.widths = v(key, {}); break;
+            case "files.folderSizes": session.folderSizes = v(key, true); break;
+            case "files.openWith": session.openWith = v(key, "double"); break;
+            case "files.confirmTrash": session.confirmTrash = v(key, false); break;
+            case "files.defaultView": session.defaultView = v(key, session.defaultView); session.reload(true); break;
+            case "files.reindex": Search.keepFresh(JSON.stringify(session.indexOpts), v(key, 0)); break;
+            }
+        }
+    }
+    // Every folder shown again (`views`: their views looked up again too).
+    function reload(views) {
+        for (const w of session.windows) for (const t of w.tabs) for (const p of t.panes) { if (views) p.applyView(); p.load() }
+    }
+    function setHidden(on) { session.hidden = on; session.set("files.hidden", on) }
+    function setDetails(on) { session.details = on; session.set("files.details", on) }
+    function setAdaptive(on) { session.adaptive = on; session.set("files.adaptive", on) }
+    function setZoom(z) { session.zoom = Math.max(0.75, Math.min(1.6, Math.round(z * 100) / 100)); session.set("files.zoom", session.zoom) }
+    function setFoldersAt(at) { session.foldersAt = at; session.set("files.foldersAt", at); session.reload(false) }
     function toggleColumn(key) {
-        const order = ["size", "modified", "created", "kind"];
         const on = session.columns.includes(key);
-        const next = order.filter(k => k === key ? !on : session.columns.includes(k));
-        Fs.setColumns(JSON.stringify(next));
+        const next = ["size", "modified", "created", "kind"].filter(k => k === key ? !on : session.columns.includes(k));
         session.columns = next;
+        session.set("files.columns", next);
     }
     // While dragging: shown only; `keep`: saved.
     function setWidth(key, w, keep) {
         const next = Object.assign({}, session.widths);
-        next[key] = Math.round(w);
+        next[key] = Math.round(Math.max(60, Math.min(600, w)));
         session.widths = next;
-        if (keep) Fs.setColumnWidth(key, Math.round(w));
+        if (keep) session.set("files.widths", next);
     }
-    // The details panel, everywhere.
-    property bool details: Fs.showsDetails()
-    function setDetails(on) { Fs.setShowsDetails(on); session.details = on }
+    function setDefaultView(v) { session.defaultView = v; session.set("files.defaultView", v); session.reload(true) }
+    // Settings › Files (at a sub-page: general, views, search, apps, shortcuts).
+    function openSettings(sub) { const e = Fs.openSettings("files" + (sub ? "/" + sub : "")); if (e) console.warn(e) }
+
     property var windows: []
     // Closed tabs, newest last: { tab: snapshot, index }.
     property var closed: []
@@ -57,10 +86,18 @@ QtObject {
     // Starts the first window; returns its tabs ({tabs, current}).
     function start() {
         // The search index, made or freshened in the background.
-        Search.keepFresh();
+        Search.keepFresh(JSON.stringify(session.indexOpts), session.setting("files.reindex", 0));
         const args = JSON.parse(Fs.arguments());
         if (args.length > 0) return { tabs: args.map(a => ({ path: a })), current: 0 };
         session.owner = true;
+        // Where it starts: your last tabs, home, or a chosen folder (the tabs
+        // are still saved as you go either way).
+        const startIn = session.setting("files.startIn", "last");
+        if (startIn === "home") return { tabs: [{ path: "" }], current: 0 };
+        if (startIn === "folder") {
+            const f = Fs.resolve(session.setting("files.startFolder", ""));
+            return { tabs: [{ path: f }], current: 0 };
+        }
         const saved = JSON.parse(Fs.loadSession()).windows;
         if (saved.length === 0) return { tabs: [{ path: "" }], current: 0 };
         // The others get windows of their own.
