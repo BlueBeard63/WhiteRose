@@ -34,6 +34,8 @@ func TestSettingsSecondsShowInTheBarClock(t *testing.T) {
 func TestSettingsEveryControlHasAName(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("")
+	// The window can be in the tree before its items are (a slow machine).
+	settings.WaitFor(uitest.Named("Apps").Role("page tab"))
 	seen := map[string]bool{}
 	var problems []string
 	for {
