@@ -1142,7 +1142,14 @@ mod tests {
             let mut got = vec![];
             walk(
                 &d,
-                &Look { query: &q, filters: &f, hidden: false, mime: &mime, inside: Some(&inside), either },
+                &Look {
+                    query: &q,
+                    filters: &f,
+                    hidden: false,
+                    mime: &mime,
+                    inside: Some(&inside),
+                    either,
+                },
                 &AtomicBool::new(false),
                 100,
                 &mut |h, _, done| {
