@@ -81,12 +81,14 @@ Every screen starts in Figma, and the code follows the frames closely. A few of 
 
 ### Files
 A full file manager (`apps/files`, Qt Quick + Rust). Its whole checklist is in [`apps/files/FEATURES.md`](apps/files/FEATURES.md).
-- Tabs (tear off into a new window, or drop onto another one), dual panes, and grid / list / columns / gallery / cards / disk-usage views.
+- Tabs (tear off into a new window, or drop onto another one), dual panes, and grid / list / columns / cards / disk-usage views.
+- Nothing pops up over the files: the **Sheet** beside them holds info, rename (many at once, the new names shown in the list), share and compress, connecting to servers and cloud accounts, and compare & sync; copies, moves and clashes go in an **Activity drawer**; questions ask in a strip above the files; new folders are named right where they appear.
 - View, sort and grouping remembered per folder, lent to subfolders or used everywhere.
-- Instant indexed search with type, size, date and `tag:` filters.
-- A transfer queue with pause, resume and side-by-side conflict resolution. Trash across every drive, with restore.
-- Previews (Space): images, audio, video, PDF and text. A details pane, and properties with permissions.
-- Tags stored on the file itself, folder colours and icons, Git status badges and the current branch.
+- Instant indexed search with type, size, date and `tag:` filters, inside files too; `whiterose-files --find` from a terminal.
+- A transfer queue with pause, resume and side-by-side conflict resolution (a text file's changes line by line). Trash across every drive, with restore.
+- Network shares (SMB, SFTP, FTP, WebDAV, NFS), cloud drives (Google Drive, OneDrive, Dropbox, iCloud, S3) and Nextcloud sync badges.
+- Previews (Space): images, audio, video, PDF and text.
+- Tags stored on the file itself, folder colours and icons, and the current git branch.
 - Safe by default: archives are extracted in Rust with path validation, and programs from Downloads, removable drives and similar places only run once you say you trust them.
 
 ### Notepad

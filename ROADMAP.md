@@ -2,7 +2,7 @@
 
 # WhiteRose Roadmap
 
-![The WhiteRose roadmap: eleven milestones from 0.1 Foundations to 1.2 Module API stable](docs/roadmap.png)
+![The WhiteRose roadmap: eleven milestones from 0.1 Foundations to 1.2 Module API stable; 0.1 and 0.2 shipped](docs/roadmap.png)
 
 </div>
 
@@ -13,12 +13,12 @@ Each feature lists where the idea comes from: Windows, Hyprland, niri, GNOME, KD
 | | Milestone | Theme | What it's about |
 |---|---|---|---|
 | ✅ | [**0.1**](#01--foundations) | Foundations | What WhiteRose is today. |
-| 🔨 | [**0.2**](#02--layouts) | Layouts | How windows are arranged: four models, one global choice with overrides. |
-| 🗓️ | [**0.3**](#03--overview--gestures) | Overview & gestures | Seeing everything at once, and moving around with gestures. |
-| 🗓️ | [**0.4**](#04--look--feel) | Look & feel | Making it yours, and making every app match. |
-| 🗓️ | [**0.5**](#05--login) | Login | WhiteRose from the first frame: its own display manager. |
-| 🗓️ | [**0.6**](#06--accounts--files) | Accounts & Files | Your online accounts and better file management. |
-| 🗓️ | [**0.7**](#07--everyday-tools) | Everyday tools | Small things used all day, and hardware setup. |
+| ✅ | [**0.2**](#02--files) | Files | Online drives, network shares, and no dialogs. |
+| 🔨 | [**0.3**](#03--layouts) | Layouts | How windows are arranged: four models, one global choice with overrides. |
+| 🗓️ | [**0.4**](#04--overview--gestures) | Overview & gestures | Seeing everything at once, and moving around with gestures. |
+| 🗓️ | [**0.5**](#05--look--feel) | Look & feel | Making it yours, and making every app match. |
+| 🗓️ | [**0.6**](#06--login) | Login | WhiteRose from the first frame: its own display manager. |
+| 🗓️ | [**0.7**](#07--accounts--everyday-tools) | Accounts & everyday tools | Your accounts' calendars and contacts, small things used all day, and hardware setup. |
 | 🗓️ | [**0.8**](#08--more-distros) | More distros | Beyond Ubuntu and Fedora. |
 | 🗓️ | [**1.0**](#10--daily-driver) | Daily driver | Everything above, finished. |
 | 🗓️ | [**1.1**](#11--module-api-preview) | Module API preview | Anyone can extend WhiteRose. Design: API.md. |
@@ -31,14 +31,68 @@ Each feature lists where the idea comes from: Windows, Hyprland, niri, GNOME, KD
 
 - **Compositor & shell:** Rust + Smithay compositor; QuickShell bar, island and panels.
 - **Settings:** 17 pages: displays, network, users, keyboard, updates and more.
-- **Files & Notepad:** Tabs, dual panes, indexed search, tags, git badges; a code-aware editor.
+- **Files & Notepad:** Tabs, dual panes, indexed search, tags, the git branch; a code-aware editor.
 - **Signed updates:** Installed beside the running version, health-checked, automatic rollback.
 - **Fingerprint unlock:** Lock screen, admin prompts and sudo.
 - **.deb & .rpm:** Ubuntu 26.04 and Fedora 45.
 
 All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## 0.2 · Layouts
+## 0.2 · Files
+
+**Shipped.** A file manager that doesn't get in your way: online drives, network shares, and nothing popping up over your files.
+
+<details>
+<summary><b>Cloud drives in Files</b>: Google Drive, OneDrive, Dropbox, iCloud Drive, pCloud and S3 as folders. <sub>· GNOME, rclone</sub></summary>
+
+- Add cloud account… (the Files sidebar or ☰) signs in with the browser and asks anything else (iCloud's two-factor code) in Files; opened as folders, cached on disk as used. GNOME Online Accounts' drives show up too.
+
+</details>
+
+<details>
+<summary><b>Nextcloud in Files</b>: sync badges, keep offline, free up space, share links. <sub>· Nextcloud</sub></summary>
+
+- Folders the Nextcloud or ownCloud desktop client keeps show synced / syncing / waiting / couldn't sync / only in the cloud on every file, through the client's own socket; right-click to keep a file on this device, free up its space, share it or copy its link.
+
+</details>
+
+<details>
+<summary><b>Network shares</b>: SMB, SFTP, FTP, WebDAV and NFS in the Files sidebar. <sub>· GNOME, KDE</sub></summary>
+
+- Connect to server in the Sheet, hosts from your SSH config, saved servers, passwords in the keyring, host-key questions answered in place. Finding shares nearby by themselves comes in 0.7.
+
+</details>
+
+<details>
+<summary><b>Bulk rename</b>: find and replace (with regular expressions), case, numbering, the extension. <sub>· Windows, KDE</sub></summary>
+
+- In the Sheet's Rename tab; the new names show in the list as you type, and clashes are marked and skipped.
+
+</details>
+
+<details>
+<summary><b>Compare & sync folders</b>: compare two folders and sync them. <sub>· WhiteRose's own</sub></summary>
+
+- By size and time or byte by byte; differences marked on the files in both panes; update either way, two-way or mirror (removed files go to the Trash); a clashing text file shows its changes line by line.
+
+</details>
+
+<details>
+<summary><b>Custom actions</b>: your own commands on selected files, from the menu. <sub>· KDE, GNOME</sub></summary>
+
+- Set in Settings › Files › Toolbar & menus: the command, file types, files or folders, in a terminal or not.
+
+</details>
+
+<details>
+<summary><b>Files without dialogs</b>: everything in place, nothing popping up over the files. <sub>· WhiteRose's own</sub></summary>
+
+- The Sheet (info, rename, share, connect, compare and sync), an Activity drawer for copies and clashes, questions in a strip above the files, new folders named right where they appear. Settings and Notepad work the same way now.
+
+</details>
+
+
+## 0.3 · Layouts
 
 **Next up.** How windows are arranged: four models, one global choice with overrides.
 
@@ -100,7 +154,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 
-## 0.3 · Overview & gestures
+## 0.4 · Overview & gestures
 
 **Planned.** Seeing everything at once, and moving around with gestures.
 
@@ -138,7 +192,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 
-## 0.4 · Look & feel
+## 0.5 · Look & feel
 
 **Planned.** Making it yours, and making every app match.
 
@@ -196,7 +250,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 
-## 0.5 · Login
+## 0.6 · Login
 
 **Planned.** WhiteRose from the first frame: its own display manager.
 
@@ -231,57 +285,23 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 
-## 0.6 · Accounts & Files
+## 0.7 · Accounts & everyday tools
 
-**Planned.** Your online accounts and better file management.
+**Planned.** Your accounts' calendars and contacts, small things used all day, and hardware setup.
 
 <details>
-<summary><b>Online accounts: Google</b>: Drive in Files; Calendar and Contacts in the calendar panel. <sub>· GNOME</sub></summary>
+<summary><b>Calendars & contacts from your accounts</b>: Google and Nextcloud in the calendar panel and launcher. <sub>· GNOME, Nextcloud</sub></summary>
 
-- Settings › Accounts: sign in with Google (OAuth in the browser, tokens in the keyring).
-- Drive as a place in Files (on demand, cached), Calendar events and Contacts in the calendar panel and launcher.
+- Today the calendar panel reads iCal links and .ics files; next is signing in (Google through the browser, Nextcloud's login flow), CalDAV and CardDAV, and contacts in the launcher.
 
 </details>
 
 <details>
-<summary><b>Online accounts: Nextcloud</b>: Files with sync badges; calendars (CalDAV) and contacts (CardDAV). <sub>· Nextcloud</sub></summary>
+<summary><b>Shares on the network</b>: Servers nearby found by themselves in Files. <sub>· GNOME, KDE</sub></summary>
 
-- Login flow v2; files mounted/synced with status badges in Files (synced, syncing, conflict); CalDAV/CardDAV.
-
-</details>
-
-<details>
-<summary><b>Network shares</b>: SMB, SFTP, WebDAV and NFS browsing and mounting in the Files sidebar. <sub>· GNOME, KDE</sub></summary>
-
-- 'Connect to server', saved servers, credentials in the keyring, network browsing (mDNS/WS-Discovery).
+- mDNS and WS-Discovery, so a NAS or a Windows share shows up in the sidebar's Network without typing its address.
 
 </details>
-
-<details>
-<summary><b>Bulk rename</b>: Rename many files with patterns, numbering, find/replace, with a preview. <sub>· Windows, KDE</sub></summary>
-
-- Templates ({name}, {n:03}, {date}), find/replace with regex, case changes, live preview, undo.
-
-</details>
-
-<details>
-<summary><b>Compare & sync folders</b>: Compare two folders and sync them. <sub>· WhiteRose's own</sub></summary>
-
-- Side-by-side diff by name/size/date/content; copy left/right; one-click mirror; text-file diffs.
-
-</details>
-
-<details>
-<summary><b>Custom actions</b>: Run your own scripts on selected files from the menu. <sub>· KDE, GNOME</sub></summary>
-
-- Actions defined in Settings › Files (command, file types, multi-select), like Dolphin service menus / Nautilus scripts.
-
-</details>
-
-
-## 0.7 · Everyday tools
-
-**Planned.** Small things used all day, and hardware setup.
 
 <details>
 <summary><b>Pinned clipboard</b>: Keep favourites pinned at the top of clipboard history. <sub>· Windows</sub></summary>
