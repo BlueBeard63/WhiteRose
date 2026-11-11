@@ -17,6 +17,7 @@ pub mod input;
 pub mod ipc;
 pub mod keybind;
 pub mod keyboard;
+pub mod layout;
 pub mod monitor_id;
 pub mod night_light;
 pub mod outputs;
