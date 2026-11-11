@@ -153,7 +153,7 @@ mod tests {
         let s = status(&d.join("src/deep"));
         assert_eq!((s.branch.as_str(), s.ahead, s.behind), ("work", 0, 0));
         assert_eq!(s.root, d.to_string_lossy());
-        assert!(has_upstream(&d.join(".git"), "work") == false);
+        assert!(!has_upstream(&d.join(".git"), "work"));
         fs::write(
             d.join(".git/config"),
             "[branch \"work\"]\n\tremote = origin\n\tmerge = refs/heads/work\n",
