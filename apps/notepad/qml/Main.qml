@@ -207,7 +207,7 @@ AppWindow {
     }
     Item {
         id: stack
-        anchors { left: parent.left; right: parent.right; top: diskBanner.bottom; bottom: find.top }
+        anchors { left: parent.left; right: parent.right; top: confirm.bottom; bottom: lineJump.visible ? lineJump.top : find.top }
     }
     FindBar { id: find; editor: win.current; anchors { left: parent.left; right: parent.right; bottom: status.top } }
     Rectangle {
@@ -282,35 +282,47 @@ AppWindow {
         }
     }
 
-    // Unsaved changes: Save, Don't save, Cancel.
-    Popup {
+    // Unsaved changes: Save, Don't save, Cancel, asked in a strip above the
+    // document (like "changed on disk"). Esc cancels.
+    FocusScope {
         id: confirm
         property var editor: null
         property var then: null
         property int count: 1
-        function ask(e, done, n) { confirm.editor = e; confirm.then = done; confirm.count = n ?? 1; confirm.open() }
-        anchors.centerIn: Overlay.overlay
-        modal: true
-        padding: 22
-        width: 400
-        background: Rectangle { color: Theme.bg; radius: 16; border { width: 1; color: Theme.surface2 } }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.45) }
-        contentItem: Column {
-            spacing: 16
+        property bool asking: false
+        function ask(e, done, n) {
+            confirm.editor = e; confirm.then = done; confirm.count = n ?? 1;
+            // The one asked about, in front.
+            if (n === undefined || n === 1) { const i = win.editors.indexOf(e); if (i >= 0) win.show(i) }
+            confirm.asking = true;
+            Qt.callLater(() => saveButton.forceActiveFocus());
+        }
+        function close() { confirm.asking = false; win.current?.area.forceActiveFocus() }
+        visible: asking
+        anchors { left: parent.left; right: parent.right; top: diskBanner.bottom }
+        height: visible ? 48 : 0
+        Keys.onEscapePressed: confirm.close()
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.tint(0.12)
             Text {
-                width: parent.width
-                wrapMode: Text.Wrap
+                anchors { left: parent.left; leftMargin: 16; right: confirmButtons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                elide: Text.ElideMiddle
                 text: confirm.count > 1 ? confirm.count + " files have unsaved changes" : "Save changes to " + (confirm.editor?.title ?? "") + "?"
                 color: Theme.text
-                font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
+                font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
             }
             Row {
-                anchors.right: parent.right
+                id: confirmButtons
+                anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                 spacing: 8
-                Button { text: "Cancel"; onClicked: confirm.close() }
+                Button { text: "Cancel"; kind: "ghost"; onClicked: confirm.close() }
                 Button { text: "Don't save"; kind: "danger"; onClicked: { confirm.close(); win.editors.forEach(e => { if (confirm.count > 1 || e === confirm.editor) e.dirty = false }); confirm.then() } }
                 Button {
+                    id: saveButton
                     text: "Save"; kind: "primary"
+                    Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => saveButton.clicked()) }
+                    Keys.onEscapePressed: confirm.close()
                     onClicked: {
                         confirm.close();
                         const todo = confirm.count > 1 ? win.editors.filter(e => e.dirty) : [confirm.editor];
@@ -326,18 +338,30 @@ AppWindow {
         }
     }
 
-    Popup {
+    // Go to line (Ctrl+G): a small bar where the find bar goes.
+    Rectangle {
         id: lineJump
-        anchors.centerIn: Overlay.overlay
-        padding: 16
-        background: Rectangle { color: Theme.surface1; radius: 14; border { width: 1; color: Theme.surface2 } }
-        onOpened: { lineField.text = ""; lineField.focusField() }
-        contentItem: Field {
-            id: lineField
-            implicitWidth: 220
-            placeholder: "Go to line"
-            // Closed once Enter is handled (closing during it can crash Qt).
-            onAccepted: { const n = parseInt(text); Qt.callLater(() => { lineJump.close(); if (!isNaN(n)) win.current?.goToLine(n) }) }
+        function open() { if (find.visible) find.visible = false; lineJump.visible = true; lineField.text = ""; lineField.focusField() }
+        // (The find bar shares this spot: opening it puts this away.)
+        Connections { target: find; function onVisibleChanged() { if (find.visible) lineJump.visible = false } }
+        function close() { lineJump.visible = false; win.current?.area.forceActiveFocus() }
+        visible: false
+        anchors { left: parent.left; right: parent.right; bottom: status.top }
+        height: visible ? 50 : 0
+        color: Theme.surface1
+        Rectangle { width: parent.width; height: 1; color: Theme.surface2 }
+        Row {
+            x: 12; anchors.verticalCenter: parent.verticalCenter
+            spacing: 10
+            Field {
+                id: lineField
+                implicitWidth: 200; implicitHeight: 32
+                placeholder: "Go to line (1–" + (win.current?.area.lineCount ?? 1) + ")"
+                // Closed once Enter is handled (closing during it can crash Qt).
+                onAccepted: { const n = parseInt(text); Qt.callLater(() => { lineJump.close(); if (!isNaN(n)) win.current?.goToLine(n) }) }
+                Keys.onEscapePressed: lineJump.close()
+            }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: "Enter goes there · Esc closes"; color: Theme.faint; font { family: Theme.font; pointSize: Theme.pt(11) } }
         }
     }
 
