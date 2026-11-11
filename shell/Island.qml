@@ -1,8 +1,8 @@
 // The centre island (Figma: "Center Island"): one shape hanging from the bar
-// that morphs between every view: idle, dock, clipboard, screenshots,
-// launcher, the ALT+TAB / SUPER+ALT+TAB switchers, and the "couldn't start"
-// prompt after a failed update. Switching views
-// reshapes the same outline in place; closing shrinks it back to idle.
+// that morphs between every view. The views are declared in shell/island/,
+// one file each (IslandView.qml): the island takes each one's size, and
+// what it asks for (the keyboard, room below). Switching views reshapes the
+// same outline in place; closing shrinks it back to rest.
 // When a window sits right under it (a maximized title bar), the idle island
 // tucks into the bar, leaving its grip there; hovering brings it back out.
 import QtQuick
@@ -14,10 +14,8 @@ Item {
     // The switcher (run by the compositor) takes over while ALT+TAB is held.
     readonly property string view: Compositor.switcher ? "switcher" : ShellState.islandView
     readonly property bool idle: view === "idle"
-    // Views that take the keyboard (the switcher doesn't: the compositor owns
-    // those keys; nor does the "couldn't start" prompt: it's a question that
-    // stays until it's answered, not something clicking elsewhere closes).
-    readonly property bool wantsKeyboard: !idle && view !== "switcher" && view !== "recovery"
+    // Views that take the keyboard (each says; see IslandView.qml).
+    readonly property bool wantsKeyboard: !idle && (shown?.keyboard ?? false)
 
     // Opening a switcher over another view ends that view.
     Connections {
@@ -26,10 +24,10 @@ Item {
     }
 
     // ---- views -------------------------------------------------------------
-    readonly property var current: ({
-        dock: dockLoader, clipboard: clipLoader, screenshots: shotsLoader,
-        launcher: launcherLoader, switcher: switcherLoader, recovery: recoveryLoader
-    })[view] ?? null
+    // The loader of the view showing, and the view itself.
+    property var loaders: ({})
+    readonly property var current: root.loaders[view] ?? null
+    readonly property var shown: current?.item ?? null
     // ---- tucking ----------------------------------------------------------------
     // Hovering the bar's centre or the island itself keeps it out; leaving
     // tucks it back after a moment (so crossing the edge doesn't flicker).
@@ -49,12 +47,14 @@ Item {
 
     // Room the bar window must leave below the bar. Grows at once, shrinks only
     // after the morph has finished, so the window never resizes mid-animation.
-    readonly property real wanted: targetHeight + (view === "dock" && dockLoader.item ? dockLoader.item.overhang : 0)
+    readonly property real wanted: targetHeight + (root.shown?.overhang ?? 0)
     property real reserve: 18
     onWantedChanged: { if (wanted >= reserve) reserve = wanted; else shrink.restart() }
     Timer { id: shrink; interval: 320; onTriggered: root.reserve = root.wanted }
 
-    readonly property var previewCard: dockLoader.item?.previewCard ?? null
+    // Things outside the outline that take clicks (the dock's previews): the
+    // bar's input region includes them.
+    readonly property var inputs: root.shown ? Array.from(root.shown.inputs) : []
 
     width: shape.width
     height: shape.height
@@ -147,19 +147,25 @@ Item {
 
         // Views live inside the scope, so a focused child (the launcher's
         // search field) still counts as the island having focus. They're
-        // clipped to the outline, except the dock, whose window previews hang
-        // below the island.
+        // clipped to the outline, except one with room below it (the dock's
+        // window previews hang there).
         Item {
             x: shape.bodyX
             width: shape.bodyWidth
-            height: root.view === "dock" ? root.height + 400 : shape.bodyHeight
-            clip: root.view !== "dock"
-            View { id: dockLoader; name: "dock"; sourceComponent: DockView {} }
-            View { id: clipLoader; name: "clipboard"; sourceComponent: ClipboardView {} }
-            View { id: shotsLoader; name: "screenshots"; sourceComponent: ScreenshotsView {} }
-            View { id: launcherLoader; name: "launcher"; sourceComponent: LauncherView {} }
-            View { id: switcherLoader; name: "switcher"; sourceComponent: SwitcherView {} }
-            View { id: recoveryLoader; name: "recovery"; sourceComponent: RecoveryView {} }
+            readonly property bool hangs: (root.shown?.overhang ?? 0) > 0
+            height: hangs ? root.height + 400 : shape.bodyHeight
+            clip: !hangs
+            Repeater {
+                model: ShellState.islandViews
+                delegate: View {
+                    id: viewLoader
+                    required property string modelData
+                    name: modelData
+                    source: Quickshell.shellDir + "/island/" + modelData + ".qml"
+                    Component.onCompleted: { const l = Object.assign({}, root.loaders); l[modelData] = viewLoader; root.loaders = l }
+                    Component.onDestruction: { const l = Object.assign({}, root.loaders); delete l[modelData]; root.loaders = l }
+                }
+            }
         }
 
         onActiveFocusChanged: {

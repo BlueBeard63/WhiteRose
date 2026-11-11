@@ -16,8 +16,16 @@ Singleton {
 
     // Which view the centre island shows. The window switcher overrides this
     // while ALT+TAB is held (it is driven by the compositor).
-    property string islandView: "idle"   // idle | dock | clipboard | screenshots | launcher | recovery
-    readonly property var views: ["idle", "dock", "clipboard", "screenshots", "launcher", "recovery"]
+    property string islandView: "idle"
+    // The island's views: one file each in shell/island/ (the name is the
+    // file's; see IslandView.qml), found when the shell starts.
+    property var islandViews: []
+    readonly property var views: ["idle"].concat(islandViews)
+    Process {
+        running: true
+        command: ["sh", "-c", "for f in \"$1\"/*.qml; do [ -f \"$f\" ] && basename \"$f\" .qml; done; true", "sh", Quickshell.shellDir + "/island"]
+        stdout: StdioCollector { onStreamFinished: root.islandViews = text.split("\n").filter(n => /^[a-z][a-z0-9-]*$/.test(n)) }
+    }
 
     function show(view) { if (views.includes(view)) { islandView = view; if (view !== "idle") panel = "" } }
     function toggle(view) { islandView === view ? close() : show(view) }

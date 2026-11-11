@@ -26,7 +26,9 @@ PanelWindow {
     mask: Region {
         item: bar
         Region { item: island }
-        Region { item: island.previewCard }
+        // (Things a view puts outside the island: the dock's previews.)
+        Region { item: island.inputs[0] ?? null }
+        Region { item: island.inputs[1] ?? null }
         Region { item: quick }
         Region { item: notifications }
         Region { item: calendar }
