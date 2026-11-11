@@ -71,6 +71,11 @@ compositor/   whiterose-wm: Rust + Smithay 0.7
   tests/layer_shell.rs  a bar-like client on a fake 1440x808 output: bar width, reserved space,
                         windows open below it, launcher gets exclusive keyboard focus
 daemon/       whiterosed: Go
+  uitest/            click-and-check UI tests (`make ui-test`): internal/uitest starts a nested
+                     WhiteRose in a session of its own (HOME, D-Bus, accessibility bus, display),
+                     finds things by accessible name and role (AT-SPI; the kit's components and
+                     Files' rows and tabs carry them), clicks and types with the real pointer and
+                     keyboard through the compositor, and reads back what shows
 Makefile      `make check` = gofmt, vet, race, fuzz, cargo fmt, clippy -D warnings, cargo test
               `make run-nested` = WhiteRose in a window on the current desktop
 ```

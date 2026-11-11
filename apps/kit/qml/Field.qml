@@ -22,8 +22,14 @@ Rectangle {
     radius: 10
     color: Theme.bg
     border { width: 1; color: root.error ? Theme.rose : input.activeFocus ? Theme.muted : Theme.surface2 }
+    // What it's for, in words (its placeholder if not given).
+    property string label: ""
     TextInput {
         id: input
+        // (For screen readers and the UI tests.)
+        Accessible.role: Accessible.EditableText
+        Accessible.name: root.label || root.placeholder
+        Accessible.passwordEdit: root.secret
         anchors { fill: parent; leftMargin: 12; rightMargin: root.secret ? 34 : 12 }
         verticalAlignment: TextInput.AlignVCenter
         clip: true

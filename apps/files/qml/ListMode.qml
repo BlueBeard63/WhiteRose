@@ -167,6 +167,14 @@ FocusScope {
             required property int index
             readonly property bool on: !!root.pane.selected[modelData.path]
             readonly property bool hiddenByFold: root.pane.grouped && !!root.pane.folded[modelData.group]
+            // (For screen readers and the UI tests: the file, whether it's
+            // selected, and, while renaming, its new name.)
+            Accessible.role: Accessible.ListItem
+            Accessible.name: row.modelData.name ?? ""
+            Accessible.description: row.newName ? "→ " + row.newName.to + (row.newName.problem ? " (" + row.newName.problem + ")" : "") : ""
+            Accessible.selectable: true
+            Accessible.selected: row.on
+
             x: 8; width: list.width - 16; height: hiddenByFold ? 0 : 32 * Session.zoom
             visible: !hiddenByFold
             readonly property string cloudState: root.pane.cloudOf(modelData)

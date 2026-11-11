@@ -40,6 +40,9 @@ Popup {
                 required property var modelData
                 required property int index
                 readonly property bool sub: !!modelData.items
+                // (For screen readers and the UI tests.)
+                Accessible.role: modelData.separator ? Accessible.Separator : Accessible.MenuItem
+                Accessible.name: modelData.label ?? ""
                 readonly property real need: (modelData.stepper ? 110 : 0) + labelText.implicitWidth + keys.implicitWidth + (keys.text ? 56 : 24) + (tick.visible ? 20 : 0) + (sub ? 20 : 0) + (dot.visible ? 18 : 0)
                 width: menu.width - 12
                 height: modelData.separator ? 9 : 30

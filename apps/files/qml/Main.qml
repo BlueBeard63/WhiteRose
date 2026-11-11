@@ -324,7 +324,7 @@ AppWindow {
             IconButton {
                 id: plus
                 anchors { left: tabRow.right; leftMargin: 4; verticalCenter: parent.verticalCenter }
-                width: 28; height: 28; icon: "plus"; iconSize: 13; fill: "transparent"
+                width: 28; height: 28; icon: "plus"; label: "New tab"; iconSize: 13; fill: "transparent"
                 onClicked: win.newTab({ path: win.current?.path ?? "" })
             }
             MouseArea {
@@ -467,10 +467,10 @@ AppWindow {
             anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 2
             // Show / hide the sidebar.
-            IconButton { width: 32; height: 32; icon: "panelLeft"; fill: "transparent"; iconColor: Session.sidebar ? Theme.text : Theme.muted; onClicked: Session.setSidebar(!Session.sidebar) }
-            IconButton { width: 32; height: 32; icon: "chevL"; fill: "transparent"; opacity: (win.current?.back.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goBack() }
-            IconButton { width: 32; height: 32; icon: "chevR"; fill: "transparent"; opacity: (win.current?.forward.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goForward() }
-            IconButton { width: 32; height: 32; icon: "chevUp"; fill: "transparent"; opacity: Fs.up(win.current?.path ?? "/") !== "" ? 1 : 0.35; onClicked: win.current?.up() }
+            IconButton { width: 32; height: 32; icon: "panelLeft"; label: "Sidebar"; fill: "transparent"; iconColor: Session.sidebar ? Theme.text : Theme.muted; onClicked: Session.setSidebar(!Session.sidebar) }
+            IconButton { width: 32; height: 32; icon: "chevL"; label: "Back"; fill: "transparent"; opacity: (win.current?.back.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goBack() }
+            IconButton { width: 32; height: 32; icon: "chevR"; label: "Forward"; fill: "transparent"; opacity: (win.current?.forward.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goForward() }
+            IconButton { width: 32; height: 32; icon: "chevUp"; label: "Up"; fill: "transparent"; opacity: Fs.up(win.current?.path ?? "/") !== "" ? 1 : 0.35; onClicked: win.current?.up() }
         }
         AddressBar {
             id: address
@@ -525,7 +525,7 @@ AppWindow {
                 model: Session.toolbar.map(id => Actions.toolbar.find(t => t.id === id)).filter(t => !!t)
                 delegate: IconButton {
                     required property var modelData
-                    width: 32; height: 32; icon: modelData.icon; fill: "transparent"
+                    width: 32; height: 32; icon: modelData.icon; label: modelData.label; fill: "transparent"
                     iconColor: (modelData.id === "hidden" && Session.hidden) || (modelData.id === "details" && Session.details) || (modelData.id === "split" && (win.tab?.split ?? false)) ? Theme.rose : Theme.text
                     onClicked: win.toolbarDo(modelData.id)
                     ToolTip.visible: hovered
@@ -537,13 +537,13 @@ AppWindow {
         IconButton {
             id: searchButton
             anchors { right: menuButton.left; rightMargin: 2; verticalCenter: parent.verticalCenter }
-            width: 32; height: 32; icon: win.current?.searching ? "x" : "search"; fill: "transparent"
+            width: 32; height: 32; icon: win.current?.searching ? "x" : "search"; label: win.current?.searching ? "Close search" : "Search"; fill: "transparent"
             onClicked: win.current?.searching ? win.closeSearch() : win.openSearch("")
         }
         IconButton {
             id: menuButton
             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-            width: 32; height: 32; icon: "menu"; fill: "transparent"
+            width: 32; height: 32; icon: "menu"; label: "Menu"; fill: "transparent"
             onClicked: viewMenu.openAt(width - viewMenu.width, height + 4)
             Menu {
                 id: viewMenu
