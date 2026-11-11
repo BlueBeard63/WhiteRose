@@ -32,10 +32,15 @@ Column {
             [WifiSecurityType.Owe]: "OWE", [WifiSecurityType.Open]: "Open",
         })[n.security] ?? ""
     }
+    // Joining a network that needs a password or a sign-in: asked under its
+    // row (the network's name, "" for none). Clicking it again closes it.
+    property string joining: ""
+    property string joinError: ""
+    property bool joinBusy: false
     function join(n) {
-        if (n.known || !secure(n)) n.connect();
-        else if (securityName(n) === "Enterprise") { enterpriseDialog.network = n; enterpriseDialog.open(); }
-        else { passwordDialog.network = n; passwordDialog.open(); }
+        if (n.known || !secure(n)) { page.joining = ""; n.connect(); return }
+        page.joinError = ""; page.joinBusy = false;
+        page.joining = page.joining === n.name ? "" : n.name;
     }
 
     PageHeader { title: "Network"; subtitle: "Wi-Fi and Ethernet, managed through NetworkManager." }
@@ -108,12 +113,16 @@ Column {
         }
         Repeater {
             model: Networking.wifiEnabled ? page.others : []
-            delegate: Rectangle {
-                id: net
+            delegate: Column {
+                id: netItem
                 required property var modelData
-                readonly property var n: modelData
+                width: parent.width
+                readonly property bool asking: page.joining !== "" && page.joining === modelData.name
+            Rectangle {
+                id: net
+                readonly property var n: netItem.modelData
                 width: parent.width; height: 46
-                color: netMouse.containsMouse ? Theme.surface2 : "transparent"
+                color: netItem.asking ? Theme.tint(0.12) : netMouse.containsMouse ? Theme.surface2 : "transparent"
                 SignalBars { id: bars; x: 16; strength: net.n.signalStrength; color: Theme.muted }
                 Column {
                     anchors { left: bars.right; leftMargin: 14; verticalCenter: parent.verticalCenter }
@@ -142,7 +151,7 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         MouseArea { id: forgetMouse; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: net.n.forget() }
                     }
-                    Icon { name: "chevR"; size: 13; color: Theme.faint; anchors.verticalCenter: parent.verticalCenter }
+                    Icon { name: netItem.asking ? "chevDown" : "chevR"; size: 13; color: Theme.faint; anchors.verticalCenter: parent.verticalCenter }
                 }
                 MouseArea {
                     id: netMouse
@@ -152,6 +161,15 @@ Column {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: page.join(net.n)
                 }
+            }
+            // ---- asked right here: its password, or (Enterprise) your sign-in ----
+            Loader {
+                active: netItem.asking
+                visible: active
+                width: parent.width
+                sourceComponent: page.securityName(netItem.modelData) === "Enterprise" ? enterpriseAsk : passwordAsk
+                property var network: netItem.modelData
+            }
             }
         }
         // Breathing room under the list (not under the connected row alone).
@@ -193,57 +211,80 @@ Column {
         }
     }
 
-    // ---- dialogs -------------------------------------------------------------------
-    Dialog {
-        id: passwordDialog
-        property var network: null
-        title: network?.name ?? ""
-        subtitle: network ? page.securityName(network) + " · needs a password" : ""
-        icon: "lock"
-        onOpened: { pw.text = ""; pw.focusField() }
-        Field { id: pw; width: parent.width; secret: true; placeholder: "Password"; onAccepted: connectBtn.clicked() }
-        footer: [
-            Button { id: cancelBtn; text: "Cancel"; onClicked: passwordDialog.close() },
-            Button {
-                id: connectBtn; text: "Connect"; kind: "primary"
-                enabled: pw.text.length >= 8
-                onClicked: { passwordDialog.network.connectWithPsk(pw.text); passwordDialog.close() }
-            }
-        ]
-    }
-    // Enterprise networks: your own sign-in instead of one password.
-    Dialog {
-        id: enterpriseDialog
-        property var network: null
-        property string error: ""
-        property bool busy: false
-        title: network?.name ?? ""
-        subtitle: "Enterprise · sign in with your account"
-        icon: "lock"
-        onOpened: { error = ""; busy = false; joinForm.load(null) }
-        EnterpriseForm { id: joinForm; joining: true }
-        Text {
-            visible: enterpriseDialog.error !== ""
-            width: parent.width; wrapMode: Text.Wrap
-            text: enterpriseDialog.error
-            color: Theme.rose; font { family: Theme.font; pointSize: Theme.pt(11.5) }
-        }
-        footer: [
-            Button { id: eCancel; text: "Cancel"; onClicked: enterpriseDialog.close() },
-            Button {
-                id: eConnect; text: enterpriseDialog.busy ? "Connecting…" : "Connect"; kind: "primary"
-                enabled: joinForm.complete && !enterpriseDialog.busy
-                onClicked: {
-                    enterpriseDialog.busy = true;
-                    enterpriseDialog.error = "";
-                    Daemon.request({ op: "network_join_enterprise", args: { ssid: enterpriseDialog.network.name, eap: joinForm.build() } }, (v, err) => {
-                        enterpriseDialog.busy = false;
-                        if (err) enterpriseDialog.error = String(err);
-                        else enterpriseDialog.close();
-                    });
+    // ---- joining, under the network's row -----------------------------------------------
+    Component {
+        id: passwordAsk
+        Rectangle {
+            id: pa
+            readonly property var network: parent?.network ?? null
+            height: 52
+            color: Theme.tint(0.12)
+            Keys.onEscapePressed: page.joining = ""
+            Row {
+                anchors { left: parent.left; leftMargin: 46; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                spacing: 8
+                Field {
+                    id: pw
+                    width: Math.min(360, parent.width - joinBtn.width - cancelJoin.width - 24)
+                    height: 34
+                    secret: true
+                    placeholder: "Password for " + (pa.network?.name ?? "") + " (" + page.securityName(pa.network ?? {}) + ")"
+                    onAccepted: if (joinBtn.enabled) joinBtn.clicked()
+                    Keys.onEscapePressed: page.joining = ""
+                    Component.onCompleted: Qt.callLater(() => pw.focusField())
+                }
+                Item { width: Math.max(0, parent.width - pw.width - joinBtn.width - cancelJoin.width - 24); height: 1 }
+                Button { id: cancelJoin; text: "Cancel"; kind: "ghost"; onClicked: page.joining = "" }
+                Button {
+                    id: joinBtn; text: "Join"; kind: "primary"
+                    enabled: pw.text.length >= 8
+                    onClicked: { pa.network.connectWithPsk(pw.text); page.joining = "" }
                 }
             }
-        ]
+        }
+    }
+    // Enterprise networks: your own sign-in instead of one password.
+    Component {
+        id: enterpriseAsk
+        Rectangle {
+            id: ea
+            readonly property var network: parent?.network ?? null
+            height: eaCol.implicitHeight + 24
+            color: Theme.tint(0.12)
+            Keys.onEscapePressed: page.joining = ""
+            Column {
+                id: eaCol
+                x: 46; y: 8
+                width: Math.min(560, parent.width - 62)
+                spacing: 10
+                Text { text: "Sign in with your account"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11.5) } }
+                EnterpriseForm { id: joinForm; joining: true; width: parent.width; Component.onCompleted: joinForm.load(null) }
+                Text {
+                    visible: page.joinError !== ""
+                    width: parent.width; wrapMode: Text.Wrap
+                    text: page.joinError
+                    color: Theme.rose; font { family: Theme.font; pointSize: Theme.pt(11.5) }
+                }
+                Row {
+                    spacing: 8
+                    Button { anchors.verticalCenter: undefined; text: "Cancel"; kind: "ghost"; onClicked: page.joining = "" }
+                    Button {
+                        anchors.verticalCenter: undefined
+                        text: page.joinBusy ? "Connecting…" : "Connect"; kind: "primary"
+                        enabled: joinForm.complete && !page.joinBusy
+                        onClicked: {
+                            page.joinBusy = true;
+                            page.joinError = "";
+                            Daemon.request({ op: "network_join_enterprise", args: { ssid: ea.network.name, eap: joinForm.build() } }, (v, err) => {
+                                page.joinBusy = false;
+                                if (err) page.joinError = String(err);
+                                else page.joining = "";
+                            });
+                        }
+                    }
+                }
+            }
+        }
     }
     ProfileDialog { id: profileDialog }
 }
