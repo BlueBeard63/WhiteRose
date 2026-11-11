@@ -47,7 +47,14 @@ Item {
         Column {
             anchors { left: thumb.right; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 2
+            Loader {
+                active: cell.pane.isNaming(cell.modelData)
+                visible: active
+                width: parent.width
+                sourceComponent: NameEditor { pane: cell.pane; dir: !!cell.modelData.dir; fontSize: 12.5 * Math.sqrt(cell.view.k) }
+            }
             Text {
+                visible: !cell.pane.isNaming(cell.modelData)
                 width: parent.width
                 text: cell.modelData.name
                 elide: Text.ElideMiddle

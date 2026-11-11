@@ -92,28 +92,32 @@ Item {
         onAccepted: page.act({ what: "copy", id: page.inside.id, path: copyTo.path, dest: decodeURIComponent(String(selectedFolder).replace(/^file:\/\//, "")) }, "Copied out")
     }
 
-    // ---- removing asks ------------------------------------------------------------------
-    Popup {
+    // ---- removing asks (in a strip above the list) ------------------------------------------------------------------
+    Strip {
         id: ask
         property var c: null
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: 380
-        modal: true
-        padding: 20
-        background: Rectangle { color: Theme.surface1; radius: 16; border { width: 1; color: Theme.surface2 } }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.35) }
-        contentItem: Column {
-            spacing: 12
-            Text { width: 340; wrapMode: Text.Wrap; text: "Remove “" + (ask.c?.name ?? "") + "”?"; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold } }
-            Text { width: 340; wrapMode: Text.Wrap; text: "Anything it keeps inside itself (not in a volume) goes with it. Its image stays."; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12) } }
-            Row {
-                anchors.right: parent.right
-                spacing: 8
-                Button { text: "Cancel"; kind: "ghost"; onClicked: ask.close() }
-                Button { text: "Remove"; kind: "danger"; onClicked: { page.act({ what: "remove", id: ask.c.id }, "Removed " + ask.c.name); ask.close() } }
-            }
+        anchors { left: parent.left; right: parent.right; top: head.bottom; topMargin: asking ? 8 : 0 }
+        tone: "danger"
+        icon: "trash"
+        focusOn: removeButton
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Remove “" + (ask.c?.name ?? "") + "”?"
+            color: Theme.text
+            font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
         }
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.max(60, ask.width - 520)
+            elide: Text.ElideRight
+            text: "Anything it keeps inside itself (not in a volume) goes with it. Its image stays."
+            color: Theme.muted
+            font { family: Theme.font; pointSize: Theme.pt(11) }
+        }
+        buttons: [
+            Button { text: "Keep it"; kind: "ghost"; onClicked: ask.close() },
+            Button { id: removeButton; text: "Remove"; kind: "danger"; onClicked: { page.act({ what: "remove", id: ask.c.id }, "Removed " + ask.c.name); ask.close() } }
+        ]
     }
 
     // ---- the list ---------------------------------------------------------------------------
@@ -159,7 +163,7 @@ Item {
     ListView {
         id: list
         visible: page.inside === null
-        anchors { left: parent.left; right: parent.right; top: head.bottom; topMargin: 14; bottom: parent.bottom }
+        anchors { left: parent.left; right: parent.right; top: ask.bottom; topMargin: 14; bottom: parent.bottom }
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -260,7 +264,7 @@ Item {
     ListView {
         id: files
         visible: page.inside !== null && page.insideError === ""
-        anchors { left: parent.left; right: parent.right; top: head.bottom; topMargin: 14; bottom: parent.bottom }
+        anchors { left: parent.left; right: parent.right; top: ask.bottom; topMargin: 14; bottom: parent.bottom }
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }

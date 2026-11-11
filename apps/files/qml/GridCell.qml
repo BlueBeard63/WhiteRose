@@ -47,7 +47,7 @@ Item {
     }
     // A link: a small arrow on the icon.
     Rectangle {
-        visible: cell.modelData.link
+        visible: !!cell.modelData?.link
         anchors { right: icon.right; bottom: icon.bottom }
         width: 16; height: 16; radius: 8
         color: Theme.surface2
@@ -67,7 +67,14 @@ Item {
         anchors { left: icon.right; leftMargin: -4; top: icon.top }
         size: 8 * cell.view.k
     }
+    // Being named (new, or renamed): typed right here.
+    Loader {
+        active: cell.pane.isNaming(cell.modelData)
+        anchors { top: icon.bottom; topMargin: 4; left: parent.left; right: parent.right; leftMargin: 6; rightMargin: 6 }
+        sourceComponent: NameEditor { pane: cell.pane; dir: !!cell.modelData.dir; align: TextInput.AlignHCenter; fontSize: 12 * Math.sqrt(cell.view.k) }
+    }
     Text {
+        visible: !cell.pane.isNaming(cell.modelData)
         anchors { top: icon.bottom; topMargin: 6; left: parent.left; right: parent.right; leftMargin: 8; rightMargin: 8 }
         horizontalAlignment: Text.AlignHCenter
         text: cell.modelData.name
@@ -78,9 +85,9 @@ Item {
         font { family: Theme.font; pointSize: Theme.pt(12 * Math.sqrt(cell.view.k)) }
     }
     // Dragged: the selection goes (pressing an unselected item selects it first).
-    DragSource { id: carry; paths: cell.pane.selection.map(e => e.path); icon: cell.modelData.icon ?? ""; }
+    DragSource { id: carry; paths: cell.pane.selection.map(e => e.path); icon: cell.modelData?.icon ?? ""; }
     // A folder takes drops.
-    FolderDrop { id: drop; anchors.fill: parent; enabled: cell.modelData.dir; dest: cell.modelData.path; onFilesDropped: (p, d) => cell.pane.dropped(p, d) }
+    FolderDrop { id: drop; anchors.fill: parent; enabled: !!cell.modelData?.dir; dest: cell.modelData?.path ?? ""; onFilesDropped: (p, d) => cell.pane.dropped(p, d) }
     MouseArea {
         id: area
         anchors.fill: parent

@@ -43,6 +43,15 @@ Rectangle {
     signal synced(int job)
     function showCompare(left, right) { comparer.start(left, right); root.tab = "compare" }
     function showShare() { root.tab = "share" }
+    // Colour and icon for this folder (or one in it): Info, with them open.
+    signal looksChanged()
+    function showLook(path) {
+        if (root.pane && path !== root.pane.path) root.pane.selectPaths([path]); else if (root.pane) root.pane.selected = {};
+        root.tab = "info";
+        root.lookWanted = true;
+        looks.expanded = true;
+    }
+    property bool lookWanted: false
     function showServer(server) { connector.show(server); root.tab = "server" }
     function showCloud() { clouder.show(); root.tab = "account" }
     function connectError(error, question) { connector.error = error; connector.question = question }
@@ -85,6 +94,9 @@ Rectangle {
         commentField.text = root.comment;
         nameField.text = root.info.name ?? "";
         root.apps = root.one && root.info.ok && !root.info.dir ? JSON.parse(Fs.appsFor(root.info.mime ?? "")) : [];
+        if (root.one && root.info.dir) looks.show(root.info.path, root.info.name ?? "");
+        looks.expanded = root.lookWanted;
+        root.lookWanted = false;
         // Files' sizes are known; folders are counted in the background.
         const needs = root.targets.length > 0 && !(root.one && root.info.ok && !root.info.dir);
         root.count = { bytes: 0, files: 0, folders: 0, done: !needs };
@@ -403,6 +415,14 @@ Rectangle {
                     onEditingChanged: if (!editing && text.trim() === "") root.adding = false
                     Keys.onEscapePressed: { text = ""; root.adding = false }
                 }
+            }
+
+            // ---- a folder's colour and icon ----
+            LookSection {
+                id: looks
+                visible: root.one && root.info.ok === true && root.info.dir === true && !root.info.origin && !(root.pane?.special ?? true)
+                width: parent.width
+                onChanged: root.looksChanged()
             }
 
             // ---- a note kept on the file (other file managers show it too) ----

@@ -52,6 +52,7 @@ AppWindow {
             onMenuAt: (entry, x, y) => win.showMenu(entry, x, y)
             onDropped: (paths, dest) => win.drop(paths, dest)
             onChanged: Session.changed()
+            onNamed: (pane, name) => win.nameInPlace(pane, name)
         }
     }
     // A tab from a snapshot ({path} at least, "" for home; split ones have
@@ -596,7 +597,7 @@ AppWindow {
                     { label: "Add cloud account…", run: () => win.addCloud() },
                     { label: "This folder", items: [
                         { label: viewMenu.bookmarked ? "Remove bookmark" : "Bookmark it", shortcut: "Ctrl+D", run: () => win.toggleBookmark() },
-                        { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => looks.show(win.current.path, win.current.title) },
+                        { label: "Colour and icon…", enabled: !(win.current?.special ?? true), run: () => win.showLook(win.current.path) },
                         { label: win.tab?.other && !win.tab.other.special && !win.tab.other.inArchive ? "Compare with the other side…" : "Compare with…",
                           enabled: !(win.current?.special ?? true) && !(win.current?.inArchive ?? false), run: () => win.compare() },
                         { separator: true },
@@ -609,7 +610,8 @@ AppWindow {
                     ] },
                     { separator: true },
                     { label: "Settings…", run: () => Session.openSettings("") },
-                    { label: "Keyboard shortcuts…", run: () => keysDialog.open() },
+                    // (Set in Settings › Files › Shortcuts; Files follows straight away.)
+                    { label: "Keyboard shortcuts…", run: () => { const e = Fs.openSettings("files/shortcuts"); if (e) win.notice = e } },
                     { label: "Export settings…", run: () => exportDialog.open() },
                     { label: "Import settings…", run: () => importDialog.open() },
                     { label: "Help", items: [
@@ -835,6 +837,8 @@ AppWindow {
             if (err) win.notice = err; else win.info = "Running “" + command + "” in the terminal";
         }
         onTagsEdited: win.refreshTags()
+        // A folder's colour and icon: every tab, window and the sidebar show the change.
+        onLooksChanged: { for (const w of Session.windows) { for (const t of w.tabs) for (const p of t.panes) p.load(); w.refreshSidebar() } }
         onRenamed: paths => {
             const p = win.current;
             if (!p) return;
@@ -881,7 +885,7 @@ AppWindow {
     // ---- the folder -----------------------------------------------------------------------
     Item {
         id: stack
-        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: confirm.bottom; bottom: activity.top }
+        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: asks.bottom; bottom: activity.top }
 
         // Right-click on files (`entry` set) or on the folder's empty space.
         Menu {
@@ -933,7 +937,7 @@ AppWindow {
                 { label: (Session.hidden ? "Hide" : "Show") + " hidden files", shortcut: "Ctrl+H", run: () => Session.setHidden(!Session.hidden) },
                 { label: "Copy this folder's path", run: () => Ops.setClipboardText(win.current.path) },
                 { label: "Find what takes room here…", run: () => win.cleanUp(win.current.path) },
-                { label: "Colour and icon…", run: () => looks.show(win.current.path, win.current.title) },
+                { label: "Colour and icon…", run: () => win.showLook(win.current.path) },
                 { label: "Properties", run: () => { win.current.selected = {}; win.properties() } },
             ] : [
                 { label: "Open", shortcut: "Enter", run: () => win.current.activate(itemMenu.entry) },
@@ -963,7 +967,7 @@ AppWindow {
                 { separator: true },
                 { label: itemMenu.many ? "Rename " + itemMenu.sel.length + " items…" : "Rename…", shortcut: "F2", run: () => win.askName("rename") },
                 ...(win.current?.searching || win.current?.inCollection ? [] : [{ label: "New folder with selection…", run: () => win.askName("group") }]),
-                ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => looks.show(itemMenu.entry.path, itemMenu.entry.name) }] : []),
+                ...(itemMenu.entry.dir && !itemMenu.many ? [{ label: "Colour and icon…", run: () => win.showLook(itemMenu.entry.path) }] : []),
                 ...(win.current?.inArchive ? [] : [{ label: "Put on the shelf", shortcut: "Ctrl+Shift+S", run: () => win.toShelf() }]),
                 { label: "Tags", items: win.tagItems(itemMenu.sel.map(e => e.path)) },
                 // In a folder a sync client keeps (Nextcloud, ownCloud).
@@ -1070,7 +1074,7 @@ AppWindow {
     property bool clipCut: false
     // Jobs started here, and the tab that wants their results selected.
     property var waiting: ({})
-    readonly property bool typing: tagDialog.visible || keysDialog.visible || looks.visible || address.editing || nameDialog.visible || confirm.asking || details.typing || searchField.editing || quick.visible
+    readonly property bool typing: tagDialog.asking || address.editing || nameDialog.asking || archivePassword.asking || runDialog.asking || confirm.asking || !!win.current?.naming || details.typing || searchField.editing || quick.visible
 
     function readClipboard() {
         const c = JSON.parse(Ops.clipboard());
@@ -1129,7 +1133,6 @@ AppWindow {
             run: () => win.tag(paths, n, (on[n] ?? 0) !== paths.length),
         })).concat(names.length > 0 ? [{ separator: true }] : [], [{ label: "New tag…", run: () => tagDialog.newTag(paths) }]);
     }
-    TagDialog { id: tagDialog; onDone: win.refreshTags(); onClosed: win.current?.focusView() }
 
     // The selection to the folder on the other side of a split tab.
     // Compare & sync: this folder and the other side's (or one to choose).
@@ -1264,12 +1267,6 @@ AppWindow {
         const err = Fs.openEditor(entry.path, "whiterose-notepad");
         if (err) win.notice = "Couldn't show it: " + err;
     }
-    RunDialog {
-        id: runDialog
-        onRun: entry => { const err = Fs.runProgram(entry.path); if (err) win.notice = "Couldn't run it: " + err }
-        onShowContents: entry => win.showContents(entry)
-        onClosed: win.current?.focusView()
-    }
     Timer { running: win.notice !== ""; interval: 6000; onTriggered: win.notice = "" }
     // "rename", "folder" or "file".
     function askName(what) {
@@ -1279,6 +1276,14 @@ AppWindow {
         if (what === "rename" && p.selection.length > 1) { details.tab = "rename"; Session.setDetails(true); return }
         const e = what === "rename" ? p.selection[0] : null;
         if (what === "rename" && !e) return;
+        // In the list, grid and cards: named right there (a new one appears
+        // first in the folder). Elsewhere (columns, usage): a strip above.
+        if (["list", "grid", "cards"].includes(p.mode) && !p.special && !p.searching) {
+            p.startNaming({ what: what, path: e?.path ?? "", name: e ? e.name : what === "folder" ? "New folder"
+                : what === "group" ? F.groupName(p.selection.map(x => x.name)) : "New file",
+                group: what === "group" ? p.selection.map(x => x.path) : [] });
+            return;
+        }
         nameDialog.what = what;
         nameDialog.entry = e;
         nameDialog.error = "";
@@ -1287,6 +1292,20 @@ AppWindow {
         // (A folder made from the selection: what goes in it.)
         nameDialog.group = what === "group" ? p.selection.map(x => x.path) : [];
         nameDialog.open();
+    }
+    // A name typed in place: made (or renamed), or why not.
+    function nameInPlace(p, name) {
+        const n = p.naming;
+        if (!n) return;
+        if (n.what === "rename" && name === n.name) { p.stopNaming(); return }
+        const r = JSON.parse(n.what === "rename" ? Ops.rename(n.path, name) : Ops.create(p.path, name, n.what === "file"));
+        if (!r.ok) { p.namingError = r.error; return }
+        p.naming = null;
+        p.namingError = "";
+        // A folder made from the selection: what was selected goes in it.
+        if (n.what === "group" && n.group.length > 0) win.run("move", n.group, r.path);
+        p.selectPaths([r.path]);
+        p.focusView();
     }
     function nameChosen() {
         const p = win.current, name = nameField.text;
@@ -1436,126 +1455,130 @@ AppWindow {
     // (A sync shows in the Activity drawer like any copy.)
     // Share (copy where, compress): in the Sheet.
     function share() { Session.setDetails(true); details.showShare() }
-    ArchivePassword { id: archivePassword; onRetry: (archive, dest) => win.run("extract", [archive], dest) }
 
-    // Name for a rename, a new folder or a new file.
-    Popup {
-        id: nameDialog
-        property string what: "rename"
-        property var entry: null
-        property var group: []
-        property string error: ""
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: 360
-        modal: true
-        padding: 20
-        background: Rectangle { color: Theme.surface1; radius: 16; border { width: 1; color: Theme.surface2 } }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.35) }
-        onOpened: {
-            nameField.focusField();
-            const name = nameField.text;
-            nameField.select(0, nameDialog.what === "rename" ? F.stemLength(name, nameDialog.entry.dir) : name.length);
-        }
-        onClosed: win.current?.focusView()
-        contentItem: Column {
-            spacing: 12
+    // ---- questions, asked in strips right above the files ----------------------------
+    Column {
+        id: asks
+        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom }
+        // Name for a rename, a new folder or a new file (or a workspace): asked
+        // in a strip above the files.
+        Strip {
+            id: nameDialog
+            property string what: "rename"
+            property var entry: null
+            property var group: []
+            property string error: ""
+            width: parent.width
+            icon: what === "rename" || what === "renameWorkspace" ? "edit" : what === "file" ? "file" : what === "workspace" ? "briefcase" : "folder"
+            focusOn: nameField
+            onOpened: Qt.callLater(() => {
+                const name = nameField.text;
+                nameField.select(0, nameDialog.what === "rename" ? F.stemLength(name, nameDialog.entry.dir) : name.length);
+            })
+            onClosed: win.current?.focusView()
             Text {
-                text: nameDialog.what === "rename" ? "Rename" : nameDialog.what === "folder" ? "New folder"
+                anchors.verticalCenter: parent.verticalCenter
+                text: nameDialog.what === "rename" ? "Rename to" : nameDialog.what === "folder" ? "New folder"
                     : nameDialog.what === "group" ? "New folder with " + nameDialog.group.length + (nameDialog.group.length === 1 ? " item" : " items")
                     : nameDialog.what === "workspace" ? "Save as a workspace" : nameDialog.what === "renameWorkspace" ? "Rename workspace" : "New file"
                 color: Theme.text
-                font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
+                font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
             }
             Field {
                 id: nameField
-                width: 320
+                anchors.verticalCenter: parent.verticalCenter
+                width: 280; height: 30
                 error: nameDialog.error !== ""
                 onAccepted: Qt.callLater(win.nameChosen)
                 onTextChanged: nameDialog.error = ""
                 Keys.onEscapePressed: nameDialog.close()
             }
             Text {
+                anchors.verticalCenter: parent.verticalCenter
                 visible: nameDialog.error !== ""
                 text: nameDialog.error
+                elide: Text.ElideRight
                 color: Theme.rose
-                font { family: Theme.font; pointSize: Theme.pt(11.5) }
+                font { family: Theme.font; pointSize: Theme.pt(10.5) }
             }
-            Row {
-                anchors.right: parent.right
-                spacing: 8
-                Button { text: "Cancel"; kind: "ghost"; onClicked: nameDialog.close() }
-                Button {
-                    text: nameDialog.what === "rename" ? "Rename" : "Create"
-                    kind: "primary"
-                    onClicked: win.nameChosen()
+            buttons: [
+                Button { text: "Cancel"; kind: "ghost"; onClicked: nameDialog.close() },
+                Button { text: nameDialog.what === "rename" || nameDialog.what === "renameWorkspace" ? "Rename" : nameDialog.what === "workspace" ? "Save" : "Create"; kind: "primary"; onClicked: win.nameChosen() }
+            ]
+        }
+
+        // Deleting (or trashing, when asked first): asked in a strip right above
+        // the files, not in a window. Enter does it, Esc doesn't.
+        FocusScope {
+            id: confirm
+            property var paths: []
+            property var names: []
+            property string kind: "delete"
+            property bool asking: false
+            function open() { confirm.asking = true; Qt.callLater(() => deleteButton.forceActiveFocus()) }
+            function close() { if (!confirm.asking) return; confirm.asking = false; win.current?.focusView() }
+            visible: asking
+            width: parent.width
+            height: asking ? 48 : 0
+            z: 5
+            Keys.onEscapePressed: confirm.close()
+            Rectangle {
+                anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 4; bottomMargin: 4 }
+                radius: 10
+                color: confirm.kind === "trash" ? Theme.surface1 : Qt.rgba(0.9, 0.33, 0.29, 0.12)
+                border { width: 1; color: confirm.kind === "trash" ? Theme.surface2 : Qt.rgba(0.9, 0.33, 0.29, 0.45) }
+                Icon {
+                    id: confirmIcon
+                    x: 12; anchors.verticalCenter: parent.verticalCenter
+                    name: "trash"; size: 14; color: confirm.kind === "trash" ? Theme.muted : Theme.rose
+                }
+                Text {
+                    id: confirmAsk
+                    anchors { left: confirmIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
+                    width: Math.min(implicitWidth, confirmButtons.x - x - 12)
+                    elide: Text.ElideMiddle
+                    text: confirm.kind === "empty" ? "Empty the Trash?"
+                        : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the Trash?" : "Move " + confirm.paths.length + " items to the Trash?")
+                        : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” for good?"
+                        : "Delete " + confirm.paths.length + " items for good?"
+                    color: Theme.text
+                    font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
+                }
+                Text {
+                    anchors { left: confirmAsk.right; leftMargin: 8; right: confirmButtons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                    elide: Text.ElideRight
+                    text: confirm.kind === "trash" ? "You can bring them back from the Trash."
+                        : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") goes for good."
+                        : "It won't go to the Trash, so it can't be brought back."
+                    color: Theme.muted
+                    font { family: Theme.font; pointSize: Theme.pt(11.5) }
+                }
+                Row {
+                    id: confirmButtons
+                    anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                    spacing: 4
+                    Button { text: confirm.kind === "trash" ? "Don't" : "Keep it"; kind: "ghost"; onClicked: confirm.close() }
+                    Button {
+                        id: deleteButton
+                        text: confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
+                        kind: confirm.kind === "trash" ? "primary" : "danger"
+                        // After the key is handled: closing in the middle of it crashes Qt.
+                        Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
+                        Keys.onEnterPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
+                        Keys.onEscapePressed: confirm.close()
+                        onClicked: { const k = confirm.kind, p = confirm.paths; confirm.close(); win.run(k, p) }
+                    }
                 }
             }
         }
-    }
-
-    // Deleting (or trashing, when asked first): asked in a strip right above
-    // the files, not in a window. Enter does it, Esc doesn't.
-    FocusScope {
-        id: confirm
-        property var paths: []
-        property var names: []
-        property string kind: "delete"
-        property bool asking: false
-        function open() { confirm.asking = true; Qt.callLater(() => deleteButton.forceActiveFocus()) }
-        function close() { if (!confirm.asking) return; confirm.asking = false; win.current?.focusView() }
-        visible: asking
-        anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom }
-        height: asking ? 48 : 0
-        z: 5
-        Keys.onEscapePressed: confirm.close()
-        Rectangle {
-            anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 4; bottomMargin: 4 }
-            radius: 10
-            color: confirm.kind === "trash" ? Theme.surface1 : Qt.rgba(0.9, 0.33, 0.29, 0.12)
-            border { width: 1; color: confirm.kind === "trash" ? Theme.surface2 : Qt.rgba(0.9, 0.33, 0.29, 0.45) }
-            Icon {
-                id: confirmIcon
-                x: 12; anchors.verticalCenter: parent.verticalCenter
-                name: "trash"; size: 14; color: confirm.kind === "trash" ? Theme.muted : Theme.rose
-            }
-            Text {
-                id: confirmAsk
-                anchors { left: confirmIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                width: Math.min(implicitWidth, confirmButtons.x - x - 12)
-                elide: Text.ElideMiddle
-                text: confirm.kind === "empty" ? "Empty the Trash?"
-                    : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the Trash?" : "Move " + confirm.paths.length + " items to the Trash?")
-                    : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” for good?"
-                    : "Delete " + confirm.paths.length + " items for good?"
-                color: Theme.text
-                font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
-            }
-            Text {
-                anchors { left: confirmAsk.right; leftMargin: 8; right: confirmButtons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                elide: Text.ElideRight
-                text: confirm.kind === "trash" ? "You can bring them back from the Trash."
-                    : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") goes for good."
-                    : "It won't go to the Trash, so it can't be brought back."
-                color: Theme.muted
-                font { family: Theme.font; pointSize: Theme.pt(11.5) }
-            }
-            Row {
-                id: confirmButtons
-                anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-                spacing: 4
-                Button { text: confirm.kind === "trash" ? "Don't" : "Keep it"; kind: "ghost"; onClicked: confirm.close() }
-                Button {
-                    id: deleteButton
-                    text: confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
-                    kind: confirm.kind === "trash" ? "primary" : "danger"
-                    // After the key is handled: closing in the middle of it crashes Qt.
-                    Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
-                    Keys.onEnterPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }
-                    Keys.onEscapePressed: confirm.close()
-                    onClicked: { const k = confirm.kind, p = confirm.paths; confirm.close(); win.run(k, p) }
-                }
-            }
+        TagStrip { id: tagDialog; width: parent.width; onDone: win.refreshTags(); onClosed: win.current?.focusView() }
+        PasswordStrip { id: archivePassword; width: parent.width; onRetry: (archive, dest) => win.run("extract", [archive], dest); onClosed: win.current?.focusView() }
+        RunStrip {
+            id: runDialog
+            width: parent.width
+            onRun: entry => { const err = Fs.runProgram(entry.path); if (err) win.notice = "Couldn't run it: " + err }
+            onShowContents: entry => win.showContents(entry)
+            onClosed: win.current?.focusView()
         }
     }
     // Going somewhere else: not asked any more.
@@ -1575,14 +1598,8 @@ AppWindow {
             if (key === "apps.editor") win.editorApp = JSON.parse(Fs.editor(win.choice("apps.editor")));
         }
     }
-    // A folder's colour and icon: every tab, window and the sidebar show the change.
-    LookDialog {
-        id: looks
-        onChanged: { for (const w of Session.windows) { for (const t of w.tabs) for (const p of t.panes) p.load(); w.refreshSidebar() } }
-        onClosed: win.current?.focusView()
-    }
+    function showLook(path) { Session.setDetails(true); details.showLook(path) }
     function refreshSidebar() { sidebar.refresh() }
-    KeysDialog { id: keysDialog; list: win.keyList; overrides: win.keyOverrides; onClosed: win.current?.focusView() }
     Shortcut { sequence: win.keys("new-tab", "Ctrl+T"); onActivated: win.newTab({ path: win.current?.path ?? "" }) }
     Shortcut { sequence: win.keys("reopen-tab", "Ctrl+Shift+T"); onActivated: win.reopenTab() }
     Shortcut { sequence: win.keys("next-tab", "Ctrl+PgDown"); onActivated: win.show((win.currentIndex + 1) % win.tabs.length) }

@@ -120,9 +120,39 @@ FocusScope {
     readonly property var filtered: pane.searching ? pane.results
         : pane.filter === "" ? pane.entries
         : pane.entries.filter(e => e.name.toLowerCase().includes(pane.filter.toLowerCase()))
-    readonly property var shownEntries: pane.grouped
+    readonly property var listed: pane.grouped
         ? Arrange.arrange(pane.filtered, pane.group, false, Date.now())
         : pane.filtered
+    // Making something new: a stand-in for it first, its name being typed.
+    readonly property var shownEntries: pane.naming && pane.naming.what !== "rename"
+        ? [pane.standIn].concat(pane.listed) : pane.listed
+    readonly property var standIn: !pane.naming ? null : ({
+        path: pane.path + "/\u0001new", name: pane.naming.name, dir: pane.naming.what !== "file", creating: true, link: false, hidden: false, tags: [],
+        mime: pane.naming.what === "file" ? "text/plain" : "inode/directory", size: 0, modified: Date.now(),
+        icon: Fs.typeIcon(pane.naming.what === "file" ? "text/plain" : "inode/directory", pane.naming.what !== "file", 64),
+        group: pane.listed[0]?.group ?? "",
+    })
+    // Naming in place: {what: folder | file | group | rename, name, path (rename), group (paths)}.
+    property var naming: null
+    property string namingError: ""
+    // What's typed so far (kept if the view makes the box again), whether
+    // it's been selected once, and the box itself (it takes the keys).
+    property string namingText: ""
+    property bool namingFresh: true
+    property var nameEditor: null
+    // The name typed (Main makes it, or says why not in namingError).
+    signal named(string name)
+    function startNaming(n) { pane.namingError = ""; pane.namingText = n.name; pane.namingFresh = true; pane.naming = n; Qt.callLater(pane.focusView) }
+    // Clicked elsewhere while naming: kept as typed (or, if it can't be, dropped).
+    function commitNaming() {
+        if (!pane.naming) return;
+        pane.named(pane.namingText);
+        if (pane.naming && pane.namingError !== "") pane.stopNaming();
+    }
+    function stopNaming() { if (!pane.naming) return; pane.naming = null; pane.namingError = ""; Qt.callLater(pane.focusView) }
+    // Is `e` the one being named?
+    function isNaming(e) { return !!pane.naming && !!e && (!!e.creating || (pane.naming.what === "rename" && pane.naming.path === e.path)) }
+
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
 
     signal openFile(var entry)
@@ -138,7 +168,7 @@ FocusScope {
     // A folder is shown the way it was last time (or as the folder above
     // it lends, or the default); load() follows.
     // (Real folders are remembered for jumping: the address bar's few-letters search.)
-    onPathChanged: { if (pane.path.startsWith("/")) Fs.visited(pane.path); pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
+    onPathChanged: { pane.naming = null; pane.namingError = ""; if (pane.path.startsWith("/")) Fs.visited(pane.path); pane.git = { root: "", branch: "", ahead: 0, behind: 0, ignored: false, entries: {} }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
     // Recent starts as a list, newest first, grouped by day (until changed by hand).
     readonly property var baseView: pane.path === "recent:" ? { mode: "list", sortBy: "modified", descending: true, group: "modified" } : Session.defaultView
@@ -297,6 +327,7 @@ FocusScope {
         }
     }
     function clickAt(i, ctrl, shift) {
+        if (pane.naming && !pane.shownEntries[i]?.creating) pane.commitNaming();
         pane.activated();
         const r = F.click(pane.shownEntries, pane.selected, pane.anchor, i, ctrl, shift);
         pane.selected = r.selected;
@@ -397,7 +428,11 @@ FocusScope {
     }
     // Shown a few at a time (not a redraw per folder).
     Timer { id: sizesTimer; interval: 120; onTriggered: pane.sizes = Object.assign({}, pane.sizesSoon) }
-    function focusView() { view.forceActiveFocus(); if (view.item) view.item.forceActiveFocus() }
+    function focusView() {
+        // Naming in place: the name box keeps the keys.
+        if (pane.naming && pane.nameEditor) { pane.nameEditor.take(); return }
+        view.forceActiveFocus(); if (view.item) view.item.forceActiveFocus()
+    }
 
     // Typing filters the folder by name (Backspace takes letters off, Esc
     // clears); Space starts nothing until something's typed.

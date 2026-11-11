@@ -42,7 +42,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Optional checksum verification of copies (Next) — Settings › Files › Verify copies: each file is read back from the drive (cache dropped) and checked; a mismatch keeps nothing
 - [-] Persistent undo/redo operation history (Advanced) — not doing for now
 - [x] Batch rename with regex, numbering, case and preview (Next) — Rename… (F2) with several selected opens the Sheet’s Rename tab: find and replace (text or regex with $1 groups, case, first only), case, text before/after, numbering in view order (position, start, step, digits, separator), extension kept/lowercased/changed; the new names shown in the list as you type (old → new), clashes and taken names marked there and skipped; swaps and shifts (1→2, 2→3) handled
-- [x] Create folder from selected files (Next) — "New folder with selection…", named from what the files share
+- [x] Create folder from selected files (Next) — "New folder with selection…": the new folder appears in place, named from what the files share, ready to type over (Enter makes it, Esc doesn't)
 - [x] File shelf / staging area for collecting items (Next) — Put on the shelf (Ctrl+Shift+S, right-click, or drop on Shelf in the sidebar or on the strip); it sits along the bottom while anything's on it, shared by every window and kept between runs: drag items (or all) off it anywhere, or Copy here / Move here, Clear
 - [x] Recycle Bin/Trash integration and restore (MVP) — every Trash (home and drives) in one view: where from, when; restore (folder remade, renamed if taken), delete for good, empty
 - [x] File and folder properties, permissions and attributes (MVP) — kind, location, size (folders counted live), dates, owner and group, read / change / run for you, group and everyone
@@ -75,10 +75,10 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 ## 6. Appearance & personalisation
 - [x] Native light, dark and system modes (MVP) — follows the desktop theme via the kit
 - [-] Per-folder background images (Next) — not doing (decided against)
-- [x] Folder colours and icons (added) — a colour, a symbol, or a picture; follows renames, moves and the Trash
+- [x] Folder colours and icons (added) — a colour, a symbol, or a picture, in the Sheet's Info for a folder; follows renames, moves and the Trash
 - [x] Custom toolbar buttons and layouts (Next) — Settings › Files › Toolbar & menus: new folder, look again, terminal, code editor, split, hidden files, details, shelf, compress, compare & sync, new tab beside the views
 - [x] Customisable right-click context menus (Next) — leave out built-in entries; add your own actions (a command on what's chosen: %f paths, %n names, %d folder; for files, folders or either, chosen types; in a terminal or not), edited in place in Settings
-- [x] Fully remappable keyboard shortcuts (MVP) — ☰ › Keyboard shortcuts…: every shortcut, press new keys, clashes refused, reset
+- [x] Fully remappable keyboard shortcuts (MVP) — ☰ › Keyboard shortcuts… opens Settings › Files › Shortcuts: every shortcut, press new keys, clashes refused, reset
 - [x] Custom view columns and sorting preferences (Next) — view, sort and grouping per folder (lent to subfolders, or everywhere); list columns chosen and resized; folders first / mixed / last
 - [x] Group by (added) — kind, date modified, size or name, with headings that fold, in list, grid and cards
 - [x] Custom app startup and restoration behaviour (Next) — Settings › Files › Open with: last tabs, Home, or a folder

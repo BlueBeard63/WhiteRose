@@ -23,6 +23,7 @@ Item {
     signal menuAt(var entry, real x, real y)
     signal dropped(var paths, string dest)
     signal changed()
+    signal named(var pane, string name)
 
     function focusView() { tab.current.focusView() }
     function refreshView() { for (const p of tab.panes) p.refreshView() }
@@ -70,6 +71,7 @@ Item {
         onMenuAt: (entry, x, y) => tab.menuAt(entry, x, y)
         onDropped: (paths, dest) => tab.dropped(paths, dest)
         onChanged: tab.changed()
+        onNamed: name => tab.named(this, name)
     }
 
     SplitView {

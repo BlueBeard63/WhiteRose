@@ -119,6 +119,8 @@ FocusScope {
     // ---- rows ----------------------------------------------------------------------
     ListView {
         id: list
+        // Something new being named: it's first, so show the top.
+        Connections { target: root.pane; function onNamingChanged() { if (root.pane.naming && root.pane.naming.what !== "rename") list.positionViewAtBeginning() } }
         anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom }
         model: root.pane.shownEntries
         currentIndex: root.pane.current
@@ -152,6 +154,7 @@ FocusScope {
             z: -1
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: m => {
+                root.pane.commitNaming();
                 root.pane.selected = {};
                 list.forceActiveFocus();
                 if (m.button === Qt.RightButton) { const p = mapToItem(root.pane, m.x, m.y); root.pane.menuAt(null, p.x, p.y) }
@@ -198,8 +201,15 @@ FocusScope {
                         look: row.modelData.look ?? ({})
                     }
                     CompareMark { look: root.pane.compareOf(row.modelData); anchors { right: ic.right; rightMargin: -3; bottom: ic.bottom; bottomMargin: -2 } }
+                    // Being named (new, or renamed): typed right here.
+                    Loader {
+                        active: root.pane.isNaming(row.modelData)
+                        anchors { left: ic.right; leftMargin: 6; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        sourceComponent: NameEditor { pane: root.pane; dir: !!row.modelData.dir; fontSize: 12.5 * Math.sqrt(Session.zoom) }
+                    }
                     Text {
                         id: nameText
+                        visible: !root.pane.isNaming(row.modelData)
                         anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: row.modelData.found ? parent.width * 0.55 : row.newName ? parent.width * 0.5 : 8 + (row.cloudState ? 22 : 0); verticalCenter: parent.verticalCenter }
                         text: row.modelData.name + (row.modelData.link ? "  →" : "")
                         elide: Text.ElideMiddle

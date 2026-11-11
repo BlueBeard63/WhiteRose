@@ -39,6 +39,7 @@ GridView {
         z: -1
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: m => {
+            pane.commitNaming();
             pane.selected = {};
             grid.forceActiveFocus();
             if (m.button === Qt.RightButton) { const p = mapToItem(pane, m.x, m.y); pane.menuAt(null, p.x, p.y) }
