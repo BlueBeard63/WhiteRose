@@ -5,6 +5,9 @@
 //            do what); several: how many and how big; none: the folder.
 //   Rename   rules for every selected name, the new names shown in the
 //            list as you type (RenameSheet.qml).
+//   Server, Account  connecting to a network share or adding a cloud
+//            account (ConnectSheet.qml, CloudSheet.qml): their own pair of
+//            tabs while you do it.
 //   Scripts  the folder's project scripts (Cargo, npm, Go, Make…), run in
 //            your terminal; somewhere untrusted (Downloads…) asks first.
 // (Properties, the tag and comment boxes all live here now.)
@@ -24,6 +27,14 @@ Rectangle {
     signal said(string notice)
     signal renamed(var paths)
     signal renameFailed(string message)
+    signal serversChanged()
+    signal openPath(string path)
+    signal cloudAdded(string name)
+    // Connecting to a server or a cloud account (from the sidebar or ☰).
+    readonly property bool networking: root.tab === "server" || root.tab === "account"
+    function showServer(server) { connector.show(server); root.tab = "server" }
+    function showCloud() { clouder.show(); root.tab = "account" }
+    function connectError(error, question) { connector.error = error; connector.question = question }
 
     readonly property var sel: root.pane?.selection ?? []
     readonly property var entry: root.sel.length === 1 ? root.sel[0] : null
@@ -31,7 +42,7 @@ Rectangle {
     readonly property var targets: root.sel.length > 0 ? root.sel.map(e => e.path)
         : root.pane && root.pane.path.startsWith("/") && !root.pane.special ? [root.pane.path] : []
     readonly property bool one: root.targets.length === 1
-    readonly property bool typing: nameField.editing || commentField.editing || tagField.editing || pasted.editing || renamer.typing
+    readonly property bool typing: nameField.editing || commentField.editing || tagField.editing || pasted.editing || renamer.typing || connector.typing || clouder.typing
 
     // ---- what's known about the targets ------------------------------------------------
     property var info: ({})
@@ -181,9 +192,11 @@ Rectangle {
         Row {
             anchors.bottom: parent.bottom
             spacing: 18
-            Tab { name: "info"; label: "Info" }
-            Tab { name: "rename"; label: "Rename"; visible: !(root.pane?.readOnly ?? true) && !(root.pane?.special ?? true) && (root.sel.length > 0 || root.tab === "rename") }
-            Tab { name: "scripts"; label: "Scripts"; visible: root.projects.projects.length > 0 }
+            Tab { name: "server"; label: "Server"; visible: root.networking }
+            Tab { name: "account"; label: "Account"; visible: root.networking; onVisibleChanged: if (visible && root.tab === "account" && clouder.info.providers.length === 0) clouder.show() }
+            Tab { name: "info"; label: "Info"; visible: !root.networking }
+            Tab { name: "rename"; label: "Rename"; visible: !root.networking && !(root.pane?.readOnly ?? true) && !(root.pane?.special ?? true) && (root.sel.length > 0 || root.tab === "rename") }
+            Tab { name: "scripts"; label: "Scripts"; visible: !root.networking && root.projects.projects.length > 0 }
         }
         IconButton {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: 3 }
@@ -195,7 +208,8 @@ Rectangle {
 
     Flickable {
         anchors { left: parent.left; leftMargin: 1; right: parent.right; top: head.bottom; bottom: parent.bottom }
-        contentHeight: (root.tab === "info" ? info.implicitHeight : root.tab === "rename" ? renamer.implicitHeight : scripts.implicitHeight) + 32
+        contentHeight: (root.tab === "info" ? info.implicitHeight : root.tab === "rename" ? renamer.implicitHeight
+            : root.tab === "server" ? connector.implicitHeight : root.tab === "account" ? clouder.implicitHeight : scripts.implicitHeight) + 32
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
@@ -523,6 +537,25 @@ Rectangle {
             onRenamed: paths => { root.tab = "info"; root.renamed(paths) }
             onFailed: message => root.renameFailed(message)
             onCancelled: root.tab = "info"
+        }
+
+        // ======== Server / Account ========
+        ConnectSheet {
+            id: connector
+            visible: root.tab === "server"
+            x: 16; y: 14
+            width: parent.width - 32
+            onChanged: root.serversChanged()
+            onOpened_: path => root.openPath(path)
+            onClosed: root.tab = "info"
+        }
+        CloudSheet {
+            id: clouder
+            visible: root.tab === "account"
+            x: 16; y: 14
+            width: parent.width - 32
+            onAdded: name => root.cloudAdded(name)
+            onClosed: root.tab = "info"
         }
 
         // ======== Scripts ========
