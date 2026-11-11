@@ -13,7 +13,8 @@ GridView {
     // Item size (Ctrl+= / Ctrl+-).
     readonly property real k: Session.zoom
     readonly property real inner: width - leftMargin - rightMargin
-    cellWidth: inner / Math.max(1, Math.floor(inner / (116 * k)))
+    readonly property int cols: Math.max(1, Math.floor(inner / (116 * k)))
+    cellWidth: inner / cols
     cellHeight: 112 * k
     clip: true
     focus: true

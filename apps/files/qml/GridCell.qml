@@ -15,10 +15,16 @@ Item {
     required property var view
     readonly property bool on: !!cell.pane.selected[modelData.path]
     width: cell.view.cellWidth; height: cell.view.cellHeight
+    // Selected next to selected: one block (no gap, no corner, between them).
+    readonly property var join: cell.pane.joined(cell.at, cell.view.cols)
     Rectangle {
-        anchors { fill: parent; margins: 4 }
-        radius: 12
-        color: cell.on || drop.over ? Theme.tint(0.22) : area.containsMouse ? Theme.surface1 : "transparent"
+        // (Joined edges overlap a pixel: cells sit at fractional places.)
+        anchors { fill: parent; leftMargin: cell.join.left ? -1 : 4; rightMargin: cell.join.right ? -1 : 4; topMargin: cell.join.up ? -1 : 4; bottomMargin: cell.join.down ? -1 : 4 }
+        topLeftRadius: cell.join.left || cell.join.up ? 0 : 12
+        topRightRadius: cell.join.right || cell.join.up ? 0 : 12
+        bottomLeftRadius: cell.join.left || cell.join.down ? 0 : 12
+        bottomRightRadius: cell.join.right || cell.join.down ? 0 : 12
+        color: cell.on || drop.over ? Qt.tint(Theme.bg, Theme.tint(0.22)) : area.containsMouse ? Theme.surface1 : "transparent"
         border { width: drop.over || (cell.at === cell.view.current && cell.view.focused) ? 1 : 0; color: Theme.tint(0.6) }
     }
     // Pictures as themselves (decoded at icon size; up to 40 MB), the

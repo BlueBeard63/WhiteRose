@@ -17,16 +17,22 @@ Item {
     readonly property bool on: !!cell.pane.selected[modelData.path]
     readonly property bool photo: String(modelData.mime).startsWith("image/") && modelData.size < 40e6
     width: cell.view.cellWidth; height: cell.view.cellHeight
+    // Selected next to selected: one block (no gap, no corner, between them).
+    readonly property var join: cell.pane.joined(cell.at, cell.view.cols)
     Rectangle {
         id: card
-        anchors { fill: parent; margins: 4 }
-        radius: 12
-        color: cell.on || drop.over ? Theme.tint(0.22) : area.containsMouse ? Theme.surface2 : Theme.surface1
+        // (Joined edges overlap a pixel: cells sit at fractional places.)
+        anchors { fill: parent; leftMargin: cell.join.left ? -1 : 4; rightMargin: cell.join.right ? -1 : 4; topMargin: cell.join.up ? -1 : 4; bottomMargin: cell.join.down ? -1 : 4 }
+        topLeftRadius: cell.join.left || cell.join.up ? 0 : 12
+        topRightRadius: cell.join.right || cell.join.up ? 0 : 12
+        bottomLeftRadius: cell.join.left || cell.join.down ? 0 : 12
+        bottomRightRadius: cell.join.right || cell.join.down ? 0 : 12
+        color: cell.on || drop.over ? Qt.tint(Theme.bg, Theme.tint(0.22)) : area.containsMouse ? Theme.surface2 : Theme.surface1
         border { width: drop.over || (cell.at === cell.view.current && cell.view.focused) ? 1 : 0; color: Theme.tint(0.6) }
         Rectangle {
             id: thumb
-            x: 8; anchors.verticalCenter: parent.verticalCenter
-            width: card.height - 16; height: width
+            x: cell.join.left ? 13 : 8; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: (cell.join.up ? 2.5 : 0) - (cell.join.down ? 2.5 : 0)
+            width: cell.height - 24; height: width
             radius: 8
             color: cell.photo ? Theme.bg : "transparent"
             clip: true
@@ -45,7 +51,7 @@ Item {
             CompareMark { look: cell.pane.compareOf(cell.modelData); size: 11; anchors { right: parent.right; top: parent.top; margins: 2 } }
         }
         Column {
-            anchors { left: thumb.right; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            anchors { left: thumb.right; leftMargin: 10; right: parent.right; rightMargin: cell.join.right ? 15 : 10; verticalCenter: parent.verticalCenter; verticalCenterOffset: (cell.join.up ? 2.5 : 0) - (cell.join.down ? 2.5 : 0) }
             spacing: 2
             Loader {
                 active: cell.pane.isNaming(cell.modelData)

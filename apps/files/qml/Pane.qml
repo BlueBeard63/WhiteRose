@@ -154,6 +154,23 @@ FocusScope {
     function isNaming(e) { return !!pane.naming && !!e && (!!e.creating || (pane.naming.what === "rename" && pane.naming.path === e.path)) }
 
     readonly property var selection: pane.shownEntries.filter(e => pane.selected[e.path])
+    // Each item's place in its group (grouped), or in the folder: what a
+    // grid needs to know which items sit next to which.
+    readonly property var placeInGroup: {
+        const out = [];
+        let g = null, n = 0;
+        for (const e of pane.shownEntries) { if (!pane.grouped || e.group !== g) { if (pane.grouped) { g = e.group; n = 0 } } out.push(n++) }
+        return out;
+    }
+    // In a grid of `cols`: which selected neighbours `at` has, so a run of
+    // selected items reads as one block ({left, right, up, down}).
+    function joined(at, cols) {
+        const e = pane.shownEntries[at];
+        if (!e || !pane.selected[e.path] || cols < 1) return ({ left: false, right: false, up: false, down: false });
+        const p = pane.placeInGroup[at] ?? at;
+        const sel = i => { const o = pane.shownEntries[i]; return !!o && !!pane.selected[o.path] && (!pane.grouped || o.group === e.group) };
+        return ({ left: p % cols !== 0 && sel(at - 1), right: (p + 1) % cols !== 0 && sel(at + 1), up: p >= cols && sel(at - cols), down: sel(at + cols) });
+    }
 
     signal openFile(var entry)
     // Used (clicked, keys, navigated): in a split tab, this side becomes the one in use.

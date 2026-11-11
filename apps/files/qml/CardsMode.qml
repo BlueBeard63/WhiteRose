@@ -14,7 +14,8 @@ GridView {
     readonly property real now: Date.now()
     model: pane.shownEntries
     currentIndex: pane.current
-    cellWidth: inner / Math.max(1, Math.floor(inner / (250 * k)))
+    readonly property int cols: Math.max(1, Math.floor(inner / (250 * k)))
+    cellWidth: inner / cols
     cellHeight: 80 * k
     clip: true
     focus: true
