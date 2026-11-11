@@ -134,6 +134,8 @@ Item {
                     height: 22
                     TextInput {
                         id: search
+                        Accessible.role: Accessible.EditableText
+                        Accessible.name: "Search"
                         anchors.fill: parent
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.text
@@ -184,6 +186,11 @@ Item {
                     delegate: Rectangle {
                         required property var modelData
                         readonly property bool active: root.category === modelData[0]
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: modelData[1]
+                        Accessible.checkable: true
+                        Accessible.checked: active
+                        Accessible.onPressAction: root.category = modelData[0]
                         width: chipText.implicitWidth + 22; height: 26; radius: 8
                         color: active ? Theme.pearl : "transparent"
                         Text {
@@ -231,6 +238,10 @@ Item {
                         required property var modelData
                         required property int index
                         readonly property bool sel: root.selected === index
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: cell.modelData?.name ?? ""
+                        Accessible.selected: sel
+                        Accessible.onPressAction: root.activate({ kind: "app", app: cell.modelData })
                         width: (content.width - 5 * 8) / 6
                         height: 94
                         radius: 16
@@ -280,6 +291,23 @@ Item {
                     readonly property int itemIndex: root.gridCount + index
                     readonly property bool sel: root.selected === itemIndex
                     readonly property var it: modelData
+                    readonly property string title: ({
+                        app: it.app?.name,
+                        file: it.file?.name,
+                        calc: "= " + it.result,
+                        cmd: it.cmd
+                    })[it.kind] ?? ""
+                    readonly property string subtitle: ({
+                        app: it.app?.genericName || it.app?.comment || "",
+                        file: Search.tildify(it.file?.dir ?? "", root.home),
+                        calc: it.expr,
+                        cmd: it.terminal ? "Run in terminal" : it.recent ? "Recent command" : "Run"
+                    })[it.kind] ?? ""
+                    Accessible.role: Accessible.ListItem
+                    Accessible.name: title
+                    Accessible.description: subtitle
+                    Accessible.selected: sel
+                    Accessible.onPressAction: root.activate(it)
                     width: parent.width
                     height: 46
                     radius: 12
@@ -313,12 +341,7 @@ Item {
                             Text {
                                 width: content.width - 30 - 12 - 24
                                 elide: Text.ElideRight
-                                text: ({
-                                    app: row.it.app?.name,
-                                    file: row.it.file?.name,
-                                    calc: "= " + row.it.result,
-                                    cmd: row.it.cmd
-                                })[row.it.kind] ?? ""
+                                text: row.title
                                 color: Theme.text
                                 font {
                                     family: row.it.kind === "calc" || row.it.kind === "cmd" ? Theme.mono : Theme.font
@@ -330,12 +353,7 @@ Item {
                                 width: content.width - 30 - 12 - 24
                                 elide: Text.ElideMiddle
                                 visible: text !== ""
-                                text: ({
-                                    app: row.it.app?.genericName || row.it.app?.comment || "",
-                                    file: Search.tildify(row.it.file?.dir ?? "", root.home),
-                                    calc: row.it.expr,
-                                    cmd: row.it.terminal ? "Run in terminal" : row.it.recent ? "Recent command" : "Run"
-                                })[row.it.kind] ?? ""
+                                text: row.subtitle
                                 color: Theme.muted
                                 font { family: row.it.kind === "file" || row.it.kind === "calc" ? Theme.mono : Theme.font; pointSize: Theme.pt(11) }
                             }

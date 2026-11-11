@@ -17,6 +17,12 @@ func (s *Session) pointer(x, y float64, button string) {
 	time.Sleep(40 * time.Millisecond)
 }
 
+// scroll turns the wheel over x, y: clicks down (negative: up).
+func (s *Session) scroll(x, y float64, clicks int) {
+	s.send(map[string]any{"debug_pointer": map[string]any{"x": x, "y": y, "scroll": clicks}})
+	time.Sleep(120 * time.Millisecond)
+}
+
 func (s *Session) key(code int, down bool) {
 	// xkb keycodes are evdev's + 8.
 	s.send(map[string]any{"debug_key": map[string]any{"code": code + 8, "down": down}})

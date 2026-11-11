@@ -36,6 +36,11 @@ import (
 type Options struct {
 	// The shell (bar, island) too; most app tests don't need it.
 	Shell bool
+	// Settings it starts with (key: value, as Settings would store them).
+	Settings map[string]any
+	// Start as on a new install: the first-run app setup is offered
+	// (Settings opens on Apps). Otherwise it counts as done.
+	FirstRun bool
 }
 
 // Session is one isolated WhiteRose session for a test.
@@ -52,6 +57,16 @@ type Session struct {
 	windows []windowInfo
 	ipc     net.Conn
 	a11y    *a11y
+	layers  []layerInfo
+	// Counts the layer lists the compositor has sent.
+	layersSeen int
+}
+
+type layerInfo struct {
+	Namespace string `json:"namespace"`
+	Output    string `json:"output"`
+	Layer     string `json:"layer"`
+	Geometry  [4]int `json:"geometry"`
 }
 
 type windowInfo struct {
@@ -119,6 +134,14 @@ func Start(t testing.TB, o Options) *Session {
 	for _, d := range []string{".config", ".local/share", ".cache", ".local/state", "Pictures", "Documents"} {
 		os.MkdirAll(filepath.Join(s.Home, d), 0o755)
 	}
+	seed := map[string]any{}
+	if !o.FirstRun {
+		seed["apps.setupDone"] = true
+	}
+	for k, v := range o.Settings {
+		seed[k] = v
+	}
+	s.seed(seed)
 	busFile := filepath.Join(s.Home, ".bus")
 	args := []string{"--daemon", daemon + " serve"}
 	headless := Headless()
@@ -126,6 +149,9 @@ func Start(t testing.TB, o Options) *Session {
 		args = append([]string{"--backend", "headless"}, args...)
 	}
 	if o.Shell {
+		if _, err := exec.LookPath("qs"); err != nil {
+			t.Fatal("the shell needs QuickShell (qs) on PATH")
+		}
 		args = append(args, "--shell", "qs -p "+filepath.Join(repo, "shell"))
 	}
 	// The bus address is written down first, so the test can reach the
@@ -276,10 +302,20 @@ func (s *Session) readEvents() {
 		var e struct {
 			Event   string       `json:"event"`
 			Windows []windowInfo `json:"windows"`
+			Layers  []layerInfo  `json:"layers"`
 		}
-		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Event == "windows" {
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		switch e.Event {
+		case "windows":
 			s.mu.Lock()
 			s.windows = e.Windows
+			s.mu.Unlock()
+		case "layers":
+			s.mu.Lock()
+			s.layers = e.Layers
+			s.layersSeen++
 			s.mu.Unlock()
 		}
 	}
@@ -309,6 +345,38 @@ func (s *Session) window(title string) (windowInfo, bool) {
 		}
 	}
 	return windowInfo{}, false
+}
+
+// layer is where the layer surface named `namespace` (the bar:
+// "whiterose-bar") is now, asked of the compositor.
+func (s *Session) layer(namespace string) (layerInfo, bool) {
+	s.mu.Lock()
+	seen := s.layersSeen
+	s.mu.Unlock()
+	s.send(map[string]any{"debug_layers": true})
+	waitUntil(2*time.Second, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.layersSeen > seen
+	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, l := range s.layers {
+		if l.Namespace == namespace {
+			return l, true
+		}
+	}
+	return layerInfo{}, false
+}
+
+func (s *Session) layerNames() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var n []string
+	for _, l := range s.layers {
+		n = append(n, l.Namespace)
+	}
+	return strings.Join(n, ", ")
 }
 
 // ---- small things -------------------------------------------------------------------

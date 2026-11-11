@@ -6,7 +6,16 @@ Rectangle {
     id: root
     property bool checked: false
     property bool enabled: true
+    // Its name for screen readers and the UI tests: the row's title if
+    // it's in a SettingRow.
+    property string label: parent?.rowTitle ?? ""
     signal toggled(bool on)
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: root.label
+    Accessible.checkable: true
+    Accessible.checked: root.checked
+    Accessible.onToggleAction: if (root.enabled) root.toggled(!root.checked)
+    Accessible.onPressAction: if (root.enabled) root.toggled(!root.checked)
     width: 30; height: 18; radius: 9
     anchors.verticalCenter: parent?.verticalCenter
     color: checked ? Theme.rose : Theme.surface2

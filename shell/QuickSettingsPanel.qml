@@ -205,6 +205,7 @@ SidePanel {
         width: parent.width
         spacing: 8
         QsSlider {
+            label: "Volume"
             visible: root.sink !== null
             icon: root.sink?.audio?.muted ? "volumeMuted" : "volume"
             dimmed: root.sink?.audio?.muted ?? false
@@ -213,6 +214,7 @@ SidePanel {
             onIconClicked: root.sink.audio.muted = !root.sink.audio.muted
         }
         QsSlider {
+            label: "Brightness"
             visible: System.brightness >= 0
             icon: "sun"
             minimum: 0.01
@@ -238,6 +240,9 @@ SidePanel {
             }
         }
         Item {
+            Accessible.role: Accessible.Link
+            Accessible.name: "All settings"
+            Accessible.onPressAction: ShellState.openSettings("")
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             width: allRow.implicitWidth
             height: allRow.implicitHeight

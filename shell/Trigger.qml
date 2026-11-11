@@ -7,7 +7,14 @@ Rectangle {
     default property alias content: row.data
     property bool active: false
     property int spacing: 6
+    // What it is (screen readers, UI tests), and what it shows now.
+    property string label: ""
+    property string shows: ""
     signal clicked()
+    Accessible.role: Accessible.Button
+    Accessible.name: root.label
+    Accessible.description: root.shows
+    Accessible.onPressAction: root.clicked()
 
     implicitWidth: row.implicitWidth + 16
     implicitHeight: 20

@@ -20,6 +20,7 @@ Variants {
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "whiterose-screenshot"
+        LayerTitle { name: "whiterose-screenshot" }
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
         // This screen's place in the shared (global) space.

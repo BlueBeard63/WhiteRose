@@ -22,6 +22,11 @@ Rectangle {
             delegate: Rectangle {
                 required property var modelData
                 readonly property bool on: modelData.value === root.value
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: modelData.label ?? ""
+                Accessible.checkable: true
+                Accessible.checked: on
+                Accessible.onPressAction: if (!on) root.picked(modelData.value)
                 width: segText.implicitWidth + 22; height: 24; radius: 8
                 color: on ? Theme.pearl : segMouse.containsMouse ? Theme.grip : "transparent"
                 Text {

@@ -9,6 +9,9 @@ Rectangle {
     property string kind: "plain"   // plain | primary | danger | ghost
     property bool enabled: true
     signal clicked()
+    Accessible.role: Accessible.Button
+    Accessible.name: root.text || root.icon
+    Accessible.onPressAction: if (root.enabled) root.clicked()
     implicitWidth: row.implicitWidth + 22
     implicitHeight: 30
     width: implicitWidth; height: implicitHeight

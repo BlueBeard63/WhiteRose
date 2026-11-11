@@ -67,6 +67,7 @@ Column {
                 }
             }
             Toggle {
+                label: "Wi-Fi"
                 anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
                 checked: Networking.wifiEnabled
                 enabled: Networking.wifiHardwareEnabled

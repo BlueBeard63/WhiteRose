@@ -9,8 +9,12 @@ Rectangle {
     property real value: 0          // 0-1
     property real minimum: 0        // brightness never goes fully dark
     property bool dimmed: false     // e.g. muted: the fill greys out
+    property string label: ""
     signal moved(real value)
     signal iconClicked()
+    Accessible.role: Accessible.Slider
+    Accessible.name: root.label
+    Accessible.description: Math.round(root.value * 100) + "%"
 
     implicitWidth: 324
     implicitHeight: 34

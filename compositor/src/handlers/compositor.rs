@@ -42,10 +42,16 @@ impl CompositorHandler for WhiteRose {
             }
             // Includes windows hidden on other workspaces, so their previews update too.
             if let Some(window) = self.window_for_surface(&root) {
+                let before = self.space.element_geometry(&window);
                 window.on_commit();
                 self.mark_export_dirty(&window);
                 // Its size may have changed (maximized, resized).
                 self.island_sync();
+                // The windows event carries sizes: re-sent when one changes
+                // (its first buffer, a resize), not on every frame.
+                if self.space.element_geometry(&window) != before {
+                    self.ipc_sync();
+                }
             }
         };
 

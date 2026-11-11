@@ -78,7 +78,10 @@ daemon/       whiterosed: Go
                      WhiteRose in a session of its own (HOME, D-Bus, accessibility bus, display),
                      finds things by accessible name and role (AT-SPI; the kit's components and
                      Files' rows and tabs carry them), clicks and types with the real pointer and
-                     keyboard through the compositor, and reads back what shows. Nested in the
+                     keyboard through the compositor, and reads back what shows. The shell (bar,
+                     island, panels) and Settings too: layer windows are titled with their
+                     namespace (shell/LayerTitle.qml) and placed through the compositor's
+                     test-only `{"debug_layers":true}`; settings can be seeded and read back. Nested in the
                      current desktop, or headless (apps draw in software) when there is none or
                      WR_UITEST_HEADLESS=1: the `ui` CI job
 Makefile      `make check` = gofmt, vet, race, fuzz, cargo fmt, clippy -D warnings, cargo test

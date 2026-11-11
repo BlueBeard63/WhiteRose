@@ -100,6 +100,11 @@ pub enum Event {
         layouts: Vec<crate::keyboard::LayoutView>,
         active: usize,
     },
+    /// Every layer surface (the bar, panels, wallpaper), sent only to the
+    /// client that asked with `{"debug_layers":true}` (UI tests).
+    Layers {
+        layers: Vec<LayerInfo>,
+    },
 }
 
 impl Event {
@@ -121,6 +126,18 @@ pub struct WindowInfo {
     /// [x, y, w, h] in global logical pixels while it's on screen.
     #[serde(default)]
     pub geometry: Option<[i32; 4]>,
+}
+
+/// A layer-shell surface on screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayerInfo {
+    /// What the client called it ("whiterose-bar").
+    pub namespace: String,
+    pub output: String,
+    /// "background", "bottom", "top" or "overlay".
+    pub layer: String,
+    /// [x, y, w, h] in global logical pixels.
+    pub geometry: [i32; 4],
 }
 
 /// Messages from the shell to the compositor.
@@ -397,7 +414,7 @@ impl Server {
             Event::Outputs { .. } => &mut self.last_outputs,
             Event::Shortcuts { .. } => &mut self.last_shortcuts,
             Event::Keyboard { .. } => &mut self.last_keyboard,
-            Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
+            Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } | Event::Layers { .. } => {
                 self.broadcast(&event);
                 return;
             }
@@ -406,6 +423,12 @@ impl Server {
             *slot = Some(event.clone());
             self.broadcast(&event);
         }
+    }
+
+    /// Sends `event` to one client.
+    pub fn send(&mut self, id: u64, event: &Event) {
+        let line = event.to_line();
+        self.clients.retain_mut(|c| c.id != id || Self::send_to(c, &line));
     }
 
     fn remove(&mut self, id: u64) {
@@ -505,7 +528,7 @@ impl WhiteRose {
     }
 
     fn ipc_request(&mut self, id: u64, line: &str) {
-        if self.debug_pointer(line) || self.debug_key(line) {
+        if self.debug_pointer(line) || self.debug_key(line) || self.debug_layers(id, line) {
             return;
         }
         match Request::parse(line) {
@@ -525,13 +548,16 @@ impl WhiteRose {
     /// Development only (`WHITEROSE_DEBUG_INPUT=1`): drives the pointer like
     /// a real mouse, for reproducing UI problems without a person clicking:
     /// `{"debug_pointer":{"x":720,"y":60,"button":"press"}}` (button optional:
-    /// "press" or "release", or "right-press" / "right-release"). Returns true if the line was such a request.
+    /// "press" or "release", or "right-press" / "right-release"); `"scroll":3`
+    /// turns the wheel three clicks down (negative: up). Returns true if the
+    /// line was such a request.
     fn debug_pointer(&mut self, line: &str) -> bool {
         #[derive(Deserialize)]
         struct P {
             x: f64,
             y: f64,
             button: Option<String>,
+            scroll: Option<i32>,
         }
         #[derive(Deserialize)]
         struct Req {
@@ -552,7 +578,59 @@ impl WhiteRose {
             }
             _ => {}
         }
+        if let Some(clicks) = p.scroll.filter(|&c| c != 0) {
+            use smithay::{
+                backend::input::{Axis, AxisSource},
+                input::pointer::AxisFrame,
+            };
+            let frame = AxisFrame::new(time)
+                .source(AxisSource::Wheel)
+                .value(Axis::Vertical, 15.0 * clicks as f64)
+                .v120(Axis::Vertical, 120 * clicks);
+            let pointer = self.seat.get_pointer().expect("seat has a pointer");
+            pointer.axis(self, frame);
+            pointer.frame(self);
+        }
         true
+    }
+
+    /// Development only, like debug_pointer: `{"debug_layers":true}` answers
+    /// this client with every layer surface and where it is (UI tests click
+    /// the bar's things at the bar's place plus their place in it).
+    fn debug_layers(&mut self, id: u64, line: &str) -> bool {
+        if !line.contains("\"debug_layers\"") || std::env::var_os("WHITEROSE_DEBUG_INPUT").is_none() {
+            return false;
+        }
+        let event = self.layers_event();
+        if let Some(server) = self.ipc.as_mut() {
+            server.send(id, &event);
+        }
+        true
+    }
+
+    pub fn layers_event(&self) -> Event {
+        use smithay::wayland::shell::wlr_layer::Layer;
+        let mut layers = Vec::new();
+        for output in self.space.outputs() {
+            let at = self.space.output_geometry(output).map(|g| g.loc).unwrap_or_default();
+            let map = smithay::desktop::layer_map_for_output(output);
+            for l in map.layers() {
+                let Some(g) = map.layer_geometry(l) else { continue };
+                layers.push(LayerInfo {
+                    namespace: l.namespace().to_string(),
+                    output: output.name(),
+                    layer: match l.layer() {
+                        Layer::Background => "background",
+                        Layer::Bottom => "bottom",
+                        Layer::Top => "top",
+                        Layer::Overlay => "overlay",
+                    }
+                    .into(),
+                    geometry: [at.x + g.loc.x, at.y + g.loc.y, g.size.w, g.size.h],
+                });
+            }
+        }
+        Event::Layers { layers }
     }
 
     /// Development only, like debug_pointer: `{"debug_key":{"code":133,"down":true}}`
