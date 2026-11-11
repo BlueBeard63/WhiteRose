@@ -87,12 +87,19 @@ func (s *Session) binary(env, rel string) string {
 	return filepath.Join(s.Repo, rel)
 }
 
-// Start begins a session (stopped when the test ends). It skips the test
-// when there's no desktop to run a nested compositor in.
+// Headless says whether sessions run with no screen (the compositor's
+// headless backend, apps drawing in software): when there's no desktop to
+// nest in (CI), or WR_UITEST_HEADLESS=1.
+func Headless() bool {
+	return os.Getenv("WR_UITEST_HEADLESS") == "1" || os.Getenv("WAYLAND_DISPLAY") == ""
+}
+
+// Start begins a session (stopped when the test ends): nested in the
+// desktop it's run from, or headless (see Headless).
 func Start(t testing.TB, o Options) *Session {
 	t.Helper()
-	if os.Getenv("WAYLAND_DISPLAY") == "" {
-		t.Skip("no Wayland session to run a nested WhiteRose in")
+	if os.Getenv("XDG_RUNTIME_DIR") == "" {
+		t.Fatal("XDG_RUNTIME_DIR isn't set (Wayland's sockets live there)")
 	}
 	repo, err := RepoRoot()
 	if err != nil {
@@ -114,6 +121,10 @@ func Start(t testing.TB, o Options) *Session {
 	}
 	busFile := filepath.Join(s.Home, ".bus")
 	args := []string{"--daemon", daemon + " serve"}
+	headless := Headless()
+	if headless {
+		args = append([]string{"--backend", "headless"}, args...)
+	}
 	if o.Shell {
 		args = append(args, "--shell", "qs -p "+filepath.Join(repo, "shell"))
 	}
@@ -134,6 +145,12 @@ func Start(t testing.TB, o Options) *Session {
 		"QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1",
 		"QT_ACCESSIBILITY=1",
 		"WHITEROSE_DEBUG_INPUT=1",
+		// Headless, the session has no desktop to name: the accessibility
+		// registry only needs to know it's a Wayland one (else it looks for
+		// an X server). Apps get the compositor's own from the compositor.
+		"WAYLAND_DISPLAY="+map[bool]string{true: "wayland-uitest-none", false: os.Getenv("WAYLAND_DISPLAY")}[headless],
+		// With no GPU (headless), Qt Quick draws in software.
+		"QT_QUICK_BACKEND="+map[bool]string{true: "software", false: os.Getenv("QT_QUICK_BACKEND")}[headless],
 		"PATH="+filepath.Dir(daemon)+":"+os.Getenv("PATH"),
 	)
 	s.cmd.Stdout, s.cmd.Stderr = s.log, s.log
@@ -170,13 +187,14 @@ func Start(t testing.TB, o Options) *Session {
 	return s
 }
 
-// The person's environment, less what would tie the session to theirs.
+// The person's environment, less what would tie the session to theirs
+// (and their desktop: the session sets its own WAYLAND_DISPLAY).
 func cleanEnv() []string {
 	var out []string
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
-		case k == "HOME" || k == "DISPLAY" || k == "DBUS_SESSION_BUS_ADDRESS" || k == "AT_SPI_BUS_ADDRESS" || k == "PATH":
+		case k == "HOME" || k == "DISPLAY" || k == "DBUS_SESSION_BUS_ADDRESS" || k == "AT_SPI_BUS_ADDRESS" || k == "PATH" || k == "QT_QUICK_BACKEND" || k == "WAYLAND_DISPLAY":
 		case strings.HasPrefix(k, "XDG_") && k != "XDG_RUNTIME_DIR":
 		default:
 			out = append(out, kv)

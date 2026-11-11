@@ -125,6 +125,19 @@ func (a *a11y) frame(title string) (ref, bool) {
 	return ref{}, false
 }
 
+// apps lists the accessible apps and their windows (for messages).
+func (a *a11y) apps() string {
+	var out []string
+	for _, app := range a.children(ref{"org.a11y.atspi.Registry", "/org/a11y/atspi/accessible/root"}) {
+		var frames []string
+		for _, f := range a.children(app) {
+			frames = append(frames, fmt.Sprintf("%q", a.node(f).Name))
+		}
+		out = append(out, a.node(app).Name+"["+strings.Join(frames, ", ")+"]")
+	}
+	return strings.Join(out, " ")
+}
+
 // all the nodes under r that are on screen, in tree order.
 func (a *a11y) all(r ref) []Node {
 	var out []Node

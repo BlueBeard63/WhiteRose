@@ -21,12 +21,14 @@ func (s *Session) Open(command, title string) *Window {
 	s.Spawn(command)
 	w := &Window{s: s, title: title}
 	a := s.access()
+	var onScreen, inTree bool
 	if !waitUntil(Patience+10*time.Second, func() bool {
-		_, onScreen := s.window(title)
-		_, inTree := a.frame(title)
+		_, onScreen = s.window(title)
+		_, inTree = a.frame(title)
 		return onScreen && inTree
 	}) {
-		s.t.Fatalf("no window titled %q appeared (windows: %s)", title, s.titles())
+		s.t.Fatalf("no window titled %q ready (on screen: %v, in the accessibility tree: %v; windows: %s; accessible apps: %s)",
+			title, onScreen, inTree, s.titles(), a.apps())
 	}
 	return w
 }

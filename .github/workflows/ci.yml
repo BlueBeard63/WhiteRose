@@ -49,6 +49,40 @@ jobs:
             apps
       - run: make rust-check
 
+  # Click-and-check UI tests (make ui-test): WhiteRose sessions with the
+  # compositor's headless backend (no screen, no GPU; apps draw in software),
+  # things found by name through the accessibility bus and clicked with the
+  # compositor's test input. Ubuntu 26.04 for its Qt, like the .deb.
+  ui:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      XDG_RUNTIME_DIR: /tmp/runtime
+    steps:
+      - run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git make build-essential pkg-config \
+            libxkbcommon-dev libwayland-dev libegl-dev libgles-dev libudev-dev libseat-dev libinput-dev libgbm-dev libdrm-dev \
+            qt6-base-dev qt6-declarative-dev qmake6 \
+            dbus dbus-user-session at-spi2-core qt6-wayland fontconfig fonts-dejavu-core \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-dialogs qml6-module-qtquick-shapes \
+            qml6-module-qtquick-window qml6-module-qtquick-templates qml6-module-qtqml-workerscript qml6-module-qtquick-layouts \
+            qml6-module-qtquick-pdf qml6-module-qtmultimedia libqt6svg6 qt6-image-formats-plugins
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            compositor
+            apps
+      - run: make ui-test
+
   shell:
     runs-on: ubuntu-latest
     steps:
