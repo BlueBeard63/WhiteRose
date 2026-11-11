@@ -1,8 +1,18 @@
 name: ci
 
+# Not for changes that are only docs: nothing here reads them. (A push
+# that touches anything else still runs everything.)
 on:
   push:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE*"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE*"
 
 jobs:
   daemon:

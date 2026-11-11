@@ -19,7 +19,7 @@ Each feature lists where the idea comes from: Windows, Hyprland, niri, GNOME, KD
 | 🗓️ | [**0.5**](#05--look--feel) | Look & feel | Making it yours, and making every app match. |
 | 🗓️ | [**0.6**](#06--login) | Login | WhiteRose from the first frame: its own display manager. |
 | 🗓️ | [**0.7**](#07--accounts--everyday-tools) | Accounts & everyday tools | Your accounts' calendars and contacts, small things used all day, and hardware setup. |
-| 🗓️ | [**0.8**](#08--more-distros) | More distros | Beyond Ubuntu and Fedora. |
+| 🗓️ | [**0.8**](#08--distros--installer) | Distros & installer | Beyond Ubuntu and Fedora, and an ISO installer. |
 | 🗓️ | [**1.0**](#10--daily-driver) | Daily driver | Everything above, finished. |
 | 🗓️ | [**1.1**](#11--module-api-preview) | Module API preview | Anyone can extend WhiteRose. Design: API.md. |
 | 🗓️ | [**1.2**](#12--module-api-stable) | Module API stable | Beyond the shell, and a stable API. |
@@ -95,6 +95,15 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 ## 0.3 · Layouts
 
 **Next up.** How windows are arranged: four models, one global choice with overrides.
+
+<details>
+<summary><b>Click-and-check tests</b>: Tests that use WhiteRose like a person would, without guessing where things are on screen. <sub>· Qt Test, Playwright</sub></summary>
+
+- Every button, row, tab and field has a name; a test says "click Rename in the Sheet, type IMG_, check the list shows lab-day 0412.jpg" and the test harness finds it, clicks it and reads back what's shown.
+- Runs in a nested session in CI, for Files, Settings, Notepad and the shell (windows, layouts, the island), with a screenshot kept when something fails.
+- Comes first in this milestone: every release after is quicker and safer to change.
+
+</details>
 
 <details>
 <summary><b>Layout engine: floating by default, global with overrides</b>: One layout for everything, overridden per workspace or per monitor, from Settings or a key. <sub>· Windows, KDE</sub></summary>
@@ -332,9 +341,9 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 
-## 0.8 · More distros
+## 0.8 · Distros & installer
 
-**Planned.** Beyond Ubuntu and Fedora.
+**Planned.** Beyond Ubuntu and Fedora, and a WhiteRose you install from an ISO.
 
 <details>
 <summary><b>Arch (AUR)</b>: PKGBUILDs for whiterose and whiterose-core. <sub>· WhiteRose's own</sub></summary>
@@ -350,6 +359,15 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 
 </details>
 
+<details>
+<summary><b>Install from an ISO</b>: Boot it and a tidy terminal installer does everything. <sub>· archinstall, Omarchy</sub></summary>
+
+- No live desktop to load: the ISO boots straight into a full-screen terminal installer that looks like WhiteRose (its colours, clear steps, a progress bar), not a wall of text.
+- A few questions (disk, encryption, user, Wi-Fi, keyboard, time zone), a summary to confirm, then it partitions, installs the base system and WhiteRose, and sets up the bootloader and fingerprint unlock on its own. No commands to type.
+- Built from a supported distro, signed like the packages, and ends by rebooting into WhiteRose.
+
+</details>
+
 
 ## 1.0 · Daily driver
 
@@ -359,6 +377,15 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 <summary><b>Polish everything above</b>: Stable, finished and pleasant to use every day. <sub>· WhiteRose's own</sub></summary>
 
 - Bug bash across all milestones; first-run experience; release notes in the Updates page.
+
+</details>
+
+<details>
+<summary><b>Docs on the machine</b>: How everything works and how to change it, offline. <sub>· Arch Wiki, man pages</sub></summary>
+
+- Shipped with WhiteRose and opened from Settings (a ? on each page), the launcher, or a terminal (`whiterose-docs files`), with search; nothing to download or rebuild.
+- For each feature: what it does, its settings and config files, and how to change its behaviour (settings, scripts, your own actions, a module). The module API reference joins in 1.1.
+- Written alongside the code, so they match the version you're running.
 
 </details>
 
