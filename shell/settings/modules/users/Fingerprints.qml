@@ -137,7 +137,8 @@ Column {
         icon: "fingerprint"
         title: running ? U.fingerName(finger) : finished ? "Fingerprint added" : "Add a fingerprint"
         subtitle: running || finished ? "" : "Pick the finger, then touch the reader when asked"
-        closePolicy: running ? Popup.NoAutoClose : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
+        // (Not while the reader is waiting for a finger: Cancel stops that first.)
+        canClose: !running
 
         property string finger: ""
         property bool running: false
@@ -261,9 +262,7 @@ Column {
             font { family: Theme.font; pointSize: Theme.pt(11.5) }
         }
 
-        width: 480
         footer: [
-            Item { width: parent.width - fpClose.width - (fpStart.visible ? fpStart.width + 8 : 0) - 8; height: 1 },
             Button {
                 id: fpClose
                 text: addDialog.finished ? "Done" : "Cancel"

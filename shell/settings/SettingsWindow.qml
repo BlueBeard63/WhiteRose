@@ -216,11 +216,17 @@ FloatingWindow {
     // The open page: loaded on entry, unloaded on leaving (Modules page).
     // A page can set `footer` (a Component) for a bar fixed at the bottom,
     // e.g. Apply / Revert on Displays.
+    // A question asked in place (Dialog with strip): across the top of the page.
+    Column {
+        id: stripHost
+        anchors { left: sidebar.right; leftMargin: 28; right: parent.right; rightMargin: 28; top: parent.top; topMargin: 40 }
+        Component.onCompleted: SettingsState.stripHost = stripHost
+    }
     Flickable {
         id: scroller
         // Starts below the window buttons, so the page scrolls away under
         // that strip instead of under the buttons.
-        anchors { left: sidebar.right; right: parent.right; top: parent.top; topMargin: 36; bottom: footerBar.visible ? footerBar.top : parent.bottom }
+        anchors { left: sidebar.right; right: parent.right; top: SettingsState.asking?.strip && SettingsState.asking?.isOpen ? stripHost.bottom : parent.top; topMargin: SettingsState.asking?.strip && SettingsState.asking?.isOpen ? 4 : 36; bottom: footerBar.visible ? footerBar.top : parent.bottom }
         contentHeight: pageLoader.height + 50
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -244,6 +250,15 @@ FloatingWindow {
             anchors { fill: parent; leftMargin: 28; rightMargin: 28 }
             sourceComponent: pageLoader.item?.footer ?? null
         }
+    }
+
+    // Something to fill in, or a thing's own settings (Dialog): its own
+    // page over this one, with ‹ back.
+    Item {
+        id: sheetHost
+        anchors { left: sidebar.right; right: parent.right; top: parent.top; topMargin: 36; bottom: parent.bottom }
+        z: 5
+        Component.onCompleted: SettingsState.sheetHost = sheetHost
     }
 
     // Window buttons, top right: minimise, maximise (restore), close.

@@ -369,10 +369,10 @@ Column {
 
     Dialog {
         id: confirmRestart
+        strip: true
         icon: "restart"
         title: "Restart the session?"
         subtitle: "Your apps will close. Save your work first."
-        width: 440
         Text {
             width: parent.width
             wrapMode: Text.Wrap
@@ -383,7 +383,6 @@ Column {
             font { family: Theme.font; pointSize: Theme.pt(12) }
         }
         footer: [
-            Item { width: parent.width - rcCancel.width - rcGo.width - 16; height: 1 },
             Button { id: rcCancel; text: "Cancel"; onClicked: confirmRestart.close() },
             Button {
                 id: rcGo

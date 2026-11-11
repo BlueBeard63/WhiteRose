@@ -121,10 +121,10 @@ Column {
     }
     Dialog {
         id: forget
+        strip: true
         title: "Forget every folder's view?"
         subtitle: "They'll all use the view at the top of this page."
         footer: [
-            Item { width: parent.width - forgetCancel.width - forgetGo.width - 16; height: 1 },
             Button { id: forgetCancel; text: "Cancel"; onClicked: forget.close() },
             Button { id: forgetGo; text: "Forget"; kind: "danger"; onClicked: { forgetter.running = true; forget.close() } }
         ]

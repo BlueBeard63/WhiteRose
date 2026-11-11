@@ -1,15 +1,15 @@
-// A saved network's settings (Figma: "Network Settings - Details / Security /
-// IPv4"): read and saved through whiterosed, which converts to
+// A saved network's settings, as its own page with ‹ Network (Figma:
+// "Settings - Network › Home-5G · Details / Security / IPv4"): read and saved through whiterosed, which converts to
 // NetworkManager's exact types and keeps the stored password. Only the
 // fields you change are sent.
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import qs
 import qs.settings
 
 Dialog {
     id: dlg
-    width: 560
 
     property string uuid
     property string kind: "wifi"   // wifi | ethernet
@@ -109,7 +109,19 @@ Dialog {
                 required property int index
                 divider: index > 0
                 title: modelData[0]
-                Text { text: modelData[1]; color: Theme.muted; font { family: Theme.mono; pointSize: Theme.pt(11.5) } }
+                // (Several addresses: the first, the rest on hover.)
+                Text {
+                    id: val
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, 420)
+                    elide: Text.ElideRight
+                    text: modelData[1]
+                    color: Theme.muted
+                    font { family: Theme.mono; pointSize: Theme.pt(11.5) }
+                    MouseArea { id: valMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+                    ToolTip.visible: valMouse.containsMouse && val.truncated
+                    ToolTip.text: modelData[1].split(", ").join("\n")
+                }
             }
         }
     }
@@ -322,7 +334,6 @@ Dialog {
     }
 
     footer: [
-        Item { width: parent.width - saveBtn.width - cancelBtn.width - 16; height: 1 },
         Button { id: cancelBtn; text: "Cancel"; onClicked: dlg.close() },
         Button { id: saveBtn; text: dlg.saving ? "Saving…" : "Save"; kind: "primary"; enabled: dlg.profile !== null && !dlg.saving; onClicked: dlg.save() }
     ]

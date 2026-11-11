@@ -451,13 +451,11 @@ Column {
         title: editing ? "Edit shortcut" : "Add shortcut"
         subtitle: "Runs a command"
         icon: "terminal"
-        width: 460
         Text { text: "Name"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11.5) } }
         Field { id: nameField; width: parent.width; placeholder: "Open Files"; onAccepted: commandField.focusField() }
         Text { text: "Command"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11.5) } }
         Field { id: commandField; width: parent.width; mono: true; placeholder: "nautilus"; onAccepted: customDialog.save() }
         footer: [
-            Item { width: parent.width - cancelCustom.width - saveCustom.width - 16; height: 1 },
             Button { id: cancelCustom; text: "Cancel"; onClicked: customDialog.close() },
             Button { id: saveCustom; text: customDialog.editing ? "Save" : "Add and set keys"; kind: "primary"; enabled: customDialog.valid; onClicked: customDialog.save() }
         ]
@@ -484,7 +482,6 @@ Column {
         title: "Add a layout"
         subtitle: "Search by language or country"
         icon: "plus"
-        width: 460
         onOpened: { layoutSearch.text = ""; layoutSearch.focusField() }
         Field { id: layoutSearch; width: parent.width; placeholder: "Search layouts" }
         ListView {

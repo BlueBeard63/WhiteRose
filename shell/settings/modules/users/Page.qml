@@ -217,7 +217,6 @@ Column {
         title: user?.me ? "Change your password" : "Set a password for " + (user ? page.label(user) : "")
         subtitle: user?.me ? "You'll be asked for your current one" : "They can change it after signing in"
         icon: "lock"
-        width: 440
         Field { id: pw1; width: parent.width; secret: true; placeholder: "New password"; onAccepted: pw2.focusField() }
         Field { id: pw2; width: parent.width; secret: true; placeholder: "Again"; error: pw2.text !== "" && pw2.text !== pw1.text; onAccepted: saveBtn.clicked() }
         Text {
@@ -229,7 +228,6 @@ Column {
             font { family: Theme.font; pointSize: Theme.pt(11.5) }
         }
         footer: [
-            Item { width: parent.width - pwCancel.width - saveBtn.width - 16; height: 1 },
             Button { id: pwCancel; text: "Cancel"; onClicked: passwordDialog.close() },
             Button {
                 id: saveBtn
@@ -264,7 +262,6 @@ Column {
         title: "Add a user"
         subtitle: "They'll sign in with the username and password"
         icon: "user"
-        width: 460
         Field {
             id: fullName; width: parent.width; placeholder: "Full name"
             onTextChanged: if (!addDialog.nameEdited) userName.text = U.suggestName(text)
@@ -298,7 +295,6 @@ Column {
             font { family: Theme.font; pointSize: Theme.pt(11.5) }
         }
         footer: [
-            Item { width: parent.width - addCancel.width - createBtn.width - 16; height: 1 },
             Button { id: addCancel; text: "Cancel"; onClicked: addDialog.close() },
             Button {
                 id: createBtn
@@ -320,6 +316,7 @@ Column {
 
     Dialog {
         id: removeDialog
+        strip: true
         property var user: null
         property bool waiting: false
         property string error: ""
@@ -327,7 +324,6 @@ Column {
         title: "Remove " + (user ? page.label(user) : "") + "?"
         subtitle: "They won't be able to sign in any more"
         icon: "trash"
-        width: 440
         SettingRow {
             divider: false
             title: "Keep their files"
@@ -343,7 +339,6 @@ Column {
             font { family: Theme.font; pointSize: Theme.pt(11.5) }
         }
         footer: [
-            Item { width: parent.width - rmCancel.width - rmBtn.width - 16; height: 1 },
             Button { id: rmCancel; text: "Cancel"; onClicked: removeDialog.close() },
             Button {
                 id: rmBtn

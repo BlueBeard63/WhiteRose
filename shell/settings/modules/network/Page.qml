@@ -200,11 +200,9 @@ Column {
         title: network?.name ?? ""
         subtitle: network ? page.securityName(network) + " · needs a password" : ""
         icon: "lock"
-        width: 420
         onOpened: { pw.text = ""; pw.focusField() }
         Field { id: pw; width: parent.width; secret: true; placeholder: "Password"; onAccepted: connectBtn.clicked() }
         footer: [
-            Item { width: parent.width - cancelBtn.width - connectBtn.width - 16; height: 1 },
             Button { id: cancelBtn; text: "Cancel"; onClicked: passwordDialog.close() },
             Button {
                 id: connectBtn; text: "Connect"; kind: "primary"
@@ -222,7 +220,6 @@ Column {
         title: network?.name ?? ""
         subtitle: "Enterprise · sign in with your account"
         icon: "lock"
-        width: 560
         onOpened: { error = ""; busy = false; joinForm.load(null) }
         EnterpriseForm { id: joinForm; joining: true }
         Text {
@@ -232,7 +229,6 @@ Column {
             color: Theme.rose; font { family: Theme.font; pointSize: Theme.pt(11.5) }
         }
         footer: [
-            Item { width: parent.width - eCancel.width - eConnect.width - 16; height: 1 },
             Button { id: eCancel; text: "Cancel"; onClicked: enterpriseDialog.close() },
             Button {
                 id: eConnect; text: enterpriseDialog.busy ? "Connecting…" : "Connect"; kind: "primary"

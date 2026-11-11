@@ -33,6 +33,12 @@ Singleton {
     readonly property var enabled: modules.filter(m => m.core || !disabled.includes(m.id))
     readonly property string userModules: (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/whiterose/modules"
 
+    // Asked in place (Dialog.qml): where strips and sub-pages go (set by
+    // the window), and the one showing.
+    property var stripHost: null
+    property var sheetHost: null
+    property var asking: null
+
     property string page: ""
     // The open sub-page of that module ("": its own Page.qml).
     property string sub: ""
