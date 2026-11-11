@@ -1,0 +1,42 @@
+# WhiteRose's version and release history. `make release` builds and
+# publishes `version`, with its entry below as the release notes;
+# `make changelog` writes CHANGELOG.md from every entry.
+#
+# version: 0.2.0, or a pre-release such as 0.6.0-alpha.12 (published on
+# GitHub as a pre-release). Looser spellings are tidied: v0.6-alpha-12 is
+# 0.6.0-alpha.12.
+#
+# Each release: version, date (YYYY-MM-DD), title, summary, then any of
+# added / changed / fixed / removed (lists), contributors (GitHub
+# usernames) and notes (Markdown). Newest first. What's added comes
+# first in the notes: Settings › Updates shows a release's first few
+# points.
+
+name: WhiteRose
+repo: BlueBeard63/WhiteRose
+version: 0.2.0
+
+releases:
+  - version: 0.2.0
+    date: 2026-11-11
+    title: Files
+    summary: >-
+      The first WhiteRose release, and it ships two milestones at once:
+      0.1 Foundations (the compositor, shell, Settings, Files and Notepad,
+      signed updates, fingerprint unlock) and 0.2 Files.
+    added:
+      - "Files without dialogs: the Sheet beside your files holds info, renaming many at once, share and compress, connecting, and compare & sync"
+      - "Cloud drives in Files: Google Drive, OneDrive, Dropbox, iCloud Drive, pCloud and S3 (through rclone), plus GNOME Online Accounts' drives"
+      - "Nextcloud in Files: sync badges on every file, keep offline, free up space, share links"
+      - "Network shares: SMB, SFTP, FTP, WebDAV and NFS, hosts from your SSH config, passwords in the keyring"
+      - "Compare & sync folders, with the differences marked on the files in both panes"
+      - "Your own actions in the right-click menu; search inside files; whiterose-files --find from a terminal"
+    changed:
+      - "Copies, moves and clashes go in an Activity drawer; questions ask in a strip above the files; new folders are named right where they appear"
+      - "Settings asks in place too: questions as a strip, forms and a network's settings as their own page, a Wi-Fi password right under the network"
+      - "Notepad asks about unsaved changes in a strip, and Go to line is a bar"
+      - "A cleaner look: no chips, rows that don't change height, WhiteRose's own window controls"
+      - "Files shows the git branch you're in; git itself stays in your terminal and editor"
+    removed:
+      - "The gallery view (pictures open as a grid of thumbnails)"
+    contributors: [BlueBeard63]

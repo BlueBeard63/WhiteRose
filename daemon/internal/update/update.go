@@ -137,17 +137,24 @@ func fileSum(path string) (string, error) {
 // ---- versions ------------------------------------------------------------------------------
 
 // Newer reports whether version a is newer than b ("v0.5.0" > "0.4.2";
-// "0.5.0" > "0.5.0-rc1").
+// "0.5.0" > "0.5.0-rc.1"; "0.6.0-alpha.12" > "0.6.0-alpha.9").
 func Newer(a, b string) bool {
 	return compare(a, b) > 0
 }
 
+// compare orders versions as semantic versioning does: the numbers first,
+// then a release beats its pre-releases, and pre-releases compare part by
+// part ("alpha.12" > "alpha.9" > "alpha"; numbers before words). "-" and
+// "~" both start a pre-release, and "-" or "." separate its parts.
 func compare(a, b string) int {
-	split := func(v string) ([]int, string) {
+	split := func(v string) ([]int, []string) {
 		v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-		pre := ""
+		var pre []string
 		if i := strings.IndexAny(v, "-~"); i >= 0 {
-			v, pre = v[:i], v[i+1:]
+			for p := range strings.FieldsFuncSeq(strings.ToLower(v[i+1:]), func(r rune) bool { return r == '.' || r == '-' }) {
+				pre = append(pre, p)
+			}
+			v = v[:i]
 		}
 		var nums []int
 		for p := range strings.SplitSeq(v, ".") {
@@ -174,17 +181,42 @@ func compare(a, b string) int {
 		}
 	}
 	switch {
-	case ap == bp:
+	case len(ap) == 0 && len(bp) == 0:
 		return 0
-	case ap == "": // a release beats its pre-releases
+	case len(ap) == 0: // a release beats its pre-releases
 		return 1
-	case bp == "":
-		return -1
-	case ap > bp:
-		return 1
-	default:
+	case len(bp) == 0:
 		return -1
 	}
+	for i := 0; i < len(ap) && i < len(bp); i++ {
+		x, xerr := strconv.Atoi(ap[i])
+		y, yerr := strconv.Atoi(bp[i])
+		switch {
+		case xerr == nil && yerr == nil:
+			if x != y {
+				if x > y {
+					return 1
+				}
+				return -1
+			}
+		case xerr == nil: // numbers sort before words
+			return -1
+		case yerr == nil:
+			return 1
+		case ap[i] != bp[i]:
+			if ap[i] > bp[i] {
+				return 1
+			}
+			return -1
+		}
+	}
+	switch {
+	case len(ap) > len(bp):
+		return 1
+	case len(ap) < len(bp):
+		return -1
+	}
+	return 0
 }
 
 // ---- releases -------------------------------------------------------------------------------

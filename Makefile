@@ -6,7 +6,7 @@ DAEMON   := daemon
 WM       := compositor
 FUZZTIME ?= 20s
 
-.PHONY: release-key release dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
+.PHONY: release-key release release-notes changelog dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
 
 check: go-check rust-check shell-check
 
@@ -95,7 +95,10 @@ run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl
 # ---- Packages ----------------------------------------------------------------
 # One .deb (Ubuntu 26.04) and one .rpm (Fedora), each built in its distro's
 # container against that distro's Qt and libraries. Output: build/packages/.
-VERSION ?= 0.1.0
+# The version comes from project.yaml (VERSION=… overrides it).
+PROJECT  := project.yaml
+project   = cd $(DAEMON) && $(GO) run ./cmd/whiterosed project $(CURDIR)/$(PROJECT)
+VERSION  ?= $(shell $(project) version)
 package: package-deb package-rpm
 
 # ---- releases (updates) ---------------------------------------------------------
@@ -105,16 +108,30 @@ package: package-deb package-rpm
 release-key:         ## Make the release signing key (once)
 	cd $(DAEMON) && $(GO) run ./cmd/whiterosed release-key $(CURDIR)/packaging/release.pub
 
-# VERSION=0.2.0 make release: both packages, signed, published as a GitHub
-# release (needs `gh` logged in, and RELEASE_REPO=owner/name).
-RELEASE_REPO ?= $(shell cat packaging/release-repo 2>/dev/null)
-release:             ## Build, sign and publish VERSION as a GitHub release
-	@test -n "$(RELEASE_REPO)" || { echo "set RELEASE_REPO=owner/name (or packaging/release-repo)"; exit 1; }
+# `make release`: project.yaml's version, both packages, signed, published
+# as a GitHub release (a pre-release for versions like 0.6.0-alpha.12),
+# with that version's entry in project.yaml as the notes (NOTES=file to
+# use your own). Needs `gh` logged in. Add the version's entry first:
+# `make release-notes` shows what will be published.
+RELEASE_REPO ?= $(shell $(project) repo)
+release:             ## Build, sign and publish project.yaml's version as a GitHub release
+	@test -n "$(RELEASE_REPO)" || { echo "no repo in $(PROJECT) (repo: owner/name)"; exit 1; }
 	@test -f packaging/release.pub || { echo "no release key yet: make release-key"; exit 1; }
+	@$(project) check
+	@gh release view v$(VERSION) --repo $(RELEASE_REPO) >/dev/null 2>&1 && { echo "v$(VERSION) is already released: change the version in $(PROJECT)"; exit 1; } || true
+	mkdir -p build
+	@if [ -n "$$NOTES" ]; then cp "$$NOTES" build/release-notes.md; else $(project) notes $(VERSION) > $(CURDIR)/build/release-notes.md; fi
 	rm -rf build/packages/* && $(MAKE) package VERSION=$(VERSION)
 	cd $(DAEMON) && $(GO) run ./cmd/whiterosed sign-release $(CURDIR)/build/packages $(CURDIR)/packaging/release.pub
 	gh release create v$(VERSION) --repo $(RELEASE_REPO) --title "WhiteRose $(VERSION)" \
-		--notes-file $${NOTES:-/dev/stdin} build/packages/*.deb build/packages/*.rpm build/packages/SHA256SUMS build/packages/SHA256SUMS.sig
+		$$($(project) prerelease && echo --prerelease) \
+		--notes-file build/release-notes.md build/packages/*.deb build/packages/*.rpm build/packages/SHA256SUMS build/packages/SHA256SUMS.sig
+
+release-notes:       ## Show the release notes `make release` will publish
+	@$(project) notes $(VERSION)
+
+changelog:           ## Write CHANGELOG.md from project.yaml
+	@$(project) changelog > $(CURDIR)/CHANGELOG.md && echo "CHANGELOG.md: written from $(PROJECT)"
 
 package-deb:
 	docker build -q -t whiterose-build-ubuntu -f packaging/Dockerfile.ubuntu packaging >/dev/null

@@ -52,6 +52,11 @@ func TestSumsAndVersions(t *testing.T) {
 	}{
 		{"v0.5.0", "0.4.2", true}, {"0.4.10", "0.4.9", true}, {"0.4.2", "0.4.2", false},
 		{"0.5.0", "0.5.0-rc1", true}, {"0.5.0-rc2", "0.5.0-rc1", true}, {"0.4.9", "0.5.0", false}, {"1.0", "0.9.9", true},
+		// Pre-releases part by part: numbers as numbers, numbers before words, longer after.
+		{"0.6.0-alpha.12", "0.6.0-alpha.9", true}, {"0.6.0-alpha-12", "0.6.0-alpha.9", true},
+		{"0.6.0-beta.1", "0.6.0-alpha.12", true}, {"0.6.0-alpha.1", "0.6.0-alpha", true},
+		{"0.6.0-alpha.1", "0.6.0-alpha.beta", false}, {"0.6.0~rc.1", "0.6.0-beta.2", true},
+		{"0.6.0", "0.6.0-rc.3", true}, {"0.6.0-rc.3", "0.5.9", true}, {"0.6.0-ALPHA.2", "0.6.0-alpha.2", false},
 	}
 	for _, c := range cases {
 		if Newer(c.a, c.b) != c.newer {

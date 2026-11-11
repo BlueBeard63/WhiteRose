@@ -88,7 +88,9 @@ install -Dm644 packaging/files/whiterose-autostart.sh "$meta/etc/profile.d/white
 install -Dm644 packaging/files/org.whiterose.apps.policy "$meta/usr/share/polkit-1/actions/org.whiterose.apps.policy"
 # Updates are only installed when signed with this key (internal/update).
 [ -f packaging/release.pub ] && install -Dm644 packaging/release.pub "$meta/usr/share/whiterose/release.pub"
-[ -f packaging/release-repo ] && install -Dm644 packaging/release-repo "$meta/usr/share/whiterose/release-repo"
+# Where updates come from: project.yaml's repo (the daemon reads it).
+mkdir -p "$meta/usr/share/whiterose"
+"$work/whiterosed" project project.yaml repo > "$meta/usr/share/whiterose/release-repo"
 # Your theme and VS Code extensions, for the app setup.
 install -Dm644 profile/custom.zsh-theme "$meta/usr/share/whiterose/profile/custom.zsh-theme"
 install -Dm644 profile/vscode-extensions.txt "$meta/usr/share/whiterose/profile/vscode-extensions.txt"
@@ -131,10 +133,19 @@ deb) scripts="scripts:
   postremove: $work/src/packaging/files/postrm-deb.sh" ;;
 *) scripts="" ;;
 esac
+# A pre-release (0.6.0-alpha.12): the packages' version is 0.6.0~alpha.12,
+# which dpkg and rpm both sort before 0.6.0 (a "-" would sort it after).
+# Folders and package names keep the version as written.
+base="${VERSION%%-*}"
+pre=""
+case "$VERSION" in *-*) pre="${VERSION#*-}" ;; esac
+pkgver="$base${pre:+~$pre}"
 yaml_list() { echo "$1" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | grep -v '^$' | sort -u | sed 's/^/  - "/; s/$/"/'; }
 cat > "$work/nfpm-core.yaml" <<YAML
 name: whiterose-core-$VERSION
-version: "$VERSION"
+version: "$base"
+prerelease: "$pre"
+version_schema: none
 arch: amd64
 maintainer: "WhiteRose"
 description: |
@@ -147,12 +158,14 @@ depends:
 $(yaml_list "$depends")
 YAML
 case "$FORMAT" in
-deb) needs="whiterose-core-$VERSION (= $VERSION)" ;;
-*) needs="whiterose-core-$VERSION = $VERSION" ;;
+deb) needs="whiterose-core-$VERSION (= $pkgver)" ;;
+*) needs="whiterose-core-$VERSION = $pkgver" ;;
 esac
 cat > "$work/nfpm.yaml" <<YAML
 name: whiterose
-version: "$VERSION"
+version: "$base"
+prerelease: "$pre"
+version_schema: none
 arch: amd64
 maintainer: "WhiteRose"
 description: |
@@ -169,4 +182,7 @@ $scripts
 YAML
 nfpm package --config "$work/nfpm-core.yaml" --packager "$FORMAT" --target /out/
 nfpm package --config "$work/nfpm.yaml" --packager "$FORMAT" --target /out/
+# File names without "~" (GitHub renames such assets, and SHA256SUMS
+# must name them as they're published).
+for f in /out/*~*; do [ -e "$f" ] && mv "$f" "$(echo "$f" | tr '~' '-')"; done
 ls -la /out

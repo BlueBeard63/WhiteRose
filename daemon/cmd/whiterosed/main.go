@@ -10,6 +10,8 @@
 //	whiterosed airplane on|off
 //	whiterosed release-key PUB          make the release signing key (once)
 //	whiterosed sign-release DIR PUB     sign the packages in DIR for a release
+//	whiterosed project FILE version|prerelease|repo|notes [VERSION]|changelog|check
+//	                          read project.yaml (the version, release notes, changelog)
 //	whiterosed fingerprint-root on|off  fingerprint for sign-in and sudo (as root, via pkexec)
 //	whiterosed update-root DIR KEEP     install a downloaded update (as root, via pkexec)
 package main
@@ -57,6 +59,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdReleaseKey(args[1:], stdout, stderr)
 	case "sign-release":
 		return cmdSignRelease(args[1:], stdout, stderr)
+	case "project":
+		return cmdProject(args[1:], stdout, stderr)
 	case "fingerprint-root":
 		return cmdFingerprintRoot(args[1:], stdout, stderr)
 	case "update-root":
@@ -85,6 +89,8 @@ commands:
   apps-root      ID...: install apps from the setup (as root, through pkexec)
   fingerprint-root on|off: fingerprint for sign-in, sudo and admin prompts (as root, through pkexec)
   update-root    DIR KEEP: install a downloaded WhiteRose update (as root, through pkexec)
+  project        FILE version | prerelease | repo | notes [VERSION] | changelog | check:
+                 read project.yaml (the version, release notes, CHANGELOG.md)
 `)
 }
 
