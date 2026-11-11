@@ -76,9 +76,12 @@ pub enum Event {
     },
     /// The outputs (by name, e.g. "DP-1") where a window sits right under
     /// the idle island (a maximized window's title bar): the shell tucks
-    /// that screen's island into its bar.
+    /// that screen's island into its bar. And those with a fullscreen
+    /// window (the bar isn't drawn there): the island waits in the top edge
+    /// and drops over the window when a view opens.
     Island {
         covered: Vec<String>,
+        fullscreen: Vec<String>,
     },
     /// Every connected output and what this backend can change about them
     /// (the Displays page); `trial_until` while a layout is being tried out.
@@ -651,7 +654,8 @@ impl WhiteRose {
             })
             .map(|o| o.name())
             .collect();
-        Event::Island { covered }
+        let fullscreen = self.space.outputs().filter(|o| self.fullscreen_on(o).is_some()).map(|o| o.name()).collect();
+        Event::Island { covered, fullscreen }
     }
 
     /// Re-checks the area under the island (windows mapped, moved, resized).

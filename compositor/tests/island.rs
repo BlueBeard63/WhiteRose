@@ -1,5 +1,6 @@
-//! The idle island tucks into the bar when a window sits under it: the
-//! compositor tells the shell whether the area under the island is covered.
+//! The idle island tucks into the bar when a window sits under it, and waits
+//! in the top edge over a fullscreen window: the compositor tells the shell
+//! which screens are covered, and which have a fullscreen window.
 
 mod common;
 
@@ -9,7 +10,7 @@ use whiterose_wm::ipc::Event;
 #[test]
 fn a_window_under_the_island_covers_it_and_moving_it_away_uncovers_it() {
     let mut h = Headless::new(true);
-    assert_eq!(h.state.island_event(), Event::Island { covered: vec![] }, "empty desktop");
+    assert_eq!(h.state.island_event(), Event::Island { covered: vec![], fullscreen: vec![] }, "empty desktop");
     h.drive(|conn, ask| {
         let mut c = Client::connect(&conn);
         c.open_bar(); // reserves the 26 px the island hangs below
@@ -27,8 +28,8 @@ fn a_window_under_the_island_covers_it_and_moving_it_away_uncovers_it() {
             st.space.map_element(w, (W / 2 - 300, 300), false);
             st.island_event()
         });
-        assert_eq!(under, Event::Island { covered: vec!["TEST-1".into()] });
-        assert_eq!(below, Event::Island { covered: vec![] });
+        assert_eq!(under, Event::Island { covered: vec!["TEST-1".into()], fullscreen: vec![] });
+        assert_eq!(below, Event::Island { covered: vec![], fullscreen: vec![] });
     });
 }
 
@@ -46,6 +47,32 @@ fn each_screen_has_its_own_island() {
             st.space.map_element(w, (W + W / 2 - 300, 0), false);
             st.island_event()
         });
-        assert_eq!(second, Event::Island { covered: vec!["TEST-2".into()] });
+        assert_eq!(second, Event::Island { covered: vec!["TEST-2".into()], fullscreen: vec![] });
+    });
+}
+
+#[test]
+fn a_fullscreen_window_is_reported_for_its_screen_until_it_leaves_fullscreen() {
+    let mut h = Headless::new(true);
+    h.add_output("TEST-2", (W, 0));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        let (surface, _t) = c.open_window();
+        c.attach_buffer(&surface, 600, 400);
+        let full = ask.run(|st| {
+            let w = st.space.elements().next().unwrap().clone();
+            let o = st.space.outputs().find(|o| o.name() == "TEST-2").cloned();
+            st.fullscreen_to(&w, o);
+            st.island_event()
+        });
+        let back = ask.run(|st| {
+            let w = st.space.elements().next().unwrap().clone();
+            st.unfullscreen(&w);
+            st.island_event()
+        });
+        let Event::Island { fullscreen, .. } = full else { panic!("{full:?}") };
+        assert_eq!(fullscreen, vec!["TEST-2".to_string()], "only the screen it fills");
+        let Event::Island { fullscreen, .. } = back else { panic!("{back:?}") };
+        assert!(fullscreen.is_empty(), "left fullscreen");
     });
 }

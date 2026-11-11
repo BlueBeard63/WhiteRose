@@ -32,6 +32,8 @@ Singleton {
     // A window sits right under the idle island (e.g. a maximized title bar).
     // Screens (by name) whose idle island has a window right under it.
     property var islandCovered: []
+    // Screens with a fullscreen window (the bar isn't drawn there).
+    property var fullscreen: []
 
     // Connected monitors, built-in first: { id, strong, connector, make, model,
     // builtin, physical_mm, modes: [{ width, height, refresh (mHz), preferred }],
@@ -138,6 +140,7 @@ Singleton {
             break;
         case "island":
             root.islandCovered = Array.isArray(msg.covered) ? msg.covered : [];
+            root.fullscreen = Array.isArray(msg.fullscreen) ? msg.fullscreen : [];
             break;
         case "lock":
             // A restarted shell finds the session still locked: lock again.

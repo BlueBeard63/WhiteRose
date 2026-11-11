@@ -20,9 +20,7 @@ releases:
   - version: 0.2.1
     date: 2026-11-11
     title: Island views, one-command install
-    summary: >-
-      A smaller release: an easier way to install WhiteRose, and the
-      centre island's views reworked so new ones are one file each.
+    summary: A smaller release: an easier way to install WhiteRose, and the centre island's views reworked so new ones are one file each.
     added:
       - "One command installs WhiteRose: it downloads both packages, checks their signature and installs them (install.sh, attached to every release)"
     changed:

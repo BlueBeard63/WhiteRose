@@ -1,6 +1,9 @@
 // The top bar (Figma: "Top Bar" component + idle island), one per screen.
 // A Top-layer panel that reserves 26px; the island hangs below that and the
 // input mask keeps clicks outside the visible shapes passing through.
+// With a fullscreen window on its screen the bar isn't drawn, but the
+// island still is: this moves to the Overlay layer (above the window), the
+// strip hides, and the island waits in the top edge until a view opens.
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
@@ -9,6 +12,7 @@ PanelWindow {
     id: root
     required property ShellScreen modelData
     screen: modelData
+    readonly property bool fullscreen: Compositor.fullscreen.includes(modelData?.name ?? "")
 
     anchors { top: true; left: true; right: true }
     // Bar + whatever the island's current view needs (held while morphing
@@ -18,13 +22,14 @@ PanelWindow {
     color: "transparent"
 
     WlrLayershell.namespace: "whiterose-bar"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: root.fullscreen ? WlrLayer.Overlay : WlrLayer.Top
     // Open views take the keyboard (Esc closes; clicking elsewhere moves focus
     // away, which closes them too).
     WlrLayershell.keyboardFocus: island.wantsKeyboard || quick.open || notifications.open || calendar.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     mask: Region {
-        item: bar
+        // (Fullscreen: no strip to click, only what the island shows.)
+        item: root.fullscreen ? island : bar
         Region { item: island }
         // (Things a view puts outside the island: the dock's previews.)
         Region { item: island.inputs[0] ?? null }
@@ -40,6 +45,7 @@ PanelWindow {
         anchors { top: parent.top; left: parent.left; right: parent.right }
         height: Theme.barHeight
         color: Theme.bg
+        visible: !root.fullscreen
 
         Row {
             id: left
@@ -94,7 +100,9 @@ PanelWindow {
     Island {
         id: island
         screenName: root.modelData?.name ?? ""
-        anchors { top: bar.bottom; horizontalCenter: parent.horizontalCenter }
+        fullscreen: root.fullscreen
+        // Fullscreen: it hangs from the screen's top edge instead of the bar.
+        anchors { top: bar.bottom; topMargin: root.fullscreen ? -Theme.barHeight : 0; horizontalCenter: parent.horizontalCenter }
     }
 
     QuickSettingsPanel {

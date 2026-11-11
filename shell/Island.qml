@@ -5,6 +5,8 @@
 // same outline in place; closing shrinks it back to rest.
 // When a window sits right under it (a maximized title bar), the idle island
 // tucks into the bar, leaving its grip there; hovering brings it back out.
+// Over a fullscreen window (no bar drawn) it rests hidden in the top edge:
+// opening a view drops it out over the window, closing draws it back up.
 import QtQuick
 import Quickshell
 
@@ -40,10 +42,14 @@ Item {
     Timer { id: unpeek; interval: 300; onTriggered: root.peeking = false }
     // The screen this island is on (its bar's), e.g. "DP-1".
     property string screenName: ""
-    readonly property bool tucked: idle && Compositor.islandCovered.includes(screenName) && !peeking
+    readonly property bool tucked: idle && Compositor.islandCovered.includes(screenName) && !peeking && !fullscreen
+    // A fullscreen window on this screen (the bar sets it).
+    property bool fullscreen: false
+    // At rest out of sight: in the top edge over a fullscreen window.
+    readonly property bool hidden: idle && fullscreen
 
     readonly property real targetWidth: idle || !current?.item ? 170 : current.item.implicitWidth
-    readonly property real targetHeight: tucked ? 0 : idle || !current?.item ? 18 : current.item.implicitHeight
+    readonly property real targetHeight: tucked || hidden ? 0 : idle || !current?.item ? 18 : current.item.implicitHeight
 
     // Room the bar window must leave below the bar. Grows at once, shrinks only
     // after the morph has finished, so the window never resizes mid-animation.
@@ -65,8 +71,8 @@ Item {
         bodyWidth: root.targetWidth
         bodyHeight: root.targetHeight
         visible: bodyHeight > 0.5
-        earWidth: root.tucked ? 0 : root.idle ? 12 : 26
-        earHeight: root.tucked ? 0 : root.idle ? 7 : 30
+        earWidth: root.tucked || root.hidden ? 0 : root.idle ? 12 : 26
+        earHeight: root.tucked || root.hidden ? 0 : root.idle ? 7 : 30
         bottomLeftRadius: root.idle ? 11 : Math.min(40, Math.max(11, root.targetHeight - 30))
         bottomRightRadius: bottomLeftRadius
 
@@ -89,7 +95,7 @@ Item {
     Rectangle {
         anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 8 }
         width: 30; height: 3; radius: 2
-        opacity: root.idle && !root.tucked && !root.morphing ? 1 : 0
+        opacity: root.idle && !root.tucked && !root.hidden && !root.morphing ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 120 } }
         color: gripMouse.containsMouse ? Theme.muted : Theme.grip
     }
@@ -104,7 +110,7 @@ Item {
     }
     MouseArea {
         id: peek
-        visible: root.idle
+        visible: root.idle && !root.hidden
         x: (root.width - 170) / 2
         y: -Theme.barHeight
         width: 170
@@ -115,7 +121,7 @@ Item {
     }
     MouseArea {
         id: gripMouse
-        visible: root.idle
+        visible: root.idle && !root.hidden
         x: shape.bodyX
         width: shape.bodyWidth
         height: shape.bodyHeight

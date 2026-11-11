@@ -121,6 +121,8 @@ impl WhiteRose {
             self.fullscreen.push(w.clone());
         }
         self.space.raise_element(w, true);
+        // (apply() synced before the list had it.)
+        self.island_sync();
     }
 
     pub fn unfullscreen(&mut self, w: &Window) {
@@ -136,6 +138,7 @@ impl WhiteRose {
             self.take_floating(w)
         };
         self.apply(w, ToplevelState::Fullscreen, false, rect);
+        self.island_sync();
     }
 
     pub fn toggle_fullscreen(&mut self, w: &Window) {
