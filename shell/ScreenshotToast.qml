@@ -28,6 +28,8 @@ PanelWindow {
     visible: open || slide.running
 
     WlrLayershell.namespace: "whiterose-toast"
+
+    LayerTitle { name: "whiterose-toast" }
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 

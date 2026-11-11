@@ -9,7 +9,14 @@ Rectangle {
     property color fill: Theme.surface1
     property color hoverFill: Theme.surface2
     readonly property bool hovered: mouse.containsMouse
+    // What it does, in words (the icon's name if not given).
+    property string label: ""
     signal clicked()
+    // For screen readers and the UI tests (whiterose-uitest finds things by
+    // their accessible name and role).
+    Accessible.role: Accessible.Button
+    Accessible.name: root.label || root.icon
+    Accessible.onPressAction: root.clicked()
     width: 32; height: 32; radius: width / 2
     color: mouse.containsMouse ? hoverFill : fill
     Behavior on color { ColorAnimation { duration: Theme.fastAnim } }

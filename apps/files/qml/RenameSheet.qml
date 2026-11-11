@@ -103,7 +103,7 @@ Column {
         signal toggled(bool on)
         width: parent.width; height: 30
         Text { anchors.verticalCenter: parent.verticalCenter; text: sw.text; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(12) } }
-        Toggle { anchors { right: parent.right; verticalCenter: parent.verticalCenter } checked: sw.checked; onToggled: on => sw.toggled(on) }
+        Toggle { anchors { right: parent.right; verticalCenter: parent.verticalCenter } label: sw.text; checked: sw.checked; onToggled: on => sw.toggled(on) }
     }
     // A row: its name at the left, what sets it at the right.
     component Line: Item {
@@ -135,14 +135,14 @@ Column {
         width: parent.width
         spacing: 4
         Label { text: "Find" }
-        Field { id: findField; Keys.onTabPressed: replaceField.focusField(); width: parent.width; height: 34; mono: true; placeholder: root.regex ? "Pattern, e.g. (\\d+)" : "Text in the names"; onTextChanged: root.find = text; error: root.error !== "" }
+        Field { id: findField; label: "Find"; Keys.onTabPressed: replaceField.focusField(); width: parent.width; height: 34; mono: true; placeholder: root.regex ? "Pattern, e.g. (\\d+)" : "Text in the names"; onTextChanged: root.find = text; error: root.error !== "" }
     }
     Column {
         visible: root.entries.length > 0
         width: parent.width
         spacing: 4
         Label { text: "Replace with" }
-        Field { id: replaceField; Keys.onTabPressed: prefixField.focusField(); Keys.onBacktabPressed: findField.focusField(); width: parent.width; height: 34; mono: true; placeholder: root.regex ? "$1 for a group" : "Nothing (take it out)"; onTextChanged: root.replace = text }
+        Field { id: replaceField; label: "Replace with"; Keys.onTabPressed: prefixField.focusField(); Keys.onBacktabPressed: findField.focusField(); width: parent.width; height: 34; mono: true; placeholder: root.regex ? "$1 for a group" : "Nothing (take it out)"; onTextChanged: root.replace = text }
     }
     Column {
         visible: root.entries.length > 0

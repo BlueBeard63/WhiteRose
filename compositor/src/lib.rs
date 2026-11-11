@@ -10,6 +10,7 @@ pub mod drm;
 pub mod foreign_toplevel;
 pub mod grabs;
 mod handlers;
+pub mod headless;
 mod host_inhibit;
 pub mod idle;
 pub mod input;

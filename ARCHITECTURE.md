@@ -66,11 +66,24 @@ compositor/   whiterose-wm: Rust + Smithay 0.7
   src/input.rs       shortcuts first (SUPER tap, PrtSc, ...), then forward to clients
   src/winit.rs       nested backend: redraws only on change (full repaint; the host EGL surface
                      rejects buffer-age queries); dmabuf v4 with render-node feedback
+  src/headless.rs    headless backend (`--backend headless`): one virtual 1280x800 output, nothing
+                     drawn, frame callbacks at most every 16 ms; input only through the debug
+                     pointer and keys. For the UI tests in CI
   src/handlers/       protocol handlers: xdg-shell, layer-shell (bar/panels), linux-dmabuf (GPU buffers)
   tests/globals.rs   starts the core headless and connects a real Wayland client
   tests/layer_shell.rs  a bar-like client on a fake 1440x808 output: bar width, reserved space,
                         windows open below it, launcher gets exclusive keyboard focus
 daemon/       whiterosed: Go
+  uitest/            click-and-check UI tests (`make ui-test`): internal/uitest starts a nested
+                     WhiteRose in a session of its own (HOME, D-Bus, accessibility bus, display),
+                     finds things by accessible name and role (AT-SPI; the kit's components and
+                     Files' rows and tabs carry them), clicks and types with the real pointer and
+                     keyboard through the compositor, and reads back what shows. The shell (bar,
+                     island, panels) and Settings too: layer windows are titled with their
+                     namespace (shell/LayerTitle.qml) and placed through the compositor's
+                     test-only `{"debug_layers":true}`; settings can be seeded and read back. Nested in the
+                     current desktop, or headless (apps draw in software) when there is none or
+                     WR_UITEST_HEADLESS=1: the `ui` CI job
 Makefile      `make check` = gofmt, vet, race, fuzz, cargo fmt, clippy -D warnings, cargo test
               `make run-nested` = WhiteRose in a window on the current desktop
 ```

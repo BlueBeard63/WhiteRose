@@ -22,6 +22,7 @@ PanelWindow {
     color: "transparent"
 
     WlrLayershell.namespace: "whiterose-bar"
+    LayerTitle { name: "whiterose-bar" }
     WlrLayershell.layer: root.fullscreen ? WlrLayer.Overlay : WlrLayer.Top
     // Open views take the keyboard (Esc closes; clicking elsewhere moves focus
     // away, which closes them too).
@@ -58,7 +59,7 @@ PanelWindow {
                 color: Theme.surface2
                 visible: media.visible && workspaces.visible
             }
-            Media { id: media; anchors.verticalCenter: parent.verticalCenter; enabled: Daemon.setting("bar.media", true) }
+            Media { id: media; label: "Now playing"; anchors.verticalCenter: parent.verticalCenter; enabled: Daemon.setting("bar.media", true) }
         }
 
         Row {
@@ -66,12 +67,15 @@ PanelWindow {
             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 4
             Status {
+                label: "Quick settings"
                 anchors.verticalCenter: parent.verticalCenter
                 active: quick.open
                 onClicked: ShellState.togglePanel("quick")
             }
             // The bell: a rose dot when something arrived since the panel was last open.
             Trigger {
+                label: "Notifications"
+                shows: QuickState.doNotDisturb ? "Do Not Disturb" : Notifications.unread ? "unread" : ""
                 anchors.verticalCenter: parent.verticalCenter
                 visible: Daemon.setting("bar.bell", true)
                 active: notifications.open
@@ -90,6 +94,7 @@ PanelWindow {
                 }
             }
             Clock {
+                label: "Clock"
                 anchors.verticalCenter: parent.verticalCenter
                 active: calendar.open
                 onClicked: ShellState.togglePanel("calendar")

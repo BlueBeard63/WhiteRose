@@ -23,6 +23,8 @@ Rectangle {
     Component.onDestruction: if (root.pane && root.pane.nameEditor === root) root.pane.nameEditor = null
     TextInput {
         id: input
+        Accessible.role: Accessible.EditableText
+        Accessible.name: "Name"
         anchors { fill: parent; leftMargin: 6; rightMargin: 6; topMargin: 4; bottomMargin: 4 }
         horizontalAlignment: root.align
         verticalAlignment: TextInput.AlignVCenter

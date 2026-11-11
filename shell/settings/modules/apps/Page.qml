@@ -177,6 +177,7 @@ Column {
                     text: "installed"
                 }
                 Toggle {
+                    label: row.modelData.name
                     visible: !row.modelData.installed
                     anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                     checked: row.on

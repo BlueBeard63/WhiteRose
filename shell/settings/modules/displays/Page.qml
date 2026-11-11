@@ -389,11 +389,13 @@ Column {
             title: "Position"
             subtitle: "Logical pixels, top-left of this monitor"
             Field {
+                label: "Position x"
                 implicitWidth: 86; mono: true
                 text: String(page.current?.position[0] ?? 0)
                 onAccepted: { const v = parseInt(text); if (!isNaN(v)) page.draft = D.place(page.draft, page.selected, v, page.current.position[1], 0) }
             }
             Field {
+                label: "Position y"
                 implicitWidth: 86; mono: true
                 text: String(page.current?.position[1] ?? 0)
                 onAccepted: { const v = parseInt(text); if (!isNaN(v)) page.draft = D.place(page.draft, page.selected, page.current.position[0], v, 0) }

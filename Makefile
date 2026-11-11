@@ -6,7 +6,7 @@ DAEMON   := daemon
 WM       := compositor
 FUZZTIME ?= 20s
 
-.PHONY: release-key release release-notes changelog dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
+.PHONY: release-key release release-notes changelog ui-test dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
 
 check: go-check rust-check shell-check
 
@@ -53,6 +53,19 @@ shell-check:         ## pure JS logic: calculator, search ranking, recent files
 build:
 	cd $(DAEMON) && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o ../build/whiterosed ./cmd/whiterosed
 	cd $(WM) && $(CARGO) build --release --locked && cp target/release/whiterose-wm ../build/
+
+# Click-and-check tests (daemon/uitest): each runs a nested WhiteRose in a
+# session of its own (its own HOME, D-Bus, accessibility bus, display),
+# finds things by their accessible names, clicks and types with the real
+# pointer and keyboard, and checks what shows. Inside a Wayland desktop the
+# sessions are nested windows; without one (or with WR_UITEST_HEADLESS=1, as
+# CI does) they use the compositor's headless backend. UITEST=Name runs only
+# tests matching Name.
+ui-test:             ## Run the click-and-check UI tests
+	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
+	cd $(WM) && $(CARGO) build --release --locked
+	cd apps && $(CARGO) build --locked
+	cd $(DAEMON) && $(GO) test -tags uitest -count=1 $(if $(UITEST),-run '$(UITEST)') ./uitest/
 
 # Its own D-Bus session bus, like a real WhiteRose login: WhiteRose is then the
 # notification server (GNOME keeps that name on the host bus), and apps started

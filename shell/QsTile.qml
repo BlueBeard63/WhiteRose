@@ -9,6 +9,12 @@ Rectangle {
     property string subtitle
     property bool active: false
     signal clicked()
+    Accessible.role: Accessible.Button
+    Accessible.name: root.title
+    Accessible.description: root.subtitle
+    Accessible.checkable: true
+    Accessible.checked: root.active
+    Accessible.onPressAction: root.clicked()
 
     implicitWidth: 158
     implicitHeight: 56

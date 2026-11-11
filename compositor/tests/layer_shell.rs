@@ -29,6 +29,31 @@ fn bar_spans_the_output_and_reserves_its_height() {
     );
 }
 
+// The UI tests find the bar through `{"debug_layers":true}`: its namespace,
+// output, layer and place on screen.
+#[test]
+fn layers_event_lists_the_bar_where_it_is() {
+    let mut h = Headless::new(true);
+    h.run(
+        |conn| {
+            let mut c = Client::connect(&conn);
+            let bar = c.open_bar();
+            c.attach_buffer(&bar.0, W, BAR as i32);
+            c.until(|_| true);
+            bar
+        },
+        |state, _bar| {
+            let whiterose_wm::ipc::Event::Layers { layers } = state.layers_event() else {
+                panic!("not a layers event")
+            };
+            let bar = layers.iter().find(|l| l.namespace == "whiterose-bar").expect("the bar is listed");
+            assert_eq!(bar.layer, "top");
+            assert_eq!(bar.geometry, [0, 0, W, BAR as i32]);
+            assert!(!bar.output.is_empty());
+        },
+    );
+}
+
 #[test]
 fn new_windows_open_below_the_bar() {
     let mut h = Headless::new(true);

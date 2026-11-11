@@ -7,7 +7,10 @@ Item {
     property real value: 0
     property real maximum: 1
     property bool dimmed: false
+    property string label: parent?.rowTitle ?? ""
     signal moved(real value)
+    Accessible.role: Accessible.Slider
+    Accessible.name: root.label
     implicitWidth: 220
     implicitHeight: 20
     width: implicitWidth; height: implicitHeight

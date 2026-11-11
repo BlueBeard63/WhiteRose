@@ -14,6 +14,14 @@ Item {
     // The grid it's in: k (size), cellWidth / cellHeight, current, focused, takeFocus(), now.
     required property var view
     readonly property bool on: !!cell.pane.selected[modelData.path]
+    // (For screen readers and the UI tests: the file, whether it's
+    // selected, and, while renaming, its new name.)
+    Accessible.role: Accessible.ListItem
+    Accessible.name: cell.modelData.name ?? ""
+    Accessible.description: ""
+    Accessible.selectable: true
+    Accessible.selected: cell.on
+
     width: cell.view.cellWidth; height: cell.view.cellHeight
     // Selected next to selected: one block (no gap, no corner, between them).
     readonly property var join: cell.pane.joined(cell.at, cell.view.cols)

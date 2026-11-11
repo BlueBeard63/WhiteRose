@@ -13,7 +13,13 @@ Rectangle {
     property var options: []
     property var value
     property bool enabled: true
+    // Its name (screen readers, tests): the row's title in a SettingRow.
+    property string label: parent?.rowTitle ?? ""
     signal picked(var value)
+    Accessible.role: Accessible.ComboBox
+    Accessible.name: root.label || root.current
+    Accessible.description: root.current
+    Accessible.onPressAction: if (root.enabled) menu.open()
     readonly property var items: options.map(o => typeof o === "object" ? o : { label: String(o), value: o })
     readonly property string current: (items.find(o => o.value === value) ?? { label: "" }).label
 
@@ -72,6 +78,11 @@ Rectangle {
                     model: root.items
                     delegate: Rectangle {
                         required property var modelData
+                        Accessible.role: Accessible.MenuItem
+                        Accessible.name: modelData.label
+                        Accessible.checkable: true
+                        Accessible.checked: modelData.value === root.value
+                        Accessible.onPressAction: if (!modelData.disabled) { menu.close(); if (modelData.value !== root.value) root.picked(modelData.value) }
                         width: Math.max(menu.width - 12, optText.implicitWidth + hintText.implicitWidth + 52)
                         height: 30
                         radius: 8

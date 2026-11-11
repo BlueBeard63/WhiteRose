@@ -67,6 +67,8 @@ FloatingWindow {
             Icon { x: 11; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 14; color: Theme.muted }
             TextInput {
                 id: search
+                Accessible.role: Accessible.EditableText
+                Accessible.name: "Search settings"
                 anchors { left: parent.left; leftMargin: 32; right: slash.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
                 color: Theme.text
                 selectionColor: Theme.rose
@@ -171,6 +173,10 @@ FloatingWindow {
         id: nav
         property var module
         readonly property bool on: SettingsState.page === module.id && SettingsState.sub === ""
+        Accessible.role: Accessible.PageTab
+        Accessible.name: module.name
+        Accessible.selected: on
+        Accessible.onPressAction: SettingsState.open(module.id)
         width: parent?.width ?? 0
         height: 34
         radius: 9
@@ -199,6 +205,10 @@ FloatingWindow {
         property var module
         property var pageInfo
         readonly property bool on: SettingsState.page === module.id && SettingsState.sub === pageInfo.id
+        Accessible.role: Accessible.PageTab
+        Accessible.name: pageInfo.name
+        Accessible.selected: on
+        Accessible.onPressAction: SettingsState.open(module.id + "/" + pageInfo.id)
         width: parent?.width ?? 0
         height: 30
         radius: 8
@@ -274,12 +284,15 @@ FloatingWindow {
         anchors { top: parent.top; right: parent.right }
         Repeater {
             model: [
-                { icon: "minus", run: () => win.minimized = true },
-                { icon: win.maximized ? "restore" : "square", run: () => win.maximized = !win.maximized },
-                { icon: "x", close: true, run: () => Qt.quit() },
+                { icon: "minus", label: "Minimise", run: () => win.minimized = true },
+                { icon: win.maximized ? "restore" : "square", label: win.maximized ? "Restore" : "Maximise", run: () => win.maximized = !win.maximized },
+                { icon: "x", label: "Close", close: true, run: () => Qt.quit() },
             ]
             delegate: Rectangle {
                 required property var modelData
+                Accessible.role: Accessible.Button
+                Accessible.name: modelData.label
+                Accessible.onPressAction: modelData.run()
                 width: 46; height: 34
                 color: !btnMouse.containsMouse ? "transparent" : modelData.close ? "#C42B1C" : Theme.surface2
                 Icon {

@@ -6,7 +6,17 @@ Rectangle {
     id: root
     property bool checked: false
     property bool enabled: true
+    // What it switches, in words (usually its row's title).
+    property string label: ""
     signal toggled(bool on)
+    // For screen readers and the UI tests (whiterose-uitest finds things by
+    // their accessible name and role).
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: root.label
+    Accessible.checkable: true
+    Accessible.checked: root.checked
+    Accessible.onToggleAction: if (root.enabled) root.toggled(!root.checked)
+    Accessible.onPressAction: if (root.enabled) root.toggled(!root.checked)
     width: 30; height: 18; radius: 9
     anchors.verticalCenter: parent?.verticalCenter
     color: checked ? Theme.rose : Theme.surface2

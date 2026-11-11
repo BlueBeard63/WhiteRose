@@ -96,6 +96,7 @@ Column {
                         }
                     }
                     Toggle {
+                        label: mod.modelData.name
                         checked: mod.on
                         enabled: !mod.modelData.core
                         onToggled: on => page.toggle(mod.modelData.id, on)

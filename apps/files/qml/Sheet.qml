@@ -196,6 +196,12 @@ Rectangle {
         property string name
         property string label
         readonly property bool on: root.tab === t.name
+        // (For screen readers and the UI tests.)
+        Accessible.role: Accessible.PageTab
+        Accessible.name: t.label
+        Accessible.checkable: true
+        Accessible.checked: t.on
+        Accessible.onPressAction: root.tab = t.name
         width: tabText.implicitWidth; height: 34
         Text {
             id: tabText

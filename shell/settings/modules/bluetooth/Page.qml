@@ -79,6 +79,7 @@ Column {
                 }
             }
             Toggle {
+                label: "Bluetooth"
                 anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
                 checked: page.on
                 onToggled: on => page.adapter.enabled = on

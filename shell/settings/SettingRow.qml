@@ -41,6 +41,8 @@ Item {
     }
     Row {
         id: controls
+        // What its toggle, dropdown or slider is called (screen readers, tests).
+        readonly property string rowTitle: root.title
         anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
         spacing: 8
     }

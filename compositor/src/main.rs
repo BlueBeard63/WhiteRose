@@ -3,10 +3,11 @@
 //! Runs on the hardware when started from a text console (or a display
 //! manager), or as a window inside another desktop for development. Usage:
 //!
-//!   whiterose-wm [--backend auto|drm|nested] [--mod super|ctrl-alt] [--daemon COMMAND] [--shell COMMAND] [-c COMMAND]
+//!   whiterose-wm [--backend auto|drm|nested|headless] [--mod super|ctrl-alt] [--daemon COMMAND] [--shell COMMAND] [-c COMMAND]
 //!
 //! --backend  drm: the real screens and input (needs a logind session, e.g.
 //!            a console login). nested: a window in the current desktop.
+//!            headless: no screen at all (UI tests in CI; see headless.rs).
 //!            auto (the default): nested inside a desktop, drm otherwise.
 //! --mod  What stands in for SUPER. Defaults to super: the nested window asks
 //!        the host desktop to pass its shortcuts through. Use ctrl-alt if the
@@ -48,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "-c" | "--command" => startup = Some(args.next().ok_or("-c needs a command")?),
             "-h" | "--help" => {
                 println!(
-                    "usage: whiterose-wm [--backend auto|drm|nested] [--mod super|ctrl-alt] [--daemon COMMAND] [--shell COMMAND] [-c COMMAND]"
+                    "usage: whiterose-wm [--backend auto|drm|nested|headless] [--mod super|ctrl-alt] [--daemon COMMAND] [--shell COMMAND] [-c COMMAND]"
                 );
                 return Ok(());
             }
@@ -75,16 +76,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.apply_keyboard();
     state.arm_idle();
 
-    let nested = match backend.as_str() {
-        "auto" => std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some(),
-        "nested" | "winit" => true,
-        "drm" => false,
-        other => return Err(format!("--backend must be auto, drm or nested, not {other:?}").into()),
+    let backend = match backend.as_str() {
+        "auto" if std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some() => "nested",
+        "auto" => "drm",
+        "nested" | "winit" => "nested",
+        "drm" => "drm",
+        "headless" => "headless",
+        other => return Err(format!("--backend must be auto, drm, nested or headless, not {other:?}").into()),
     };
-    if nested {
-        whiterose_wm::winit::init_winit(&mut event_loop, &mut state)?;
-    } else {
-        whiterose_wm::drm::init_drm(&mut event_loop, &mut state)?;
+    let nested = backend == "nested";
+    match backend {
+        "nested" => whiterose_wm::winit::init_winit(&mut event_loop, &mut state)?,
+        "headless" => whiterose_wm::headless::init_headless(&mut event_loop, &mut state)?,
+        _ => whiterose_wm::drm::init_drm(&mut event_loop, &mut state)?,
     }
     tracing::info!(socket = ?state.socket_name, main_mod, nested, "WhiteRose is running");
 

@@ -32,6 +32,7 @@ Scope {
         color: Qt.rgba(0, 0, 0, 0.5)
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "whiterose-polkit"
+        LayerTitle { name: "whiterose-polkit" }
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
         // A click outside the card doesn't dismiss it (it's a question).
