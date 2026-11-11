@@ -74,7 +74,8 @@ releases:
 		t.Errorf("notes start:\n%s", notes)
 	}
 	for _, want := range []string{"## Fixed\n\n- Wi-Fi password", "Known issue", "Thanks to @BlueBeard63, @someone-else.",
-		"whiterose-core-0.6.0-alpha.12_0.6.0-alpha.12_amd64.deb", "This is a pre-release"} {
+		"whiterose-core-0.6.0-alpha.12_0.6.0-alpha.12_amd64.deb", "This is a pre-release",
+		"curl -fsSL https://github.com/BlueBeard63/WhiteRose/releases/download/v0.6.0-alpha.12/install.sh | sh"} {
 		if !strings.Contains(notes, want) {
 			t.Errorf("notes lack %q:\n%s", want, notes)
 		}

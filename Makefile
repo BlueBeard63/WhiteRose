@@ -108,7 +108,8 @@ package: package-deb package-rpm
 release-key:         ## Make the release signing key (once)
 	cd $(DAEMON) && $(GO) run ./cmd/whiterosed release-key $(CURDIR)/packaging/release.pub
 
-# `make release`: project.yaml's version, both packages, signed, published
+# `make release`: project.yaml's version, both packages, signed, checked
+# with the installer (packaging/install.sh, attached as install.sh), published
 # as a GitHub release (a pre-release for versions like 0.6.0-alpha.12),
 # with that version's entry in project.yaml as the notes (NOTES=file to
 # use your own). Needs `gh` logged in. Add the version's entry first:
@@ -123,9 +124,13 @@ release:             ## Build, sign and publish project.yaml's version as a GitH
 	@if [ -n "$$NOTES" ]; then cp "$$NOTES" build/release-notes.md; else $(project) notes $(VERSION) > $(CURDIR)/build/release-notes.md; fi
 	rm -rf build/packages/* && $(MAKE) package VERSION=$(VERSION)
 	cd $(DAEMON) && $(GO) run ./cmd/whiterosed sign-release $(CURDIR)/build/packages $(CURDIR)/packaging/release.pub
+	# The one-command installer, for this version, repository and key.
+	sed -e 's|@VERSION@|$(VERSION)|g' -e 's|@REPO@|$(RELEASE_REPO)|g' -e "s|@PUBKEY@|$$(tr -d '[:space:]' < packaging/release.pub)|g" \
+		packaging/install.sh > build/packages/install.sh
+	cd build/packages && sh install.sh --check
 	gh release create v$(VERSION) --repo $(RELEASE_REPO) --title "WhiteRose $(VERSION)" \
 		$$($(project) prerelease && echo --prerelease) \
-		--notes-file build/release-notes.md build/packages/*.deb build/packages/*.rpm build/packages/SHA256SUMS build/packages/SHA256SUMS.sig
+		--notes-file build/release-notes.md build/packages/*.deb build/packages/*.rpm build/packages/SHA256SUMS build/packages/SHA256SUMS.sig build/packages/install.sh
 
 release-notes:       ## Show the release notes `make release` will publish
 	@$(project) notes $(VERSION)

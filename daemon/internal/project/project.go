@@ -207,9 +207,14 @@ func (p *Project) Notes(v string) (string, error) {
 	}
 	pkg := strings.ReplaceAll(r.Version, "~", "-")
 	b.WriteString("## Installing\n\n")
-	fmt.Fprintf(&b, "Ubuntu: `whiterose_%s_amd64.deb` and `whiterose-core-%s_%s_amd64.deb`.\n", pkg, pkg, pkg)
-	fmt.Fprintf(&b, "Fedora: `whiterose-%s-1.x86_64.rpm` and `whiterose-core-%s-%s-1.x86_64.rpm`.\n\n", pkg, pkg, pkg)
-	b.WriteString("Every file is in `SHA256SUMS`, signed in `SHA256SUMS.sig`. WhiteRose only installs updates signed with the release key; after this they come through **Settings › Updates**.\n")
+	if p.Repo != "" {
+		b.WriteString("On Ubuntu or Fedora, one command downloads both packages, checks their signature and installs them:\n\n")
+		fmt.Fprintf(&b, "```\ncurl -fsSL https://github.com/%s/releases/download/v%s/install.sh | sh\n```\n\n", p.Repo, pkg)
+		b.WriteString("Or download the two packages for your system and install them together:\n\n")
+	}
+	fmt.Fprintf(&b, "- Ubuntu: `sudo apt install ./whiterose-core-%s_%s_amd64.deb ./whiterose_%s_amd64.deb`\n", pkg, pkg, pkg)
+	fmt.Fprintf(&b, "- Fedora: `sudo dnf install ./whiterose-core-%s-%s-1.x86_64.rpm ./whiterose-%s-1.x86_64.rpm`\n\n", pkg, pkg, pkg)
+	b.WriteString("Every package is in `SHA256SUMS`, signed in `SHA256SUMS.sig`. WhiteRose only installs updates signed with the release key; after this they come through **Settings › Updates**.\n")
 	if Prerelease(r.Version) {
 		b.WriteString("\nThis is a pre-release: for trying out, not yet for every day.\n")
 	}

@@ -141,7 +141,13 @@ The design decisions and their reasons are in [`ARCHITECTURE.md`](ARCHITECTURE.m
 
 ## Install
 
-WhiteRose runs on **Ubuntu 26.04** and **Fedora 45**. Download both packages for your system from the [latest release](https://github.com/BlueBeard63/WhiteRose/releases/latest), then:
+WhiteRose runs on **Ubuntu 26.04** and **Fedora 45**. One command downloads the latest release's two packages, checks their signature, and installs them:
+
+```sh
+curl -fsSL https://github.com/BlueBeard63/WhiteRose/releases/latest/download/install.sh | sh
+```
+
+(`sh install.sh --check` checks without installing.) Or download both packages for your system from the [latest release](https://github.com/BlueBeard63/WhiteRose/releases/latest) and install them together, as a pair: `whiterose` needs its `whiterose-core-<version>`.
 
 ```sh
 # Ubuntu

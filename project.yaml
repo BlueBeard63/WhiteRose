@@ -14,9 +14,23 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.2.0
+version: 0.2.1
 
 releases:
+  - version: 0.2.1
+    date: 2026-11-11
+    title: Island views, one-command install
+    summary: >-
+      A smaller release: an easier way to install WhiteRose, and the
+      centre island's views reworked so new ones are one file each.
+    added:
+      - "One command installs WhiteRose: it downloads both packages, checks their signature and installs them (install.sh, attached to every release)"
+    changed:
+      - "Each of the island's views (dock, clipboard, screenshots, launcher, switcher, the recovery prompt) is declared in its own file; the island sizes and morphs to whatever it shows"
+    fixed:
+      - "Installing just the whiterose package on its own stopped with a missing whiterose-core; the installer and the release notes now install the pair"
+    contributors: [BlueBeard63]
+
   - version: 0.2.0
     date: 2026-11-11
     title: Files

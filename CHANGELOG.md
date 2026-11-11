@@ -2,6 +2,24 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.2.1 · Island views, one-command install (2026-11-11)
+
+A smaller release: an easier way to install WhiteRose, and the centre island's views reworked so new ones are one file each.
+
+### Added
+
+- One command installs WhiteRose: it downloads both packages, checks their signature and installs them (install.sh, attached to every release)
+
+### Changed
+
+- Each of the island's views (dock, clipboard, screenshots, launcher, switcher, the recovery prompt) is declared in its own file; the island sizes and morphs to whatever it shows
+
+### Fixed
+
+- Installing just the whiterose package on its own stopped with a missing whiterose-core; the installer and the release notes now install the pair
+
+Contributors: @BlueBeard63
+
 ## 0.2.0 · Files (2026-11-11)
 
 The first WhiteRose release, and it ships two milestones at once: 0.1 Foundations (the compositor, shell, Settings, Files and Notepad, signed updates, fingerprint unlock) and 0.2 Files.
