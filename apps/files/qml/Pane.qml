@@ -80,6 +80,9 @@ FocusScope {
     // entries: {name: state}}; client "" otherwise. Asked like git.
     property var cloud: ({ client: "", root: "", entries: {} })
     readonly property bool wantsCloud: !pane.special && !pane.readOnly && !pane.searching && pane.path.startsWith("/")
+    // Comparing in the Sheet: what differs here ({path: [colour, what it means]}).
+    property var compared: ({})
+    function compareOf(e) { return e ? (pane.compared[e.path] ?? null) : null }
     function cloudOf(e) { return pane.cloud.client === "" || !e ? "" : (pane.cloud.entries[e.name] ?? "") }
     function askCloud() { if (pane.wantsCloud && pane.visible) Ops.askCloud(pane.path) }
     Connections {

@@ -5,6 +5,9 @@
 //            do what); several: how many and how big; none: the folder.
 //   Rename   rules for every selected name, the new names shown in the
 //            list as you type (RenameSheet.qml).
+//   Share    copy where it is, or compress it (ShareSheet.qml).
+//   Compare, Sync  two folders compared, then synced (CompareSheet.qml):
+//            their own pair of tabs while you do it.
 //   Server, Account  connecting to a network share or adding a cloud
 //            account (ConnectSheet.qml, CloudSheet.qml): their own pair of
 //            tabs while you do it.
@@ -32,6 +35,14 @@ Rectangle {
     signal cloudAdded(string name)
     // Connecting to a server or a cloud account (from the sidebar or ☰).
     readonly property bool networking: root.tab === "server" || root.tab === "account"
+    readonly property bool comparing: root.tab === "compare" || root.tab === "sync"
+    // Its own tabs (connecting, comparing): the usual ones are put away.
+    readonly property bool busyMode: root.networking || root.comparing
+    property var panes: []
+    signal made(int job)
+    signal synced(int job)
+    function showCompare(left, right) { comparer.start(left, right); root.tab = "compare" }
+    function showShare() { root.tab = "share" }
     function showServer(server) { connector.show(server); root.tab = "server" }
     function showCloud() { clouder.show(); root.tab = "account" }
     function connectError(error, question) { connector.error = error; connector.question = question }
@@ -42,7 +53,7 @@ Rectangle {
     readonly property var targets: root.sel.length > 0 ? root.sel.map(e => e.path)
         : root.pane && root.pane.path.startsWith("/") && !root.pane.special ? [root.pane.path] : []
     readonly property bool one: root.targets.length === 1
-    readonly property bool typing: nameField.editing || commentField.editing || tagField.editing || pasted.editing || renamer.typing || connector.typing || clouder.typing
+    readonly property bool typing: nameField.editing || commentField.editing || tagField.editing || pasted.editing || renamer.typing || connector.typing || clouder.typing || sharer.typing
 
     // ---- what's known about the targets ------------------------------------------------
     property var info: ({})
@@ -194,9 +205,12 @@ Rectangle {
             spacing: 18
             Tab { name: "server"; label: "Server"; visible: root.networking }
             Tab { name: "account"; label: "Account"; visible: root.networking; onVisibleChanged: if (visible && root.tab === "account" && clouder.info.providers.length === 0) clouder.show() }
-            Tab { name: "info"; label: "Info"; visible: !root.networking }
-            Tab { name: "rename"; label: "Rename"; visible: !root.networking && !(root.pane?.readOnly ?? true) && !(root.pane?.special ?? true) && (root.sel.length > 0 || root.tab === "rename") }
-            Tab { name: "scripts"; label: "Scripts"; visible: !root.networking && root.projects.projects.length > 0 }
+            Tab { name: "compare"; label: "Compare"; visible: root.comparing }
+            Tab { name: "sync"; label: "Sync"; visible: root.comparing }
+            Tab { name: "info"; label: "Info"; visible: !root.busyMode }
+            Tab { name: "rename"; label: "Rename"; visible: !root.busyMode && !(root.pane?.readOnly ?? true) && !(root.pane?.special ?? true) && (root.sel.length > 0 || root.tab === "rename") }
+            Tab { name: "share"; label: "Share"; visible: !root.busyMode && (root.sel.length > 0 || root.tab === "share") }
+            Tab { name: "scripts"; label: "Scripts"; visible: !root.busyMode && root.projects.projects.length > 0 }
         }
         IconButton {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: 3 }
@@ -209,7 +223,8 @@ Rectangle {
     Flickable {
         anchors { left: parent.left; leftMargin: 1; right: parent.right; top: head.bottom; bottom: parent.bottom }
         contentHeight: (root.tab === "info" ? info.implicitHeight : root.tab === "rename" ? renamer.implicitHeight
-            : root.tab === "server" ? connector.implicitHeight : root.tab === "account" ? clouder.implicitHeight : scripts.implicitHeight) + 32
+            : root.tab === "server" ? connector.implicitHeight : root.tab === "account" ? clouder.implicitHeight
+            : root.comparing ? comparer.implicitHeight : root.tab === "share" ? sharer.implicitHeight : scripts.implicitHeight) + 32
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
@@ -555,6 +570,29 @@ Rectangle {
             x: 16; y: 14
             width: parent.width - 32
             onAdded: name => root.cloudAdded(name)
+            onClosed: root.tab = "info"
+        }
+
+        // ======== Share ========
+        ShareSheet {
+            id: sharer
+            visible: root.tab === "share"
+            x: 16; y: 14
+            width: parent.width - 32
+            pane: root.pane
+            onMade: id => { root.made(id); root.tab = "info" }
+            onSaid: text => root.said(text)
+        }
+
+        // ======== Compare / Sync ========
+        CompareSheet {
+            id: comparer
+            visible: root.comparing
+            part: root.tab === "sync" ? "sync" : "compare"
+            x: 16; y: 14
+            width: parent.width - 32
+            panes: root.panes
+            onSynced: id => root.synced(id)
             onClosed: root.tab = "info"
         }
 

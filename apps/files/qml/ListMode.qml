@@ -197,6 +197,7 @@ FocusScope {
                         size: ic.width
                         look: row.modelData.look ?? ({})
                     }
+                    CompareMark { look: root.pane.compareOf(row.modelData); anchors { right: ic.right; rightMargin: -3; bottom: ic.bottom; bottomMargin: -2 } }
                     Text {
                         id: nameText
                         anchors { left: ic.right; leftMargin: 10; right: parent.right; rightMargin: row.modelData.found ? parent.width * 0.55 : row.newName ? parent.width * 0.5 : 8 + (row.cloudState ? 22 : 0); verticalCenter: parent.verticalCenter }

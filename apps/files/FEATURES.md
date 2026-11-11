@@ -8,7 +8,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Reorder, duplicate, tear off and restore tabs (MVP) — drag or Ctrl+Shift+PgUp/PgDn; tab menu; drag out of the bar for a new window, or onto another Files window's title bar to move it there (across processes too); Ctrl+Shift+T, and every window's tabs come back next launch
 - [x] Dual-pane browsing, horizontal and vertical (MVP) — per tab (F3), side by side or one above the other, resizable; restored with the tabs
 - [x] Copy/move files between panes using shortcuts or drag and drop (MVP) — F5 / F6, the right-click menu, or dragging
-- [x] Compare folders and one-way/two-way/mirror sync (Advanced) — ☰ › This folder › Compare with… (the other side when split): only-here/only-there/newer/different, all the way down, by size and time or byte by byte; update either way, two-way (unclear ones left alone and counted), or mirror (extras to the Trash, after asking); runs as a transfer
+- [x] Compare folders and one-way/two-way/mirror sync (Advanced) — ☰ › This folder › Compare with… (the other side when split) opens the Sheet's Compare and Sync tabs: only-here/only-there/newer/different, all the way down, marked with coloured dots on the files in both panes and counted in the Sheet, by size and time or byte by byte; update either way, two-way (unclear ones left alone and counted), or mirror (extras to the Trash, after asking); runs as a transfer
 - [x] Icon/grid, details/list and column views (MVP)
 - [x] Gallery view (Next) — taken out by choice: picture folders open as a grid of thumbnails, and Quick look (Space) shows one large with arrows
 - [x] Disk usage view as a file browsing mode (Advanced) — a treemap of the folder, sized as folders are measured
@@ -49,7 +49,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Copy file paths, quoted paths and shortcuts (Next) — Copy path › path, quoted for a terminal, file:// links, names; and this folder's path
 - [x] Custom file tags with colours and multiple labels (Next) — on the file itself (user.xdg.tags, as Dolphin), dots in every view, a Tags column, Sidebar section, tag: search, group by tag, drop onto a tag
 - [x] File hashing with MD5, SHA-1 and SHA-256 (Next) — the Sheet’s Info › Checksums (one read for all three), copy each, paste one to compare
-- [x] Password-protected ZIP/7z and split archives (Advanced) — Compress… makes zip or 7z with an AES-256 password and splits any archive into parts (100 MB, 700 MB, 4 GB); extracting asks for the password (memory only) and takes split parts from the .001
+- [x] Password-protected ZIP/7z and split archives (Advanced) — Compress… (the Sheet’s Share tab) makes zip or 7z with an AES-256 password and splits any archive into parts (100 MB, 700 MB, 4 GB); extracting asks for the password (memory only) and takes split parts from the .001
 
 ## 4. Previews & file inspection
 - [x] Integrated preview/details pane (MVP) — Alt+P: preview plus kind, size, dates, dimensions / length / pages
@@ -115,7 +115,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Encrypted local indexes and operation history (Next) — Settings › Files › Search › Privacy: the search index, visited folders (Jump) and the operations log sealed (AES-256-CTR + HMAC-SHA256, fresh nonce each write) with a key kept in the keyring through whiterosed; nothing written in the clear when the key can't be had; switching either way rewrites what's there
 - [x] System credential vault for secrets (Next) — every secret Files keeps is in the keyring through whiterosed (network share passwords, the sealing key); archive passwords stay in memory for the run; saved servers and exports never hold a password. (rclone keeps its cloud tokens in its own config, as rclone does.)
 - [x] Safe archive extraction and path validation (MVP) — zip and tar (gz/xz/bz2/zst): escaping names refuse the whole archive, links kept inside, no devices or setuid, stops before the drive fills
-- [x] Archive create, extract and in-place browse (Next) — Compress… (zip, 7z, tar.gz/xz/zst), Extract here, and opening an archive like a folder
+- [x] Archive create, extract and in-place browse (Next) — Compress… in the Sheet’s Share tab (zip, 7z, tar.gz/xz/zst; beside it, copy the path, quoted or as a link), Extract here, and opening an archive like a folder
 - [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the Trash only after "I trust this file"; launchers from there never run
 - [x] Recovery after interrupted file transfers (Next) — copies and moves are written down until they end; one cut short (Files closed, a crash, power off) is offered at the next start: Carry on clears the half-written file, skips what's already there and finishes the rest
 - [x] Application logging and diagnostics (MVP) — files.log (0600, rolled at 1 MB); ☰ › Help › Copy diagnostics / Open the log

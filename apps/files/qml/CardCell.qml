@@ -42,6 +42,7 @@ Item {
             }
             FolderIcon { visible: !!cell.modelData.look; anchors.centerIn: parent; size: parent.width * 0.85; look: cell.modelData.look ?? ({}) }
             CloudBadge { state: cell.pane.cloudOf(cell.modelData); size: 14 * cell.view.k; anchors { left: parent.left; bottom: parent.bottom } }
+            CompareMark { look: cell.pane.compareOf(cell.modelData); size: 11; anchors { right: parent.right; top: parent.top; margins: 2 } }
         }
         Column {
             anchors { left: thumb.right; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }

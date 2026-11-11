@@ -826,7 +826,7 @@ AppWindow {
     Sheet {
         id: details
         // (Nothing to show beside Start or Clean up.)
-        visible: Session.details && (details.networking || (win.width > 760 && !(win.current?.ownView ?? false)))
+        visible: Session.details && (details.busyMode || (win.width > 760 && !(win.current?.ownView ?? false)))
         anchors { right: parent.right; top: searchRow.bottom; bottom: activity.top }
         width: Math.min(340, Math.max(260, win.width * 0.27))
         pane: win.current
@@ -843,6 +843,14 @@ AppWindow {
             if (paths.length > 0) win.info = "Renamed " + paths.length + (paths.length === 1 ? " item" : " items");
         }
         onRenameFailed: message => win.notice = message
+        panes: win.tab?.panes ?? []
+        onSaid: text => win.info = text
+        // Compressing: the archive is selected when it's there.
+        onMade: id => {
+            const shows = (win.tab?.panes ?? []).find(p => p.path === win.current?.path);
+            if (shows) { const w = Object.assign({}, win.waiting); w[id] = shows; win.waiting = w }
+        }
+        onSynced: id => win.info = "Syncing…"
         onServersChanged: sidebar.refreshServers()
         onOpenPath: path => { win.current?.go(path); win.current?.focusView() }
         // Added: shown in the sidebar, and opened.
@@ -947,7 +955,7 @@ AppWindow {
                 ] },
                 ...(itemMenu.sel.length > 0 && itemMenu.sel.every(e => !e.dir && Fs.isArchive(e.name)) && !win.current?.inTrash
                     ? [{ label: "Extract here", run: () => win.run("extract", itemMenu.sel.map(e => e.path), win.current.path) }] : []),
-                ...(win.current?.inTrash || win.current?.inCollection || win.current?.searching ? [] : [{ label: "Compress…", run: () => compressDialog.show(itemMenu.sel.map(e => e.path), win.current.path) }]),
+                ...(win.current?.inTrash || win.current?.inCollection || win.current?.searching ? [] : [{ label: "Compress…", run: () => win.share() }]),
                 ...(win.tab?.other ? [
                     { label: "Copy to other side", shortcut: "F5", run: () => win.toOther("copy") },
                     { label: "Move to other side", shortcut: "F6", run: () => win.toOther("move") },
@@ -1127,7 +1135,8 @@ AppWindow {
     // Compare & sync: this folder and the other side's (or one to choose).
     function compare() {
         const o = win.tab?.other;
-        compareDialog.show_(win.current.path, o && !o.special && !o.inArchive ? o.path : "");
+        Session.setDetails(true);
+        details.showCompare(win.current.path, o && !o.special && !o.inArchive ? o.path : "");
     }
     function toOther(kind) {
         const sel = win.current?.selection ?? [];
@@ -1363,7 +1372,7 @@ AppWindow {
         case "hidden": Session.setHidden(!Session.hidden); break;
         case "details": Session.setDetails(!Session.details); break;
         case "shelf": win.toShelf(); break;
-        case "compress": if (sel.length > 0 && !p.special) compressDialog.show(sel.map(e => e.path), p.path); break;
+        case "compress": if (sel.length > 0 && !p.special) win.share(); break;
         case "compare": if (!p.special && !p.inArchive) win.compare(); break;
         case "new-tab": win.newTab({ path: p.path }); break;
         }
@@ -1425,14 +1434,8 @@ AppWindow {
     }
     function addCloud() { Session.setDetails(true); details.showCloud() }
     // (A sync shows in the Activity drawer like any copy.)
-    CompareDialog { id: compareDialog }
-    CompressDialog {
-        id: compressDialog
-        onMade: id => {
-            const shows = (win.tab?.panes ?? []).find(p => p.path === compressDialog.dir);
-            if (shows) { const w = Object.assign({}, win.waiting); w[id] = shows; win.waiting = w }
-        }
-    }
+    // Share (copy where, compress): in the Sheet.
+    function share() { Session.setDetails(true); details.showShare() }
     ArchivePassword { id: archivePassword; onRetry: (archive, dest) => win.run("extract", [archive], dest) }
 
     // Name for a rename, a new folder or a new file.

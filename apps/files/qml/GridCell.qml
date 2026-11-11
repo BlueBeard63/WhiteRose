@@ -53,6 +53,8 @@ Item {
         color: Theme.surface2
         Icon { anchors.centerIn: parent; name: "link"; size: 10; color: Theme.text }
     }
+    // Comparing: what differs, at the top corner.
+    CompareMark { look: cell.pane.compareOf(cell.modelData); size: 11; anchors { right: icon.right; rightMargin: -4; top: icon.top; topMargin: -2 } }
     // Sync client: its state at the other corner.
     CloudBadge {
         state: cell.pane.cloudOf(cell.modelData)
