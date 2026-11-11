@@ -75,6 +75,9 @@ jobs:
             libpolkit-agent-1-dev libpolkit-gobject-1-dev libglib2.0-dev wayland-protocols
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
       - uses: actions/checkout@v4
+      # In a container the checkout belongs to another user than the job's
+      # (root), so git (and go build's VCS stamping) refuses it otherwise.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       # QuickShell (the shell and Settings run on it): the revision the
       # packages pin (packaging/build.sh), built once and cached.
       - id: qs
