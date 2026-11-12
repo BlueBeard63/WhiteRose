@@ -379,11 +379,17 @@ impl WhiteRose {
             let (output, geo) = output_hit?;
             let map = layer_map_for_output(output);
             let local = pos - geo.loc.to_f64();
-            let surface = map.layer_under(layer, local)?;
-            let layer_geo = map.layer_geometry(surface)?;
-            surface
-                .surface_under(local - layer_geo.loc.to_f64(), WindowSurfaceType::ALL)
-                .map(|(s, p)| (s, (p + layer_geo.loc + geo.loc).to_f64()))
+            // The topmost surface that takes input here, not just the
+            // topmost whose rectangle covers it: a mostly click-through
+            // layer (its input region is a few shapes) over another, like the
+            // island's window over the screenshot toast, lets clicks through.
+            let hit = map.layers_on(layer).rev().find_map(|surface| {
+                let layer_geo = map.layer_geometry(surface)?;
+                surface
+                    .surface_under(local - layer_geo.loc.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(s, p)| (s, (p + layer_geo.loc + geo.loc).to_f64()))
+            });
+            hit
         };
         let window_hit = || {
             self.window_under(pos).and_then(|(window, location)| {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"whiterose/daemon/internal/uitest"
 )
@@ -124,4 +125,26 @@ func abs(n int) int {
 		return -n
 	}
 	return n
+}
+
+// PrtSc saves a screenshot and shows the toast; clicking its Delete button
+// removes the file again (the toast's input region once stayed where its
+// slide-in started, so clicks went through it).
+func TestScreenshotToastDeletes(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	s.Bar().Press("Print")
+	toast := s.Layer("whiterose-toast")
+	toast.WaitFor(uitest.Named("Open folder").Role("push button"))
+	shots, _ := filepath.Glob(filepath.Join(s.Home, "Pictures/Screenshots/*.png"))
+	if len(shots) != 1 {
+		t.Fatalf("screenshots saved: %v", shots)
+	}
+	toast.Click(uitest.Named("Delete").Role("push button"))
+	for i := 0; i < 50; i++ {
+		if _, err := os.Stat(shots[0]); os.IsNotExist(err) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("%s is still there after Delete", shots[0])
 }

@@ -56,7 +56,7 @@ var named = map[string]int{
 	"ctrl": 29, "shift": 42, "alt": 56, "super": 125,
 	"f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64, "f7": 65, "f8": 66, "f9": 67, "f10": 68, "f11": 87, "f12": 88,
 	"home": 102, "up": 103, "pageup": 104, "left": 105, "right": 106, "end": 107, "down": 108, "pagedown": 109,
-	"insert": 110, "delete": 111, "del": 111,
+	"insert": 110, "delete": 111, "del": 111, "print": 99,
 }
 
 const shiftKey = 42
