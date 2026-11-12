@@ -173,7 +173,11 @@ impl WinExt for Window {
     }
 
     fn has(&self, state: ToplevelState) -> bool {
-        if is_x11(self) {
+        if let Some(x) = self.x11_surface() {
+            // Activation goes straight to X (`Window::set_activated`).
+            if state == ToplevelState::Activated {
+                return x.is_activated();
+            }
             return x11_next(self, |n| n.0.contains(state));
         }
         self.toplevel().is_some_and(|t| t.with_pending_state(|s| s.states.contains(state)))

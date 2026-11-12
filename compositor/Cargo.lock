@@ -2256,6 +2256,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
  "wayland-scanner",
+ "x11rb",
  "xcursor",
 ]
 

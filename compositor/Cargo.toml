@@ -52,6 +52,7 @@ features = [
 ]
 
 [dev-dependencies]
+x11rb = "0.13"
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
 [profile.release]

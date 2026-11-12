@@ -267,6 +267,24 @@ func TestNowPlayingOpensTheMusicIsland(t *testing.T) {
 	}
 }
 
+// With two players (Spotify paused, a browser playing a video), the island
+// shows the one playing, and follows when they swap.
+func TestTheMusicIslandFollowsThePlayerThatsPlaying(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	spotify := namedPlayer(t, s, "spotify", "Paused Song", "Paused")
+	browser := namedPlayer(t, s, "firefox", "A Video", "Playing")
+	bar := s.Bar()
+	bar.Click(uitest.Named("Now playing").Role("push button"))
+	bar.WaitFor(uitest.Named("A Video").Role("label"))
+	browser.props.SetMust("org.mpris.MediaPlayer2.Player", "PlaybackStatus", "Paused")
+	spotify.props.SetMust("org.mpris.MediaPlayer2.Player", "PlaybackStatus", "Playing")
+	bar.WaitFor(uitest.Named("Paused Song").Role("label"))
+	// Paused, it stays on the last one that played.
+	spotify.props.SetMust("org.mpris.MediaPlayer2.Player", "PlaybackStatus", "Paused")
+	time.Sleep(300 * time.Millisecond)
+	bar.WaitFor(uitest.Named("Paused Song").Role("label"))
+}
+
 // The Music module off: "Now playing" plays and pauses, as before.
 func TestNowPlayingPausesWithTheMusicModuleOff(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"settings.modules.disabled": []string{"music"}}})

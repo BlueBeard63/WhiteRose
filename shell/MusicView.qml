@@ -4,9 +4,9 @@
 // playing, the position (click to seek) and the controls the player has.
 // Space plays or pauses, Left / Right skip 5 s, Esc closes.
 import QtQuick
+import QtQuick.Shapes
 import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
-import Quickshell.Widgets
 import qs
 
 Item {
@@ -14,7 +14,7 @@ Item {
     implicitWidth: 600
     implicitHeight: 178
 
-    readonly property var player: Mpris.players.values.length > 0 ? Mpris.players.values[0] : null
+    readonly property var player: NowPlaying.player
     readonly property var sink: Pipewire.defaultAudioSink
     PwObjectTracker { objects: root.sink ? [root.sink] : [] }
     readonly property real length: root.player?.lengthSupported ? root.player.length : 0
@@ -35,14 +35,19 @@ Item {
         Keys.onRightPressed: root.seekTo(root.position + 5)
     }
 
-    // ---- the cover, filling the left side ----------------------------------------------
-    // (Rounded as the island's lower corner, which is 40 at this height:
-    // the island doesn't cut what a view draws.)
-    ClippingRectangle {
-        id: art
-        width: 260; height: root.height
-        color: "transparent"
-        bottomLeftRadius: 40
+    // ---- the cover, filling the left side and the left ear ---------------------------
+    // One outline: from the ear's tip on the bar, down the island's left
+    // side, round its lower corner (40 at this height), across, and up;
+    // filled with the cover (the island draws this view into its ear:
+    // bleed in island/music.qml). Ear and corner as Island.qml draws them.
+    readonly property real earW: 26
+    readonly property real earH: 30
+    readonly property real artW: 260
+
+    Item {
+        id: artSource
+        width: root.earW + root.artW; height: root.height
+        visible: false
         Rectangle {
             anchors.fill: parent
             visible: cover.status !== Image.Ready
@@ -59,7 +64,7 @@ Item {
             source: root.player?.trackArtUrl ?? ""
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
-            sourceSize: Qt.size(520, 520)
+            sourceSize: Qt.size(572, 572)
         }
         // It bleeds into the island.
         Rectangle {
@@ -68,6 +73,26 @@ Item {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0; color: "transparent" }
                 GradientStop { position: 1; color: Theme.bg }
+            }
+        }
+    }
+    ShaderEffectSource { id: artTexture; sourceItem: artSource; hideSource: true; visible: false }
+
+    Shape {
+        id: art
+        x: -root.earW
+        width: artSource.width; height: root.height
+        preferredRendererType: Shape.CurveRenderer
+        ShapePath {
+            strokeWidth: -1
+            fillColor: "transparent"
+            fillItem: artTexture
+            PathSvg {
+                path: {
+                    const k = 0.5523, ew = root.earW, eh = root.earH, r = 40, h = root.height, W = art.width;
+                    return `M 0 0 C ${ew * k} 0 ${ew} ${eh * (1 - k)} ${ew} ${eh} L ${ew} ${h - r} `
+                        + `C ${ew} ${h - r + r * k} ${ew + r - r * k} ${h} ${ew + r} ${h} L ${W} ${h} L ${W} 0 Z`;
+                }
             }
         }
     }

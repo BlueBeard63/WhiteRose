@@ -13,8 +13,10 @@
 //! compositor has it, the size it's told) differs from what X has.
 
 use smithay::{
+    backend::renderer::utils::with_renderer_surface_state,
     desktop::Window,
     input::pointer::GrabStartData as PointerGrabStartData,
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
     reexports::{calloop::LoopHandle, wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState},
     utils::{Logical, Rectangle, SERIAL_COUNTER},
     wayland::{
@@ -22,7 +24,7 @@ use smithay::{
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
     xwayland::{
-        xwm::{Reorder, ResizeEdge as X11ResizeEdge, XwmId},
+        xwm::{Reorder, ResizeEdge as X11ResizeEdge, WmWindowProperty, XwmId},
         X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler,
     },
 };
@@ -141,6 +143,18 @@ impl WhiteRose {
 impl XWaylandShellHandler for WhiteRose {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
         &mut self.xwayland.shell
+    }
+
+    /// Its wl_surface is known. Usually that's during the surface's commit,
+    /// which then does what a commit does; when X says so only after the
+    /// surface has drawn, a window that doesn't draw again (xmessage) would
+    /// never get its rules or tile, so that's done here.
+    fn surface_associated(&mut self, _: XwmId, surface: WlSurface, x: X11Surface) {
+        let drawn = with_renderer_surface_state(&surface, |s| s.buffer().is_some()).unwrap_or(false);
+        if let Some(w) = self.x11_window(&x).filter(|_| drawn) {
+            self.window_commit(&w);
+            self.schedule_redraw();
+        }
     }
 }
 smithay::delegate_xwayland_shell!(WhiteRose);
@@ -281,6 +295,22 @@ impl XwmHandler for WhiteRose {
     fn minimize_request(&mut self, _: XwmId, x: X11Surface) {
         if let Some(w) = self.x11_window(&x) {
             self.minimize(&w);
+        }
+    }
+
+    fn unminimize_request(&mut self, _: XwmId, x: X11Surface) {
+        if let Some(w) = self.x11_window(&x) {
+            self.activate_window(&w);
+        }
+    }
+
+    fn property_notify(&mut self, _: XwmId, x: X11Surface, property: WmWindowProperty) {
+        // A new title or class: the bar, dock, switchers and tab strips show them.
+        if matches!(property, WmWindowProperty::Title | WmWindowProperty::Class) && self.x11_window(&x).is_some() {
+            self.ipc_sync();
+            if !self.tiling.strips.is_empty() {
+                self.schedule_redraw();
+            }
         }
     }
 

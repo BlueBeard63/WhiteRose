@@ -2,11 +2,10 @@
 // playing. The EQ animates only while playback is running, so a paused or
 // idle bar costs nothing.
 import QtQuick
-import Quickshell.Services.Mpris
 
 Trigger {
     id: root
-    readonly property var player: Mpris.players.values.length > 0 ? Mpris.players.values[0] : null
+    readonly property var player: NowPlaying.player
     readonly property bool playing: player !== null && player.isPlaying
 
     // Turned off in Settings > Top Bar: hidden (and its EQ stops).

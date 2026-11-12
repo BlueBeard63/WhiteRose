@@ -4,13 +4,12 @@
 import QtQuick
 import Quickshell
 import Quickshell.Services.Pipewire
-import Quickshell.Services.Mpris
 
 Scope {
     id: root
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
-    readonly property var player: Mpris.players.values.find(p => p.isPlaying) ?? Mpris.players.values[0] ?? null
+    readonly property var player: NowPlaying.player
     PwObjectTracker { objects: [root.sink, root.source].filter(o => o) }
 
     function volume(delta) {
