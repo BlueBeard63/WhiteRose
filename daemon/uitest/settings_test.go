@@ -415,3 +415,18 @@ func TestSettingsMakesTheSearchIndexWithoutFiles(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 	}
 }
+
+// Mouse & Touchpad: the mouse scrolls naturally once picked, and tap to
+// click turns off; both stored for the compositor.
+func TestSettingsMouseAndTouchpad(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("mouse")
+	// (The mouse's row comes first; the touchpad's is natural already.)
+	settings.Click(uitest.Named("Natural").Role("radio button"))
+	s.WaitSetting("mouse.naturalScroll", true)
+	settings.Click(uitest.Named("Tap to click").Role("check box"))
+	s.WaitSetting("touchpad.tapToClick", false)
+	if got := s.Setting("touchpad.naturalScroll"); got != "true" {
+		t.Errorf("touchpad.naturalScroll = %s", got)
+	}
+}

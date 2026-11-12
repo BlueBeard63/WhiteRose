@@ -675,6 +675,7 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Notifications | Do Not Disturb, popup duration, per-app mute (the shell records which apps notify). |
 | Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
 | Keyboard & Shortcuts | Compositor `shortcuts` and `keyboard` events; `keyboard.*` and `shortcuts.*` settings. |
+| Mouse & Touchpad | `mouse.*` and `touchpad.*` settings (scroll direction, speed −1 to 1, acceleration, tap to click), applied by the compositor (`pointer.rs`) through libinput to every pointer device as it appears and again on a change; a device that can tap is a touchpad, any other pointer a mouse. Real hardware only: nested, the host desktop's settings apply. |
 | Appearance | `appearance.*` and `wallpaper.*`; the wallpaper list from `find` in the folders. |
 | Privacy | `privacy.*` settings (compositor idle, daemon sleep lock); clears via the compositor and settings. |
 | Users | `whiterosed` users ops (AccountsService); permission through the shell's polkit prompt. |

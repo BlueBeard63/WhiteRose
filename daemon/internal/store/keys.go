@@ -281,6 +281,15 @@ var Known = map[string]Key{
 	"update.check":             {Default: json.RawMessage(`"daily"`), Check: into(oneOf("daily", "weekly", "manual"))},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"privacy.recentFiles":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Mice and touchpads (Settings › Mouse & Touchpad; the compositor
+	// applies them through libinput). Speed is libinput's, -1 to 1.
+	"mouse.naturalScroll":    {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"mouse.speed":            {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},
+	"mouse.acceleration":     {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.naturalScroll": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.speed":         {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},
+	"touchpad.acceleration":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.tapToClick":    {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Keyboard layouts, first is the default: UK English to start with.
 	// An empty list means the system's (/etc/default/keyboard or the X11
 	// keyboard config).
@@ -910,6 +919,14 @@ func checkZones(zones [][4]float64) error {
 				return fmt.Errorf("zones %d and %d overlap", j+1, i+1)
 			}
 		}
+	}
+	return nil
+}
+
+// pointerSpeed: libinput's range.
+func pointerSpeed(v float64) error {
+	if v < -1 || v > 1 {
+		return errors.New("must be -1 to 1")
 	}
 	return nil
 }

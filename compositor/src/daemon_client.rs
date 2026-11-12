@@ -127,6 +127,7 @@ impl WhiteRose {
             idle |= state.idle_setting(key, value);
             layout |= state.layout_setting(key, value);
             state.rules_setting(key, value);
+            state.pointer_setting(key, value);
             shortcuts |= state.scratchpads_setting(key, value);
             if key == "privacy.clipboardHistory" {
                 state.clipboard_history_on = value.as_bool().unwrap_or(true);

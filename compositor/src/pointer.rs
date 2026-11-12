@@ -1,0 +1,141 @@
+//! Mice and touchpads (Settings › Mouse & Touchpad): scroll direction,
+//! speed, acceleration and tap to click, each for mice and touchpads
+//! separately, applied through libinput to every device when it's plugged
+//! in and again when a setting changes. Only the real-hardware backend has
+//! libinput devices: in a window on another desktop, that desktop's own
+//! settings apply.
+
+use serde::Deserialize;
+use serde_json::Value;
+use smithay::reexports::input::{AccelProfile, Device, DeviceCapability};
+
+use crate::state::WhiteRose;
+
+/// One kind of device's settings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DeviceSettings {
+    /// Content follows the fingers (scrolling down moves the page up).
+    pub natural_scroll: bool,
+    /// libinput's speed, -1 (slowest) to 1 (fastest).
+    pub speed: f64,
+    /// Faster movements carry the pointer further (off: flat).
+    pub acceleration: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PointerSettings {
+    pub mouse: DeviceSettings,
+    pub touchpad: DeviceSettings,
+    pub tap_to_click: bool,
+}
+
+impl Default for PointerSettings {
+    fn default() -> Self {
+        // The usual: a wheel scrolls the traditional way, a touchpad the
+        // natural way (as on phones).
+        PointerSettings {
+            mouse: DeviceSettings { natural_scroll: false, speed: 0.0, acceleration: true },
+            touchpad: DeviceSettings { natural_scroll: true, speed: 0.0, acceleration: true },
+            tap_to_click: true,
+        }
+    }
+}
+
+impl PointerSettings {
+    /// Takes a setting; true if it changed something.
+    pub fn take(&mut self, key: &str, value: &Value) -> bool {
+        fn set<T: PartialEq + for<'a> Deserialize<'a>>(slot: &mut T, key: &str, value: &Value) -> bool {
+            match serde_json::from_value::<T>(value.clone()) {
+                Ok(v) if v != *slot => {
+                    *slot = v;
+                    true
+                }
+                Ok(_) => false,
+                Err(e) => {
+                    tracing::warn!(key, %e, "ignoring unreadable setting");
+                    false
+                }
+            }
+        }
+        let changed = match key {
+            "mouse.naturalScroll" => set(&mut self.mouse.natural_scroll, key, value),
+            "mouse.speed" => set(&mut self.mouse.speed, key, value),
+            "mouse.acceleration" => set(&mut self.mouse.acceleration, key, value),
+            "touchpad.naturalScroll" => set(&mut self.touchpad.natural_scroll, key, value),
+            "touchpad.speed" => set(&mut self.touchpad.speed, key, value),
+            "touchpad.acceleration" => set(&mut self.touchpad.acceleration, key, value),
+            "touchpad.tapToClick" => set(&mut self.tap_to_click, key, value),
+            _ => false,
+        };
+        self.mouse.speed = self.mouse.speed.clamp(-1.0, 1.0);
+        self.touchpad.speed = self.touchpad.speed.clamp(-1.0, 1.0);
+        changed
+    }
+
+    /// Sets `device` up: a touchpad (it can tap) or a mouse.
+    pub fn apply(&self, device: &mut Device) {
+        if !device.has_capability(DeviceCapability::Pointer) {
+            return;
+        }
+        let touchpad = device.config_tap_finger_count() > 0;
+        let s = if touchpad { self.touchpad } else { self.mouse };
+        if touchpad {
+            let _ = device.config_tap_set_enabled(self.tap_to_click);
+        }
+        if device.config_scroll_has_natural_scroll() {
+            let _ = device.config_scroll_set_natural_scroll_enabled(s.natural_scroll);
+        }
+        if device.config_accel_is_available() {
+            let _ = device.config_accel_set_speed(s.speed);
+            let profile = if s.acceleration { AccelProfile::Adaptive } else { AccelProfile::Flat };
+            if device.config_accel_profiles().contains(&profile) {
+                let _ = device.config_accel_set_profile(profile);
+            }
+        }
+    }
+}
+
+impl WhiteRose {
+    /// A device was plugged in (or found at start).
+    pub fn add_input_device(&mut self, mut device: Device) {
+        self.pointer.apply(&mut device);
+        self.input_devices.push(device);
+    }
+
+    pub fn remove_input_device(&mut self, device: &Device) {
+        self.input_devices.retain(|d| d != device);
+    }
+
+    /// Takes a mouse or touchpad setting, applying it to every device.
+    pub fn pointer_setting(&mut self, key: &str, value: &Value) {
+        if self.pointer.take(key, value) {
+            let settings = self.pointer;
+            for d in &mut self.input_devices {
+                settings.apply(d);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn takes_settings_and_keeps_speed_in_range() {
+        let mut p = PointerSettings::default();
+        assert!(p.take("mouse.naturalScroll", &json!(true)));
+        assert!(!p.take("mouse.naturalScroll", &json!(true)), "unchanged");
+        assert!(p.mouse.natural_scroll && p.touchpad.natural_scroll);
+        assert!(p.take("touchpad.speed", &json!(0.4)));
+        assert_eq!(p.touchpad.speed, 0.4);
+        assert!(p.take("mouse.speed", &json!(7)));
+        assert_eq!(p.mouse.speed, 1.0, "clamped");
+        assert!(p.take("touchpad.tapToClick", &json!(false)));
+        assert!(!p.tap_to_click);
+        assert!(!p.take("mouse.acceleration", &json!("fast")), "unreadable: ignored");
+        assert!(p.mouse.acceleration);
+        assert!(!p.take("keyboard.repeatRate", &json!(30)));
+    }
+}

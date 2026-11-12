@@ -146,6 +146,9 @@ pub struct WhiteRose {
     pub clipboard_history_on: bool,
     /// Layouts, key repeat and the shortcut settings (see keyboard.rs).
     pub keyboard: crate::keyboard::KeyboardSettings,
+    /// Mice and touchpads (pointer.rs), and the libinput devices they apply to.
+    pub pointer: crate::pointer::PointerSettings,
+    pub input_devices: Vec<smithay::reexports::input::Device>,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
     pub shortcuts_paused: Option<u64>,
     /// The cursor theme and size we draw with (DRM), passed on to apps.
@@ -296,6 +299,8 @@ impl WhiteRose {
                 terminal: "ptyxis --standalone".into(),
                 ..Default::default()
             },
+            pointer: Default::default(),
+            input_devices: Vec::new(),
             shortcuts_paused: None,
             idle: Default::default(),
             idle_inhibit_state,

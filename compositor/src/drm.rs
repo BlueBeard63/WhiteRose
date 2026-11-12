@@ -45,7 +45,7 @@ use smithay::{
             EventLoop,
         },
         drm::control::{connector, crtc, Device as _, ModeTypeFlags},
-        input::{DeviceCapability, Libinput},
+        input::Libinput,
         rustix::fs::OFlags,
         wayland_server::backend::GlobalId,
     },
@@ -154,9 +154,11 @@ pub fn init_drm(
 
     // Input.
     let input = LibinputInputBackend::new(backend.borrow().libinput.clone());
-    event_loop.handle().insert_source(input, |mut event, _, state| {
-        if let InputEvent::DeviceAdded { device } = &mut event {
-            configure_device(device);
+    event_loop.handle().insert_source(input, |event, _, state| {
+        match &event {
+            InputEvent::DeviceAdded { device } => state.add_input_device(device.clone()),
+            InputEvent::DeviceRemoved { device } => state.remove_input_device(device),
+            _ => {}
         }
         state.process_input_event(event);
     })?;
@@ -240,13 +242,6 @@ fn libinput(session: &LibSeatSession, seat: &str) -> Result<Libinput, Box<dyn st
     let mut li = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
     li.udev_assign_seat(seat).map_err(|()| "libinput couldn't take the seat")?;
     Ok(li)
-}
-
-/// Tap to click on touchpads, as every laptop user expects.
-fn configure_device(device: &mut smithay::reexports::input::Device) {
-    if device.has_capability(DeviceCapability::Pointer) && device.config_tap_finger_count() > 0 {
-        let _ = device.config_tap_set_enabled(true);
-    }
 }
 
 /// Opens the GPU: KMS device, GBM buffers, a GLES renderer.
