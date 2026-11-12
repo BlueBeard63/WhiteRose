@@ -542,13 +542,14 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 
 ## Vendored Smithay
 
-`compositor/vendor/smithay` is Smithay 0.7.0 plus three patches, used through `[patch.crates-io]`.
+`compositor/vendor/smithay` is Smithay 0.7.0 plus four patches, used through `[patch.crates-io]`.
 
 - **`smithay-layer-unmap-after-destroy.patch`:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell. Test: `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client`.
 - **`smithay-session-lock.patch`:**
   - **Unlock disconnect:** the same bug for lock surfaces disconnected the shell on every unlock. Test: `hiding_a_former_lock_surface_after_unlock_does_not_kill_the_client`.
   - **New hooks:** `lock_cancelled` (a lock destroyed before it was confirmed now ends the lock instead of leaving the screen locked forever) and `unlock_requested` (lets the compositor ignore an unlock from a lock that a newer one replaced). Tests: in `tests/session_lock.rs`.
 - **`smithay-x11-focus.patch`:** `X11Surface::give_focus`, the X11 half of keyboard focus (X input focus, or `WM_TAKE_FOCUS`), split out of its `KeyboardTarget::enter`. Our seat focuses an X11 window's `wl_surface` (as for any window), so the compositor calls this itself when it focuses one. Test: `daemon/uitest/xwayland_test.go`.
+- **`smithay-x11-selection-flush.patch`:** `X11Wm::new_selection` now flushes, so X learns at once that the clipboard changed hands; before, an X11 app pasting soon after a copy could be told there was nothing to paste. Test: `the_compositors_own_clipboard_pastes_into_an_x11_app` in `tests/xwayland.rs`.
 - **Removing them:** drop the vendored copy once upstream ships these fixes.
 
 ---
@@ -562,7 +563,8 @@ Implemented in `compositor/src/xwayland.rs`, with `win.rs` as the one way the re
 - **Place and size together:** X11 must be told where a window is. Its next size and states are kept with it, and after each batch of events `sync_x11` configures any X11 window whose rectangle (where the compositor has it, the size it's told) differs from what X has.
 - **Override-redirect windows** (menus, tooltips) are unmanaged: drawn where they ask, above everything, never in a workspace, never focused by a click.
 - **Everything else sees them** through `win.rs`: tiling (and the space back when one closes), maximize, fullscreen, snapping, rules (by WM_CLASS), scratchpads (by `_NET_WM_PID`), the switchers, the dock and IPC. A title or class change is sent to the shell (`property_notify`). A window's first commit applies its rules and tile; when X links its wl_surface only after it has drawn, `surface_associated` does that instead, or a window that never redraws would stay untiled. Tests: `compositor/tests/xwayland.rs` runs a real Xwayland in the headless backend and drives X11 windows with x11rb (skipped without Xwayland).
-- **Not yet:** clipboard and drag and drop between X11 and Wayland (step 4).
+- **Clipboard, both ways:** an X11 copy is offered to Wayland apps (`Offer::X11`, read through Xwayland when pasted) and recorded in the history; a Wayland copy, a screenshot or a history entry pasted back (`offer_clipboard`) is offered to X11 apps. An X11 app may read the clipboard only while an X11 window has the keyboard, as a Wayland app can only paste when focused. The middle-click primary selection stays among X11 apps (there's none on the Wayland side here).
+- **Not yet:** drag and drop between X11 and Wayland apps. Smithay's X11 WM has no XDND support; within X11, and within Wayland, it works.
 
 ---
 
@@ -570,7 +572,7 @@ Implemented in `compositor/src/xwayland.rs`, with `win.rs` as the one way the re
 
 Implemented in `compositor/src/clipboard.rs` (pure logic) and `clipboard_capture.rs`; shown in the island's clipboard view.
 
-- **Capture:** every clipboard copy by an app is read by the compositor on a worker thread, with a 3 s timeout and a size cap. It keeps one representation, in this order: file list, image, text.
+- **Capture:** every clipboard copy by an app (Wayland or X11) is read by the compositor on a worker thread, with a 3 s timeout and a size cap. It keeps one representation, in this order: file list, image, text.
 - **Never stored:** anything a password manager marks as secret (`x-kde-passwordManagerHint`), whitespace-only text, and data over the caps.
 - **Storage:** `$XDG_DATA_HOME/whiterose/clipboard/`, containing `history.json` (written atomically) and `images/`. Identical images share one file.
 - **Limits:** 50 entries, 256 KB of text per entry, 16 MB per image, 64 MB of images in total. The oldest entries are evicted first. Copying something already in the history moves it to the top.

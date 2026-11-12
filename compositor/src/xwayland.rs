@@ -29,7 +29,13 @@ use smithay::{
     },
 };
 
-use crate::{state::WhiteRose, win::WinExt};
+use std::os::fd::OwnedFd;
+
+use smithay::wayland::selection::data_device::{
+    clear_data_device_selection, current_data_device_selection_userdata, set_data_device_selection,
+};
+
+use crate::{clipboard_capture::Offer, state::WhiteRose, win::WinExt};
 
 /// An override-redirect window (a menu, a tooltip): not managed.
 #[derive(Debug)]
@@ -335,8 +341,40 @@ impl XwmHandler for WhiteRose {
         self.start_resize(w, edges.into(), start, SERIAL_COUNTER.next_serial());
     }
 
-    // Copy and paste between X11 and Wayland: step 4.
-    fn allow_selection_access(&mut self, _: XwmId, _: SelectionTarget) -> bool {
-        false
+    // ---- copy and paste between X11 and Wayland apps ----
+    // The X11 clipboard and the Wayland one are kept as one: an X11 copy is
+    // offered to Wayland apps (and recorded in the history), a Wayland copy
+    // (or the compositor's own) is offered to X11 apps. The middle-click
+    // primary selection stays among X11 apps: Wayland has none here.
+
+    /// An X11 app may read the clipboard only while it has the keyboard, as
+    /// a Wayland app can only paste then (no snooping from the background).
+    fn allow_selection_access(&mut self, _: XwmId, selection: SelectionTarget) -> bool {
+        selection == SelectionTarget::Clipboard && self.focused_window().is_some_and(|w| crate::win::is_x11(&w))
+    }
+
+    /// An X11 app copied.
+    fn new_selection(&mut self, _: XwmId, selection: SelectionTarget, mime_types: Vec<String>) {
+        if selection != SelectionTarget::Clipboard {
+            return;
+        }
+        set_data_device_selection(&self.display_handle, &self.seat, mime_types.clone(), Offer::X11);
+        self.capture_clipboard(mime_types);
+    }
+
+    /// The X11 app whose copy was on the clipboard let it go (it quit).
+    fn cleared_selection(&mut self, _: XwmId, selection: SelectionTarget) {
+        let ours = matches!(current_data_device_selection_userdata(&self.seat).as_deref(), Some(Offer::X11));
+        if selection == SelectionTarget::Clipboard && ours {
+            clear_data_device_selection(&self.display_handle, &self.seat);
+        }
+    }
+
+    /// An X11 app pastes what a Wayland app (or the compositor) copied.
+    fn send_selection(&mut self, _: XwmId, selection: SelectionTarget, mime_type: String, fd: OwnedFd) {
+        let x11 = matches!(current_data_device_selection_userdata(&self.seat).as_deref(), Some(Offer::X11));
+        if selection == SelectionTarget::Clipboard && !x11 {
+            self.read_clipboard(mime_type, fd);
+        }
     }
 }

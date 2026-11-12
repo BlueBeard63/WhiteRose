@@ -1,6 +1,6 @@
 # XWayland: X11 apps in WhiteRose
 
-Status: in progress (2026-11-12): steps 1 to 3 done, branch `v0.3/xwayland` (off `v0.3/alpha-fixes`,
+Status: in progress (2026-11-12): steps 1 to 4 done (drag and drop between X11 and Wayland left out: Smithay has no XDND), branch `v0.3/xwayland` (off `v0.3/alpha-fixes`,
 which touches the same compositor files).
 
 ## Why

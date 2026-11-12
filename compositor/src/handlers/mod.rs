@@ -49,9 +49,9 @@ impl SeatHandler for WhiteRose {
 delegate_seat!(WhiteRose);
 
 impl SelectionHandler for WhiteRose {
-    /// Selections the compositor itself offers (a screenshot, a history
-    /// entry pasted back): the data for each offered mime type.
-    type SelectionUserData = std::sync::Arc<Vec<(String, Vec<u8>)>>;
+    /// Selections the compositor itself offers: its own data (a screenshot,
+    /// a history entry pasted back), or an X11 app's copy.
+    type SelectionUserData = crate::clipboard_capture::Offer;
 
     fn new_selection(
         &mut self,
@@ -59,6 +59,10 @@ impl SelectionHandler for WhiteRose {
         source: Option<smithay::wayland::selection::SelectionSource>,
         _seat: Seat<Self>,
     ) {
+        // X11 apps paste it too.
+        if let Some(wm) = self.xwayland.wm.as_mut() {
+            let _ = wm.new_selection(ty, source.as_ref().map(|s| s.mime_types()));
+        }
         // Only the real clipboard (not the middle-click primary selection),
         // and only copies made by apps.
         if ty == smithay::wayland::selection::SelectionTarget::Clipboard {
@@ -73,23 +77,24 @@ impl SelectionHandler for WhiteRose {
 
     fn send_selection(
         &mut self,
-        _ty: smithay::wayland::selection::SelectionTarget,
+        ty: smithay::wayland::selection::SelectionTarget,
         mime_type: String,
         fd: std::os::fd::OwnedFd,
         _seat: Seat<Self>,
         user_data: &Self::SelectionUserData,
     ) {
-        // Write on a thread: the reader may be slow and the pipe small.
-        let data = user_data.clone();
-        std::thread::spawn(move || {
-            use std::io::Write;
-            let bytes =
-                data.iter().find(|(m, _)| *m == mime_type).or(data.first()).map(|(_, b)| b.as_slice()).unwrap_or(&[]);
-            let mut f = std::fs::File::from(fd);
-            if let Err(e) = f.write_all(bytes) {
-                tracing::debug!(%e, "clipboard reader went away");
+        use crate::clipboard_capture::Offer;
+        match user_data {
+            Offer::Data(data) => crate::clipboard_capture::write_offer(data.clone(), mime_type, fd),
+            Offer::X11 => {
+                let handle = self.loop_handle.clone();
+                if let Some(wm) = self.xwayland.wm.as_mut() {
+                    if let Err(err) = wm.send_selection(ty, mime_type, fd, handle) {
+                        tracing::debug!(%err, "couldn't read the X11 clipboard");
+                    }
+                }
             }
-        });
+        }
     }
 }
 

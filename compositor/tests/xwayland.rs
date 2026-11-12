@@ -22,6 +22,27 @@ use x11rb::{
     COPY_DEPTH_FROM_PARENT,
 };
 
+use std::{
+    io::Read,
+    os::unix::net::UnixStream,
+    sync::atomic::{AtomicBool, Ordering},
+};
+use wayland_client::{
+    delegate_noop,
+    protocol::{
+        wl_data_device::{self, WlDataDevice},
+        wl_data_device_manager::WlDataDeviceManager,
+        wl_data_offer::WlDataOffer,
+        wl_data_source::{self, WlDataSource},
+        wl_seat::WlSeat,
+    },
+    Connection, Dispatch, QueueHandle,
+};
+use x11rb::protocol::{
+    xproto::{Atom, EventMask, SelectionNotifyEvent, SELECTION_NOTIFY_EVENT},
+    Event,
+};
+
 const BTN_LEFT: u32 = 0x110;
 
 /// A compositor with Xwayland running and the bar open; None (the test is
@@ -302,6 +323,244 @@ fn the_shell_sees_an_x11_windows_class_title_and_focus() {
             until(&ask, "the new title", |s| {
                 by_class(s, "Spotify").is_some_and(|w| w.ids().1.as_deref() == Some("Song - Artist"))
             });
+        });
+    });
+}
+
+// ---------------------------------------------------------------- the clipboard
+
+const TEXT: &str = "text/plain;charset=utf-8";
+
+/// What a copying Wayland app hands over when asked.
+struct Payload(&'static [u8]);
+
+impl Dispatch<WlDataSource, Payload> for App {
+    fn event(
+        _: &mut Self,
+        _: &WlDataSource,
+        event: wl_data_source::Event,
+        data: &Payload,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_data_source::Event::Send { fd, .. } = event {
+            use std::io::Write;
+            let _ = std::fs::File::from(fd).write_all(data.0);
+        }
+    }
+}
+impl Dispatch<WlDataDevice, ()> for App {
+    fn event(_: &mut Self, _: &WlDataDevice, _: wl_data_device::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+    wayland_client::event_created_child!(App, WlDataDevice, [
+        wl_data_device::EVT_DATA_OFFER_OPCODE => (WlDataOffer, ()),
+    ]);
+}
+delegate_noop!(App: ignore WlDataDeviceManager);
+delegate_noop!(App: ignore WlDataOffer);
+
+/// A Wayland app (with the keyboard) copies `data` as text.
+fn wayland_copy(c: &mut Client, conn: &Connection, data: &'static [u8]) {
+    let (globals, _) = wayland_client::globals::registry_queue_init::<App>(conn).unwrap();
+    let qh = c.queue.handle();
+    let manager: WlDataDeviceManager = globals.bind(&qh, 1..=3, ()).unwrap();
+    let seat: WlSeat = globals.bind(&qh, 1..=7, ()).unwrap();
+    let device = manager.get_data_device(&seat, &qh, ());
+    let source = manager.create_data_source(&qh, Payload(data));
+    source.offer(TEXT.into());
+    device.set_selection(Some(&source), 0);
+    c.queue.roundtrip(&mut c.app).unwrap();
+    std::mem::forget((device, source));
+}
+
+/// An X11 app pastes, as UTF8_STRING, on its own connection (and thread):
+/// what it got, or None if it was refused.
+fn x11_paste(display: u32) -> std::thread::JoinHandle<Option<Vec<u8>>> {
+    std::thread::spawn(move || {
+        let (conn, screen) = x11rb::connect(Some(&format!(":{display}"))).unwrap();
+        let root = conn.setup().roots[screen].root;
+        let win = conn.generate_id().unwrap();
+        conn.create_window(
+            COPY_DEPTH_FROM_PARENT,
+            win,
+            root,
+            0,
+            0,
+            1,
+            1,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            0,
+            &CreateWindowAux::new(),
+        )
+        .unwrap();
+        let atom = |n: &str| conn.intern_atom(false, n.as_bytes()).unwrap().reply().unwrap().atom;
+        let (clipboard, utf8, prop) = (atom("CLIPBOARD"), atom("UTF8_STRING"), atom("WR_PASTE"));
+        conn.convert_selection(win, clipboard, utf8, prop, x11rb::CURRENT_TIME).unwrap();
+        conn.flush().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while Instant::now() < deadline {
+            match conn.poll_for_event().unwrap() {
+                Some(Event::SelectionNotify(n)) => {
+                    if n.property == x11rb::NONE {
+                        return None;
+                    }
+                    let reply = conn.get_property(true, win, prop, AtomEnum::ANY, 0, 1 << 20).unwrap().reply().unwrap();
+                    return Some(reply.value);
+                }
+                Some(_) => {}
+                None => std::thread::sleep(Duration::from_millis(5)),
+            }
+        }
+        panic!("no answer to the paste");
+    })
+}
+
+/// An X11 app copies `data` (owning CLIPBOARD) and hands it over until
+/// `stop`, on its own connection and thread.
+fn x11_copy(display: u32, data: &'static [u8], stop: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let (conn, screen) = x11rb::connect(Some(&format!(":{display}"))).unwrap();
+        let root = conn.setup().roots[screen].root;
+        let win = conn.generate_id().unwrap();
+        conn.create_window(
+            COPY_DEPTH_FROM_PARENT,
+            win,
+            root,
+            0,
+            0,
+            1,
+            1,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            0,
+            &CreateWindowAux::new(),
+        )
+        .unwrap();
+        let atom = |n: &str| conn.intern_atom(false, n.as_bytes()).unwrap().reply().unwrap().atom;
+        let (clipboard, targets, utf8, text) = (atom("CLIPBOARD"), atom("TARGETS"), atom("UTF8_STRING"), atom(TEXT));
+        conn.set_selection_owner(win, clipboard, x11rb::CURRENT_TIME).unwrap();
+        conn.flush().unwrap();
+        while !stop.load(Ordering::Relaxed) {
+            let Some(event) = conn.poll_for_event().unwrap() else {
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            };
+            let Event::SelectionRequest(r) = event else { continue };
+            if r.target == targets {
+                let list: [Atom; 3] = [targets, utf8, text];
+                conn.change_property32(PropMode::REPLACE, r.requestor, r.property, AtomEnum::ATOM, &list).unwrap();
+            } else {
+                conn.change_property8(PropMode::REPLACE, r.requestor, r.property, r.target, data).unwrap();
+            }
+            let notify = SelectionNotifyEvent {
+                response_type: SELECTION_NOTIFY_EVENT,
+                sequence: 0,
+                time: r.time,
+                requestor: r.requestor,
+                selection: r.selection,
+                target: r.target,
+                property: r.property,
+            };
+            conn.send_event(false, r.requestor, EventMask::NO_EVENT, notify).unwrap();
+            conn.flush().unwrap();
+        }
+    })
+}
+
+/// Waits for a paste thread while the Wayland client keeps answering.
+fn pasted(c: &mut Client, paste: std::thread::JoinHandle<Option<Vec<u8>>>) -> Option<String> {
+    while !paste.is_finished() {
+        c.queue.roundtrip(&mut c.app).unwrap();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    paste.join().unwrap().map(|b| String::from_utf8(b).unwrap())
+}
+
+#[test]
+fn a_wayland_copy_pastes_into_an_x11_app() {
+    with_x11(|h| {
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_window(); // apps need the keyboard to copy
+            wayland_copy(&mut c, &conn, b"from wayland");
+            let x = X::connect(&ask);
+            x.open("Paste", "paste", None);
+            opened(&ask, "Paste");
+            let display = ask.run(|s| s.xwayland.display.unwrap());
+            assert_eq!(pasted(&mut c, x11_paste(display)).as_deref(), Some("from wayland"));
+        });
+    });
+}
+
+#[test]
+fn the_compositors_own_clipboard_pastes_into_an_x11_app() {
+    with_x11(|h| {
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_bar();
+            let x = X::connect(&ask);
+            x.open("Paste", "paste", None);
+            opened(&ask, "Paste");
+            // As a history entry pasted back, or a screenshot.
+            ask.run(|s| s.offer_clipboard(vec![(TEXT.into(), b"from the history".to_vec())]));
+            let display = ask.run(|s| s.xwayland.display.unwrap());
+            assert_eq!(pasted(&mut c, x11_paste(display)).as_deref(), Some("from the history"));
+        });
+    });
+}
+
+#[test]
+fn an_x11_copy_pastes_into_wayland_apps_and_is_remembered() {
+    with_x11(|h| {
+        h.state.clipboard_clear();
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_bar();
+            let x = X::connect(&ask);
+            x.open("Copy", "copy", None);
+            opened(&ask, "Copy");
+            let display = ask.run(|s| s.xwayland.display.unwrap());
+            let stop = Arc::new(AtomicBool::new(false));
+            let copier = x11_copy(display, b"from x11", stop.clone());
+            until(&ask, "the X11 copy is in the history", |s| {
+                s.clipboard.entries.iter().any(
+                    |e| matches!(&e.content, whiterose_wm::clipboard::Content::Text { text } if text == "from x11"),
+                )
+            });
+            // A Wayland app pasting asks the compositor, which asks X.
+            let reader = ask.run(|s| {
+                let (r, w) = UnixStream::pair().unwrap();
+                assert!(s.read_clipboard(TEXT.into(), w.into()));
+                r
+            });
+            let mut got = String::new();
+            reader.set_read_timeout(Some(Duration::from_secs(4))).unwrap();
+            (&reader).read_to_string(&mut got).unwrap();
+            assert_eq!(got, "from x11");
+            stop.store(true, Ordering::Relaxed);
+            copier.join().unwrap();
+        });
+    });
+}
+
+#[test]
+fn an_x11_app_without_the_keyboard_cant_read_the_clipboard() {
+    with_x11(|h| {
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_bar();
+            let x = X::connect(&ask);
+            x.open("Snoop", "snoop", None);
+            opened(&ask, "Snoop");
+            // A Wayland window takes the keyboard.
+            let (w, _t) = open(&mut c);
+            c.attach_buffer(&w, 400, 300);
+            until(&ask, "the Wayland window is focused", |s| {
+                s.focused_window().is_some_and(|w| w.x11_surface().is_none())
+            });
+            ask.run(|s| s.offer_clipboard(vec![(TEXT.into(), b"secret".to_vec())]));
+            let display = ask.run(|s| s.xwayland.display.unwrap());
+            assert_eq!(pasted(&mut c, x11_paste(display)), None);
         });
     });
 }
