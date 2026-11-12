@@ -737,6 +737,17 @@ impl WhiteRose {
                     self.toggle_fullscreen(&w);
                 }
             }
+            Action::NextWindowLayout => self.next_window_layout(),
+            Action::ToggleFloating => self.toggle_floating(),
+            Action::FocusDirection(d) => self.focus_direction(d),
+            Action::MoveDirection(d) => self.move_direction(d),
+            Action::ResizeDirection(d) => self.resize_direction(d),
+            Action::ResizeMode => self.tiling.key_resize = self.focused_window().is_some(),
+            Action::ToggleSplit => self.toggle_split(),
+            Action::MakeMaster => self.make_master(),
+            Action::ToggleGroup => self.toggle_group(),
+            Action::NextTab => self.next_tab(true),
+            Action::PreviousTab => self.next_tab(false),
             shell => {
                 debug_assert!(shell.is_shell());
                 let name = ipc::action_name(&shell).expect("every shell action has a wire name");

@@ -60,6 +60,8 @@ pub struct TilingState {
     pub dragging: Option<Window>,
     /// Where the dragged tile will land, drawn under the pointer.
     pub preview: DropPreview,
+    /// Resize mode (SUPER+R): the arrow keys resize the focused window.
+    pub key_resize: bool,
     /// Tabbed windows sharing a tile.
     pub groups: layout::Groups<Window>,
     /// The visible groups' tab strips, and their drawn pictures.
@@ -623,5 +625,155 @@ impl WhiteRose {
             }
             (!edges.is_empty()).then(|| (w.clone(), edges))
         })
+    }
+}
+
+/// How far one key press moves or resizes a window, in pixels.
+const KEY_STEP: i32 = 40;
+
+/// The tiling keys (keybind.rs actions).
+impl WhiteRose {
+    /// The focused window, its tiles (set index) and their area, if tiled.
+    fn focused_tile(&self) -> Option<(Window, usize, Rect)> {
+        let w = self.focused_window()?;
+        let i = self.tiling.sets.iter().position(|s| s.tiling.contains(&w))?;
+        let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
+        Some((w, i, area))
+    }
+
+    /// Changes the focused tile's tiles with `f` (given the window, its
+    /// area and the gaps), and re-tiles if it did something.
+    fn change_tiles(&mut self, f: impl FnOnce(&mut Tiling<Window>, &Window, Rect, &layout::Gaps) -> bool) {
+        let Some((w, i, area)) = self.focused_tile() else { return };
+        let gaps = self.tiling.settings.gaps;
+        if f(&mut self.tiling.sets[i].tiling, &w, area, &gaps) {
+            self.retile();
+        }
+    }
+
+    /// SUPER+T: the next layout for what's on screen where you're working
+    /// (the focused window's output, else the pointer's). It changes the
+    /// workspace's layout, or the monitor's if that monitor has its own,
+    /// and saves it.
+    pub fn next_window_layout(&mut self) {
+        let ws = self.workspaces.active();
+        let output = self.focused_window().and_then(|w| self.output_of(&w)).or_else(|| self.pointer_output());
+        let Some(o) = output else { return };
+        let next = self.layout_of(ws, &o).next();
+        let id = outputs::info(&o).id;
+        let s = &mut self.tiling.settings;
+        let (key, value) = if !id.is_empty() && s.monitors.contains_key(&id) {
+            s.monitors.insert(id, next);
+            let map: serde_json::Map<String, Value> =
+                s.monitors.iter().map(|(m, l)| (m.clone(), Value::from(l.as_str()))).collect();
+            ("windows.layout.monitors", map)
+        } else {
+            s.workspaces.insert(ws, next);
+            let map: serde_json::Map<String, Value> =
+                s.workspaces.iter().map(|(w, l)| ((w + 1).to_string(), Value::from(l.as_str()))).collect();
+            ("windows.layout.workspaces", map)
+        };
+        self.daemon_request(serde_json::json!({"op": "set", "key": key, "value": value}));
+        self.apply_layout_settings();
+    }
+
+    /// SUPER+SHIFT+SPACE: a tile floats where it is; a window floated that
+    /// way goes back into the tiles.
+    pub fn toggle_floating(&mut self) {
+        let Some(w) = self.focused_window() else { return };
+        if self.is_tiled(&w) {
+            self.float_window(&w);
+        } else if self.tiling.floating.contains(&w) {
+            self.tiling.floating.retain(|f| *f != w);
+            self.retile();
+        }
+    }
+
+    /// SUPER+arrow: focuses the window beside the focused one (tiled or
+    /// not, on any output).
+    pub fn focus_direction(&mut self, dir: Dir) {
+        let Some(w) = self.focused_window() else { return };
+        let windows: Vec<(Window, Rect)> =
+            self.space.elements().filter_map(|e| Some((e.clone(), to_rect(self.space.element_geometry(e)?)))).collect();
+        if let Some(n) = layout::neighbour(&windows, &w, dir) {
+            self.focus_window(Some(n));
+        }
+    }
+
+    /// SUPER+SHIFT+arrow: a tile swaps with the one beside it; a floating
+    /// window moves a step.
+    pub fn move_direction(&mut self, dir: Dir) {
+        if self.focused_tile().is_some() {
+            self.change_tiles(|t, w, area, gaps| t.move_dir(w, dir, area, gaps));
+            return;
+        }
+        let Some(w) = self.focused_window().filter(|w| !Self::maximized_or_fullscreen(w)) else { return };
+        let Some(mut at) = self.space.element_location(&w) else { return };
+        match dir {
+            Dir::Left => at.x -= KEY_STEP,
+            Dir::Right => at.x += KEY_STEP,
+            Dir::Up => at.y -= KEY_STEP,
+            Dir::Down => at.y += KEY_STEP,
+        }
+        // Never under the bar, where it couldn't be grabbed again.
+        if let Some(o) = self.output_of(&w) {
+            at.y = crate::grabs::move_grab::keep_below(at.y, self.usable_area_on(&o).loc.y);
+        }
+        self.space.map_element(w, at, false);
+        self.schedule_redraw();
+    }
+
+    /// SUPER+CTRL+arrow: right and down grow the focused window a step,
+    /// left and up shrink it (a tile moves its split).
+    pub fn resize_direction(&mut self, dir: Dir) {
+        let delta = if dir.forward() { KEY_STEP } else { -KEY_STEP };
+        if self.focused_tile().is_some() {
+            self.change_tiles(|t, w, area, gaps| t.grow(w, dir.axis(), delta, area, gaps));
+            return;
+        }
+        let Some(w) = self.focused_window().filter(|w| !Self::maximized_or_fullscreen(w)) else { return };
+        let Some(t) = w.toplevel() else { return };
+        let mut size = w.geometry().size;
+        match dir.axis() {
+            Axis::Horizontal => size.w = (size.w + delta).max(KEY_STEP),
+            Axis::Vertical => size.h = (size.h + delta).max(KEY_STEP),
+        }
+        t.with_pending_state(|s| s.size = Some(size));
+        t.send_pending_configure();
+    }
+
+    /// SUPER+J (dwindle): flips the split the focused tile is in.
+    pub fn toggle_split(&mut self) {
+        self.change_tiles(|t, w, area, gaps| t.toggle_split(w, area, gaps));
+    }
+
+    /// SUPER+M (master): makes the focused tile the master.
+    pub fn make_master(&mut self) {
+        self.change_tiles(|t, w, _, _| t.make_master(w));
+    }
+
+    /// SUPER+G: a tab leaves its group (and gets its own tile beside it);
+    /// a tile joins the group of the last tile used before it.
+    pub fn toggle_group(&mut self) {
+        let Some((w, i, _)) = self.focused_tile() else { return };
+        if self.tiling.groups.tabs_of(&w).is_some() {
+            self.leave_group(&w);
+        } else {
+            let tiles = &self.tiling.sets[i].tiling;
+            let Some(target) = self.workspaces.mru().iter().find(|m| **m != w && tiles.contains(m)).cloned() else {
+                return;
+            };
+            self.join_group(&w, &target, i);
+        }
+        self.retile();
+    }
+
+    /// SUPER+TAB / SUPER+SHIFT+TAB: the next or previous tab of the
+    /// focused group.
+    pub fn next_tab(&mut self, forward: bool) {
+        let Some(w) = self.focused_window() else { return };
+        if let Some(tab) = self.tiling.groups.neighbour_tab(&w, forward) {
+            self.focus_window(Some(tab));
+        }
     }
 }

@@ -203,6 +203,12 @@ impl WhiteRose {
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
                 }
+                // Resize mode takes the arrows (and Escape or Enter ends it).
+                if state.tiling.key_resize && pressed {
+                    if let Some(result) = state.resize_mode_key(sym, keycode) {
+                        return result;
+                    }
+                }
 
                 // SUPER on its own opens the launcher, on release, and only if no
                 // other key was pressed while it was held.
@@ -240,6 +246,37 @@ impl WhiteRose {
 }
 
 impl WhiteRose {
+    /// A key pressed in resize mode: an arrow resizes the focused window,
+    /// Escape or Enter ends the mode, a modifier is passed on, and any other
+    /// key ends it and then works as usual (None).
+    fn resize_mode_key(
+        &mut self,
+        sym: smithay::input::keyboard::Keysym,
+        keycode: smithay::input::keyboard::Keycode,
+    ) -> Option<FilterResult<Option<Action>>> {
+        use smithay::input::keyboard::keysyms as k;
+        let dir = match sym.raw() {
+            k::KEY_Left => Some(crate::layout::Dir::Left),
+            k::KEY_Right => Some(crate::layout::Dir::Right),
+            k::KEY_Up => Some(crate::layout::Dir::Up),
+            k::KEY_Down => Some(crate::layout::Dir::Down),
+            _ => None,
+        };
+        if let Some(d) = dir {
+            self.swallowed.push(keycode);
+            return Some(FilterResult::Intercept(Some(Action::ResizeDirection(d))));
+        }
+        if sym.is_modifier_key() {
+            return Some(FilterResult::Forward);
+        }
+        self.tiling.key_resize = false;
+        if matches!(sym.raw(), k::KEY_Escape | k::KEY_Return | k::KEY_KP_Enter) {
+            self.swallowed.push(keycode);
+            return Some(FilterResult::Intercept(None));
+        }
+        None
+    }
+
     /// Keys while ALT+TAB / SUPER+ALT+TAB is open. Releasing the modifiers
     /// that opened it focuses the selection.
     fn switcher_key(

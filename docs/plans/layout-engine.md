@@ -189,3 +189,7 @@ moving (later, with 0.4 Overview).
   tile's top strip (its tab bar, or the top of an ungrouped tile); the
   middle still swaps and the edges still split. The compositor draws the
   tab strip itself, titles included (fontdue, a pure-Rust rasterizer).
+- (before commit 5) Keyboard resizing is a mode, SUPER+R then the arrows
+  (Escape or Enter ends it), and tabs use SUPER+. and SUPER+, : under
+  --mod ctrl-alt, SUPER+CTRL+arrows and SUPER+TAB would clash with
+  SUPER+arrows and SUPER+ALT+TAB.

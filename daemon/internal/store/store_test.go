@@ -140,7 +140,7 @@ func TestValidation(t *testing.T) {
 		"wallpaper.current":         `"/home/me/Pictures/sea.jpg"`,
 		"wallpaper.folders":         `["~/Pictures/Wallpapers","/usr/share/backgrounds"]`,
 		"wallpaper.rotateMinutes":   `30`,
-		"shortcuts.keys":            `{"close-window":["SUPER+Q","ALT+F4"],"lock":[],"workspace":["SUPER+1-9"]}`,
+		"shortcuts.keys":            `{"close-window":["SUPER+Q","ALT+F4"],"lock":[],"workspace":["SUPER+1-9"],"focus-direction":["SUPER+ARROWS"]}`,
 		"shortcuts.custom":          `[{"id":"custom-files","name":"Open Files","command":"nautilus","keys":["SUPER+E"]}]`,
 		"displays.test":             `{"config":{"monitor":[{"id":"builtin","scale":1.5}],"profile":[]},"until":1794240000000}`,
 		"apps.terminal":             `"ghostty"`,

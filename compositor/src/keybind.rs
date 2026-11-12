@@ -1,6 +1,7 @@
 //! Keyboard shortcuts: parsing ("SUPER+SHIFT+S"), the default table, and
 //! lookup. Pure logic, no compositor state, so it is fully unit-tested.
 
+use crate::layout::Dir;
 use std::fmt;
 
 use smithay::input::keyboard::{keysyms, xkb, Keysym, ModifiersState};
@@ -76,6 +77,31 @@ pub enum Action {
     Capture(crate::screenshot::Shot),
     /// The next keyboard layout (SUPER+SPACE).
     NextLayout,
+    /// The next window layout (floating, dwindle, master) for this
+    /// workspace, saved as its setting (SUPER+T).
+    NextWindowLayout,
+    /// Take the focused window out of the tiles, or put it back.
+    ToggleFloating,
+    /// Focus the window beside the focused one.
+    FocusDirection(Dir),
+    /// Swap the focused tile with the one beside it (a floating window
+    /// moves a step that way).
+    MoveDirection(Dir),
+    /// Right and down grow the focused window, left and up shrink it (the
+    /// arrows in resize mode).
+    ResizeDirection(Dir),
+    /// Resize mode (SUPER+R): the arrow keys resize the focused window
+    /// until Escape, Enter or any other key.
+    ResizeMode,
+    /// Dwindle: flip the split the focused tile is in.
+    ToggleSplit,
+    /// Master: make the focused tile the master.
+    MakeMaster,
+    /// Join the last used tile's group, or leave the group.
+    ToggleGroup,
+    /// Show the next (or previous) tab of the focused group.
+    NextTab,
+    PreviousTab,
     /// Volume, brightness and media keys, done by the shell; the name is
     /// its wire name (e.g. "volume_up").
     Media(&'static str),
@@ -211,12 +237,49 @@ pub fn is_logo_key(sym: Keysym) -> bool {
     matches!(sym.raw(), keysyms::KEY_Super_L | keysyms::KEY_Super_R)
 }
 
-/// "SUPER+1-9" is nine combos (1 to 9); anything else is one.
+/// The arrow keys, in the order an "ARROWS" range lists them.
+pub const ARROWS: [(&str, Dir); 4] = [("Left", Dir::Left), ("Right", Dir::Right), ("Up", Dir::Up), ("Down", Dir::Down)];
+
+/// "SUPER+1-9" is nine combos (1 to 9), "SUPER+ARROWS" four (left, right,
+/// up, down); anything else is one.
 pub fn expand(s: &str) -> Result<Vec<Combo>, ParseError> {
     match s.rsplit_once('+') {
         Some((mods, "1-9")) => (1..=9).map(|d| parse_combo(&format!("{mods}+{d}"))).collect(),
-        None if s == "1-9" => Err(ParseError::UnknownKey(s.into())),
+        Some((mods, key)) if key.eq_ignore_ascii_case("ARROWS") => {
+            ARROWS.iter().map(|(k, _)| parse_combo(&format!("{mods}+{k}"))).collect()
+        }
+        None if s == "1-9" || s.eq_ignore_ascii_case("ARROWS") => Err(ParseError::UnknownKey(s.into())),
         _ => parse_combo(s).map(|c| vec![c]),
+    }
+}
+
+/// A shortcut that stands for a set of keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Range {
+    /// One key.
+    No,
+    /// "MODS+1-9": workspace n for key n.
+    Digits,
+    /// "MODS+ARROWS": that direction for each arrow key.
+    Arrows,
+}
+
+impl Range {
+    /// How the settings page knows (empty for one key).
+    pub fn name(self) -> &'static str {
+        match self {
+            Range::No => "",
+            Range::Digits => "digits",
+            Range::Arrows => "arrows",
+        }
+    }
+
+    fn len(self) -> usize {
+        match self {
+            Range::No => 1,
+            Range::Digits => 9,
+            Range::Arrows => 4,
+        }
     }
 }
 
@@ -238,8 +301,8 @@ pub struct Def {
     pub name: &'static str,
     pub group: &'static str,
     pub defaults: &'static [&'static str],
-    /// Bound to "MODS+1-9": workspace n for key n.
-    pub range: bool,
+    /// Bound to a set of keys ("MODS+1-9", "MODS+ARROWS").
+    pub range: Range,
 }
 
 impl Def {
@@ -269,13 +332,23 @@ impl Def {
             "play-pause" => Action::Media("media_play_pause"),
             "next-track" => Action::Media("media_next"),
             "previous-track" => Action::Media("media_previous"),
+            "window-layout" => Action::NextWindowLayout,
+            "toggle-floating" => Action::ToggleFloating,
+            "focus-direction" => Action::FocusDirection(ARROWS[n as usize].1),
+            "move-direction" => Action::MoveDirection(ARROWS[n as usize].1),
+            "resize-mode" => Action::ResizeMode,
+            "toggle-split" => Action::ToggleSplit,
+            "make-master" => Action::MakeMaster,
+            "toggle-group" => Action::ToggleGroup,
+            "next-tab" => Action::NextTab,
+            "previous-tab" => Action::PreviousTab,
             other => unreachable!("catalog id {other} has no action"),
         }
     }
 }
 
 const fn def(id: &'static str, name: &'static str, group: &'static str, defaults: &'static [&'static str]) -> Def {
-    Def { id, name, group, defaults, range: false }
+    Def { id, name, group, defaults, range: Range::No }
 }
 
 /// Every built-in shortcut, in the order the settings page lists them.
@@ -287,9 +360,22 @@ pub const CATALOG: &[Def] = &[
     def("notifications", "Notifications", "Shell", &["SUPER+N"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
-    Def { range: true, ..def("workspace", "Switch to workspace 1–9", "Workspaces", &["SUPER+1-9"]) },
+    def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
+    def("toggle-floating", "Float or tile window", "Windows", &["SUPER+SHIFT+SPACE"]),
+    Def { range: Range::Arrows, ..def("focus-direction", "Focus window ←→↑↓", "Windows", &["SUPER+ARROWS"]) },
     Def {
-        range: true, ..def("move-to-workspace", "Move window to workspace 1–9", "Workspaces", &["SUPER+SHIFT+1-9"])
+        range: Range::Arrows, ..def("move-direction", "Move window ←→↑↓", "Windows", &["SUPER+SHIFT+ARROWS"])
+    },
+    def("resize-mode", "Resize window (then arrows; Esc ends)", "Windows", &["SUPER+R"]),
+    def("toggle-split", "Flip split (dwindle)", "Windows", &["SUPER+J"]),
+    def("make-master", "Make master (master)", "Windows", &["SUPER+M"]),
+    def("toggle-group", "Group or ungroup window", "Windows", &["SUPER+G"]),
+    def("next-tab", "Next tab", "Windows", &["SUPER+PERIOD"]),
+    def("previous-tab", "Previous tab", "Windows", &["SUPER+COMMA"]),
+    Def { range: Range::Digits, ..def("workspace", "Switch to workspace 1–9", "Workspaces", &["SUPER+1-9"]) },
+    Def {
+        range: Range::Digits,
+        ..def("move-to-workspace", "Move window to workspace 1–9", "Workspaces", &["SUPER+SHIFT+1-9"])
     },
     def("screenshot-region", "Screenshot region", "Shell", &["SUPER+SHIFT+S"]),
     def("screenshot-screen", "Screenshot screen", "Shell", &["PRTSC"]),
@@ -341,17 +427,20 @@ impl Bindings {
             };
             for c in combos {
                 match expand(&c) {
-                    Ok(list) if def.range => {
-                        if list.len() != 9 {
-                            errors.push(format!("{}: {c:?} needs the 1-9 key", def.id));
+                    Ok(list) if def.range != Range::No => {
+                        let wanted = if def.range == Range::Digits { "1-9" } else { "ARROWS" };
+                        if list.len() != def.range.len() || !c.to_ascii_uppercase().ends_with(wanted) {
+                            errors.push(format!("{}: {c:?} needs the {wanted} key", def.id));
                             continue;
                         }
                         for (n, combo) in list.into_iter().enumerate() {
-                            entries.push((combo, def.action(terminal, n as u8 + 1)));
+                            // Workspaces count from 1; directions index ARROWS.
+                            let n = if def.range == Range::Digits { n + 1 } else { n };
+                            entries.push((combo, def.action(terminal, n as u8)));
                         }
                     }
                     Ok(list) if list.len() == 1 => entries.push((list[0], def.action(terminal, 0))),
-                    Ok(_) => errors.push(format!("{}: {c:?} can't use 1-9", def.id)),
+                    Ok(_) => errors.push(format!("{}: {c:?} can't use a range of keys", def.id)),
                     Err(e) => errors.push(format!("{}: {c:?}: {e}", def.id)),
                 }
             }
@@ -597,5 +686,40 @@ mod tests {
         assert!(!Action::AppSwitcher.is_shell(), "the compositor runs the switchers; the shell only draws them");
         assert!(!Action::ScreenshotScreen.is_shell(), "PrtSc is captured by the compositor itself");
         assert!(!Action::Workspace(1).is_shell());
+    }
+
+    #[test]
+    fn arrows_stand_for_four_keys() {
+        let combos = expand("SUPER+SHIFT+ARROWS").unwrap();
+        let keys: Vec<u32> = combos.iter().map(|c| c.key.raw()).collect();
+        assert_eq!(keys, vec![keysyms::KEY_Left, keysyms::KEY_Right, keysyms::KEY_Up, keysyms::KEY_Down]);
+        assert!(combos.iter().all(|c| c.mods == SUPER_SHIFT));
+        assert_eq!(expand("super+arrows").unwrap().len(), 4, "any case");
+        assert!(expand("ARROWS").is_err(), "needs a modifier");
+    }
+
+    #[test]
+    fn the_default_tiling_keys() {
+        let b = Bindings::defaults("true");
+        let key = |m, k| b.lookup(m, sym(k)).cloned();
+        assert_eq!(key(SUPER, keysyms::KEY_t), Some(Action::NextWindowLayout));
+        assert_eq!(key(SUPER_SHIFT, keysyms::KEY_space), Some(Action::ToggleFloating));
+        assert_eq!(key(SUPER, keysyms::KEY_Left), Some(Action::FocusDirection(Dir::Left)));
+        assert_eq!(key(SUPER_SHIFT, keysyms::KEY_Down), Some(Action::MoveDirection(Dir::Down)));
+        assert_eq!(key(SUPER, keysyms::KEY_r), Some(Action::ResizeMode));
+        assert_eq!(key(SUPER, keysyms::KEY_period), Some(Action::NextTab));
+        assert_eq!(key(SUPER, keysyms::KEY_comma), Some(Action::PreviousTab));
+        assert_eq!(key(SUPER, keysyms::KEY_g), Some(Action::ToggleGroup));
+    }
+
+    #[test]
+    fn a_range_shortcut_needs_its_range_key() {
+        let mut o = std::collections::HashMap::new();
+        o.insert("focus-direction".to_string(), vec!["SUPER+1-9".to_string(), "SUPER+K".to_string()]);
+        o.insert("workspace".to_string(), vec!["SUPER+ARROWS".to_string()]);
+        let (b, errors) = Bindings::build("true", &o, &[]);
+        assert_eq!(errors.len(), 3, "{errors:?}");
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_k)), None);
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_Left)), None);
     }
 }
