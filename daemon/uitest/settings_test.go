@@ -66,6 +66,13 @@ func TestSettingsEveryControlHasAName(t *testing.T) {
 	if len(seen) < 15 {
 		t.Errorf("only %d pages: %v", len(seen), seen)
 	}
+	// A page that doesn't load has no unnamed controls either: the shell
+	// says so in the log (a QML error).
+	for _, line := range strings.Split(s.Log(), "\n") {
+		if strings.Contains(line, "page failed to load") {
+			problems = append(problems, strings.TrimSpace(line))
+		}
+	}
 	for _, p := range problems {
 		t.Error(p)
 	}
@@ -156,9 +163,9 @@ func TestSettingsScrollingKeepsTheNewestColumnInView(t *testing.T) {
 	}
 }
 
-// Settings › Snapping: choose a monitor's first zone (two thirds) and split it
-// stacked (saved as that monitor's grid), then SUPER+SHIFT-drag a window
-// onto the lower half: it fills it. (A zone narrower than the window's
+// Settings › Snapping: with the Stacked tool, click a monitor's first zone
+// (two thirds) to split it (saved as that monitor's grid), then
+// SUPER+SHIFT-drag a window onto the lower half: it fills it. (A zone narrower than the window's
 // smallest size, like the default grid's third, the app wouldn't take.)
 func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
@@ -168,12 +175,12 @@ func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 	settings := s.Settings("snapping")
 	// (Maximised, so the end of the page is on the test's small screen.)
 	settings.Click(uitest.Named("Maximise").Role("push button"))
-	zone := uitest.Named("Zone 1").Role("check box")
-	settings.Click(zone)
-	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(zone); return ok && n.Checked() }) {
-		t.Fatal("clicking zone 1 didn't choose it")
+	stacked := uitest.Named("Stacked").Role("radio button")
+	settings.Click(stacked)
+	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(stacked); return ok && n.Checked() }) {
+		t.Fatal("the Stacked tool didn't stay picked")
 	}
-	settings.Click(uitest.Named("Split stacked").Role("push button"))
+	settings.Click(uitest.Named("Zone 1").Role("push button").Described("Split stacked"))
 	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), "[0,0.5,0.6667,0.5]") }) {
 		t.Fatalf("no split grid saved: %s", s.Setting("windows.snap.zones"))
 	}

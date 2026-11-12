@@ -392,6 +392,9 @@ func (l *logBuffer) Write(p []byte) (int, error) {
 	return l.b.Write(p)
 }
 
+// Log is everything the session (compositor, shell, apps) has printed so far.
+func (s *Session) Log() string { return stripANSI(s.log.String()) }
+
 func (l *logBuffer) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()

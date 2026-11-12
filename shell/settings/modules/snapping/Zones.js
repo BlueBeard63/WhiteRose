@@ -159,13 +159,21 @@ function moveLine(zones, i, dir, to) {
     return normalize(out);
 }
 
-// What selecting zone `i` does to the selection: a second zone that merges
-// with the one selected joins it; the selected one again deselects;
-// anything else is selected on its own.
-function select(zones, selected, i) {
-    if (selected.includes(i)) return selected.filter(k => k !== i);
-    if (selected.length === 1 && canMerge(zones, selected[0], i)) return [selected[0], i];
-    return [i];
+// The editor's tools: Resize drags the lines between zones; the others act
+// on the zone clicked. The tool stays picked until another is.
+const TOOLS = ["resize", "side", "stacked", "merge"];
+
+// What clicking zone `i` with `tool` does, given the zone Merge has picked
+// first (`picked`, or -1): { zones: the new grid, or null for no change,
+// picked }. Side by side and Stacked split it (null if too small); Merge
+// picks a first zone, then merges it with a second that makes a rectangle
+// with it (another zone is picked instead; the same one again unpicks it).
+function click(zones, tool, picked, i) {
+    if (tool === "side" || tool === "stacked") return { zones: split(zones, i, tool), picked: -1 };
+    if (tool !== "merge") return { zones: null, picked: -1 };
+    if (picked === i) return { zones: null, picked: -1 };
+    if (picked >= 0 && canMerge(zones, picked, i)) return { zones: merge(zones, picked, i), picked: -1 };
+    return { zones: null, picked: i };
 }
 
 // width / height of the area below a bar `bar` px tall on `output` (as

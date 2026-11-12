@@ -1,8 +1,9 @@
-// One monitor's zone grid (Figma: "Settings - Snapping"), edited
-// in place: click a zone to choose it (a second one beside it, to merge
-// them), split it side by side or stacked, drag the line between zones.
-// Every change is saved as it's made; only grids the compositor takes are
-// saved (Zones.js).
+// One monitor's zone grid (Figma: "Settings - Snapping"), edited in place
+// with the tool picked in the monitor's header (it stays picked): Resize
+// drags the lines between zones; Side by side and Stacked split the zone
+// clicked (hovering shows where); Merge joins two zones clicked one after
+// the other. Every change is saved as it's made; only grids the compositor
+// takes are saved (Zones.js).
 import QtQuick
 import qs
 import qs.settings
@@ -16,23 +17,34 @@ Item {
     property real ratio: 16 / 9
     signal save(var zones)
 
+    // "resize", "side", "stacked" or "merge" (Zones.js TOOLS).
+    property string tool: "resize"
     // While a line is dragged: the grid as it'll be.
     property var draft: null
-    property var selected: []
+    // The zone Merge picked first, or -1.
+    property int picked: -1
     readonly property var zones: draft ?? saved ?? Z.fallback()
-    onSavedChanged: selected = []
+    onSavedChanged: picked = -1
+    onToolChanged: picked = -1
 
     function commit(z) {
         if (z && Z.valid(z)) {
-            selected = [];
+            picked = -1;
             ed.save(z);
         }
     }
+    function clickZone(i) {
+        const r = Z.click(zones, tool, picked, i);
+        picked = r.picked;
+        if (r.zones) commit(r.zones);
+    }
+    // What a click on a zone does now, for screen readers.
+    readonly property string action: ({ side: "Split side by side", stacked: "Split stacked", merge: picked < 0 ? "Pick to merge" : "Merge" })[tool] ?? ""
 
     readonly property int gap: 4
     readonly property int bar: 7
-    // The area below the bar: as wide as fits, no taller than 200.
-    readonly property real areaW: Math.min(328, 200 * ratio)
+    // The area below the bar: as wide as fits (up to 472), no taller than 260.
+    readonly property real areaW: Math.max(120, Math.min(472, width - 36 - 2 * gap, 260 * ratio))
     readonly property real areaH: areaW / ratio
 
     width: parent?.width ?? 0
@@ -60,7 +72,11 @@ Item {
                     id: zone
                     required property var modelData
                     required property int index
-                    readonly property bool chosen: ed.selected.includes(index)
+                    readonly property bool first: ed.picked === index
+                    // Merge, a zone picked: only the ones it merges with respond.
+                    readonly property bool takes: ed.tool !== "resize" && (ed.tool !== "merge" || ed.picked < 0 || first || Z.canMerge(ed.zones, ed.picked, index))
+                    readonly property bool hot: zoneMouse.containsMouse && takes
+                    readonly property bool splitting: hot && (ed.tool === "side" || ed.tool === "stacked")
                     // Half the gap off each side that meets another zone.
                     readonly property real x0: modelData[0] * area.width + (modelData[0] > 1e-6 ? ed.gap / 2 : 0)
                     readonly property real y0: modelData[1] * area.height + (modelData[1] > 1e-6 ? ed.gap / 2 : 0)
@@ -68,26 +84,40 @@ Item {
                     readonly property real y1: (modelData[1] + modelData[3]) * area.height - (modelData[1] + modelData[3] < 1 - 1e-6 ? ed.gap / 2 : 0)
                     x: x0; y: y0; width: x1 - x0; height: y1 - y0
                     radius: 6
-                    color: chosen ? Qt.rgba(Theme.rose.r, Theme.rose.g, Theme.rose.b, 0.35) : zoneMouse.containsMouse ? Theme.grip : Theme.surface2
-                    border { width: chosen ? 1.5 : 0; color: Theme.pearl }
-                    Accessible.role: Accessible.CheckBox
+                    color: first ? Qt.rgba(Theme.rose.r, Theme.rose.g, Theme.rose.b, 0.35) : hot ? Theme.grip : Theme.surface2
+                    border { width: first ? 1.5 : 0; color: Theme.pearl }
+                    Accessible.role: Accessible.Button
                     Accessible.name: "Zone " + (index + 1)
-                    Accessible.checkable: true
-                    Accessible.checked: chosen
-                    Accessible.onToggleAction: ed.selected = Z.select(ed.zones, ed.selected, index)
-                    Accessible.onPressAction: ed.selected = Z.select(ed.zones, ed.selected, index)
+                    Accessible.description: takes ? ed.action : ""
+                    Accessible.onPressAction: if (takes) ed.clickZone(index)
                     Text {
                         anchors.centerIn: parent
+                        // Out of the way of the split it would make.
+                        anchors.horizontalCenterOffset: zone.splitting && ed.tool === "side" ? -zone.width / 4 : 0
+                        anchors.verticalCenterOffset: zone.splitting && ed.tool === "stacked" ? -zone.height / 4 : 0
                         text: zone.index + 1
-                        color: zone.chosen ? Theme.text : Theme.muted
+                        color: zone.first || zone.hot ? Theme.text : Theme.muted
                         font { family: Theme.mono; pointSize: Theme.pt(11) }
+                    }
+                    // Where Side by side or Stacked would split it.
+                    Rectangle {
+                        visible: zone.splitting
+                        readonly property bool upright: ed.tool === "side"
+                        x: upright ? zone.width / 2 - 1 : 8
+                        y: upright ? 8 : zone.height / 2 - 1
+                        width: upright ? 2 : zone.width - 16
+                        height: upright ? zone.height - 16 : 2
+                        radius: 1
+                        color: Theme.pearl
+                        opacity: 0.85
                     }
                     MouseArea {
                         id: zoneMouse
                         anchors.fill: parent
+                        enabled: ed.tool !== "resize"
                         hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: ed.selected = Z.select(ed.zones, ed.selected, zone.index)
+                        cursorShape: zone.takes ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: if (zone.takes) ed.clickZone(zone.index)
                     }
                 }
             }
@@ -107,6 +137,8 @@ Item {
                     y: upright ? from : at - 6
                     width: upright ? 12 : to - from
                     height: upright ? to - from : 12
+                    // Resize's: the other tools click the zones instead.
+                    enabled: ed.tool === "resize"
                     hoverEnabled: true
                     preventStealing: true
                     cursorShape: upright ? Qt.SplitHCursor : Qt.SplitVCursor
@@ -132,39 +164,6 @@ Item {
                         color: Theme.pearl
                     }
                 }
-            }
-        }
-    }
-
-    Column {
-        anchors { left: screen.right; leftMargin: 20; top: screen.top }
-        spacing: 8
-        // (Each in its own slot: a Button centres itself on its parent.)
-        Item {
-            width: splitSide.width; height: splitSide.height
-            Button {
-                id: splitSide
-                text: "Split side by side"
-                enabled: ed.selected.length === 1
-                onClicked: ed.commit(Z.split(ed.zones, ed.selected[0], "side"))
-            }
-        }
-        Item {
-            width: splitStacked.width; height: splitStacked.height
-            Button {
-                id: splitStacked
-                text: "Split stacked"
-                enabled: ed.selected.length === 1
-                onClicked: ed.commit(Z.split(ed.zones, ed.selected[0], "stacked"))
-            }
-        }
-        Item {
-            width: mergeButton.width; height: mergeButton.height
-            Button {
-                id: mergeButton
-                text: "Merge"
-                enabled: ed.selected.length === 2
-                onClicked: ed.commit(Z.merge(ed.zones, ed.selected[0], ed.selected[1]))
             }
         }
     }

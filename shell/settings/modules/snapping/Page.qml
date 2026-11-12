@@ -1,6 +1,7 @@
 // Snapping (Figma: "Settings - Snapping"): floating windows snap to the
 // edges and corners of the screen, or with SHIFT held onto a monitor's own
-// zones. Each monitor's zone grid is edited in place (ZoneEditor.qml). The
+// zones. Each monitor's zone grid is edited in place (ZoneEditor.qml), with
+// the tool picked in its header. The
 // compositor follows windows.snap and windows.snap.zones live.
 import QtQuick
 import qs
@@ -53,6 +54,12 @@ Column {
                     divider: false
                     title: page.monitorName(zonesFor.modelData)
                     subtitle: zonesFor.modelData.connector + " · " + (zonesFor.own ? "Your zones" : "Two thirds and a third")
+                    // The editor's tool (it stays picked).
+                    Segmented {
+                        value: editor.tool
+                        options: [{ label: "Resize", value: "resize" }, { label: "Side by side", value: "side" }, { label: "Stacked", value: "stacked" }, { label: "Merge", value: "merge" }]
+                        onPicked: v => editor.tool = v
+                    }
                     Button {
                         visible: !!zonesFor.own
                         text: "Reset"
@@ -60,6 +67,7 @@ Column {
                     }
                 }
                 ZoneEditor {
+                    id: editor
                     saved: zonesFor.own
                     ratio: Z.aspect(zonesFor.modelData, Theme.barHeight)
                     onSave: zones => page.setIn("windows.snap.zones", page.grids, zonesFor.modelData.id, zones)

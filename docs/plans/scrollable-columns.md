@@ -215,3 +215,28 @@ position, as tiling and snapping do. Animations come with 0.4's overview.
   in the 32 px band at a strip's edge. It keeps the pointer position
   itself: a grab's motion runs with the pointer locked, so reading
   `current_location()` there deadlocks.
+
+## More answers (2026-11-12, after commit 5)
+
+Settings and zone-editor work added to this branch, before the docs commit:
+
+1. **Snapping tools** (done): each monitor's header picks the editor's tool
+   (Resize · Side by side · Stacked · Merge), which stays picked; hovering
+   shows where a split goes; Merge is two clicks.
+2. **Settings at small sizes:** first real screenshots of every page at
+   tile sizes (half, third, two thirds, short), then fixes, with Figma
+   narrow frames first. Includes the Quick Settings panel, which is taller
+   than the bar's layer on the UI tests' screen
+   (`TestQuickSettingsOpensSettings` fails on the committed tree).
+3. **Draw and Delete zones:** Delete leaves empty space; Draw drags a new
+   zone over empty space (edges snap to 24ths and to other zones; it stops
+   at neighbours; red when under a tenth or past 16 zones). Zones never had
+   to cover the screen; a SHIFT-drop over a gap just floats. The tools
+   become icons (named, with tooltips), with labels where there's room.
+   **Per-workspace grids**, an opt-in override: (workspace, monitor) grid >
+   monitor grid > default, in `windows.snap.zones.workspaces`
+   (`{"2": {"<monitor id>": [[x, y, w, h], ...]}}`, same checks); each
+   monitor's header gets a "For" choice (All workspaces, Workspace 1-9).
+4. **Edit on screen:** a button per monitor opens the zone editor full size
+   over that monitor (its own overlay layer), same tools plus Done, Escape
+   closes; it edits the workspace you're on. Settings keeps its editor.

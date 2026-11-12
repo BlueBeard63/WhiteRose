@@ -30,7 +30,7 @@ const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
 const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "command", "quote", "menu", "toolbar"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
-const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "select", "aspect"]);
+const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "aspect"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -920,13 +920,16 @@ test("moving a line moves every zone on it", () => {
     assert.equal(Z.moveLine(three, 0, "down", 0.5), three, "the area's own edge doesn't move");
     assert.ok(Z.valid(Z.moveLine(Z.fallback(), 0, "right", 0.123456)));
 });
-test("selecting zones", () => {
+test("clicking a zone with each tool", () => {
     const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
-    assert.deepEqual(Z.select(three, [], 1), [1]);
-    assert.deepEqual(Z.select(three, [1], 2), [1, 2], "a zone it merges with joins");
-    assert.deepEqual(Z.select(three, [1], 0), [0], "one it doesn't is chosen instead");
-    assert.deepEqual(Z.select(three, [1, 2], 2), [1]);
-    assert.deepEqual(Z.select(three, [1, 2], 0), [0]);
+    assert.deepEqual(Z.click(three, "resize", -1, 1), { zones: null, picked: -1 }, "resize: zones aren't clicked");
+    assert.deepEqual(Z.click(three, "stacked", -1, 0).zones, [[0, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]]);
+    assert.deepEqual(Z.click(three, "side", -1, 0).zones[1], [0.25, 0, 0.25, 1]);
+    assert.equal(Z.click([[0, 0, 0.15, 1], [0.15, 0, 0.85, 1]], "side", -1, 0).zones, null, "too thin to split");
+    assert.deepEqual(Z.click(three, "merge", -1, 1), { zones: null, picked: 1 }, "merge: the first click picks");
+    assert.deepEqual(Z.click(three, "merge", 1, 2), { zones: [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], picked: -1 }, "the second merges");
+    assert.deepEqual(Z.click(three, "merge", 1, 0), { zones: null, picked: 0 }, "one it can't merge with is picked instead");
+    assert.deepEqual(Z.click(three, "merge", 1, 1), { zones: null, picked: -1 }, "the same one again unpicks");
 });
 test("a monitor's shape below the bar", () => {
     assert.equal(Z.aspect({ mode: { width: 2880, height: 1612 }, scale: 2, transform: "normal" }, 26), 1440 / 780);
