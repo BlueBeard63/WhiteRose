@@ -8,9 +8,12 @@ Rectangle {
     property string icon
     property string kind: "plain"   // plain | primary | danger | ghost
     property bool enabled: true
+    // Its name (screen readers, tests) where the text alone isn't enough
+    // ("Add rule" on every row): else the text.
+    property string label
     signal clicked()
     Accessible.role: Accessible.Button
-    Accessible.name: root.text || root.icon
+    Accessible.name: root.label || root.text || root.icon
     Accessible.onPressAction: if (root.enabled) root.clicked()
     implicitWidth: row.implicitWidth + 22
     implicitHeight: 30

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -262,4 +263,49 @@ func TestSettingsEditZonesOnScreen(t *testing.T) {
 	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-zone-editor") }) {
 		t.Error("Done didn't close the editor on screen")
 	}
+}
+
+// Settings › Window rules: a rule added from an open window matches its app
+// id exactly and opens for editing; what's picked there is saved, and
+// deleting the rule saves none.
+func TestSettingsAddARuleFromAnOpenWindow(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	dir := filepath.Join(s.Home, "ruled")
+	os.MkdirAll(dir, 0o755)
+	s.Open(filesBinary(s)+" "+dir, "ruled — Files")
+	settings := s.Settings("rules")
+	settings.Click(uitest.Named("Maximise").Role("push button"))
+	settings.WaitFor(uitest.Named("Add a blank rule").Role("push button"))
+	var add *uitest.Node
+	if !uitest.WaitUntil(func() bool {
+		for _, n := range settings.LaidOut() {
+			if n.Role == "push button" && strings.HasPrefix(n.Name, "Add a rule for ") && strings.Contains(n.Name, "files") {
+				add = &n
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("Files isn't offered as an open window")
+	}
+	app := strings.TrimPrefix(add.Name, "Add a rule for ")
+	settings.Click(uitest.Named(add.Name).Role("push button"))
+	want := `"app":"^` + strings.ReplaceAll(regexp.QuoteMeta(app), `\`, `\\`) + `$"`
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.rules"), want) }) {
+		t.Fatalf("no rule for %s: %s", app, s.Setting("windows.rules"))
+	}
+
+	settings.Click(uitest.Named("Workspace").Role("combo box"))
+	settings.WaitFor(uitest.Named("Workspace 3").Role("menu item"))
+	settings.Activate(uitest.Named("Workspace 3").Role("menu item"))
+	settings.Click(uitest.Named("Float").Role("radio button"))
+	if !uitest.WaitUntil(func() bool {
+		v := s.Setting("windows.rules")
+		return strings.Contains(v, `"workspace":3`) && strings.Contains(v, `"float":true`)
+	}) {
+		t.Fatalf("the workspace and float weren't saved: %s", s.Setting("windows.rules"))
+	}
+
+	settings.Click(uitest.Named("Delete rule 1").Role("push button"))
+	s.WaitSetting("windows.rules", []any{})
 }

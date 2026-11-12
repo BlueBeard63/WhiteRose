@@ -1,0 +1,11 @@
+{
+  "id": "rules",
+  "name": "Window rules",
+  "description": "What happens to a window when it opens: its workspace, monitor, size and place",
+  "icon": "rules",
+  "category": "desktop",
+  "order": 12.7,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["rules", "rule", "window rules", "app", "app id", "title", "workspace", "monitor", "float", "tile", "size", "position", "centre", "center", "maximised", "maximized", "fullscreen", "full screen", "open", "regex"]
+}
