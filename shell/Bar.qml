@@ -63,11 +63,10 @@ PanelWindow {
                 visible: workspaces.visible
                 implicitWidth: 24
                 onClicked: Compositor.nextWindowLayout(root.modelData?.name ?? "")
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    size: 13
+                Glyph {
+                    y: Math.round((parent.height - height) / 2)
                     color: layoutButton.layout === "floating" ? Theme.muted : Theme.text
-                    name: layoutButton.layout === "dwindle" ? "layoutDwindle" : layoutButton.layout === "master" ? "layoutMaster" : "layoutFloating"
+                    name: ({ dwindle: "layoutDwindle", master: "layoutMaster" })[layoutButton.layout] ?? "layoutFloating"
                 }
             }
             Rectangle {
@@ -98,12 +97,13 @@ PanelWindow {
                 active: notifications.open
                 onClicked: ShellState.togglePanel("notifications")
                 Item {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 14; height: 14
-                    Icon { name: QuickState.doNotDisturb ? "bellOff" : "bell"; color: QuickState.doNotDisturb ? Theme.muted : Theme.text }
+                    y: Math.round((parent.height - height) / 2)
+                    width: 16; height: 16
+                    // Do Not Disturb: the moon.
+                    Glyph { name: QuickState.doNotDisturb ? "moon" : "bell"; color: QuickState.doNotDisturb ? Theme.muted : Theme.text }
                     Rectangle {
                         visible: Notifications.unread && !QuickState.doNotDisturb
-                        x: 9; y: -1
+                        x: 10; y: 0
                         width: 6; height: 6; radius: 3
                         color: Theme.rose
                         border { width: 1; color: Theme.bg }

@@ -67,6 +67,10 @@ pub struct TilingState {
     /// The visible groups' tab strips, and their drawn pictures.
     pub strips: Vec<Strip>,
     pub strip_images: StripImages,
+    /// Each tiled window's tile as last placed: it's drawn and takes the
+    /// pointer only there, so an app that won't shrink to its tile (a
+    /// minimum size) is cut off instead of covering its neighbours.
+    pub placed: Vec<(Window, Rectangle<i32, Logical>)>,
 }
 
 /// The drop preview: a translucent rectangle (global coordinates).
@@ -160,6 +164,7 @@ impl WhiteRose {
 
         let mut tiled: Vec<Window> = Vec::new();
         let mut strips: Vec<Strip> = Vec::new();
+        let mut placed: Vec<(Window, Rectangle<i32, Logical>)> = Vec::new();
         for o in &outputs {
             let layout = self.layout_of(ws, o);
             let set = self.tiling.sets.iter().position(|s| s.workspace == ws && s.output == *o);
@@ -201,6 +206,7 @@ impl WhiteRose {
                     self.tiling.sets[i].tiling.remove(&w);
                 }
             }
+            let area = to_rect(self.usable_area_on(o));
             for w in &members {
                 if self.tiling.sets[i].tiling.contains(w) {
                     continue;
@@ -210,7 +216,6 @@ impl WhiteRose {
                 let next_to = self.workspaces.mru().iter().find(|m| *m != w && tiling.contains(m)).cloned();
                 self.tiling.sets[i].tiling.insert(w.clone(), next_to.as_ref());
             }
-            let area = to_rect(self.usable_area_on(o));
             for (w, r) in self.tiling.sets[i].tiling.arrange(area, &self.tiling.settings.gaps) {
                 let mut r = to_rectangle(r);
                 // A group's shown window sits under its tab strip.
@@ -223,11 +228,13 @@ impl WhiteRose {
                 }
                 if !Self::maximized_or_fullscreen(&w) {
                     self.place(&w, r);
+                    placed.push((w.clone(), r));
                 }
                 tiled.push(w);
             }
         }
         self.tiling.strips = strips;
+        self.tiling.placed = placed;
 
         // A group whose tile is gone (the workspace floats now) ends: its
         // hidden tabs come back, and they all float where they were.
@@ -393,6 +400,25 @@ impl WhiteRose {
                     })
                     .collect()
             }
+            "windows.snap.zones.workspaces" => {
+                s.snap_zones_workspaces = value
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(ws, grids)| {
+                        let ws = ws.parse::<usize>().ok()?.checked_sub(1)?;
+                        let grids = grids
+                            .as_object()?
+                            .iter()
+                            .filter_map(|(id, grid)| {
+                                let raw: Vec<[f64; 4]> = serde_json::from_value(grid.clone()).ok()?;
+                                Some((id.clone(), layout::snap::validate_grid(&raw)?))
+                            })
+                            .collect();
+                        Some((ws, grids))
+                    })
+                    .collect()
+            }
             "windows.gaps.smart" => s.gaps.smart = value.as_bool().unwrap_or(defaults.gaps.smart),
             "windows.master.ratio" => {
                 s.master_ratio =
@@ -420,6 +446,32 @@ impl WhiteRose {
         }
         self.retile();
         self.ipc_sync();
+    }
+}
+
+/// Tiled windows are cut to their tiles: an app that won't shrink to its
+/// tile (a minimum size) is drawn, hit-tested and given frame callbacks only
+/// within it, so it never covers its neighbours. Its popups stay whole.
+impl WhiteRose {
+    /// The part of the screen a tiled window may show on: its tile. Its
+    /// popups aren't clipped. None for floating windows, maximized and
+    /// fullscreen ones, and a tile being dragged (it follows the pointer).
+    pub fn clip_of(&self, w: &Window) -> Option<Rectangle<i32, Logical>> {
+        if self.tiling.dragging.as_ref() == Some(w) || Self::maximized_or_fullscreen(w) {
+            return None;
+        }
+        self.tiling.placed.iter().find(|(p, _)| p == w).map(|(_, tile)| *tile)
+    }
+
+    /// Whether `output` shows any of `w` (always, for an unclipped window).
+    pub fn shows_on(&self, w: &Window, output: &Output) -> bool {
+        match self.clip_of(w) {
+            None => true,
+            Some(clip) => {
+                self.space.output_geometry(output).is_some_and(|o| o.overlaps(clip))
+                    && self.space.element_bbox(w).is_some_and(|b| b.overlaps(clip))
+            }
+        }
     }
 }
 
@@ -721,8 +773,19 @@ impl WhiteRose {
     /// not, on any output).
     pub fn focus_direction(&mut self, dir: Dir) {
         let Some(w) = self.focused_window() else { return };
-        let windows: Vec<(Window, Rect)> =
-            self.space.elements().filter_map(|e| Some((e.clone(), to_rect(self.space.element_geometry(e)?)))).collect();
+        // Tiled windows count where their tiles are, even if the app draws
+        // bigger.
+        let windows: Vec<(Window, Rect)> = self
+            .space
+            .elements()
+            .filter_map(|e| {
+                let mut r = self.space.element_geometry(e)?;
+                if let Some(clip) = self.clip_of(e).filter(|_| *e != w) {
+                    r = r.intersection(clip)?;
+                }
+                Some((e.clone(), to_rect(r)))
+            })
+            .collect();
         if let Some(n) = layout::neighbour(&windows, &w, dir) {
             self.focus_window(Some(n));
         }

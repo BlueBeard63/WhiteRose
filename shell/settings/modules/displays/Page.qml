@@ -310,18 +310,21 @@ Column {
     // ---- the selected monitor ---------------------------------------------------------
     Card {
         visible: page.current !== null
-        // Header: name, model, how it's identified.
+        // Header: name, model, how it's identified (narrow: the ID under the name).
         Item {
-            width: parent.width; height: 64
+            id: monHeader
+            readonly property bool narrow: page.width < 560
+            width: parent.width; height: narrow ? 64 + 26 : 64
             Rectangle {
                 id: monIcon
-                x: 16; anchors.verticalCenter: parent.verticalCenter
+                x: 16; y: 15
                 width: 34; height: 34; radius: 10
                 color: Theme.surface2
                 Icon { anchors.centerIn: parent; name: "monitor"; size: 16; color: Theme.text }
             }
             Column {
-                anchors { left: monIcon.right; leftMargin: 12; right: badges.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                id: monText
+                anchors { left: monIcon.right; leftMargin: 12; right: monHeader.narrow ? parent.right : badges.left; rightMargin: monHeader.narrow ? 16 : 12; verticalCenter: monIcon.verticalCenter }
                 spacing: 2
                 Text {
                     width: parent.width; elide: Text.ElideRight
@@ -338,7 +341,8 @@ Column {
             }
             Row {
                 id: badges
-                anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                x: monHeader.narrow ? monText.x : parent.width - 16 - width
+                y: monHeader.narrow ? 60 : Math.round((64 - height) / 2)
                 spacing: 6
                 Badge { dot: false; text: "# " + (page.current?.id ?? "") }
                 Item { width: 6; height: 1 }

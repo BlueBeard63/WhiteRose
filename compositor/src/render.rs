@@ -10,13 +10,14 @@ use smithay::{
             memory::MemoryRenderBufferRenderElement,
             solid::SolidColorRenderElement,
             surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+            utils::CropRenderElement,
             AsRenderElements, Kind,
         },
         gles::{GlesRenderer, GlesTarget},
     },
-    desktop::{layer_map_for_output, space::SpaceRenderElements},
+    desktop::{layer_map_for_output, LayerSurface, PopupManager, Window},
     output::Output,
-    utils::{Physical, Rectangle, Scale},
+    utils::{Logical, Physical, Point, Rectangle, Scale},
     wayland::shell::wlr_layer::Layer as WlrLayer,
 };
 
@@ -34,8 +35,10 @@ pub const LOCKED: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 smithay::backend::renderer::element::render_elements! {
     /// Everything that can appear on an output, for any backend.
     pub OutputElement<=GlesRenderer>;
-    Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
+    /// Windows and layer surfaces.
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
+    /// A tiled window cut to its tile.
+    Cropped=CropRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     /// Pixels the compositor draws: the pointer, tab strips.
     Image=MemoryRenderBufferRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,
@@ -152,22 +155,110 @@ pub fn output_elements(
                     )));
                 }
             }
-            if let Ok(space) = smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0) {
-                elements.extend(space.into_iter().map(OutputElement::Space));
-            }
-            // Tab strips: behind every window (a dialog over one covers it),
-            // in front of the wallpaper and other bottom layers.
-            let strips = crate::tab_strip::elements(renderer, output, state);
-            if !strips.is_empty() {
-                let behind_windows = elements
-                    .iter()
-                    .rposition(|e| matches!(e, OutputElement::Space(SpaceRenderElements::Element(_))))
-                    .map_or(elements.len(), |i| i + 1);
-                elements.splice(behind_windows..behind_windows, strips);
-            }
+            space_elements(renderer, output, state, &mut elements);
         }
     }
     (elements, CLEAR)
+}
+
+/// The space as `output` shows it, front to back: the top and overlay
+/// layers, the windows, the tab strips (behind every window, so a dialog
+/// over one covers it), then the bottom and background layers. As Smithay's
+/// `space_render_elements`, except that a tiled window is cut to its tile
+/// (`clip_of`), so an app that draws bigger never covers its neighbours.
+fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose, elements: &mut Vec<OutputElement>) {
+    let Some(out) = state.space.output_geometry(output) else { return };
+    let scale = output.current_scale().fractional_scale();
+    let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
+        let map = layer_map_for_output(output);
+        map.layers().rev().filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
+    };
+    let lower = |l: &LayerSurface| matches!(l.layer(), WlrLayer::Background | WlrLayer::Bottom);
+    let layer_elements = |renderer: &mut GlesRenderer, below: bool, elements: &mut Vec<OutputElement>| {
+        for (layer, loc) in layers.iter().filter(|(l, _)| lower(l) == below) {
+            elements.extend(
+                layer
+                    .render_elements::<WaylandSurfaceRenderElement<_>>(
+                        renderer,
+                        loc.to_physical_precise_round(scale),
+                        Scale::from(scale),
+                        1.0,
+                    )
+                    .into_iter()
+                    .map(OutputElement::Surface),
+            );
+        }
+    };
+    layer_elements(renderer, false, elements);
+    for w in state.space.elements().rev() {
+        let Some(bbox) = state.space.element_bbox(w) else { continue };
+        if !bbox.overlaps(out) || !state.shows_on(w, output) {
+            continue;
+        }
+        let Some(at) = state.space.element_location(w) else { continue };
+        let loc = at - w.geometry().loc - out.loc;
+        match state.clip_of(w) {
+            None => elements.extend(
+                w.render_elements::<WaylandSurfaceRenderElement<_>>(
+                    renderer,
+                    loc.to_physical_precise_round(scale),
+                    Scale::from(scale),
+                    1.0,
+                )
+                .into_iter()
+                .map(OutputElement::Surface),
+            ),
+            Some(clip) => {
+                let crop = Rectangle::new(clip.loc - out.loc, clip.size).to_physical_precise_round(scale);
+                clipped_window(renderer, w, loc.to_physical_precise_round(scale), scale, crop, elements);
+            }
+        }
+    }
+    elements.extend(crate::tab_strip::elements(renderer, output, state));
+    layer_elements(renderer, true, elements);
+}
+
+/// A tiled window's elements, front to back: its popups whole (a menu may
+/// reach past the tile), then its own surfaces cut to `crop` (the tile, in
+/// the output's physical pixels). As `Window::render_elements` otherwise.
+fn clipped_window(
+    renderer: &mut GlesRenderer,
+    w: &Window,
+    location: Point<i32, Physical>,
+    scale: f64,
+    crop: Rectangle<i32, Physical>,
+    elements: &mut Vec<OutputElement>,
+) {
+    let Some(toplevel) = w.toplevel() else { return };
+    let surface = toplevel.wl_surface();
+    for (popup, offset) in PopupManager::popups_for_surface(surface) {
+        let at = (w.geometry().loc + offset - popup.geometry().loc).to_physical_precise_round(scale);
+        elements.extend(
+            render_elements_from_surface_tree::<_, WaylandSurfaceRenderElement<_>>(
+                renderer,
+                popup.wl_surface(),
+                location + at,
+                Scale::from(scale),
+                1.0,
+                Kind::Unspecified,
+            )
+            .into_iter()
+            .map(OutputElement::Surface),
+        );
+    }
+    elements.extend(
+        render_elements_from_surface_tree::<_, WaylandSurfaceRenderElement<_>>(
+            renderer,
+            surface,
+            location,
+            Scale::from(scale),
+            1.0,
+            Kind::Unspecified,
+        )
+        .into_iter()
+        .filter_map(|e| CropRenderElement::from_element(e, scale, crop))
+        .map(OutputElement::Cropped),
+    );
 }
 
 /// Draws one frame of `output` into `framebuffer` (nested backend,
@@ -233,7 +324,14 @@ pub fn send_frame_callbacks(output: &Output, state: &mut WhiteRose) {
         let _ = state.display_handle.flush_clients();
         return;
     }
+    // Windows being previewed keep drawing even where they can't be seen.
+    let exporting = state.exporting_windows();
     for window in state.space.elements() {
+        // A tiled window gets frames (and its scale) only from the outputs
+        // its tile is on, even if the app draws past it.
+        if !state.shows_on(window, output) && !exporting.contains(window) {
+            continue;
+        }
         if fullscreen.as_ref().is_none_or(|f| f == window) {
             if let Some(t) = window.toplevel() {
                 send_scale(t.wl_surface(), output);
@@ -241,8 +339,8 @@ pub fn send_frame_callbacks(output: &Output, state: &mut WhiteRose) {
             window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));
         }
     }
-    // Windows being previewed keep drawing even if hidden on another workspace.
-    for window in state.exporting_windows() {
+    // Those hidden on another workspace too.
+    for window in exporting {
         if state.space.element_location(&window).is_none() {
             window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));
         }

@@ -206,8 +206,11 @@ func (w *Window) ScrollTo(q Query) Node {
 	if !waitUntil(Patience, func() bool { n, ok := w.Lookup(q); found = n; return ok }) {
 		w.s.t.Fatalf("%s isn't in %q; showing:\n%s", q, w.title, describe(w.Nodes()))
 	}
-	g := w.geometry()
+	var g [4]int
 	for range 60 {
+		// (Each time: a layer grows as what it shows opens, e.g. the bar
+		// as a panel slides down.)
+		g = w.geometry()
 		if n, ok := w.Find(q); ok && n.Y >= 0 && n.Y+n.H <= g[3] {
 			// Still gliding from the wheel? (A click would only stop it.)
 			time.Sleep(150 * time.Millisecond)

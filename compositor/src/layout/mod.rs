@@ -241,6 +241,8 @@ pub struct Settings {
     pub snap: bool,
     /// Zone grids per monitor (EDID-based id); valid ones only.
     pub snap_zones: HashMap<String, Vec<snap::Zone>>,
+    /// A workspace's (0-based) own grid on a monitor, over the monitor's.
+    pub snap_zones_workspaces: HashMap<usize, HashMap<String, Vec<snap::Zone>>>,
 }
 
 impl Default for Settings {
@@ -255,6 +257,7 @@ impl Default for Settings {
             dwindle_split: None,
             snap: true,
             snap_zones: HashMap::new(),
+            snap_zones_workspaces: HashMap::new(),
         }
     }
 }
@@ -264,6 +267,12 @@ impl Settings {
     /// override, else the workspace's, else the global default.
     pub fn layout_for(&self, ws: usize, monitor: Option<&str>) -> Layout {
         monitor.and_then(|m| self.monitors.get(m)).or_else(|| self.workspaces.get(&ws)).copied().unwrap_or(self.global)
+    }
+
+    /// The zone grid of workspace `ws` (0-based) on `monitor`: the
+    /// workspace's own there, else the monitor's. None: the default grid.
+    pub fn zones_for(&self, ws: usize, monitor: &str) -> Option<&Vec<snap::Zone>> {
+        self.snap_zones_workspaces.get(&ws).and_then(|g| g.get(monitor)).or_else(|| self.snap_zones.get(monitor))
     }
 }
 
@@ -572,6 +581,20 @@ mod tests {
         assert_eq!(s.layout_for(0, Some("DEL-1")), Layout::Floating);
         assert_eq!(s.layout_for(0, Some("LG-2")), Layout::Master);
         assert_eq!(s.layout_for(0, None), Layout::Master, "unknown monitor id");
+    }
+
+    #[test]
+    fn a_workspace_grid_beats_the_monitor_grid() {
+        let half = vec![snap::Zone::new(0.0, 0.0, 0.5, 1.0), snap::Zone::new(0.5, 0.0, 0.5, 1.0)];
+        let whole = vec![snap::Zone::new(0.0, 0.0, 1.0, 1.0)];
+        let mut s = Settings::default();
+        assert_eq!(s.zones_for(1, "DEL-1"), None, "the default grid");
+        s.snap_zones.insert("DEL-1".into(), half.clone());
+        assert_eq!(s.zones_for(1, "DEL-1"), Some(&half));
+        s.snap_zones_workspaces.entry(1).or_default().insert("DEL-1".into(), whole.clone());
+        assert_eq!(s.zones_for(1, "DEL-1"), Some(&whole), "workspace 2's own");
+        assert_eq!(s.zones_for(0, "DEL-1"), Some(&half), "other workspaces keep the monitor's");
+        assert_eq!(s.zones_for(1, "LG-2"), None, "other monitors keep theirs");
     }
 
     #[test]

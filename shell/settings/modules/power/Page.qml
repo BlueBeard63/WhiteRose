@@ -27,12 +27,18 @@ Column {
     PageHeader { title: "Power & Battery"; subtitle: "Laptop battery and power modes." }
 
     // ---- battery ------------------------------------------------------------------
+    // Narrow (a tiled window): the 24-hour chart goes under the charge, and
+    // the power modes one per row.
+    readonly property bool narrow: width < 560
     Card {
         visible: page.hasBattery
         Item {
-            width: parent.width; height: 118
+            width: parent.width
+            height: page.narrow && history.visible ? charge.height + history.height + 46 : 118
             Column {
-                x: 18; anchors.verticalCenter: parent.verticalCenter
+                id: charge
+                x: 18
+                y: page.narrow ? 18 : Math.round((parent.height - height) / 2)
                 spacing: 6
                 Text { text: page.percent + "%"; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(30); weight: Font.DemiBold } }
                 Text {
@@ -54,8 +60,10 @@ Column {
             }
             // The last 24 hours: rose while charging.
             Column {
+                id: history
                 visible: (page.info?.history ?? []).length > 0
-                anchors { right: parent.right; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                x: page.narrow ? 18 : parent.width - 18 - width
+                y: page.narrow ? charge.y + charge.height + 14 : Math.round((parent.height - height) / 2)
                 spacing: 6
                 Row {
                     spacing: 3
@@ -84,7 +92,7 @@ Column {
     }
 
     // ---- power modes ----------------------------------------------------------------
-    Row {
+    Flow {
         width: parent.width
         spacing: 10
         Repeater {
@@ -96,7 +104,7 @@ Column {
             delegate: Rectangle {
                 required property var modelData
                 readonly property bool on: PowerProfiles.profile === modelData.p
-                width: (page.width - 20) / 3; height: 64; radius: 16
+                width: page.narrow ? page.width : (page.width - 20) / 3; height: 64; radius: 16
                 color: on ? Theme.surface2 : Theme.surface1
                 border { width: on ? 1.5 : 0; color: Theme.pearl }
                 Rectangle {

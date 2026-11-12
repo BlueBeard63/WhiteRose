@@ -30,7 +30,7 @@ const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
 const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "command", "quote", "menu", "toolbar"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
-const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "select", "aspect"]);
+const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -920,13 +920,40 @@ test("moving a line moves every zone on it", () => {
     assert.equal(Z.moveLine(three, 0, "down", 0.5), three, "the area's own edge doesn't move");
     assert.ok(Z.valid(Z.moveLine(Z.fallback(), 0, "right", 0.123456)));
 });
-test("selecting zones", () => {
+test("clicking a zone with each tool", () => {
     const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
-    assert.deepEqual(Z.select(three, [], 1), [1]);
-    assert.deepEqual(Z.select(three, [1], 2), [1, 2], "a zone it merges with joins");
-    assert.deepEqual(Z.select(three, [1], 0), [0], "one it doesn't is chosen instead");
-    assert.deepEqual(Z.select(three, [1, 2], 2), [1]);
-    assert.deepEqual(Z.select(three, [1, 2], 0), [0]);
+    assert.deepEqual(Z.click(three, "resize", -1, 1), { zones: null, picked: -1 }, "resize: zones aren't clicked");
+    assert.deepEqual(Z.click(three, "stacked", -1, 0).zones, [[0, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]]);
+    assert.deepEqual(Z.click(three, "side", -1, 0).zones[1], [0.25, 0, 0.25, 1]);
+    assert.equal(Z.click([[0, 0, 0.15, 1], [0.15, 0, 0.85, 1]], "side", -1, 0).zones, null, "too thin to split");
+    assert.deepEqual(Z.click(three, "merge", -1, 1), { zones: null, picked: 1 }, "merge: the first click picks");
+    assert.deepEqual(Z.click(three, "merge", 1, 2), { zones: [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], picked: -1 }, "the second merges");
+    assert.deepEqual(Z.click(three, "merge", 1, 0), { zones: null, picked: 0 }, "one it can't merge with is picked instead");
+    assert.deepEqual(Z.click(three, "merge", 1, 1), { zones: null, picked: -1 }, "the same one again unpicks");
+});
+test("deleting a zone leaves empty space, never the last one", () => {
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.deepEqual(Z.remove(three, 1), [[0, 0, 0.5, 1], [0.5, 0.6, 0.5, 0.4]]);
+    assert.ok(Z.valid(Z.remove(three, 1)), "gaps are allowed");
+    assert.equal(Z.remove([[0, 0, 1, 1]], 0), null, "the last zone stays");
+    assert.deepEqual(Z.click(three, "delete", -1, 2).zones, [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6]]);
+    assert.equal(Z.zoneAt(three, 0.7, 0.3), 1);
+    assert.equal(Z.zoneAt(Z.remove(three, 1), 0.7, 0.3), -1, "empty space");
+});
+test("drawing a zone over empty space", () => {
+    const two = [[0, 0, 0.5, 1], [0.5, 0.6, 0.5, 0.4]]; // empty top right
+    // Snapped to 24ths, and to the zones' edges near the pointer.
+    const d = Z.draw(two, 0.51, 0.01, 0.99, 0.59);
+    assert.deepEqual(d, { zone: [0.5, 0, 0.5, 0.6], ok: true });
+    assert.deepEqual(Z.add(two, d.zone), [[0, 0, 0.5, 1], [0.5, 0.6, 0.5, 0.4], [0.5, 0, 0.5, 0.6]]);
+    // Dragged on into the zones: it stops at them.
+    assert.deepEqual(Z.draw(two, 0.9, 0.05, 0.2, 0.9).zone, [0.5, 0.0417, 0.4167, 0.5583]);
+    // Too small, or started inside a zone.
+    assert.equal(Z.draw(two, 0.6, 0.1, 0.62, 0.3).ok, false);
+    assert.equal(Z.draw(two, 0.2, 0.2, 0.9, 0.3), null);
+    // Sixteen zones already: no room for another.
+    const full = Array.from({ length: 16 }, (_, i) => [(i % 8) / 8, i < 8 ? 0 : 0.5, 1 / 8, 0.25]);
+    assert.equal(Z.draw(full, 0.5, 0.9, 0.9, 0.99).ok, false);
 });
 test("a monitor's shape below the bar", () => {
     assert.equal(Z.aspect({ mode: { width: 2880, height: 1612 }, scale: 2, transform: "normal" }, 26), 1440 / 780);

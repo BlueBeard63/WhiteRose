@@ -24,7 +24,9 @@ Rectangle {
 
     Row {
         id: row
-        anchors.centerIn: parent
+        // Centred on whole pixels, so the bar's glyphs stay sharp.
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
         spacing: root.spacing
     }
 

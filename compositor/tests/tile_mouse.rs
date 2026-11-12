@@ -98,3 +98,33 @@ fn super_drag_moves_and_resizes_floating_windows() {
         });
     });
 }
+
+/// An app that won't shrink to its tile (a minimum size, as Ghostty has)
+/// draws wider than the tile: it's cut to its tile, so it never covers its
+/// neighbour or takes the pointer over it.
+#[test]
+fn a_window_wider_than_its_tile_is_cut_to_it() {
+    let mut h = Headless::new(true);
+    set(&mut h.state, "windows.layout", serde_json::json!("dwindle"));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open(&mut c);
+        let (b, _tb) = open(&mut c);
+        // The left window ignores its 708px tile and draws 1000px wide.
+        c.attach_buffer(&a, 1000, LEFT.3);
+        c.attach_buffer(&b, RIGHT.2, RIGHT.3);
+        ask.run(|s| {
+            let ws = all(s);
+            s.focus_window(Some(ws[0].clone())); // on top of the right one
+            let tile = s.clip_of(&ws[0]).expect("a tiled window is clipped");
+            assert_eq!((tile.loc.x, tile.loc.y, tile.size.w, tile.size.h), LEFT);
+            let over_right = (RIGHT.0 as f64 + 50.0, 300.0).into();
+            assert_eq!(s.window_under(over_right).map(|(w, _)| w.clone()), Some(ws[1].clone()));
+            assert_eq!(s.window_under((50.0, 300.0).into()).map(|(w, _)| w.clone()), Some(ws[0].clone()));
+            // Floating again: no clip.
+            set(s, "windows.layout", serde_json::json!("floating"));
+            assert!(s.clip_of(&ws[0]).is_none());
+        });
+    });
+}

@@ -28,7 +28,9 @@ Column {
 
     PageHeader { title: "Modules"; subtitle: "Every settings page is a module. Pages load only when opened and unload when closed." }
 
-    Row {
+    // Narrow (a tiled window): one figure per row.
+    readonly property bool narrow: width < 560
+    Flow {
         width: parent.width
         spacing: 10
         Repeater {
@@ -39,7 +41,7 @@ Column {
             ]
             delegate: Rectangle {
                 required property var modelData
-                width: (page.width - 20) / 3; height: 76; radius: 16
+                width: page.narrow ? page.width : (page.width - 20) / 3; height: 76; radius: 16
                 color: Theme.surface1
                 Column {
                     x: 14; anchors.verticalCenter: parent.verticalCenter
@@ -72,18 +74,22 @@ Column {
                     Icon { anchors.centerIn: parent; name: mod.modelData.icon; size: 15; color: Theme.text }
                 }
                 Column {
-                    anchors { left: modIcon.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                    // Up to its status and switch: the description is cut short there.
+                    anchors { left: modIcon.right; leftMargin: 12; right: modState.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
                     spacing: 2
                     Row {
+                        width: parent.width
+                        clip: true
                         spacing: 6
                         Text { text: mod.modelData.name; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(13); weight: Font.Medium } }
                         Badge { visible: mod.modelData.core; text: "core" }
                         Badge { visible: !mod.modelData.builtin; text: "installed" }
                         Text { text: "v" + (mod.modelData.version ?? "?"); color: Theme.faint; anchors.verticalCenter: parent.verticalCenter; font { family: Theme.mono; pointSize: Theme.pt(10) } }
                     }
-                    Text { text: mod.modelData.description ?? ""; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11) } }
+                    Text { width: parent.width; elide: Text.ElideRight; text: mod.modelData.description ?? ""; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11) } }
                 }
                 Row {
+                    id: modState
                     anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
                     spacing: 12
                     Row {

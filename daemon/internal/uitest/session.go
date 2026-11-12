@@ -369,6 +369,12 @@ func (s *Session) layer(namespace string) (layerInfo, bool) {
 	return layerInfo{}, false
 }
 
+// HasLayer says whether a layer surface with this namespace is on screen.
+func (s *Session) HasLayer(namespace string) bool {
+	_, ok := s.layer(namespace)
+	return ok
+}
+
 func (s *Session) layerNames() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -391,6 +397,9 @@ func (l *logBuffer) Write(p []byte) (int, error) {
 	defer l.mu.Unlock()
 	return l.b.Write(p)
 }
+
+// Log is everything the session (compositor, shell, apps) has printed so far.
+func (s *Session) Log() string { return stripANSI(s.log.String()) }
 
 func (l *logBuffer) String() string {
 	l.mu.Lock()

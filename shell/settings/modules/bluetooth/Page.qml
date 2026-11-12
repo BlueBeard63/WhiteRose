@@ -62,7 +62,7 @@ Column {
     Card {
         visible: page.adapter !== null
         Item {
-            width: parent.width; height: 64
+            width: parent.width; height: Math.max(64, btText.implicitHeight + 24)
             Rectangle {
                 id: tile
                 x: 14; anchors.verticalCenter: parent.verticalCenter
@@ -71,14 +71,18 @@ Column {
                 Icon { anchors.centerIn: parent; name: "bluetooth"; size: 17; color: page.on ? Theme.onAccent : Theme.muted }
             }
             Column {
-                anchors { left: tile.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                id: btText
+                anchors { left: tile.right; leftMargin: 12; right: btToggle.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
                 Text { text: "Bluetooth"; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold } }
                 Text {
+                    width: parent.width
+                    wrapMode: Text.Wrap
                     text: page.on ? "Visible to others as “" + (page.adapter?.name ?? "") + "” while this page is open" : "Off"
                     color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11.5) }
                 }
             }
             Toggle {
+                id: btToggle
                 label: "Bluetooth"
                 anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
                 checked: page.on

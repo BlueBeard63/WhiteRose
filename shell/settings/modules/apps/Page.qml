@@ -166,10 +166,11 @@ Column {
                                  discord: "discord", signal: "signal-desktop", zsh: "utilities-terminal", git: "git" })[row.modelData.id] ?? ""
                 }
                 Column {
-                    anchors { left: icon.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                    // Up to its badge or switch: a long description is cut short there.
+                    anchors { left: icon.right; leftMargin: 12; right: parent.right; rightMargin: 100; verticalCenter: parent.verticalCenter }
                     spacing: 1
-                    Text { text: row.modelData.name; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(13); weight: Font.Medium } }
-                    Text { text: page.sourceText(row.modelData); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11) } }
+                    Text { width: parent.width; elide: Text.ElideRight; text: row.modelData.name; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(13); weight: Font.Medium } }
+                    Text { width: parent.width; elide: Text.ElideRight; text: page.sourceText(row.modelData); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11) } }
                 }
                 Badge {
                     visible: row.modelData.installed

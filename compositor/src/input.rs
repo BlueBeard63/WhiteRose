@@ -42,6 +42,11 @@ impl WhiteRose {
             }
             InputEvent::PointerAxis { event, .. } => {
                 self.activity();
+                // Scrolling with SUPER held uses it: letting go mustn't open
+                // the launcher.
+                if self.super_held() {
+                    self.logo_tap_pending = false;
+                }
                 let source = event.source();
                 let amount =
                     |axis| event.amount(axis).unwrap_or_else(|| event.amount_v120(axis).unwrap_or(0.0) * 15.0 / 120.);
@@ -119,7 +124,7 @@ impl WhiteRose {
                     keyboard.set_focus(self, Some(layer.wl_surface().clone()), serial);
                 }
             } else {
-                let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
+                let clicked = self.window_under(at).map(|(w, _)| w.clone());
                 if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
                     // Click-to-focus; clicking the background clears focus.
                     self.focus_window(clicked);

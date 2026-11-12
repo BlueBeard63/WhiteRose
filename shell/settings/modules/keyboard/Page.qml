@@ -222,11 +222,12 @@ Column {
         (page.group === "All" || s.group === page.group)
         && (page.query === "" || [s.name, s.group, s.command ?? "", ...s.keys.map(K.spoken)].some(t => t.toLowerCase().includes(page.query.toLowerCase()))))
 
-    Row {
+    // (Narrow, the groups wrap under the search box.)
+    Flow {
         width: parent.width
         spacing: 8
         Rectangle {
-            width: 250; height: 34; radius: 10
+            width: Math.min(250, parent.width); height: 34; radius: 10
             color: Theme.surface1
             Icon { x: 11; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 14; color: Theme.muted }
             TextInput {
@@ -248,6 +249,7 @@ Column {
             }
         }
         Segmented {
+            anchors.verticalCenter: undefined // (in a Flow)
             options: page.groups.map(g => ({ label: g, value: g }))
             value: page.group
             onPicked: v => page.group = v

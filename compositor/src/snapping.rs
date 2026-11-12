@@ -314,10 +314,11 @@ impl WhiteRose {
         snap::edge_target(to_rect(og), self.open_sides(og, pos), pos.x, pos.y).map(|t| (o, t))
     }
 
-    /// The zone grid of output `o`: its own, else two thirds and a third.
+    /// The zone grid of output `o` on the visible workspace: the
+    /// workspace's own there, else the output's, else two thirds and a third.
     fn grid_of(&self, o: &Output) -> Vec<Zone> {
         let id = outputs::info(o).id;
-        self.tiling.settings.snap_zones.get(&id).cloned().unwrap_or_else(snap::default_grid)
+        self.tiling.settings.zones_for(self.workspaces.active(), &id).cloned().unwrap_or_else(snap::default_grid)
     }
 
     /// Shows `rects` as the zone grid (none hides it).
@@ -603,7 +604,7 @@ impl WhiteRose {
         }
         let pointer = self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
         let (w, mode, anchor) = if under_pointer {
-            let Some((w, _)) = self.space.element_under(pointer) else { return };
+            let Some((w, _)) = self.window_under(pointer) else { return };
             (w.clone(), PickerMode::Hover, Some(pointer))
         } else {
             let Some(w) = self.focused_window() else { return };
@@ -620,7 +621,7 @@ impl WhiteRose {
     /// area in the middle, or as a card just below `anchor`.
     fn open_picker(&mut self, w: &Window, o: Output, mode: PickerMode, anchor: Option<Point<f64, Logical>>) {
         let id = outputs::info(&o).id;
-        let grid = self.tiling.settings.snap_zones.get(&id).cloned();
+        let grid = self.tiling.settings.zones_for(self.workspaces.active(), &id).cloned();
         let layouts = snap::picker_layouts(grid.as_deref());
         let geometry = PickerGeometry::new(&layouts);
         let area = self.usable_area_on(&o);

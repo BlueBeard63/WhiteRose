@@ -66,6 +66,13 @@ func TestSettingsEveryControlHasAName(t *testing.T) {
 	if len(seen) < 15 {
 		t.Errorf("only %d pages: %v", len(seen), seen)
 	}
+	// A page that doesn't load has no unnamed controls either: the shell
+	// says so in the log (a QML error).
+	for _, line := range strings.Split(s.Log(), "\n") {
+		if strings.Contains(line, "page failed to load") {
+			problems = append(problems, strings.TrimSpace(line))
+		}
+	}
 	for _, p := range problems {
 		t.Error(p)
 	}
@@ -119,9 +126,9 @@ func TestSettingsWorkspaceLayoutTilesItsWindows(t *testing.T) {
 	s.WaitSetting("windows.layout.workspaces", map[string]any{})
 }
 
-// Settings › Snapping: choose a monitor's first zone (two thirds) and split it
-// stacked (saved as that monitor's grid), then SUPER+SHIFT-drag a window
-// onto the lower half: it fills it. (A zone narrower than the window's
+// Settings › Snapping: with the Stacked tool, click a monitor's first zone
+// (two thirds) to split it (saved as that monitor's grid), then
+// SUPER+SHIFT-drag a window onto the lower half: it fills it. (A zone narrower than the window's
 // smallest size, like the default grid's third, the app wouldn't take.)
 func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
@@ -131,12 +138,12 @@ func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 	settings := s.Settings("snapping")
 	// (Maximised, so the end of the page is on the test's small screen.)
 	settings.Click(uitest.Named("Maximise").Role("push button"))
-	zone := uitest.Named("Zone 1").Role("check box")
-	settings.Click(zone)
-	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(zone); return ok && n.Checked() }) {
-		t.Fatal("clicking zone 1 didn't choose it")
+	stacked := uitest.Named("Stacked").Role("radio button")
+	settings.Click(stacked)
+	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(stacked); return ok && n.Checked() }) {
+		t.Fatal("the Stacked tool didn't stay picked")
 	}
-	settings.Click(uitest.Named("Split stacked").Role("push button"))
+	settings.Click(uitest.Named("Zone 1").Role("push button").Described("Split stacked"))
 	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), "[0,0.5,0.6667,0.5]") }) {
 		t.Fatalf("no split grid saved: %s", s.Setting("windows.snap.zones"))
 	}
@@ -154,5 +161,105 @@ func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 	})
 	if !inZone {
 		t.Fatalf("not in the lower left zone of a %dx%d screen: %v", screen[2], screen[3], g)
+	}
+}
+
+// Narrow (a half-screen tile): the sidebar is an icon rail; Menu slides the
+// full sidebar over the page, and picking a page there opens it and slides
+// the sidebar away. Every control on screen still has a name.
+func TestSettingsNarrowRailOpensTheSidebarOverThePage(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"windows.layout": "master", "windows.master.ratio": 0.5}})
+	settings := s.Settings("windows")
+	settings.WaitFor(uitest.Named("Windows").Role("page tab"))
+	dir := filepath.Join(s.Home, "beside")
+	os.MkdirAll(dir, 0o755)
+	s.Open(filesBinary(s)+" "+dir, "beside — Files")
+	screen := s.Layer("whiterose-wallpaper").Geometry()
+	if !uitest.WaitUntil(func() bool { return settings.Geometry()[2] < screen[2]*2/3 }) {
+		t.Fatalf("Settings isn't a half tile: %v on %v", settings.Geometry(), screen)
+	}
+	searchBox := uitest.Named("Search settings").Role("text")
+	menu := uitest.Named("Menu").Role("push button")
+	settings.WaitFor(menu)
+	if n, ok := settings.Find(searchBox); ok && n.Showing() {
+		t.Fatal("the sidebar's search box shows before Menu opened it")
+	}
+	settings.Click(menu)
+	settings.WaitFor(searchBox)
+	settings.Activate(uitest.Named("Snapping").Role("page tab"))
+	settings.WaitFor(uitest.Named("Stacked").Role("radio button"))
+	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(searchBox); return !ok || !n.Showing() }) {
+		t.Error("picking a page didn't slide the sidebar away")
+	}
+	for _, n := range uitest.Unnamed(settings.LaidOut()) {
+		t.Errorf("narrow: a %s with no name at %d,%d (%dx%d)", n.Role, n.X, n.Y, n.W, n.H)
+	}
+}
+
+// Settings › Snapping: Delete takes the default grid's second zone away
+// (empty space is allowed), and Draw drags a new zone over that space: its
+// edges snap to the zone beside it and to the screen's edges, so it fills
+// the right third again.
+func TestSettingsDeleteAndDrawAZone(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	settings := s.Settings("snapping")
+	settings.Click(uitest.Named("Maximise").Role("push button"))
+	settings.Click(uitest.Named("Delete").Role("radio button"))
+	settings.Click(uitest.Named("Zone 2").Role("push button").Described("Delete"))
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), "[[0,0,0.6667,1]]") }) {
+		t.Fatalf("zone 2 wasn't deleted: %s", s.Setting("windows.snap.zones"))
+	}
+	settings.Click(uitest.Named("Draw").Role("radio button"))
+	z1 := settings.WaitFor(uitest.Named("Zone 1").Role("push button"))
+	g := settings.Geometry()
+	// The editor's area: zone 1 is its left two thirds (less half a gap).
+	area := float64(z1.W+2) / 0.6667
+	left, top := float64(g[0]+z1.X), float64(g[1]+z1.Y)
+	s.Drag(left+area*0.677, top+float64(z1.H)*0.01, left+area*0.99, top+float64(z1.H)*0.99)
+	want := "[[0,0,0.6667,1],[0.6667,0,0.3333,1]]"
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), want) }) {
+		t.Fatalf("the drawn zone isn't the right third: %s", s.Setting("windows.snap.zones"))
+	}
+}
+
+// Settings › Snapping: "Zones for" Workspace 1 edits that workspace's own
+// grid (it starts as the monitor's): deleting a zone saves it there and
+// leaves the monitor's grid alone; Reset takes the workspace back to it.
+func TestSettingsWorkspaceHasItsOwnZones(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	settings := s.Settings("snapping")
+	settings.Click(uitest.Named("Maximise").Role("push button"))
+	settings.Click(uitest.Named("Zones for").Role("combo box"))
+	settings.WaitFor(uitest.Named("Workspace 1").Role("menu item"))
+	settings.Activate(uitest.Named("Workspace 1").Role("menu item"))
+	settings.Click(uitest.Named("Delete").Role("radio button"))
+	settings.Click(uitest.Named("Zone 2").Role("push button").Described("Delete"))
+	own := func() string { return s.Setting("windows.snap.zones.workspaces") }
+	if !uitest.WaitUntil(func() bool { return strings.Contains(own(), `{"1":{`) && strings.Contains(own(), "[[0,0,0.6667,1]]") }) {
+		t.Fatalf("not saved as workspace 1's own: %s", own())
+	}
+	if g := s.Setting("windows.snap.zones"); g != "" && g != "{}" {
+		t.Errorf("the monitor's grid changed: %s", g)
+	}
+	settings.Click(uitest.Named("Reset").Role("push button"))
+	s.WaitSetting("windows.snap.zones.workspaces", map[string]any{})
+}
+
+// Settings › Snapping: "Edit on screen" opens the zone editor over the
+// monitor at full size; a zone deleted there is saved as in Settings, and
+// Done closes it.
+func TestSettingsEditZonesOnScreen(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	settings := s.Settings("snapping")
+	settings.Click(uitest.Named("Edit on screen").Role("push button"))
+	overlay := s.Layer("whiterose-zone-editor")
+	overlay.Click(uitest.Named("Delete").Role("radio button"))
+	overlay.Click(uitest.Named("Zone 2").Role("push button").Described("Delete"))
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), "[[0,0,0.6667,1]]") }) {
+		t.Fatalf("the zone deleted on screen wasn't saved: %s", s.Setting("windows.snap.zones"))
+	}
+	overlay.Click(uitest.Named("Done").Role("push button"))
+	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-zone-editor") }) {
+		t.Error("Done didn't close the editor on screen")
 	}
 }

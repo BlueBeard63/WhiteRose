@@ -462,6 +462,31 @@ fn a_monitor_uses_its_own_grid() {
 }
 
 #[test]
+fn a_workspace_uses_its_own_grid_over_the_monitors() {
+    let mut h = Headless::new(true);
+    name_output(&h);
+    set(
+        &mut h.state,
+        "windows.snap.zones",
+        json!({"connector:TEST-1": [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 1, 0.5]]}),
+    );
+    // Workspace 2's own grid leaves workspace 1 (the window's) alone.
+    set(&mut h.state, "windows.snap.zones.workspaces", json!({"2": {"connector:TEST-1": [[0, 0, 1, 1]]}}));
+    one_window(&mut h, |s| {
+        shift(s, true);
+        super_drag(s, BTN_LEFT, (100.0, 100.0), (300.0, 600.0));
+        shift(s, false);
+        assert_eq!(where_(s), Some((8, 421, 1424, 379)), "the monitor's bottom zone");
+        // Workspace 1's own: one zone, the whole area.
+        set(s, "windows.snap.zones.workspaces", json!({"1": {"connector:TEST-1": [[0, 0, 1, 1]]}}));
+        shift(s, true);
+        let preview = super_drag(s, BTN_LEFT, (300.0, 600.0), (300.0, 200.0));
+        shift(s, false);
+        assert_eq!(preview, Some((8, 34, 1424, 766)));
+    });
+}
+
+#[test]
 fn a_gap_in_the_grid_drops_nowhere_and_bad_grids_are_ignored() {
     let mut h = Headless::new(true);
     name_output(&h);

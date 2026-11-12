@@ -380,7 +380,7 @@ impl WhiteRose {
                 .map(|(s, p)| (s, (p + layer_geo.loc + geo.loc).to_f64()))
         };
         let window_hit = || {
-            self.space.element_under(pos).and_then(|(window, location)| {
+            self.window_under(pos).and_then(|(window, location)| {
                 window
                     .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
                     .map(|(s, p)| (s, (p + location).to_f64()))
@@ -395,6 +395,24 @@ impl WhiteRose {
             .or_else(window_hit)
             .or_else(|| layer_hit(Layer::Bottom))
             .or_else(|| layer_hit(Layer::Background))
+    }
+
+    /// The window under `pos` and where it's drawn (its surface's origin),
+    /// like `Space::element_under`, except that a tiled window only takes
+    /// the pointer inside its tile (`clip_of`); its popups take it anywhere.
+    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&Window, Point<i32, Logical>)> {
+        use smithay::desktop::space::SpaceElement;
+        self.space.elements().rev().find_map(|w| {
+            if !self.space.element_bbox(w)?.to_f64().contains(pos) {
+                return None;
+            }
+            let at = self.space.element_location(w)? - w.geometry().loc;
+            let local = pos - at.to_f64();
+            if self.clip_of(w).is_some_and(|c| !c.to_f64().contains(pos)) {
+                return w.surface_under(local, WindowSurfaceType::POPUP).map(|_| (w, at));
+            }
+            w.is_in_input_region(&local).then_some((w, at))
+        })
     }
 
     /// The top or overlay layer surface (bar, panel, launcher) under `pos`.
@@ -439,10 +457,15 @@ impl WhiteRose {
         self.output_at(at).or_else(|| self.space.outputs().next().cloned())
     }
 
-    /// The output a window is on: the one it fills if maximized or
+    /// The output a window is on: its tiles' output if it's tiled (even if
+    /// the app draws past its tile), the one it fills if maximized or
     /// fullscreen, else the one it overlaps most, else (it hasn't drawn yet)
     /// the one its corner is on, else the first.
     pub fn output_of(&self, w: &Window) -> Option<smithay::output::Output> {
+        // A tiled window is on its tiles' output.
+        if let Some(s) = self.tile_set_of(w) {
+            return Some(s.output.clone());
+        }
         if let Some((_, o)) = self.filling.iter().find(|(f, o)| f == w && self.space.output_geometry(o).is_some()) {
             return Some(o.clone());
         }

@@ -165,6 +165,7 @@ You'll need Rust, Go, Qt 6 (with its QML modules) and QuickShell.
 ```sh
 make check        # every test: Go (with the race detector), Rust (with clippy) and the shell's JS
 make ui-test      # click-and-check tests: real WhiteRose sessions, clicked through by name
+make shots        # screenshots for review (the bar, every Settings page as a tile) in build/shots
 make run-nested   # WhiteRose in a window on your current desktop
 make dev-apps     # Settings, Files and Notepad in your launcher, run from this checkout
 make run-tty      # on the real screens: log in on a text console (Ctrl+Alt+F3) first
