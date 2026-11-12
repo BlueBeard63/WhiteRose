@@ -5,7 +5,10 @@
 the roadmap. What stays from this branch: tiled windows cut to their tiles
 (an app that won't shrink to its tile no longer covers its neighbours), the
 Snapping tools, `make shots`, and the bar's solid glyphs; their decisions
-are recorded below, with the scrolling design kept as a record.
+are recorded below, with the scrolling design kept as a record. All of it
+is done and described in ARCHITECTURE.md ("Layouts and tiling",
+"Snapping", "Top bar", "Settings app"); the branch is ready to merge into
+`v0.3-release`.
 
 Branch: `v0.3/scrollable-columns` (off `v0.3-release`). Roadmap item:
 "Scrollable columns" (0.3 · Layouts). Window rules and scratchpads come
@@ -228,12 +231,12 @@ Settings and zone-editor work added to this branch, before the docs commit:
 1. **Snapping tools** (done): each monitor's header picks the editor's tool
    (Resize · Side by side · Stacked · Merge), which stays picked; hovering
    shows where a split goes; Merge is two clicks.
-2. **Settings at small sizes:** first real screenshots of every page at
+2. **Settings at small sizes** (done): first real screenshots of every page at
    tile sizes (half, third, two thirds, short), then fixes, with Figma
    narrow frames first. Includes the Quick Settings panel, which is taller
    than the bar's layer on the UI tests' screen
    (`TestQuickSettingsOpensSettings` fails on the committed tree).
-3. **Draw and Delete zones:** Delete leaves empty space; Draw drags a new
+3. **Draw and Delete zones** (done, then per-workspace grids, done): Delete leaves empty space; Draw drags a new
    zone over empty space (edges snap to 24ths and to other zones; it stops
    at neighbours; red when under a tenth or past 16 zones). Zones never had
    to cover the screen; a SHIFT-drop over a gap just floats. The tools
@@ -242,7 +245,7 @@ Settings and zone-editor work added to this branch, before the docs commit:
    monitor grid > default, in `windows.snap.zones.workspaces`
    (`{"2": {"<monitor id>": [[x, y, w, h], ...]}}`, same checks); each
    monitor's header gets a "For" choice (All workspaces, Workspace 1-9).
-4. **Edit on screen:** a button per monitor opens the zone editor full size
+4. **Edit on screen** (done; it edits the grid picked under "Zones for" rather than the workspace you're on, so the two editors stay in step): a button per monitor opens the zone editor full size
    over that monitor (its own overlay layer), same tools plus Done, Escape
    closes; it edits the workspace you're on. Settings keeps its editor.
 

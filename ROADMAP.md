@@ -120,7 +120,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 
 - Drag a window to an edge/corner to snap to halves/quarters, with a preview.
 - Hover the maximize button (WhiteRose's own apps), SUPER+Z, or drag to the top of the screen for a layout picker (halves, thirds, quarters, 2/3 + 1/3).
-- Custom zone grids per monitor (FancyZones), shown with SHIFT while dragging and edited in Settings › Snapping.
+- Custom zone grids per monitor, or per workspace on a monitor (FancyZones), shown with SHIFT while dragging. Edited in Settings › Snapping (split, merge, draw, delete, move the lines) or at full size on the monitor itself.
 - SUPER+SHIFT+arrows snap a floating window, as Win+arrows do.
 - Snapped windows resize together when you drag their shared edge.
 

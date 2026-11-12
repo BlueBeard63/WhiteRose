@@ -91,7 +91,9 @@ daemon/       whiterosed: Go
                      namespace (shell/LayerTitle.qml) and placed through the compositor's
                      test-only `{"debug_layers":true}`; settings can be seeded and read back. Nested in the
                      current desktop, or headless (apps draw in software) when there is none or
-                     WR_UITEST_HEADLESS=1: the `ui` CI job
+                     WR_UITEST_HEADLESS=1: the `ui` CI job. `make shots` (shots_test.go) uses
+                     the same sessions to save screenshots for review to build/shots: the bar,
+                     Quick Settings, the zone editor on screen, and every Settings page as a tile
 Makefile      `make check` = gofmt, vet, race, fuzz, cargo fmt, clippy -D warnings, cargo test
               `make run-nested` = WhiteRose in a window on the current desktop
 ```
@@ -291,6 +293,7 @@ Figma frame: `Settings - Appearance`.
 
 - `bar.*` settings choose what the bar shows: workspaces (`bar.workspaceStyle`: dots or numbers), now playing, the network, Bluetooth and volume icons, the battery percentage, the bell, the date, 12- or 24-hour time, and seconds. `bar.screens` puts the bar on every screen or only the main one.
 - Seconds are the only option with a cost: the clock then wakes every second instead of every minute.
+- **Icons:** the bar's are solid glyphs on a 16px grid (`shell/Glyph.qml`; Figma: `Bar Icons — 16px`), drawn 1:1 and placed on whole pixels (`Trigger` centres its row on whole pixels too), so they stay sharp. Lucide's 24px outlines, shrunk to 13–16px, landed between pixels and went soft. Weak Wi-Fi draws the bands it doesn't reach dim, and Do Not Disturb shows a moon. Elsewhere (Settings, panels) icons stay Lucide outlines (`Icon.qml`).
 
 ## Screenshot tool
 
@@ -379,6 +382,7 @@ Figma frames: `Settings - Windows` (and scrolled to the end). Plan and decisions
 - **One reconcile step:** `retile()` brings the visible workspace in line with the settings and the windows on screen. Windows that should be tiled join next to the most recently used tile, those that shouldn't leave, and each tile gets its rectangle. It runs after a window's first commit (when the app has said whether it's a dialog or fixed size), closing, minimising, switching or moving workspaces, maximize/fullscreen ending, bar or output changes (`refit_windows`) and settings changes. A window is only reconfigured when its rectangle moved, so the bar's frequent commits cost nothing.
 - **Floating geometry is kept:** a window's floating place and size are remembered when it's tiled and given back when it floats again (the workspace turns floating, it moves to a floating one). Tiled windows are told they're tiled (xdg-toplevel `tiled_*` states), so apps drop their shadows and rounded corners.
 - **What floats on a tiled workspace:** dialogs (windows with a parent), fixed-size windows, and windows you take out (SUPER+SHIFT+SPACE, or dropped outside the tiles). They sit above the tiles. Maximized and fullscreen windows keep their place in the tree.
+- **A tiled window is cut to its tile:** a tile can get smaller than an app will go (Ghostty's minimum size, deep in a dwindle split), and the app then draws bigger than its tile. `retile()` records each placed tile (`TilingState.placed`), and `clip_of` makes it the window's clip: `render.rs` builds the space's elements itself and crops the window's own surfaces to it (its popups stay whole, so a menu can reach past the tile), `window_under` hit-tests the pointer by it, and frame callbacks go only to outputs the tile is on. Floating, maximized, fullscreen and dragged windows aren't clipped.
 - **Mouse:** a title-bar drag or SUPER+left-drag drags a tile, with a preview of where it lands. Dropped on another tile's top band it joins that tile's group, on its middle the two swap, near an edge it splits that tile. Dropped outside every tiled area it floats there; anywhere else it goes back. A border drag, SUPER+right-drag (nearest corner) or dragging the gap between tiles moves the splits. SUPER+drag also moves and resizes floating windows.
 - **Tab groups:** windows sharing one tile, one shown at a time. The tree holds each group's shown window; the other tabs are hidden like windows on another workspace, so changing tab is a `replace` in the tree. The strip above the tile is drawn by the compositor (`tab_strip.rs`): fontdue and the Geist font compiled in, each strip drawn once at the output's real resolution and cached until its titles, shown tab or size change, behind every window and in front of the wallpaper. A tab leaves its group when it's dragged out, closed, minimised or moved to another workspace; a group of one ends, and so does every group on a workspace that stops tiling.
 - **Keys** (Settings › Keyboard, "Windows"): SUPER+T next layout (saved for the workspace, or for the monitor if it has its own), SUPER+SHIFT+SPACE float or tile, SUPER+arrows focus, SUPER+SHIFT+arrows move (a floating window snaps instead, see Snapping), SUPER+R resize mode (arrows resize; Escape, Enter or any other key ends it), SUPER+J flip a split, SUPER+M make master, SUPER+G group or ungroup, SUPER+. and SUPER+, next and previous tab. SUPER+CTRL+arrows and SUPER+TAB were avoided: with `--mod ctrl-alt` they'd be the same keys as SUPER+arrows and SUPER+ALT+TAB.
@@ -393,7 +397,8 @@ Figma frames: `Snap Picker - SUPER + Z`, `Snap Picker - Maximize button`, `Setti
 - **A snap is a zone**, `[x, y, w, h]` as fractions of the output's usable area (`compositor/src/layout/snap.rs`, pure and unit-tested). Its rectangle uses the tiling gaps, so a snapped half is the same rectangle as a dwindle tile. Zones are refitted in `retile()` when the bar, the outputs or the gaps change; a window is only reconfigured when its rectangle moved.
 - **Each snapped window remembers its own size** from before it snapped (`snapping.rs`). Dragging it away gives that size back under the pointer, at the same place across its width; restoring puts it back where the drag started. Maximize, fullscreen and minimise keep the snap. Moving the window to another workspace, or the workspace starting to tile, ends it. Snapped windows are told they're tiled (`tiled_*` states), as tiles are.
 - **Dragging** (title bar or SUPER+drag): the pointer reaching a side edge gives a half, near a corner a quarter, the top edge maximizes, and the top edge's middle third opens the picker. An edge with another monitor beyond it doesn't snap, so windows still cross. The drop preview is the one tiles use.
-- **Zones:** holding SHIFT during a drag shows the monitor's zone grid instead of the edges, and the window drops into the zone under the pointer (one zone per drop). `windows.snap.zones` holds a grid per monitor id (`{"<monitor id>": [[x, y, w, h], ...]}`); without one, two thirds and a third. A grid has 1–16 zones, each inside the area, at least a tenth of it each way, none overlapping. The daemon, the compositor and the Settings page all check this; the compositor ignores a bad grid.
+- **Zones:** holding SHIFT during a drag shows the monitor's zone grid instead of the edges, and the window drops into the zone under the pointer (one zone per drop). `windows.snap.zones` holds a grid per monitor id (`{"<monitor id>": [[x, y, w, h], ...]}`); without one, two thirds and a third. A grid has 1–16 zones, each inside the area, at least a tenth of it each way, none overlapping. Zones needn't cover the area: a drop over a gap just floats. The daemon, the compositor and the Settings page all check this; the compositor ignores a bad grid.
+- **A grid per workspace:** `windows.snap.zones.workspaces` (`{"<workspace 1-9>": {"<monitor id>": grid}}`) gives a workspace its own grid on a monitor. Drags and the picker use the active workspace's (`Settings::zones_for`): the workspace's own on that monitor, else the monitor's, else the default.
 - **Resizing together:** a border drag, SUPER+right-drag or a drag on the gap between snapped windows moves the line they share. Every snapped window on that line follows, as long as it lines up with the others along it, so the middle of four quarters moves all four. Edges on the screen's border don't move, and no window gets narrower than a tenth.
 - **The picker:** the layouts (halves, thirds, quarters, two thirds and a third both ways, the monitor's own grid) as small diagrams. It opens three ways:
   - SUPER+Z, for the focused window. The arrows, Enter and Escape work it, and SUPER+Z again closes it.
@@ -401,7 +406,11 @@ Figma frames: `Snap Picker - SUPER + Z`, `Snap Picker - Maximize button`, `Setti
   - Resting on Maximise in a WhiteRose app (the kit's `AppWindow`) for half a second. The kit sends `snap_picker` with `under_pointer` (`apps/kit/src/compositor.rs`), and the picker opens as a card just below the pointer. It closes once the pointer is well away. Other apps draw their own buttons, so the compositor can't see a hover on them.
   - The compositor places the picker, finds the cell under the pointer (even while a drag holds the pointer) and shows the hovered cell's drop preview. The shell only draws the `snap_picker` event (`shell/SnapPicker.qml`, its own overlay layer), at exactly the tiles and cells it's given.
 - **Keys** (SUPER+SHIFT+arrows on a floating window): left or right snaps to that half. Pressed again towards the side it already reaches, it goes on to the next monitor's opposite half or quarter; towards the other side, it gives the window its own size back. Up maximizes; from a half it goes to the top quarter, and from a bottom quarter to the half. Down goes from a half to the bottom quarter, from a top quarter to the half, and from a bottom quarter or maximized back to the window's own size. Down never minimises.
-- **Settings › Snapping:** the switch, and each monitor's zone grid edited in place (`shell/settings/modules/snapping/`). Click a zone to choose it (a second one beside it, to merge), split it side by side or stacked, or drag the line between zones. Every change is saved as it's made. `Zones.js` holds the grid logic and is tested by `node shell/tests/run.mjs`.
+- **Settings › Snapping:** the switch, and each monitor's zone grid edited in place (`shell/settings/modules/snapping/`). Its header picks:
+  - **Zones for:** all workspaces (the monitor's grid) or one workspace. A workspace starts from the monitor's grid and saves its own on the first change; Reset takes it back.
+  - **The tool**, which stays picked (icons, named for screen readers and tests, with tooltips): Resize drags the lines between zones; Side by side and Stacked split the zone clicked (hovering shows where); Merge joins two zones clicked one after the other; Draw drags out a zone over empty space (its edges snap to 24ths and to nearby zone edges, and it stops at the zones around it); Delete takes a zone away (never the last).
+  - **Edit on screen** opens the same editor at full size over that monitor (`ZonesOnScreen.qml`, an overlay layer `whiterose-zone-editor` that Settings opens itself): the desktop dims behind translucent zones, the bar stays usable, and a tool bar under the island has the tools and Done (or Escape). Figma: `Edit zones on screen`.
+  - Every change is saved as it's made. `Zones.js` holds the grid logic (splitting, merging, moving lines, drawing, deleting) and is tested by `node shell/tests/run.mjs`.
 - **An app's smallest size wins:** a zone smaller than a window's minimum size (420x300 for WhiteRose's own apps) is asked for, but the app keeps its own size.
 
 ## Keyboard and shortcuts
@@ -619,7 +628,8 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
   - Only the open page is loaded.
   - The Modules page turns optional pages off (`settings.modules.disabled`).
   - Search matches names, descriptions and keywords.
-- **Shared components** live in `shell/settings/`: cards, rows, toggles, dropdowns, segmented control, fields, sliders and dialogs.
+- **Shared components** live in `shell/settings/`: cards, rows, toggles, dropdowns, segmented control (text, or icons with tooltips), fields, sliders and dialogs.
+- **As a tile:** Settings works from a third of the screen up (Figma: `Settings - narrow · …`). Below 900px the sidebar becomes an icon rail (`Settings/Rail`); its Menu or Search button, or `/`, slides the full sidebar over the page, and picking a page, the dimmed page or Escape slides it away. Rows (`SettingRow`) and page headers (`PageHeader`) put their controls under their title where they don't fit beside it, and pages with their own grids reflow. `make shots` shows every page at a third, a half and two thirds of the screen.
 - **Pages in this first set**, each backed by the real service:
 
 | Page | Backed by |
@@ -637,7 +647,7 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Users | `whiterosed` users ops (AccountsService); permission through the shell's polkit prompt. |
 | Top Bar | The `bar.*` settings. |
 | Windows | The `windows.layout*`, `windows.gaps.*`, `windows.master.*` and `windows.dwindle.split` settings; monitors from the compositor's `outputs` event. |
-| Snapping | `windows.snap` and `windows.snap.zones` (each monitor's zone grid, edited in place); monitors from the `outputs` event. |
+| Snapping | `windows.snap`, `windows.snap.zones` and `windows.snap.zones.workspaces` (each monitor's zone grid, and workspaces' own, edited in place or on screen); monitors from the `outputs` event. |
 | Displays | Compositor `outputs` event; Apply writes the `displays.test` trial, Keep writes `displays`. |
 | Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
 
