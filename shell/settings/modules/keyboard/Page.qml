@@ -54,11 +54,15 @@ Column {
         Compositor.pauseShortcuts(false);
     }
     function finish(c) {
-        const range = page.shortcuts.find(s => s.id === page.recording)?.keys.some(k => k.endsWith("1-9"))
-            || ["workspace", "move-to-workspace"].includes(page.recording);
-        if (range) {
-            const r = K.forRange(c);
-            if (!r) { page.recordError = "Use a number key: it stands for 1 to 9"; page.held = ""; return; }
+        const range = page.shortcuts.find(s => s.id === page.recording)?.range ?? "";
+        if (range !== "") {
+            const r = K.forRange(c, range);
+            if (!r) {
+                page.recordError = range === "arrows" ? "Use an arrow key: it stands for all four"
+                                                      : "Use a number key: it stands for 1 to 9";
+                page.held = "";
+                return;
+            }
             c = r;
         }
         page.captured = K.normalize(c);
@@ -379,7 +383,7 @@ Column {
                         background: Rectangle { color: Theme.surface1; radius: 12; border { width: 1; color: Theme.surface2 } }
                         readonly property var items: [
                             { label: "Change shortcut", run: () => page.record(row.modelData.id, false) },
-                            { label: "Add another", show: row.modelData.keys.length > 0 && row.modelData.keys.length < 4 && !row.modelData.keys.some(k => k.endsWith("1-9")), run: () => page.record(row.modelData.id, true) },
+                            { label: "Add another", show: row.modelData.keys.length > 0 && row.modelData.keys.length < 4 && !row.modelData.range, run: () => page.record(row.modelData.id, true) },
                             { label: "Reset to default", show: row.changed, run: () => page.save(K.setKeys(page.state, row.modelData.id, row.modelData.defaults)) },
                             { label: "Turn off", show: row.modelData.keys.length > 0, run: () => page.save(K.setKeys(page.state, row.modelData.id, [])) },
                             { label: "Edit…", show: !!row.modelData.command, run: () => customDialog.openFor(page.custom.find(c => c.id === row.modelData.id)) },

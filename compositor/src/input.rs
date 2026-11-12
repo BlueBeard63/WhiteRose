@@ -6,14 +6,16 @@ use smithay::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
+    desktop::Window,
     input::{
         keyboard::FilterResult,
-        pointer::{AxisFrame, ButtonEvent, MotionEvent},
+        pointer::{AxisFrame, ButtonEvent, GrabStartData, MotionEvent},
     },
-    utils::{Logical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point, Serial, SERIAL_COUNTER},
 };
 
 use crate::{
+    grabs::tile_grab::nearest_corner,
     keybind::{is_logo_key, Action, Mods},
     state::WhiteRose,
 };
@@ -113,12 +115,60 @@ impl WhiteRose {
                 }
             } else {
                 let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
-                // Click-to-focus; clicking the background clears focus.
-                self.focus_window(clicked);
+                if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
+                    // Click-to-focus; clicking the background clears focus.
+                    self.focus_window(clicked);
+                }
             }
         }
         pointer.button(self, &ButtonEvent { button, state: button_state, serial, time });
         pointer.frame(self);
+    }
+
+    /// SUPER+left-drag moves a window and SUPER+right-drag resizes it from
+    /// the nearest corner; a tab shows its window (and drags it out);
+    /// dragging the gap between tiles resizes them.
+    /// True if a drag started (the click is the compositor's).
+    fn mouse_grab(&mut self, button: u32, at: Point<f64, Logical>, clicked: Option<&Window>, serial: Serial) -> bool {
+        const BTN_LEFT: u32 = 0x110;
+        const BTN_RIGHT: u32 = 0x111;
+        let start = GrabStartData { focus: None, button, location: at };
+        if self.super_held() && (button == BTN_LEFT || button == BTN_RIGHT) {
+            let Some(w) = clicked.filter(|w| !self.fullscreen.contains(w)).cloned() else { return false };
+            self.focus_window(Some(w.clone()));
+            if button == BTN_LEFT {
+                self.start_move(w, start, serial);
+            } else {
+                let rect = self.space.element_geometry(&w).unwrap_or_default();
+                self.start_resize(w, nearest_corner(rect, at), start, serial);
+            }
+            return true;
+        }
+        if button == BTN_LEFT && clicked.is_none() {
+            // A tab: show it, and drag it if the pointer moves.
+            if let Some(tab) = self.tab_at(at) {
+                self.focus_window(Some(tab.clone()));
+                self.start_move(tab, start, serial);
+                return true;
+            }
+            if let Some((w, edges)) = self.gap_at(at) {
+                self.start_tile_resize(&w, edges, start, serial);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Is SUPER held (or what stands in for it, with --mod ctrl-alt)?
+    fn super_held(&self) -> bool {
+        let Some(keyboard) = self.seat.get_keyboard() else { return false };
+        let held = Mods::from(&keyboard.modifier_state());
+        match self.keyboard.logo_remap {
+            Some(m) => {
+                (!m.ctrl || held.ctrl) && (!m.alt || held.alt) && (!m.shift || held.shift) && (!m.logo || held.logo)
+            }
+            None => held.logo,
+        }
     }
 
     /// One key event from any backend (also driven directly by tests).
@@ -152,6 +202,12 @@ impl WhiteRose {
                 // While a switcher is open it owns the keyboard.
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
+                }
+                // Resize mode takes the arrows (and Escape or Enter ends it).
+                if state.tiling.key_resize && pressed {
+                    if let Some(result) = state.resize_mode_key(sym, keycode) {
+                        return result;
+                    }
                 }
 
                 // SUPER on its own opens the launcher, on release, and only if no
@@ -190,6 +246,37 @@ impl WhiteRose {
 }
 
 impl WhiteRose {
+    /// A key pressed in resize mode: an arrow resizes the focused window,
+    /// Escape or Enter ends the mode, a modifier is passed on, and any other
+    /// key ends it and then works as usual (None).
+    fn resize_mode_key(
+        &mut self,
+        sym: smithay::input::keyboard::Keysym,
+        keycode: smithay::input::keyboard::Keycode,
+    ) -> Option<FilterResult<Option<Action>>> {
+        use smithay::input::keyboard::keysyms as k;
+        let dir = match sym.raw() {
+            k::KEY_Left => Some(crate::layout::Dir::Left),
+            k::KEY_Right => Some(crate::layout::Dir::Right),
+            k::KEY_Up => Some(crate::layout::Dir::Up),
+            k::KEY_Down => Some(crate::layout::Dir::Down),
+            _ => None,
+        };
+        if let Some(d) = dir {
+            self.swallowed.push(keycode);
+            return Some(FilterResult::Intercept(Some(Action::ResizeDirection(d))));
+        }
+        if sym.is_modifier_key() {
+            return Some(FilterResult::Forward);
+        }
+        self.tiling.key_resize = false;
+        if matches!(sym.raw(), k::KEY_Escape | k::KEY_Return | k::KEY_KP_Enter) {
+            self.swallowed.push(keycode);
+            return Some(FilterResult::Intercept(None));
+        }
+        None
+    }
+
     /// Keys while ALT+TAB / SUPER+ALT+TAB is open. Releasing the modifiers
     /// that opened it focuses the selection.
     fn switcher_key(

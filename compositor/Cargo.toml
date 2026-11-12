@@ -32,6 +32,7 @@ wayland-client = "0.31.10"
 wayland-protocols = { version = "0.32", features = ["client", "unstable", "staging"] }
 wayland-scanner = "0.31"
 xcursor = "0.3"
+fontdue = "0.9.5"
 
 [dependencies.smithay]
 version = "0.7.0"

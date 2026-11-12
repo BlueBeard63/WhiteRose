@@ -125,6 +125,10 @@ pub struct ShortcutView {
     /// Custom shortcuts: what they run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// "digits" or "arrows" for a shortcut that stands for a set of keys
+    /// (recorded with one of them); empty for one key.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub range: String,
 }
 
 /// Every shortcut with its keys now: built-in (in catalog order), then yours.
@@ -138,6 +142,7 @@ pub fn shortcut_views(overrides: &HashMap<String, Vec<String>>, custom: &[Custom
             keys: overrides.get(d.id).cloned().unwrap_or_else(|| d.defaults.iter().map(|s| s.to_string()).collect()),
             defaults: d.defaults.iter().map(|s| s.to_string()).collect(),
             command: None,
+            range: d.range.name().into(),
         })
         .collect();
     v.extend(custom.iter().map(|c| ShortcutView {
@@ -147,6 +152,7 @@ pub fn shortcut_views(overrides: &HashMap<String, Vec<String>>, custom: &[Custom
         keys: c.keys.clone(),
         defaults: Vec::new(),
         command: Some(c.command.clone()),
+        range: String::new(),
     }));
     v
 }

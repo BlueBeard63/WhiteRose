@@ -5,6 +5,8 @@ package uitest_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"whiterose/daemon/internal/uitest"
@@ -83,4 +85,35 @@ func TestFirstRunOffersTheAppSetup(t *testing.T) {
 	if !settings.WaitFor(uitest.Named("Apps").Role("page tab")).Selected() {
 		t.Error("Settings didn't open on Apps")
 	}
+}
+
+// Windows: choosing a layout for workspace 1 stores it and tiles that
+// workspace's windows (Settings and Files share the screen, side by side);
+// back on Default, the setting is cleared.
+func TestSettingsWorkspaceLayoutTilesItsWindows(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	dir := filepath.Join(s.Home, "tiles")
+	os.MkdirAll(dir, 0o755)
+	files := s.Open(filesBinary(s)+" "+dir, "tiles — Files")
+	settings := s.Settings("windows")
+	// (A dropdown's items report places inside the popup, not the window,
+	// so they're picked through their accessible action, not clicked.)
+	pick := func(combo, item string) {
+		settings.Click(uitest.Named(combo).Role("combo box"))
+		settings.WaitFor(uitest.Named(item).Role("menu item"))
+		settings.Activate(uitest.Named(item).Role("menu item"))
+	}
+	pick("Workspace 1", "Dwindle")
+	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "dwindle"})
+	var a, b [4]int
+	tiled := uitest.WaitUntil(func() bool {
+		a, b = files.Geometry(), settings.Geometry()
+		apart := a[0]+a[2] <= b[0] || b[0]+b[2] <= a[0]
+		return apart && a[1] == b[1] && a[3] == b[3]
+	})
+	if !tiled {
+		t.Fatalf("not tiled side by side: Files %v, Settings %v", a, b)
+	}
+	pick("Workspace 1", "Default")
+	s.WaitSetting("windows.layout.workspaces", map[string]any{})
 }

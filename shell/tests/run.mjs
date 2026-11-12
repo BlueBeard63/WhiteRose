@@ -493,6 +493,12 @@ test("keys: combos are written one way", () => {
     assert.equal(K.expand("SUPER+1-9")[2], "SUPER+3");
     assert.equal(K.forRange("SUPER+SHIFT+4"), "SUPER+SHIFT+1-9");
     assert.equal(K.forRange("SUPER+W"), null);
+    assert.equal(K.forRange("SUPER+SHIFT+Left", "arrows"), "SUPER+SHIFT+ARROWS");
+    assert.equal(K.forRange("SUPER+4", "arrows"), null);
+    assert.deepEqual(K.expand("super+arrows"), ["SUPER+LEFT", "SUPER+RIGHT", "SUPER+UP", "SUPER+DOWN"]);
+    assert.deepEqual(K.caps("SUPER+ARROWS"), ["SUPER", "←→↑↓"]);
+    // A single arrow shortcut clashes with the range that includes it.
+    assert.equal(K.conflict([{ id: "focus-direction", keys: ["SUPER+ARROWS"] }], "SUPER+Up", "x")?.id, "focus-direction");
     assert.deepEqual(K.caps("SUPER+1-9"), ["SUPER", "1–9"]);
     assert.deepEqual(K.caps("XF86AudioRaiseVolume"), ["VOL +"]);
     assert.equal(K.spoken("SUPER+SPACE"), "SUPER + SPACE");

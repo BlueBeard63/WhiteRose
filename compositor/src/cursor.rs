@@ -140,7 +140,7 @@ impl Cursors {
                     None,
                     Kind::Cursor,
                 ) {
-                    Ok(e) => vec![OutputElement::Cursor(e)],
+                    Ok(e) => vec![OutputElement::Image(e)],
                     Err(err) => {
                         tracing::warn!(?err, "cursor upload failed");
                         Vec::new()

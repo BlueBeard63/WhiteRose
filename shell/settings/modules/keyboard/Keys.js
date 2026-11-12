@@ -2,8 +2,9 @@
 // (shell/tests/run.mjs).
 //
 // Shortcuts are strings the compositor parses: modifiers then one key,
-// "SUPER+SHIFT+S", "PRTSC", "XF86AudioRaiseVolume", and "SUPER+1-9" for the
-// workspace shortcuts (one per number key). Settings store only changes:
+// "SUPER+SHIFT+S", "PRTSC", "XF86AudioRaiseVolume", "SUPER+1-9" for the
+// workspace shortcuts (one per number key) and "SUPER+ARROWS" for the
+// direction shortcuts (one per arrow key). Settings store only changes:
 // "shortcuts.keys" maps an id to its keys (none = turned off), and
 // "shortcuts.custom" holds your own [{ id, name, command, keys }].
 .pragma library
@@ -70,12 +71,12 @@ function normalize(c) {
     return MODS.filter(m => mods.has(m)).concat([key]).join("+");
 }
 
-// Every concrete combo: "SUPER+1-9" is nine.
+// Every concrete combo: "SUPER+1-9" is nine, "SUPER+ARROWS" four.
 function expand(c) {
     const n = normalize(c);
-    if (!n.endsWith("+1-9")) return [n];
-    const head = n.slice(0, -3);
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9].map(d => head + d);
+    if (n.endsWith("+1-9")) return [1, 2, 3, 4, 5, 6, 7, 8, 9].map(d => n.slice(0, -3) + d);
+    if (n.endsWith("+ARROWS")) return ["LEFT", "RIGHT", "UP", "DOWN"].map(k => n.slice(0, -6) + k);
+    return [n];
 }
 
 // The first other shortcut already using any of `c`'s combos.
@@ -84,9 +85,15 @@ function conflict(shortcuts, c, exceptId) {
     return (shortcuts ?? []).find(s => s.id !== exceptId && (s.keys ?? []).some(k => expand(k).some(x => mine.includes(x)))) ?? null;
 }
 
-// Workspace shortcuts take a number key and stand for all nine.
-function forRange(c) {
+// Workspace shortcuts take a number key and stand for all nine
+// (range "digits"); direction shortcuts take an arrow key and stand for all
+// four ("arrows"). Null if the key doesn't fit the range.
+function forRange(c, range) {
     const n = normalize(c);
+    if (range === "arrows") {
+        const m = n.match(/^(.*\+)?(LEFT|RIGHT|UP|DOWN)$/);
+        return m ? (m[1] ?? "") + "ARROWS" : null;
+    }
     const m = n.match(/^(.*\+)?([0-9])$/);
     return m ? (m[1] ?? "") + "1-9" : null;
 }
@@ -96,7 +103,7 @@ const LABELS = {
     XF86MONBRIGHTNESSUP: "BRIGHT +", XF86MONBRIGHTNESSDOWN: "BRIGHT −", XF86AUDIOPLAY: "PLAY", XF86AUDIONEXT: "NEXT",
     XF86AUDIOPREV: "PREV", "1-9": "1–9", PRIOR: "PG UP", NEXT: "PG DN", MINUS: "-", EQUAL: "=",
     BRACKETLEFT: "[", BRACKETRIGHT: "]", SEMICOLON: ";", APOSTROPHE: "'", GRAVE: "`", BACKSLASH: "\\",
-    COMMA: ",", PERIOD: ".", SLASH: "/", LEFT: "←", RIGHT: "→", UP: "↑", DOWN: "↓",
+    COMMA: ",", PERIOD: ".", SLASH: "/", LEFT: "←", RIGHT: "→", UP: "↑", DOWN: "↓", ARROWS: "←→↑↓",
 };
 
 // The key caps to draw for a shortcut.

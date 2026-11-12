@@ -62,6 +62,12 @@ QuickShell's workspace modules are written for specific compositors (Hyprland, i
 compositor/   whiterose-wm: Rust + Smithay 0.7
   src/keybind.rs     shortcut parsing, default table, lookup (pure, unit-tested)
   src/workspace.rs   workspaces + focus history for the switchers (pure, unit-tested)
+  src/layout/        window layouts (pure, unit-tested): the Layout enum and which one applies,
+                     gaps, the dwindle tree, master, drop zones, tab groups
+  src/tiling.rs      tiles per (workspace, output): retile(), floating geometry, mouse drops, the
+                     tiling keys, the windows.* settings
+  src/tab_strip.rs   a grouped tile's tab strip, drawn with fontdue in the bundled Geist
+  src/grabs/         pointer grabs: move, resize, and tile_grab.rs (drag a tile, move a split)
   src/state.rs       compositor state, actions, workspace switching
   src/input.rs       shortcuts first (SUPER tap, PrtSc, ...), then forward to clients
   src/winit.rs       nested backend: redraws only on change (full repaint; the host EGL surface
@@ -73,6 +79,8 @@ compositor/   whiterose-wm: Rust + Smithay 0.7
   tests/globals.rs   starts the core headless and connects a real Wayland client
   tests/layer_shell.rs  a bar-like client on a fake 1440x808 output: bar width, reserved space,
                         windows open below it, launcher gets exclusive keyboard focus
+  tests/tiling.rs, tile_mouse.rs, tile_groups.rs, tile_keys.rs  tiling with real clients: layouts
+                        and settings, dragging and resizing, tab groups, the keys
 daemon/       whiterosed: Go
   uitest/            click-and-check UI tests (`make ui-test`): internal/uitest starts a nested
                      WhiteRose in a session of its own (HOME, D-Bus, accessibility bus, display),
@@ -88,7 +96,7 @@ Makefile      `make check` = gofmt, vet, race, fuzz, cargo fmt, clippy -D warnin
               `make run-nested` = WhiteRose in a window on the current desktop
 ```
 
-When running nested, SUPER is remapped to CTRL+ALT (`--mod ctrl-alt`, the default), because the host desktop keeps SUPER, ALT+TAB and PrtSc for itself.
+When running nested, the window asks the host desktop to pass its shortcuts through, so SUPER works as on real hardware. Where the host can't (X11, or the permission was refused), `--mod ctrl-alt` remaps SUPER to CTRL+ALT.
 
 ---
 
@@ -360,12 +368,29 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
 - **Minimise:** a minimised window is hidden but kept, and comes back when it's focused (dock, ALT+TAB, the app's launcher entry). It stays hidden across workspace switches.
 - **The session's own processes:** the daemon and shell get SIGTERM when the compositor exits, however it exits, so none is left holding the session's sockets.
 
+## Layouts and tiling
+
+Figma frames: `Settings - Windows` (and scrolled to the end). Plan and decisions: `docs/plans/layout-engine.md`.
+
+- **Three layouts:** `floating` (the default: windows stay where they're put), `dwindle` (each new window splits the focused tile; a split goes side by side when its space is wide, stacked when tall, unless set) and `master` (one large tile on a chosen side, the rest stacked).
+- **Which applies:** per workspace *and* output, `monitor setting > workspace setting > global`. Monitors are keyed by their stable ID, as in `displays`.
+- **Settings (whiterosed):** `windows.layout`, `windows.layout.workspaces` (`{"1": "dwindle"}`), `windows.layout.monitors` (`{"<monitor id>": "master"}`), `windows.gaps.inner` / `.outer` (0–64 px), `windows.gaps.smart` (no gaps with one window), `windows.master.ratio` (0.1–0.9) and `.side`, `windows.dwindle.split` (`auto | horizontal | vertical`). The compositor follows them live (`layout_setting` in `daemon_message`).
+- **The core is pure** (`compositor/src/layout/`): generic over the window type like `workspace.rs`, so trees, rectangles, resizing, neighbours and groups are unit-tested without a compositor. The compositor keeps one `Tiling` per (workspace, output) that isn't floating.
+- **One reconcile step:** `retile()` brings the visible workspace in line with the settings and the windows on screen. Windows that should be tiled join next to the most recently used tile, those that shouldn't leave, and each tile gets its rectangle. It runs after a window's first commit (when the app has said whether it's a dialog or fixed size), closing, minimising, switching or moving workspaces, maximize/fullscreen ending, bar or output changes (`refit_windows`) and settings changes. A window is only reconfigured when its rectangle moved, so the bar's frequent commits cost nothing.
+- **Floating geometry is kept:** a window's floating place and size are remembered when it's tiled and given back when it floats again (the workspace turns floating, it moves to a floating one). Tiled windows are told they're tiled (xdg-toplevel `tiled_*` states), so apps drop their shadows and rounded corners.
+- **What floats on a tiled workspace:** dialogs (windows with a parent), fixed-size windows, and windows you take out (SUPER+SHIFT+SPACE, or dropped outside the tiles). They sit above the tiles. Maximized and fullscreen windows keep their place in the tree.
+- **Mouse:** a title-bar drag or SUPER+left-drag drags a tile, with a preview of where it lands. Dropped on another tile's top band it joins that tile's group, on its middle the two swap, near an edge it splits that tile. Dropped outside every tiled area it floats there; anywhere else it goes back. A border drag, SUPER+right-drag (nearest corner) or dragging the gap between tiles moves the splits. SUPER+drag also moves and resizes floating windows.
+- **Tab groups:** windows sharing one tile, one shown at a time. The tree holds each group's shown window; the other tabs are hidden like windows on another workspace, so changing tab is a `replace` in the tree. The strip above the tile is drawn by the compositor (`tab_strip.rs`): fontdue and the Geist font compiled in, each strip drawn once at the output's real resolution and cached until its titles, shown tab or size change, behind every window and in front of the wallpaper. A tab leaves its group when it's dragged out, closed, minimised or moved to another workspace; a group of one ends, and so does every group on a workspace that stops tiling.
+- **Keys** (Settings › Keyboard, "Windows"): SUPER+T next layout (saved for the workspace, or for the monitor if it has its own), SUPER+SHIFT+SPACE float or tile, SUPER+arrows focus, SUPER+SHIFT+arrows move, SUPER+R resize mode (arrows resize; Escape, Enter or any other key ends it), SUPER+J flip a split, SUPER+M make master, SUPER+G group or ungroup, SUPER+. and SUPER+, next and previous tab. SUPER+CTRL+arrows and SUPER+TAB were avoided: with `--mod ctrl-alt` they'd be the same keys as SUPER+arrows and SUPER+ALT+TAB.
+- **The bar:** the `workspaces` event carries every output's layout (`layouts`, by output name); each screen's bar shows its own after the workspace dots and cycles it on a click (`next_window_layout` with the output's name).
+- **Saving from the compositor:** a setting the compositor saves (SUPER+T, the display trial's end) before whiterosed has connected, or while it restarts, waits in `daemon_waiting` (the latest per key) and is sent when it connects.
+
 ## Keyboard and shortcuts
 
 Figma frame: `Settings - Keyboard & Shortcuts`.
 
 - **Every shortcut is an action with a stable id** (`compositor/src/keybind.rs`, `CATALOG`: `close-window`, `workspace`, `volume-up`, ...), a name, a group and default keys. The table is the defaults plus the user's changes, rebuilt the moment a setting changes.
-- **Settings:** `shortcuts.keys` holds only changes (id → keys; an empty list turns one off); `shortcuts.custom` holds your own `{id, name, command, keys}`. Keys are strings: `SUPER+SHIFT+S`, `PRTSC`, `XF86AudioRaiseVolume`, and `SUPER+1-9` for the nine workspace shortcuts.
+- **Settings:** `shortcuts.keys` holds only changes (id → keys; an empty list turns one off); `shortcuts.custom` holds your own `{id, name, command, keys}`. Keys are strings: `SUPER+SHIFT+S`, `PRTSC`, `XF86AudioRaiseVolume`, `SUPER+1-9` for the nine workspace shortcuts and `SUPER+ARROWS` for the four direction shortcuts. A ranged shortcut is recorded with one of its keys; the settings page knows which by the row's `range` (`digits` or `arrows`).
 - **Keys match by position:** shortcuts use the key's Latin symbol, so they keep working on other layouts. Settings records them the same way (by scan code), so what you press is what's saved.
 - **Recording:** Settings sends `pause_shortcuts` so keys reach it instead of triggering shortcuts. Closing Settings (or a crash) un-pauses them. Ctrl+Alt+Fn still works. A combo another shortcut uses shows a warning; Enter takes it over.
 - **Layouts:** `keyboard.layouts` (first is the default; UK English, `gb`, out of the box); an empty list means the system's (`/etc/default/keyboard` on Ubuntu, `/etc/X11/xorg.conf.d/00-keyboard.conf` on Fedora), and UK English if the system doesn't say. SUPER+SPACE switches. The compositor sends the layouts' XKB names and the active one in the `keyboard` event. The page lists layouts from XKB's `evdev.lst`.

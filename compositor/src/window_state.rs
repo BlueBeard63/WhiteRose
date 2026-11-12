@@ -43,7 +43,7 @@ impl WhiteRose {
         self.restore_geometry.push((w.clone(), Rectangle::new(loc, w.geometry().size)));
     }
 
-    fn has_state(w: &Window, state: ToplevelState) -> bool {
+    pub(crate) fn has_state(w: &Window, state: ToplevelState) -> bool {
         w.toplevel().is_some_and(|t| t.with_pending_state(|s| s.states.contains(state)))
     }
 
@@ -94,6 +94,8 @@ impl WhiteRose {
             self.take_floating(w)
         };
         self.apply(w, ToplevelState::Maximized, false, rect);
+        // Back into its tile, if it's tiled.
+        self.retile();
     }
 
     pub fn fullscreen(&mut self, w: &Window) {
@@ -138,6 +140,7 @@ impl WhiteRose {
             self.take_floating(w)
         };
         self.apply(w, ToplevelState::Fullscreen, false, rect);
+        self.retile();
         self.island_sync();
     }
 
@@ -149,7 +152,7 @@ impl WhiteRose {
         }
     }
 
-    /// Re-fits maximized and fullscreen windows after the output or the
+    /// Re-fits maximized and fullscreen windows, and the tiles, after the output or the
     /// panels' reserved space changed (bar appeared, output resized).
     /// Cheap when nothing changed: the bar commits often (clock, EQ), so this
     /// only reconfigures windows when the geometry really moved.
@@ -172,6 +175,7 @@ impl WhiteRose {
             let rect = if fs { self.output_rect(&o) } else { self.usable_area_on(&o) };
             self.apply(&w, if fs { ToplevelState::Fullscreen } else { ToplevelState::Maximized }, true, Some(rect));
         }
+        self.retile();
     }
 
     /// Drops all maximize/fullscreen bookkeeping for a closed window.

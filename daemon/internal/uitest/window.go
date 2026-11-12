@@ -264,6 +264,12 @@ func (w *Window) middle(n Node) (float64, float64) {
 	return float64(g[0] + n.X + n.W/2), float64(g[1] + n.Y + n.H/2)
 }
 
+// Geometry is where the window is on screen: x, y, width, height.
+func (w *Window) Geometry() [4]int {
+	w.s.t.Helper()
+	return w.geometry()
+}
+
 // geometry is where the window is on screen: x, y, width, height.
 func (w *Window) geometry() [4]int {
 	w.s.t.Helper()

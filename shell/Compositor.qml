@@ -16,6 +16,9 @@ Singleton {
     property int activeWorkspace: 1
     property int workspaceCount: 9
     property var occupiedWorkspaces: []
+    // The active workspace's window layout on each screen, by screen name:
+    // "floating", "dwindle" or "master".
+    property var windowLayouts: ({})
     property string focusedAppId: ""
     property string focusedTitle: ""
     // Every window, most recently used first:
@@ -73,6 +76,8 @@ Singleton {
     function moveToWorkspace(n) { send({ cmd: "move_to_workspace", n: n }) }
     function spawn(command) { send({ cmd: "spawn", command: command }) }
     function closeWindow() { send({ cmd: "close_window" }) }
+    // The next window layout on `screenName` (as SUPER+T), saved for the workspace.
+    function nextWindowLayout(screenName) { send({ cmd: "next_window_layout", output: screenName }) }
     function screenshot() { send({ cmd: "screenshot" }) }
     // Focus an app's most recent window, or cycle if it already has focus.
     function focusApp(appId) { send({ cmd: "focus_app", app_id: appId }) }
@@ -112,6 +117,7 @@ Singleton {
             root.activeWorkspace = msg.active;
             root.workspaceCount = msg.count;
             root.occupiedWorkspaces = msg.occupied;
+            root.windowLayouts = msg.layouts ?? {};
             break;
         case "focus":
             root.focusedAppId = msg.app_id ?? "";

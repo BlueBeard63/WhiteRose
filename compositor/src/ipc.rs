@@ -30,11 +30,15 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum Event {
-    /// Workspace numbers are 1-based, as shown to the user.
+    /// Workspace numbers are 1-based, as shown to the user. `layouts`: the
+    /// window layout of the active workspace on each output, by output name
+    /// ("floating", "dwindle", "master"), for each screen's bar.
     Workspaces {
         active: u8,
         count: u8,
         occupied: Vec<u8>,
+        #[serde(default)]
+        layouts: std::collections::BTreeMap<String, String>,
     },
     Focus {
         app_id: Option<String>,
@@ -217,6 +221,12 @@ pub enum Request {
     DeleteScreenshot {
         path: String,
     },
+    /// The next window layout (the bar's layout button), on the output
+    /// named, else where you're working (as SUPER+T).
+    NextWindowLayout {
+        #[serde(default)]
+        output: Option<String>,
+    },
     /// Settings is recording a new shortcut: keys reach it instead of
     /// triggering shortcuts, until it says so or disconnects.
     PauseShortcuts {
@@ -260,6 +270,7 @@ impl Request {
                 Action::NightLight(crate::night_light::NightLight { on, temperature })
             }
             Request::Quit => Action::Quit,
+            Request::NextWindowLayout { output } => Action::NextWindowLayout(output),
             Request::Restart => Action::Restart,
             Request::IdentifyOutputs => Action::IdentifyOutputs,
             Request::Capture { region, pointer, save } => {
@@ -661,10 +672,12 @@ impl WhiteRose {
 
     pub fn workspaces_event(&self) -> Event {
         let count = self.workspaces.count();
+        let active = self.workspaces.active();
         Event::Workspaces {
-            active: self.workspaces.active() as u8 + 1,
+            active: active as u8 + 1,
             count: count as u8,
             occupied: (0..count).filter(|&i| !self.workspaces.windows(i).is_empty()).map(|i| i as u8 + 1).collect(),
+            layouts: self.space.outputs().map(|o| (o.name(), self.layout_of(active, o).as_str().to_string())).collect(),
         }
     }
 
@@ -791,8 +804,12 @@ mod tests {
 
     #[test]
     fn events_serialize_to_one_json_line() {
-        let e = Event::Workspaces { active: 2, count: 9, occupied: vec![1, 2] };
-        assert_eq!(e.to_line(), "{\"event\":\"workspaces\",\"active\":2,\"count\":9,\"occupied\":[1,2]}\n");
+        let layouts = [("DP-1".to_string(), "dwindle".to_string())].into();
+        let e = Event::Workspaces { active: 2, count: 9, occupied: vec![1, 2], layouts };
+        assert_eq!(
+            e.to_line(),
+            "{\"event\":\"workspaces\",\"active\":2,\"count\":9,\"occupied\":[1,2],\"layouts\":{\"DP-1\":\"dwindle\"}}\n"
+        );
         let e = Event::Action { name: "screenshot_region".into() };
         assert_eq!(e.to_line(), "{\"event\":\"action\",\"name\":\"screenshot_region\"}\n");
         let e = Event::Focus { app_id: None, title: Some("a \"quoted\"\nline".into()) };
@@ -865,6 +882,14 @@ mod tests {
     #[test]
     fn requests_map_to_actions() {
         assert_eq!(Request::Workspace { n: 4 }.into_action(), Action::Workspace(4));
+        assert_eq!(
+            Request::parse(r#"{"cmd":"next_window_layout","output":"DP-1"}"#).map(Request::into_action),
+            Ok(Action::NextWindowLayout(Some("DP-1".into())))
+        );
+        assert_eq!(
+            Request::parse(r#"{"cmd":"next_window_layout"}"#).map(Request::into_action),
+            Ok(Action::NextWindowLayout(None))
+        );
         assert_eq!(Request::CloseWindow.into_action(), Action::CloseWindow);
     }
 

@@ -1,7 +1,8 @@
 //! The compositor's connection to whiterosed (this session's settings
 //! daemon): it follows the display settings ("displays", and a layout being
-//! tried out, "displays.test") and the keyboard and shortcut settings
-//! (keyboard.rs), and applies changes live. Reconnects if the
+//! tried out, "displays.test"), the keyboard and shortcut settings
+//! (keyboard.rs) and the window layouts (tiling.rs), and applies changes
+//! live. Reconnects if the
 //! daemon restarts; works without one (built-in defaults).
 
 use std::{
@@ -50,6 +51,10 @@ impl WhiteRose {
         let Ok(reader) = stream.try_clone() else { return };
         self.daemon = Some(stream);
         tracing::info!("connected to whiterosed");
+        // What was asked for while it wasn't there.
+        for req in std::mem::take(&mut self.daemon_waiting) {
+            self.daemon_request(req);
+        }
         let mut buf = Vec::new();
         let inserted =
             self.loop_handle.insert_source(Generic::new(reader, Interest::READ, Mode::Level), move |_, r, state| {
@@ -98,22 +103,29 @@ impl WhiteRose {
         });
     }
 
-    /// Sends a request (no reply expected).
+    /// Sends a request (no reply expected). While whiterosed isn't
+    /// connected (it starts after us, or is restarting) the request waits,
+    /// and goes when it connects; a later one for the same setting replaces it.
     pub fn daemon_request(&mut self, req: Value) {
-        if let Some(s) = self.daemon.as_mut() {
-            let mut line = req.to_string();
-            line.push('\n');
-            if s.write_all(line.as_bytes()).is_err() {
-                self.daemon = None;
-            }
+        let Some(s) = self.daemon.as_mut() else {
+            self.daemon_waiting.retain(|w| w.get("key") != req.get("key") || req.get("key").is_none());
+            self.daemon_waiting.push(req);
+            return;
+        };
+        let mut line = req.to_string();
+        line.push('\n');
+        if s.write_all(line.as_bytes()).is_err() {
+            self.daemon = None;
+            self.daemon_waiting.push(req);
         }
     }
 
     fn daemon_message(&mut self, v: &Value) {
-        let (mut displays, mut keyboard, mut shortcuts, mut idle) = (false, false, false, false);
+        let (mut displays, mut keyboard, mut shortcuts, mut idle, mut layout) = (false, false, false, false, false);
         let mut take = |state: &mut WhiteRose, key: &str, value: &Value| {
             displays |= state.set_display_setting(key, value);
             idle |= state.idle_setting(key, value);
+            layout |= state.layout_setting(key, value);
             if key == "privacy.clipboardHistory" {
                 state.clipboard_history_on = value.as_bool().unwrap_or(true);
             }
@@ -147,6 +159,9 @@ impl WhiteRose {
         }
         if idle {
             self.arm_idle();
+        }
+        if layout {
+            self.apply_layout_settings();
         }
     }
 
