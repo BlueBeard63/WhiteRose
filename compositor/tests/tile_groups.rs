@@ -165,3 +165,30 @@ fn a_workspace_that_stops_tiling_ends_its_groups() {
         assert_eq!(s.tiling.groups.iter().count(), 0);
     });
 }
+
+// The strip moves when its group changes on screen: it appears when the
+// group forms, moves from the old shown tab when another is shown, and
+// goes away when the group ends; switching workspace moves nothing.
+#[test]
+fn strips_move_when_groups_form_change_and_end() {
+    let mut h = Headless::new(true);
+    two_tiles(&mut h, |s| {
+        group_them(s);
+        let a = s.tiling.strips[0].anim.clone().expect("a new group's strip appears");
+        assert!(a.from.is_none());
+        let t = tab(s, 0);
+        drag(s, BTN_LEFT, t, t);
+        let a = s.tiling.strips[0].anim.clone().expect("another tab shown: it moves");
+        assert_eq!(a.from.as_ref().map(|f| f.1), Some(1), "from the tab shown before");
+
+        s.switch_workspace(1);
+        assert!(s.tiling.leaving.is_empty(), "another workspace: nothing ends");
+        s.switch_workspace(0);
+        assert!(s.tiling.strips[0].anim.is_none(), "back again: nothing appears");
+
+        s.run_action(Action::ToggleGroup);
+        assert!(strips(s).is_empty());
+        assert_eq!(s.tiling.leaving.len(), 1, "the group ended: its strip goes away");
+        assert_eq!(s.tiling.leaving[0].labels.len(), 2);
+    });
+}

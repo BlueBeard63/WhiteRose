@@ -9,8 +9,20 @@
 //! buffer at the output's real resolution (sharp at 125%, 150%, ...) and
 //! kept until its size, titles or shown tab change, so an idle desktop
 //! draws nothing new. `layout` places the tabs for both drawing and clicks.
+//!
+//! It moves when the group changes (`ANIM`, eased out): a new group's band
+//! grows from the middle and its island drops out from under it; a tab
+//! joining or leaving widens or narrows the island, the others sliding to
+//! their places and the new one fading in (the shown tab's pill slides
+//! too); a group that ends goes the way it came, drawn over its window
+//! while it does. Only then are strips drawn each frame.
 
-use std::{cell::RefCell, collections::HashMap, sync::OnceLock};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    sync::OnceLock,
+    time::{Duration, Instant},
+};
 
 use smithay::{
     backend::{
@@ -38,6 +50,35 @@ pub struct Strip {
     pub rect: Rectangle<i32, Logical>,
     pub tabs: Vec<Window>,
     pub shown: usize,
+    /// Moving into how it is now, if it's changed lately.
+    pub anim: Option<Anim>,
+}
+
+/// How long a strip takes to appear, change or go.
+pub const ANIM: Duration = Duration::from_millis(220);
+
+/// A strip changing: since when, and what it was (None: it's new).
+#[derive(Debug, Clone)]
+pub struct Anim {
+    pub start: Instant,
+    pub from: Option<(Vec<Window>, usize)>,
+}
+
+/// A strip whose group has ended, going away (drawn over its window).
+#[derive(Debug, Clone)]
+pub struct Leaving {
+    pub output: Output,
+    pub rect: Rectangle<i32, Logical>,
+    pub labels: Vec<Label>,
+    pub shown: usize,
+    pub start: Instant,
+}
+
+/// How far along something started at `start` is at `now`, eased out
+/// (quick to start, gentle to settle): 0 to 1.
+pub fn eased(start: Instant, now: Instant) -> f64 {
+    let p = (now.saturating_duration_since(start).as_secs_f64() / ANIM.as_secs_f64()).clamp(0.0, 1.0);
+    1.0 - (1.0 - p).powi(3)
 }
 
 impl Strip {
@@ -108,15 +149,30 @@ pub struct Tab {
     pub icon: Option<std::sync::Arc<crate::app_icons::Icon>>,
 }
 
+/// What a tab says: its title and its app (for the icon). Kept from the
+/// last frame drawn, for a strip whose windows have gone.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Label {
+    pub title: String,
+    pub app: Option<String>,
+}
+
+fn label_of(w: &Window) -> Label {
+    let (app, _) = crate::ipc::toplevel_ids(w);
+    Label { title: label(w), app }
+}
+
+/// The tabs for `labels`, icons `px` pixels big.
+fn tabs_from(labels: &[Label], px: u32) -> Vec<Tab> {
+    labels
+        .iter()
+        .map(|l| Tab { title: l.title.clone(), icon: l.app.as_deref().and_then(|a| crate::app_icons::icon(a, px)) })
+        .collect()
+}
+
 /// The tabs for `windows`, icons `px` pixels big.
 fn tabs_of(windows: &[Window], px: u32) -> Vec<Tab> {
-    windows
-        .iter()
-        .map(|w| {
-            let (app, _) = crate::ipc::toplevel_ids(w);
-            Tab { title: label(w), icon: app.and_then(|a| crate::app_icons::icon(&a, px)) }
-        })
-        .collect()
+    tabs_from(&windows.iter().map(label_of).collect::<Vec<_>>(), px)
 }
 
 /// Tabs as wide as their icon and title (up to TAB_MAX); if the island
@@ -181,19 +237,91 @@ fn in_round_rect(x: f64, y: f64, (x0, y0, x1, y1): (f64, f64, f64, f64), top: f6
     }
 }
 
-/// True if (x, y) (logical) is on the island: the band, the body under
-/// it with round bottom corners, and the ears joining them.
-fn in_island(x: f64, y: f64, w: f64, l: &StripLayout) -> bool {
-    // (Its ends rounded on top, as in the design.)
-    if in_round_rect(x, y, (0.0, TOP, w, HANG), BAND, 0.0) {
-        return true;
+/// Where everything is at one moment (logical pixels): the band's ends,
+/// the island's left edge and width, how far it has dropped from under
+/// the band (0: all the way; -ISLAND: tucked up), each tab drawn (where,
+/// how strongly, which of the tabs given), and the shown tab's pill.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Scene {
+    pub band: (f64, f64),
+    pub island: (f64, f64),
+    pub drop: f64,
+    pub tabs: Vec<(f64, f64, f64, usize)>,
+    pub pill: Option<(f64, f64)>,
+}
+
+fn lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t
+}
+
+/// A strip `w` wide, still.
+pub fn still(w: f64, l: &StripLayout, shown: usize) -> Scene {
+    Scene {
+        band: (0.0, w),
+        island: (l.island_x, l.island_w),
+        drop: 0.0,
+        tabs: l.tabs.iter().enumerate().map(|(i, (x0, x1))| (*x0, *x1, 1.0, i)).collect(),
+        pill: l.tabs.get(shown).copied(),
     }
-    let (bx0, bx1) = (l.island_x, l.island_x + l.island_w);
-    if in_round_rect(x, y, (bx0, HANG, bx1, HANG + ISLAND), 0.0, CORNER) {
+}
+
+/// `s` appearing, `t` of the way (0 to 1): the band grows from the middle,
+/// then the island drops out from under it, its tabs fading in. Going
+/// away is the same backwards.
+pub fn appearing(s: &Scene, t: f64) -> Scene {
+    let mid = (s.band.0 + s.band.1) / 2.0;
+    let grow = (t / 0.6).min(1.0);
+    let drop = ((t - 0.3) / 0.7).clamp(0.0, 1.0);
+    Scene {
+        band: (lerp(mid, s.band.0, grow), lerp(mid, s.band.1, grow)),
+        island: s.island,
+        drop: -ISLAND * (1.0 - drop),
+        tabs: s.tabs.iter().map(|&(x0, x1, a, i)| (x0, x1, a * drop, i)).collect(),
+        pill: s.pill,
+    }
+}
+
+/// From `from` (tabs `old`) to `to` (tabs `new`), `t` of the way: the
+/// island's width and every tab still there slide; a tab gone fades out
+/// where it was in the first half (its index is then new.len() + its old
+/// index), a new one fades in where it'll be once the others have mostly
+/// moved, so they never cross; the pill slides to the shown tab.
+pub fn changing<W: PartialEq>(from: &Scene, old: &[W], to: &Scene, new: &[W], t: f64) -> Scene {
+    let mut tabs = vec![];
+    for &(x0, x1, _, i) in &to.tabs {
+        match old.iter().position(|w| Some(w) == new.get(i)).and_then(|j| from.tabs.iter().find(|f| f.3 == j)) {
+            Some(&(f0, f1, _, _)) => tabs.push((lerp(f0, x0, t), lerp(f1, x1, t), 1.0, i)),
+            None => tabs.push((x0, x1, ((t - 0.4) / 0.6).clamp(0.0, 1.0), i)),
+        }
+    }
+    for &(x0, x1, _, j) in &from.tabs {
+        if !old.get(j).is_some_and(|w| new.contains(w)) {
+            tabs.push((x0, x1, (1.0 - t / 0.5).clamp(0.0, 1.0), new.len() + j));
+        }
+    }
+    let pill = match (from.pill, to.pill) {
+        (Some(a), Some(b)) => Some((lerp(a.0, b.0, t), lerp(a.1, b.1, t))),
+        (_, b) => b,
+    };
+    Scene {
+        band: to.band,
+        island: (lerp(from.island.0, to.island.0, t), lerp(from.island.1, to.island.1, t)),
+        drop: 0.0,
+        tabs,
+        pill,
+    }
+}
+
+/// True if (x, y) (logical) is on the island's body (dropped `s.drop`)
+/// or its ears; the band is drawn over it after.
+fn in_body(x: f64, y: f64, s: &Scene) -> bool {
+    let top = HANG + s.drop;
+    let (bx0, bx1) = (s.island.0, s.island.0 + s.island.1);
+    if in_round_rect(x, y, (bx0, top, bx1, top + ISLAND), 0.0, CORNER) {
         return true;
     }
     // The ears: under the band, outside a circle in the corner they fill.
-    let ear = |cx: f64| (HANG..HANG + EAR).contains(&y) && (x - cx).powi(2) + (y - (HANG + EAR)).powi(2) >= EAR * EAR;
+    let ear = |cx: f64| (top..top + EAR).contains(&y) && (x - cx).powi(2) + (y - (top + EAR)).powi(2) >= EAR * EAR;
     ((bx0 - EAR)..bx0).contains(&x) && ear(bx0 - EAR) || (bx1..(bx1 + EAR)).contains(&x) && ear(bx1 + EAR)
 }
 
@@ -217,20 +345,24 @@ fn paint(px: &mut [u8], i: usize, [r, g, b]: [u8; 3], a: u32) {
 }
 
 /// Draws a strip `w` x `h` pixels (Argb8888, premultiplied: B, G, R, A in
-/// memory) at `scale` pixels per logical pixel.
+/// memory) at `scale` pixels per logical pixel, still.
 pub fn draw(w: i32, h: i32, scale: f64, tabs: &[Tab], shown: usize) -> Vec<u8> {
+    let lw = w.max(1) as f64 / scale;
+    draw_scene(w, h, scale, tabs, Some(shown), &still(lw, &layout(lw, tabs), shown))
+}
+
+/// Draws `scene`: tabs[i] for a scene tab with index i, `shown` lit.
+pub fn draw_scene(w: i32, h: i32, scale: f64, tabs: &[Tab], shown: Option<usize>, scene: &Scene) -> Vec<u8> {
     let (w, h) = (w.max(1) as usize, h.max(1) as usize);
     let mut px = vec![0u8; w * h * 4];
-    let lw = w as f64 / scale;
-    let l = layout(lw, tabs);
-    let pill_top = HANG + (ISLAND - PILL) / 2.0 - 1.0;
-    let pill = l.tabs.get(shown).map(|(x0, x1)| (*x0, pill_top, *x1, pill_top + PILL));
+    let pill_top = HANG + scene.drop + (ISLAND - PILL) / 2.0 - 1.0;
+    let pill = scene.pill.map(|(x0, x1)| (x0, pill_top, x1, pill_top + PILL));
     // Only the rows the island covers need looking at.
     let rows = (((HANG + ISLAND) * scale).ceil() as usize + 1).min(h);
     for y in 0..rows {
         for x in 0..w {
             let i = (y * w + x) * 4;
-            let a = coverage(x, y, scale, |lx, ly| in_island(lx, ly, lw, &l));
+            let a = coverage(x, y, scale, |lx, ly| in_body(lx, ly, scene));
             if a > 0 {
                 paint(&mut px, i, PANEL, a);
             }
@@ -243,29 +375,57 @@ pub fn draw(w: i32, h: i32, scale: f64, tabs: &[Tab], shown: usize) -> Vec<u8> {
         }
     }
     let size = (FONT_SIZE * scale) as f32;
-    let (ty0, ty1) = ((pill_top * scale).round() as usize, ((pill_top + PILL) * scale).round() as usize);
-    for (i, (tab, (x0, x1))) in tabs.iter().zip(&l.tabs).enumerate() {
-        let colour = if i == shown { TEXT } else { TEXT_DIM };
+    let (ty0, ty1) = ((pill_top * scale).round() as isize, ((pill_top + PILL) * scale).round() as isize);
+    for &(x0, x1, alpha, i) in &scene.tabs {
+        let Some(tab) = tabs.get(i) else { continue };
+        let lit = shown == Some(i);
+        let alpha = (alpha.clamp(0.0, 1.0) * 255.0) as u32;
+        let colour = if lit { TEXT } else { TEXT_DIM };
         let mut start = x0 + TAB_PAD;
         if let Some(icon) = &tab.icon {
-            let (ix, iy) =
-                ((start * scale).round() as usize, ((pill_top + (PILL - ICON) / 2.0) * scale).round() as usize);
-            blit(&mut px, w, h, ix, iy, icon, if i == shown { 255 } else { ICON_DIM });
+            let iy = ((pill_top + (PILL - ICON) / 2.0) * scale).round() as isize;
+            blit(
+                &mut px,
+                w,
+                h,
+                (start * scale).round() as usize,
+                iy,
+                icon,
+                if lit { alpha } else { alpha * ICON_DIM / 255 },
+            );
             start += ICON + ICON_GAP;
         }
         let (tx0, tx1) = ((start * scale).round() as usize, ((x1 - TAB_PAD) * scale).round() as usize);
-        text(&mut px, w, (ty0, ty1), tx0, tx1, &tab.title, size, colour);
+        text(&mut px, w, (ty0, ty1), tx0, tx1, &tab.title, size, colour, alpha);
+    }
+    // Above the band nothing; the band over all (what's tucked up hides
+    // behind it). Its ends rounded on top, as in the design.
+    let band = (((HANG) * scale).ceil() as usize).min(h);
+    px[..band * w * 4].fill(0);
+    for y in 0..band {
+        for x in 0..w {
+            let a = coverage(x, y, scale, |lx, ly| {
+                in_round_rect(lx, ly, (scene.band.0, TOP, scene.band.1, HANG), BAND, 0.0)
+            });
+            if a > 0 {
+                paint(&mut px, (y * w + x) * 4, PANEL, a);
+            }
+        }
     }
     px
 }
 
 /// Draws `icon` (premultiplied) with its top left at (x, y), at `alpha`.
-fn blit(px: &mut [u8], w: usize, h: usize, x: usize, y: usize, icon: &crate::app_icons::Icon, alpha: u32) {
+fn blit(px: &mut [u8], w: usize, h: usize, x: usize, y: isize, icon: &crate::app_icons::Icon, alpha: u32) {
     let n = icon.size as usize;
-    for iy in 0..n.min(h.saturating_sub(y)) {
+    for iy in 0..n {
+        let dy = y + iy as isize;
+        if dy < 0 || dy >= h as isize {
+            continue;
+        }
         for ix in 0..n.min(w.saturating_sub(x)) {
             let s = (iy * n + ix) * 4;
-            let d = ((y + iy) * w + x + ix) * 4;
+            let d = ((dy as usize) * w + x + ix) * 4;
             let a = icon.bgra[s + 3] as u32 * alpha / 255;
             for k in 0..4 {
                 let src = icon.bgra[s + k] as u32 * alpha / 255;
@@ -275,20 +435,21 @@ fn blit(px: &mut [u8], w: usize, h: usize, x: usize, y: usize, icon: &crate::app
     }
 }
 
-/// Writes `s` between `x0` and `x1`, centred vertically; cut short with
-/// an ellipsis if it doesn't fit.
+/// Writes `s` between `x0` and `x1`, centred vertically, at `alpha`; cut
+/// short with an ellipsis if it doesn't fit.
 #[allow(clippy::too_many_arguments)]
 fn text(
     px: &mut [u8],
     w: usize,
-    (top, bottom): (usize, usize),
+    (top, bottom): (isize, isize),
     x0: usize,
     x1: usize,
     s: &str,
     size: f32,
     colour: [u8; 3],
+    alpha: u32,
 ) {
-    let h = bottom.saturating_sub(top);
+    let h = (bottom - top).max(0);
     let font = font();
     let room = x1.saturating_sub(x0) as f32;
     let advance = |c: char| font.metrics(c, size).advance_width;
@@ -320,10 +481,10 @@ fn text(
         for row in 0..m.height {
             for col in 0..m.width {
                 let (x, y) = (gx + col as i32, gy + row as i32);
-                if x < x0 as i32 || x >= x1.max(x0) as i32 || y < top as i32 || y >= bottom as i32 {
+                if x < x0 as i32 || x >= x1.max(x0) as i32 || y < top.max(0) as i32 || y >= bottom as i32 {
                     continue;
                 }
-                let a = bitmap[row * m.width + col] as u32;
+                let a = bitmap[row * m.width + col] as u32 * alpha / 255;
                 paint(px, (y as usize * w + x as usize) * 4, colour, a);
             }
         }
@@ -338,6 +499,34 @@ type StripKey = (i32, i32, Vec<(String, Option<String>)>, usize);
 #[derive(Debug, Default)]
 pub struct StripImages {
     images: RefCell<HashMap<StripKey, MemoryRenderBuffer>>,
+    /// What each tab drawn lately said (for strips going away).
+    labels: RefCell<Vec<(Window, Label)>>,
+}
+
+impl StripImages {
+    /// The labels last drawn for `windows` (a window never drawn: "Window").
+    pub fn labels_of(&self, windows: &[Window]) -> Vec<Label> {
+        let known = self.labels.borrow();
+        windows
+            .iter()
+            .map(|w| {
+                known
+                    .iter()
+                    .find(|(k, _)| k == w)
+                    .map(|(_, l)| l.clone())
+                    .unwrap_or(Label { title: "Window".into(), app: None })
+            })
+            .collect()
+    }
+
+    fn remember(&self, w: &Window, l: &Label) {
+        let mut known = self.labels.borrow_mut();
+        known.retain(|(k, _)| k != w);
+        known.push((w.clone(), l.clone()));
+        if known.len() > 64 {
+            known.remove(0);
+        }
+    }
 }
 
 /// A window's tab label: its title, else its app id.
@@ -346,41 +535,108 @@ fn label(w: &Window) -> String {
     title.filter(|t| !t.is_empty()).or(app).unwrap_or_else(|| "Window".into())
 }
 
+/// A strip's picture as a render element at `rect` (global).
+fn element(
+    renderer: &mut GlesRenderer,
+    origin: Point<i32, Logical>,
+    scale: f64,
+    rect: Rectangle<i32, Logical>,
+    (w, h): (i32, i32),
+    buffer: &MemoryRenderBuffer,
+) -> Option<OutputElement> {
+    let loc = (rect.loc - origin).to_f64().to_physical(scale);
+    let src = Rectangle::from_size((w as f64, h as f64).into());
+    match MemoryRenderBufferRenderElement::from_buffer(
+        renderer,
+        loc,
+        buffer,
+        None,
+        Some(src),
+        Some(rect.size),
+        Kind::Unspecified,
+    ) {
+        Ok(e) => Some(OutputElement::Image(e)),
+        Err(err) => {
+            tracing::warn!(?err, "tab strip upload failed");
+            None
+        }
+    }
+}
+
+fn buffer(pixels: &[u8], (w, h): (i32, i32)) -> MemoryRenderBuffer {
+    MemoryRenderBuffer::from_slice(pixels, Fourcc::Argb8888, (w, h), 1, Transform::Normal, None)
+}
+
 /// The tab strips on `output`, ready to draw (behind the windows).
 pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose) -> Vec<OutputElement> {
     let scale = output.current_scale().fractional_scale();
     let Some(origin) = state.space.output_geometry(output).map(|g| g.loc) else { return Vec::new() };
-    let mut images = state.tiling.strip_images.images.borrow_mut();
-    // Titles change; old pictures go now and then.
-    if images.len() > 64 {
-        images.clear();
-    }
+    let strips = &state.tiling.strip_images;
+    let now = Instant::now();
     let mut out = Vec::new();
     for s in state.tiling.strips.iter().filter(|s| s.output == *output) {
-        let (w, h) = ((s.rect.size.w as f64 * scale).round() as i32, (s.rect.size.h as f64 * scale).round() as i32);
-        let ids: Vec<(String, Option<String>)> =
-            s.tabs.iter().map(|t| (label(t), crate::ipc::toplevel_ids(t).0)).collect();
-        let key = (w, h, ids, s.shown);
-        let buffer = images.entry(key).or_insert_with_key(|(w, h, _, shown)| {
-            let pixels = draw(*w, *h, scale, &tabs_of(&s.tabs, (ICON * scale).round() as u32), *shown);
-            MemoryRenderBuffer::from_slice(&pixels, Fourcc::Argb8888, (*w, *h), 1, Transform::Normal, None)
-        });
-        let loc = (s.rect.loc - origin).to_f64().to_physical(scale);
-        let src = Rectangle::from_size((w as f64, h as f64).into());
-        match MemoryRenderBufferRenderElement::from_buffer(
-            renderer,
-            loc,
-            buffer,
-            None,
-            Some(src),
-            Some(s.rect.size),
-            Kind::Unspecified,
-        ) {
-            Ok(e) => out.push(OutputElement::Image(e)),
-            Err(err) => tracing::warn!(?err, "tab strip upload failed"),
+        let size = ((s.rect.size.w as f64 * scale).round() as i32, (s.rect.size.h as f64 * scale).round() as i32);
+        let labels: Vec<Label> = s.tabs.iter().map(label_of).collect();
+        for (w, l) in s.tabs.iter().zip(&labels) {
+            strips.remember(w, l);
         }
+        let px = (ICON * scale).round() as u32;
+        let lw = s.rect.size.w as f64;
+        // Moving: drawn afresh each frame.
+        if let Some(a) = s.anim.as_ref().filter(|a| now < a.start + ANIM) {
+            let t = eased(a.start, now);
+            let tabs = tabs_from(&labels, px);
+            let to = still(lw, &layout(lw, &tabs), s.shown);
+            let (scene, all) = match &a.from {
+                None => (appearing(&to, t), tabs),
+                Some((old, old_shown)) => {
+                    let old_tabs = tabs_from(&strips.labels_of(old), px);
+                    let from = still(lw, &layout(lw, &old_tabs), *old_shown);
+                    let mut all = tabs;
+                    all.extend(old_tabs);
+                    (changing(&from, old, &to, &s.tabs, t), all)
+                }
+            };
+            let pixels = draw_scene(size.0, size.1, scale, &all, Some(s.shown), &scene);
+            out.extend(element(renderer, origin, scale, s.rect, size, &buffer(&pixels, size)));
+            continue;
+        }
+        let mut images = strips.images.borrow_mut();
+        // Titles change; old pictures go now and then.
+        if images.len() > 64 {
+            images.clear();
+        }
+        let key = (size.0, size.1, labels.iter().map(|l| (l.title.clone(), l.app.clone())).collect(), s.shown);
+        let b = images
+            .entry(key)
+            .or_insert_with(|| buffer(&draw(size.0, size.1, scale, &tabs_from(&labels, px), s.shown), size));
+        out.extend(element(renderer, origin, scale, s.rect, size, b));
     }
     out
+}
+
+/// Strips going away on `output` (drawn over the windows).
+pub fn leaving_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose) -> Vec<OutputElement> {
+    let scale = output.current_scale().fractional_scale();
+    let Some(origin) = state.space.output_geometry(output).map(|g| g.loc) else { return Vec::new() };
+    let now = Instant::now();
+    let mut out = Vec::new();
+    for l in state.tiling.leaving.iter().filter(|l| l.output == *output && now < l.start + ANIM) {
+        let size = ((l.rect.size.w as f64 * scale).round() as i32, (l.rect.size.h as f64 * scale).round() as i32);
+        let lw = l.rect.size.w as f64;
+        let tabs = tabs_from(&l.labels, (ICON * scale).round() as u32);
+        let scene = appearing(&still(lw, &layout(lw, &tabs), l.shown), 1.0 - eased(l.start, now));
+        let pixels = draw_scene(size.0, size.1, scale, &tabs, Some(l.shown), &scene);
+        out.extend(element(renderer, origin, scale, l.rect, size, &buffer(&pixels, size)));
+    }
+    out
+}
+
+/// Whether a strip is moving now (frames keep coming until it stops).
+pub fn animating(state: &WhiteRose) -> bool {
+    let now = Instant::now();
+    state.tiling.strips.iter().any(|s| s.anim.as_ref().is_some_and(|a| now < a.start + ANIM))
+        || state.tiling.leaving.iter().any(|l| now < l.start + ANIM)
 }
 
 #[cfg(test)]
@@ -478,6 +734,58 @@ mod tests {
         let b = layout(400.0, &[with[0].clone(), Tab { title: "B".into(), icon: None }]);
         let p = pixel(&px, 400, (b.tabs[0].0 + TAB_PAD + 8.0) as usize, y);
         assert!(p[2] < 255 && p[2] > 150, "{p:?}");
+    }
+
+    #[test]
+    fn a_new_strip_grows_from_the_middle_and_drops_out() {
+        let t = titles(&["Terminal", "Files"]);
+        let end = still(400.0, &layout(400.0, &t), 1);
+        let start = appearing(&end, 0.0);
+        assert_eq!(start.band, (200.0, 200.0), "nothing of the band yet");
+        assert_eq!(start.drop, -ISLAND, "the island tucked up");
+        assert!(start.tabs.iter().all(|t| t.2 == 0.0), "its tabs not there");
+        assert_eq!(appearing(&end, 1.0), end, "and at the end, as it stays");
+        let mid = appearing(&end, 0.5);
+        assert!(mid.band.0 < 200.0 && mid.drop < 0.0 && mid.drop > -ISLAND, "{mid:?}");
+        // Drawn: at the start there's nothing of it; the band hides the island.
+        let px = draw_scene(400, 58, 1.0, &t, Some(1), &start);
+        assert!(px.iter().skip(3).step_by(4).all(|a| *a == 0), "nothing drawn");
+    }
+
+    #[test]
+    fn tabs_slide_fade_in_and_out_as_the_group_changes() {
+        let (a, b, c) = ("a", "b", "c");
+        let old_tabs = titles(&["Terminal", "Files"]);
+        let new_tabs = titles(&["Terminal", "Notes", "A much longer title"]);
+        let from = still(600.0, &layout(600.0, &old_tabs), 1);
+        let to = still(600.0, &layout(600.0, &new_tabs), 2);
+        // "b" left, "c" joined; "a" stayed.
+        let (old, new) = (vec![a, b], vec![a, c, "d"]);
+        let at = |t| changing(&from, &old, &to, &new, t);
+        let start = at(0.0);
+        assert_eq!(start.island, from.island, "starts where it was");
+        assert_eq!((start.tabs[0].0, start.tabs[0].1), (from.tabs[0].0, from.tabs[0].1), "\"a\" where it was");
+        assert_eq!(start.tabs[1].2, 0.0, "the new ones not there yet");
+        let gone = start.tabs.iter().find(|t| t.3 == new.len() + 1).expect("\"b\" fading out");
+        assert_eq!(gone.2, 1.0);
+        assert_eq!(start.pill, from.pill, "the pill where it was");
+        let end = at(1.0);
+        assert_eq!(end.island, to.island);
+        assert_eq!((end.tabs[0].0, end.tabs[0].1), (to.tabs[0].0, to.tabs[0].1));
+        assert!(end.tabs.iter().filter(|t| t.3 < new.len()).all(|t| t.2 == 1.0), "the new ones there");
+        assert_eq!(end.tabs.iter().find(|t| t.3 == new.len() + 1).unwrap().2, 0.0, "the gone one gone");
+        assert_eq!(end.pill, to.pill, "the pill on the shown tab");
+        let mid = at(0.5);
+        assert!(mid.island.1 > from.island.1 && mid.island.1 < to.island.1, "the island widening");
+    }
+
+    #[test]
+    fn eases_out_over_the_animation() {
+        let s = Instant::now();
+        assert_eq!(eased(s, s), 0.0);
+        assert!(eased(s, s + ANIM / 2) > 0.5, "quick to start");
+        assert_eq!(eased(s, s + ANIM), 1.0);
+        assert_eq!(eased(s, s + ANIM * 3), 1.0);
     }
 
     #[test]
