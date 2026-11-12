@@ -132,7 +132,14 @@ pub struct ShortcutView {
 }
 
 /// Every shortcut with its keys now: built-in (in catalog order), then yours.
-pub fn shortcut_views(overrides: &HashMap<String, Vec<String>>, custom: &[CustomShortcut]) -> Vec<ShortcutView> {
+/// The id a scratchpad's key goes by on the Keyboard page.
+pub const PAD_PREFIX: &str = "scratchpad:";
+
+pub fn shortcut_views(
+    overrides: &HashMap<String, Vec<String>>,
+    custom: &[CustomShortcut],
+    pads: &[crate::scratchpad::Pad],
+) -> Vec<ShortcutView> {
     let mut v: Vec<ShortcutView> = CATALOG
         .iter()
         .map(|d| ShortcutView {
@@ -152,6 +159,18 @@ pub fn shortcut_views(overrides: &HashMap<String, Vec<String>>, custom: &[Custom
         keys: c.keys.clone(),
         defaults: Vec::new(),
         command: Some(c.command.clone()),
+        range: String::new(),
+    }));
+    // A scratchpad's keys are set on its own page; listed here so they're
+    // searched and clashes are seen. Its keys are its "defaults" (it has
+    // none to go back to).
+    v.extend(pads.iter().map(|p| ShortcutView {
+        id: format!("{PAD_PREFIX}{}", p.id),
+        name: if p.name.is_empty() { p.command.clone() } else { p.name.clone() },
+        group: "Scratchpads".into(),
+        keys: p.keys.clone(),
+        defaults: p.keys.clone(),
+        command: None,
         range: String::new(),
     }));
     v
@@ -262,7 +281,8 @@ impl WhiteRose {
     pub fn apply_shortcuts(&mut self) {
         let k = &self.keyboard;
         let (mut bindings, errors) = Bindings::build(&k.terminal, &k.overrides, &k.custom);
-        for e in errors {
+        let pad_errors = bindings.add_scratchpads(&self.scratchpads.pads);
+        for e in errors.into_iter().chain(pad_errors) {
             tracing::warn!("shortcut skipped: {e}");
         }
         if let Some(to) = k.logo_remap {
@@ -273,7 +293,9 @@ impl WhiteRose {
     }
 
     pub fn shortcuts_event(&self) -> ipc::Event {
-        ipc::Event::Shortcuts { shortcuts: shortcut_views(&self.keyboard.overrides, &self.keyboard.custom) }
+        ipc::Event::Shortcuts {
+            shortcuts: shortcut_views(&self.keyboard.overrides, &self.keyboard.custom, &self.scratchpads.pads),
+        }
     }
 
     pub fn shortcuts_sync(&mut self) {
@@ -341,12 +363,25 @@ mod tests {
             command: "nautilus".into(),
             keys: vec!["SUPER+E".into()],
         }];
-        let v = shortcut_views(&o, &custom);
+        let v = shortcut_views(&o, &custom, &[]);
         let lock = v.iter().find(|s| s.id == "lock").unwrap();
         assert_eq!((lock.keys.clone(), lock.defaults.clone()), (vec![], vec!["SUPER+L".to_string()]));
         let close = v.iter().find(|s| s.id == "close-window").unwrap();
         assert_eq!(close.keys, close.defaults);
         let last = v.last().unwrap();
         assert_eq!((last.group.as_str(), last.command.as_deref()), ("Custom", Some("nautilus")));
+    }
+
+    #[test]
+    fn views_list_scratchpad_keys_last() {
+        let pads = crate::scratchpad::parse(&serde_json::json!([
+            {"id": "term", "name": "Terminal", "command": "foot", "keys": ["SUPER+GRAVE"]},
+            {"id": "notes", "command": "notes", "keys": ["SUPER+N"]}
+        ]));
+        let v = shortcut_views(&HashMap::new(), &[], &pads);
+        let term = v.iter().find(|s| s.id == "scratchpad:term").unwrap();
+        assert_eq!((term.name.as_str(), term.group.as_str()), ("Terminal", "Scratchpads"));
+        assert_eq!(term.keys, term.defaults, "nothing to reset to");
+        assert_eq!(v.last().unwrap().name, "notes", "named by its command when it has no name");
     }
 }

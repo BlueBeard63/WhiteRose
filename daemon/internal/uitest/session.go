@@ -347,6 +347,13 @@ func (s *Session) window(title string) (windowInfo, bool) {
 	return windowInfo{}, false
 }
 
+// HasWindow says whether a window titled `title` is in the compositor's
+// window list now (a scratchpad's isn't).
+func (s *Session) HasWindow(title string) bool {
+	_, ok := s.window(title)
+	return ok
+}
+
 // layer is where the layer surface named `namespace` (the bar:
 // "whiterose-bar") is now, asked of the compositor.
 func (s *Session) layer(namespace string) (layerInfo, bool) {

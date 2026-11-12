@@ -120,6 +120,7 @@ func TestValidation(t *testing.T) {
 		"windows.dwindle.split":         `"diagonal"`,
 		"windows.snap.zones.workspaces": `{"10":{"builtin":[[0,0,1,1]]}}`,
 		"windows.rules":                 `[{"workspace":2}]`,
+		"windows.scratchpads":           `[{"id":"a","command":""}]`,
 		"nope.unknown":                  `1`,
 		"Bad Key":                       `1`,
 		"module.x":                      `{not json`,
@@ -208,6 +209,37 @@ func TestWindowRules(t *testing.T) {
 	} {
 		if err := s.Set("windows.rules", json.RawMessage(v)); err != nil {
 			t.Errorf("windows.rules = %s refused: %v", v, err)
+		}
+	}
+}
+
+func TestScratchpads(t *testing.T) {
+	s, _ := open(t)
+	for _, v := range []string{
+		`[{"id":"a","command":"","keys":["SUPER+GRAVE"]}]`,
+		`[{"id":"","command":"foot","keys":["SUPER+GRAVE"]}]`,
+		`[{"id":"Bad Id","command":"foot","keys":["SUPER+GRAVE"]}]`,
+		`[{"id":"a","command":"foot","keys":["SUPER+GRAVE"]},{"id":"a","command":"kitty","keys":["SUPER+N"]}]`,
+		`[{"id":"a","command":"foot","keys":["SUPER+"]}]`,
+		`[{"id":"a","command":"foot","keys":["SUPER+GRAVE"],"size":[0,"50%"]}]`,
+		`[{"id":"a","command":"foot","keys":["SUPER+GRAVE"],"size":["60%"]}]`,
+		`[{"id":"a","command":"foot","keys":["SUPER+GRAVE"],"place":"bottom"}]`,
+		`[{"id":"a","command":"foot","keys":["SUPER+GRAVE"],"hideOnBlur":"yes"}]`,
+		`[{"id":"a","command":"foot","keys":["SUPER+GRAVE"],"workspace":2}]`,
+		`{"id":"a","command":"foot","keys":["SUPER+GRAVE"]}`,
+	} {
+		if err := s.Set("windows.scratchpads", json.RawMessage(v)); err == nil {
+			t.Errorf("windows.scratchpads = %s was accepted", v)
+		}
+	}
+	for _, v := range []string{
+		`[]`,
+		`[{"id":"a","command":"foot","keys":[]}]`,
+		`[{"id":"pad-1","name":"Terminal","command":"ghostty --gtk-single-instance=false","keys":["SUPER+GRAVE"]}]`,
+		`[{"id":"notes","name":"Notes","command":"whiterose-notepad","keys":["SUPER+N","SUPER+SHIFT+N"],"size":[900,"40%"],"place":"centre","hideOnBlur":true}]`,
+	} {
+		if err := s.Set("windows.scratchpads", json.RawMessage(v)); err != nil {
+			t.Errorf("windows.scratchpads = %s refused: %v", v, err)
 		}
 	}
 }

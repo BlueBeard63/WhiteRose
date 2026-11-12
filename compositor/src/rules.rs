@@ -21,7 +21,7 @@ pub enum Len {
 
 impl Len {
     /// `900` or `"60%"`; `min` is the smallest pixel count allowed.
-    fn parse(v: &Value, min: i64) -> Option<Len> {
+    pub(crate) fn parse(v: &Value, min: i64) -> Option<Len> {
         if let Some(n) = v.as_i64() {
             return (n >= min).then(|| Len::Px(n.min(i64::from(i32::MAX)) as i32));
         }

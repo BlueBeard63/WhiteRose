@@ -7,6 +7,8 @@
 // direction shortcuts (one per arrow key). Settings store only changes:
 // "shortcuts.keys" maps an id to its keys (none = turned off), and
 // "shortcuts.custom" holds your own [{ id, name, command, keys }].
+// Scratchpads' keys show up as shortcuts "scratchpad:<id>" and are kept in
+// "windows.scratchpads" (state.pads), with the rest of each scratchpad.
 .pragma library
 
 const MODS = ["SUPER", "CTRL", "ALT", "SHIFT"];
@@ -119,19 +121,28 @@ function sameList(a, b) {
     return x.length === y.length && x.every((k, i) => k === y[i]);
 }
 
-// Gives shortcut `id` the keys `keys`, returning new { overrides, custom }.
-// Built-in shortcuts back on their defaults are dropped from the overrides.
+// The id a scratchpad's key goes by among the shortcuts.
+const PAD = "scratchpad:";
+function padShortcut(padId) { return PAD + padId }
+
+// Gives shortcut `id` the keys `keys`, returning new { overrides, custom,
+// pads }. Built-in shortcuts back on their defaults are dropped from the
+// overrides.
 function setKeys(state, id, keys) {
     const overrides = Object.assign({}, state.overrides ?? {});
     const custom = (state.custom ?? []).map(c => Object.assign({}, c));
+    const pads = (state.pads ?? []).map(p => Object.assign({}, p));
     const c = custom.find(x => x.id === id);
+    const pad = String(id).startsWith(PAD) ? pads.find(p => PAD + p.id === id) : null;
     if (c) c.keys = keys.slice();
-    else {
+    else if (String(id).startsWith(PAD)) {
+        if (pad) pad.keys = keys.slice();
+    } else {
         const view = (state.shortcuts ?? []).find(s => s.id === id);
         if (view && sameList(keys, view.defaults)) delete overrides[id];
         else overrides[id] = keys.slice();
     }
-    return { overrides, custom };
+    return { overrides, custom, pads };
 }
 
 // Records `c` for shortcut `id`: replacing its keys (or adding to them),
@@ -139,7 +150,7 @@ function setKeys(state, id, keys) {
 function assign(state, id, c, add) {
     const n = normalize(c);
     const view = (state.shortcuts ?? []).find(s => s.id === id);
-    let next = { overrides: state.overrides, custom: state.custom };
+    let next = { overrides: state.overrides, custom: state.custom, pads: state.pads };
     const other = conflict(state.shortcuts, n, id);
     if (other) {
         const mine = expand(n);

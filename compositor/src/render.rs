@@ -116,6 +116,25 @@ pub fn output_elements(
                     );
                 }
             }
+            // Scratchpads shown here (or sliding out) go over it, top first.
+            let out = state.space.output_geometry(output).unwrap_or_default();
+            let pads: Vec<&Window> = state.scratchpads.drawn_on(output).collect();
+            for pad in pads.into_iter().rev() {
+                let Some(at) = state.space.element_location(pad) else { continue };
+                let loc = at - pad.geometry().loc - out.loc;
+                if !sliding_pad(renderer, output, out, state, pad, loc, &mut elements) {
+                    elements.extend(
+                        pad.render_elements::<WaylandSurfaceRenderElement<_>>(
+                            renderer,
+                            loc.to_physical_precise_round(scale),
+                            Scale::from(scale),
+                            state.window_alpha(pad),
+                        )
+                        .into_iter()
+                        .map(OutputElement::Surface),
+                    );
+                }
+            }
             let loc = state.space.element_location(window).unwrap_or_default() - window.geometry().loc;
             elements.extend(
                 window
@@ -158,6 +177,10 @@ pub fn output_elements(
             space_elements(renderer, output, state, &mut elements);
         }
     }
+    // A scratchpad sliding: the next frame too, until it ends.
+    if state.scratchpads.animating() {
+        state.schedule_redraw();
+    }
     (elements, CLEAR)
 }
 
@@ -197,6 +220,9 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
         }
         let Some(at) = state.space.element_location(w) else { continue };
         let loc = at - w.geometry().loc - out.loc;
+        if sliding_pad(renderer, output, out, state, w, loc, elements) {
+            continue;
+        }
         // (A rule's opacity, focused or not.)
         let alpha = state.window_alpha(w);
         match state.clip_of(w) {
@@ -218,6 +244,34 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
     }
     elements.extend(crate::tab_strip::elements(renderer, output, state));
     layer_elements(renderer, true, elements);
+}
+
+/// A scratchpad sliding from the island: drawn `shown` of the way down
+/// from above the usable area's top, and cut off there, so it comes out
+/// from under the bar. `loc` is where it's drawn when it's still (in the
+/// output's logical space, `out` the output's geometry). False if `w`
+/// isn't sliding.
+fn sliding_pad(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    out: Rectangle<i32, Logical>,
+    state: &WhiteRose,
+    w: &Window,
+    loc: Point<i32, Logical>,
+    elements: &mut Vec<OutputElement>,
+) -> bool {
+    let Some(slide) = state.scratchpads.slide_of(w) else { return false };
+    let Some(geo) = state.space.element_geometry(w) else { return false };
+    let scale = output.current_scale().fractional_scale();
+    let shown = slide.shown(std::time::Instant::now(), state.scratchpads.slide_length);
+    let top = state.usable_area_on(output).loc.y;
+    let dy = crate::scratchpad::slide_offset(shown, geo.loc.y + geo.size.h, top);
+    let below = (top - out.loc.y).clamp(0, out.size.h);
+    let crop = Rectangle::<i32, Logical>::new((0, below).into(), (out.size.w, out.size.h - below).into())
+        .to_physical_precise_round(scale);
+    let at = Point::<i32, Logical>::from((loc.x, loc.y + dy)).to_physical_precise_round(scale);
+    clipped_window(renderer, w, at, scale, state.window_alpha(w), crop, elements);
+    true
 }
 
 /// A tiled window's elements, front to back: its popups whole (a menu may

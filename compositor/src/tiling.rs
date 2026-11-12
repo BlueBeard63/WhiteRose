@@ -110,7 +110,11 @@ impl WhiteRose {
     pub fn window_committed(&mut self, w: &Window) {
         if w.user_data().get::<Committed>().is_none() {
             w.user_data().insert_if_missing(|| Committed);
-            self.apply_rules(w);
+            if self.claim_scratchpad(w) {
+                self.apply_look(w);
+            } else {
+                self.apply_rules(w);
+            }
             self.retile();
         } else {
             self.place_by_rule(w);
@@ -340,14 +344,16 @@ impl WhiteRose {
     }
 
     /// Keeps floating windows (dialogs, maximized windows) above the tiles,
-    /// and windows a rule keeps on top above those, otherwise leaving the
-    /// stacking order alone.
+    /// windows a rule keeps on top above those, and scratchpads above
+    /// everything, otherwise leaving the stacking order alone.
     pub fn restack(&mut self) {
         let order: Vec<Window> = self.space.elements().cloned().collect();
-        // Tiles, then floating windows, then those a rule keeps on top;
-        // each keeps its order.
+        // Tiles, then floating windows, then those a rule keeps on top,
+        // then scratchpads; each keeps its order.
         let band = |w: &Window| {
-            if self.is_tiled(w) && !Self::maximized_or_fullscreen(w) {
+            if self.scratchpads.is_pad(w) {
+                3
+            } else if self.is_tiled(w) && !Self::maximized_or_fullscreen(w) {
                 0
             } else if Self::on_top(w) {
                 2

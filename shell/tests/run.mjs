@@ -17,7 +17,7 @@ const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
 const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "dragTo", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
-const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "newId", "parseLayouts", "searchLayouts"]);
+const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "padShortcut", "newId", "parseLayouts", "searchLayouts"]);
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
@@ -32,6 +32,7 @@ const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", 
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect"]);
 const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "zoneCount", "offers"]);
+const P = load("settings/modules/scratchpads/Pads.js", ["ownInstance", "complete", "newId", "make", "name", "place", "size", "summary", "set"], { R });
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -612,6 +613,49 @@ test("keys: assigning replaces, takes over, and drops back to defaults", () => {
     // A plain number key taken by the workspaces leaves the other eight.
     r = K.assign(st, "fullscreen", "SUPER+3", false);
     assert.deepEqual(r.overrides.workspace, [], "the range can't lose one key, so it's turned off");
+});
+
+test("keys: scratchpads' keys live in their pads", () => {
+    const pads = [{ id: "term", name: "Terminal", command: "foot", keys: ["SUPER+GRAVE"] }];
+    const withPad = views.concat([{ id: "scratchpad:term", name: "Terminal", group: "Scratchpads", keys: ["SUPER+GRAVE"], defaults: ["SUPER+GRAVE"] }]);
+    const st = { shortcuts: withPad, overrides: {}, custom: [], pads };
+    // Re-recorded on the Keyboard page: the pad's keys change, nothing else.
+    let r = K.assign(st, "scratchpad:term", "SUPER+T", false);
+    assert.deepEqual(r.pads[0].keys, ["SUPER+T"]);
+    assert.deepEqual(r.overrides, {}, "not a built-in override");
+    assert.deepEqual(pads[0].keys, ["SUPER+GRAVE"], "the old state is left alone");
+    // A built-in taking the pad's key takes it from the pad.
+    r = K.assign(st, "fullscreen", "SUPER+GRAVE", false);
+    assert.deepEqual(r.pads[0].keys, []);
+    assert.deepEqual(r.overrides, { fullscreen: ["SUPER+GRAVE"] });
+    // The pad taking a built-in's key.
+    r = K.assign(st, "scratchpad:term", "SUPER+F", false);
+    assert.deepEqual(r.overrides, { fullscreen: [] });
+    assert.deepEqual(r.pads[0].keys, ["SUPER+F"]);
+    assert.equal(K.padShortcut("term"), "scratchpad:term");
+});
+
+test("scratchpads: new pads, own instances and summaries", () => {
+    assert.equal(P.ownInstance("ghostty"), "ghostty --gtk-single-instance=false");
+    assert.equal(P.ownInstance("/usr/bin/ghostty -e htop"), "/usr/bin/ghostty --gtk-single-instance=false -e htop");
+    assert.equal(P.ownInstance("ghostty --gtk-single-instance=true"), "ghostty --gtk-single-instance=true", "the user's choice stays");
+    assert.equal(P.ownInstance("ptyxis"), "ptyxis --standalone");
+    assert.equal(P.ownInstance("  foot  "), "foot");
+    assert.equal(P.ownInstance(""), "");
+    const free = () => true;
+    const first = P.make([], "ghostty", free);
+    assert.deepEqual(first, { id: "pad-1", name: "Terminal", command: "ghostty --gtk-single-instance=false", keys: ["SUPER+GRAVE"] });
+    assert.deepEqual(P.make([], "", () => false).keys, [], "a taken key isn't given");
+    assert.equal(P.make([], "", free).command, "ptyxis --standalone", "the default terminal");
+    const second = P.make([first], "ghostty", free);
+    assert.deepEqual(second, { id: "pad-2", name: "Scratchpad 2", command: "", keys: [] });
+    assert.ok(P.complete(first) && !P.complete(second));
+    assert.equal(P.newId([{ id: "pad-2" }]), "pad-1");
+    assert.equal(P.summary(first, K.spoken), "SUPER + ` · ghostty · Under the island · 60% × 50%");
+    assert.equal(P.summary({ command: "whiterose-notepad", keys: ["SUPER+N"], size: [900, "40%"], place: "centre", hideOnBlur: true }, K.spoken),
+        "SUPER + N · whiterose-notepad · Centred · 900 × 40% · Hides when it loses focus");
+    assert.equal(P.name({ command: "/usr/bin/foot -e x" }), "/usr/bin/foot");
+    assert.deepEqual(P.set([first], 0, { place: "centre", name: null }), [{ id: "pad-1", command: first.command, keys: first.keys, place: "centre" }]);
 });
 
 test("keys: new ids and the XKB layout list", () => {

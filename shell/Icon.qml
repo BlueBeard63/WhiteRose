@@ -53,6 +53,7 @@ Item {
         layoutMaster: "M4 3h5a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-5a1 1 0 0 1 1 -1z M15 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-5a1 1 0 0 1 1 -1z",
         // Snapping (Settings): a screen split into a half and two quarters.
         rules: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M2 9h20 M6 13h6 M6 16h9",
+        scratchpad: "M3 3h18 M6 3v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3 M9 7h6 M12 15v6 M9 18l3 3 3-3",
         layoutSnap: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M12 4v16 M12 12h10",
         plus: "M5 12h14 M12 5v14",
         minus: "M5 12h14",

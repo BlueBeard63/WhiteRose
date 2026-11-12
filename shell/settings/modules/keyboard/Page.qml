@@ -20,11 +20,15 @@ Column {
     readonly property var shortcuts: Compositor.shortcuts
     readonly property var overrides: Daemon.setting("shortcuts.keys", ({}))
     readonly property var custom: Daemon.setting("shortcuts.custom", [])
-    readonly property var state: ({ shortcuts: page.shortcuts, overrides: page.overrides, custom: page.custom })
+    // Scratchpads keep their keys with the rest of each pad (the
+    // Scratchpads page); their shortcuts are "scratchpad:<id>".
+    readonly property var pads: JSON.parse(JSON.stringify(Daemon.setting("windows.scratchpads", []) ?? []))
+    readonly property var state: ({ shortcuts: page.shortcuts, overrides: page.overrides, custom: page.custom, pads: page.pads })
 
     function save(next) {
         if (JSON.stringify(next.overrides) !== JSON.stringify(page.overrides)) Daemon.set("shortcuts.keys", next.overrides);
         if (JSON.stringify(next.custom) !== JSON.stringify(page.custom)) Daemon.set("shortcuts.custom", next.custom);
+        if (JSON.stringify(next.pads) !== JSON.stringify(page.pads)) Daemon.set("windows.scratchpads", next.pads);
     }
     function keysOf(id) { return (page.shortcuts.find(s => s.id === id) ?? { keys: [] }).keys }
 
@@ -217,7 +221,8 @@ Column {
     // ---- search and groups ---------------------------------------------------------------
     property string query: ""
     property string group: "All"
-    readonly property var groups: ["All", "Shell", "Windows", "Workspaces", "Media"].concat(page.custom.length > 0 ? ["Custom"] : [])
+    readonly property var groups: ["All", "Shell", "Windows", "Workspaces", "Media"]
+        .concat(page.custom.length > 0 ? ["Custom"] : [], page.pads.length > 0 ? ["Scratchpads"] : [])
     readonly property var shown: page.shortcuts.filter(s =>
         (page.group === "All" || s.group === page.group)
         && (page.query === "" || [s.name, s.group, s.command ?? "", ...s.keys.map(K.spoken)].some(t => t.toLowerCase().includes(page.query.toLowerCase()))))
@@ -389,6 +394,7 @@ Column {
                             { label: "Reset to default", show: row.changed, run: () => page.save(K.setKeys(page.state, row.modelData.id, row.modelData.defaults)) },
                             { label: "Turn off", show: row.modelData.keys.length > 0, run: () => page.save(K.setKeys(page.state, row.modelData.id, [])) },
                             { label: "Edit…", show: !!row.modelData.command, run: () => customDialog.openFor(page.custom.find(c => c.id === row.modelData.id)) },
+                            { label: "Edit scratchpad…", show: row.modelData.group === "Scratchpads", run: () => SettingsState.open("scratchpads") },
                             { label: "Delete", show: !!row.modelData.command, danger: true, run: () => Daemon.set("shortcuts.custom", page.custom.filter(c => c.id !== row.modelData.id)) },
                         ].filter(i => i.show !== false)
                         contentItem: Column {

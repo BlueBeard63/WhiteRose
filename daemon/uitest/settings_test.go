@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"whiterose/daemon/internal/uitest"
 )
@@ -327,4 +328,52 @@ func TestSettingsAddARuleFromAnOpenWindow(t *testing.T) {
 	// window's top strip: press it by its action, not a click.)
 	settings.Activate(uitest.Named("Delete rule 1").Role("push button"))
 	s.WaitSetting("windows.rules", []any{})
+}
+
+// Settings › Scratchpads: a new pad starts as the terminal with SUPER+`;
+// given another command and placed in the middle, it's saved. Its key then
+// starts that app, whose window is the pad's (off the window list), and
+// shows and hides it.
+func TestSettingsScratchpadIsAddedAndItsKeyStartsIt(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"apps.terminal": "ghostty"}})
+	settings := s.Settings("scratchpads")
+	settings.Click(uitest.Named("Add a scratchpad").Role("push button"))
+	if !uitest.WaitUntil(func() bool {
+		v := s.Setting("windows.scratchpads")
+		return strings.Contains(v, `"command":"ghostty --gtk-single-instance=false"`) && strings.Contains(v, `"keys":["SUPER+GRAVE"]`)
+	}) {
+		t.Fatalf("no terminal scratchpad: %s", s.Setting("windows.scratchpads"))
+	}
+
+	dir := filepath.Join(s.Home, "padded")
+	os.MkdirAll(dir, 0o755)
+	settings.Click(uitest.Named("Command").Role("text"))
+	settings.Press("ctrl+a")
+	settings.Type(filesBinary(s) + " " + dir + "\n")
+	settings.Click(uitest.Named("Centred").Role("radio button"))
+	if !uitest.WaitUntil(func() bool {
+		v := s.Setting("windows.scratchpads")
+		return strings.Contains(v, `whiterose-files `+dir) && strings.Contains(v, `"place":"centre"`)
+	}) {
+		t.Fatalf("the command and place weren't saved: %s", s.Setting("windows.scratchpads"))
+	}
+
+	// Its key on the Keyboard page, under Scratchpads.
+	keyboard := s.Settings("keyboard")
+	keyboard.WaitFor(uitest.Named("Scratchpads").Role("radio button"))
+
+	settings.Press("super+`")
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Log(), "scratchpad window opened") }) {
+		t.Fatalf("the key didn't start a scratchpad:\n%s", s.Log())
+	}
+	if s.HasWindow("padded — Files") {
+		t.Fatal("the scratchpad's window is in the window list")
+	}
+	// Hidden and shown again: still the one window, nothing new started.
+	settings.Press("super+`")
+	settings.Press("super+`")
+	time.Sleep(300 * time.Millisecond)
+	if n := strings.Count(s.Log(), "scratchpad window opened"); n != 1 {
+		t.Fatalf("%d scratchpad windows opened, want 1", n)
+	}
 }
