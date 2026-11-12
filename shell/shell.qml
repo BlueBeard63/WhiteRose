@@ -39,6 +39,9 @@ ShellRoot {
     // The snap layout picker (SUPER+Z, a drag to the top, a maximize button).
     SnapPicker {}
 
+    // Snap zones edited on screen (Settings › Snapping, "Edit on screen").
+    ZonesOverlay {}
+
     // First login: offer the app setup (Settings > Apps) once.
     Connections {
         target: Daemon

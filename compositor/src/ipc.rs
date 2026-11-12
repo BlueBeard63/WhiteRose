@@ -52,7 +52,7 @@ pub enum Event {
     Windows {
         windows: Vec<WindowInfo>,
     },
-    /// ALT+TAB / SUPER+ALT+TAB state; `state` is null when closed.
+    /// ALT+TAB / SUPER+TAB state; `state` is null when closed.
     Switcher {
         state: Option<crate::switcher::Switcher>,
     },

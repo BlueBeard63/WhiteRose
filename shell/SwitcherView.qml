@@ -1,4 +1,4 @@
-// Island view: ALT+TAB (Figma: Application Switcher) and SUPER+ALT+TAB
+// Island view: ALT+TAB (Figma: Application Switcher) and SUPER+TAB
 // (Figma: Window Switcher). The compositor runs the selection and keys;
 // this only draws it.
 import QtQuick
@@ -26,7 +26,7 @@ Item {
         y: 16
         spacing: 14
 
-        // ---- SUPER+ALT+TAB: windows ---------------------------------
+        // ---- SUPER+TAB: windows ---------------------------------
         Row {
             id: cards
             visible: root.windowsMode

@@ -30,7 +30,7 @@ const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
 const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "command", "quote", "menu", "toolbar"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
-const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect"]);
+const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect", "monitorName", "shown", "save"]);
 const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "zoneCount", "offers"]);
 const P = load("settings/modules/scratchpads/Pads.js", ["ownInstance", "complete", "newId", "make", "name", "place", "size", "summary", "set"], { R });
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
@@ -1089,6 +1089,22 @@ test("a monitor's shape below the bar", () => {
     assert.equal(Z.aspect({ mode: { width: 1920, height: 1080 }, scale: 1, transform: "90" }, 26), 1080 / 1894, "turned");
     assert.equal(Z.aspect(null, 26), 16 / 9);
     assert.equal(Z.aspect({ mode: null }, 26), 16 / 9);
+});
+test("a monitor's or a workspace's grid is shown and saved", () => {
+    const a = [[0, 0, 1, 1]], b = Z.fallback();
+    const grids = { m1: a }, ws = { "2": { m1: b } };
+    assert.deepEqual(Z.shown(grids, ws, "", "m1"), a);
+    assert.deepEqual(Z.shown(grids, ws, "2", "m1"), b, "the workspace's own");
+    assert.deepEqual(Z.shown(grids, ws, "3", "m1"), a, "else the monitor's");
+    assert.equal(Z.shown({}, {}, "", "m1"), null);
+    assert.deepEqual(Z.save(grids, ws, "", "m2", b), { key: "windows.snap.zones", value: { m1: a, m2: b } });
+    assert.deepEqual(Z.save(grids, ws, "", "m1", ""), { key: "windows.snap.zones", value: {} });
+    assert.deepEqual(Z.save(grids, ws, "3", "m1", a), { key: "windows.snap.zones.workspaces", value: { "2": { m1: b }, "3": { m1: a } } });
+    assert.deepEqual(Z.save(grids, ws, "2", "m1", ""), { key: "windows.snap.zones.workspaces", value: {} }, "an empty workspace goes");
+    assert.deepEqual(grids, { m1: a }, "unchanged");
+    assert.equal(Z.monitorName({ builtin: true }), "Built-in display");
+    assert.equal(Z.monitorName({ make: "Dell", model: "U2723", connector: "DP-1" }), "Dell U2723");
+    assert.equal(Z.monitorName({ connector: "DP-1" }), "DP-1");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

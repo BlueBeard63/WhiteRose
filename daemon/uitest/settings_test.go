@@ -247,23 +247,31 @@ func TestSettingsWorkspaceHasItsOwnZones(t *testing.T) {
 	s.WaitSetting("windows.snap.zones.workspaces", map[string]any{})
 }
 
-// Settings › Snapping: "Edit on screen" opens the zone editor over the
-// monitor at full size; a zone deleted there is saved as in Settings, and
-// Done closes it.
+// Settings › Snapping: "Edit on screen" has the shell draw the zones over
+// the monitor at full size, with the tools in its island; a zone deleted
+// there is saved as in Settings, and Done ends it.
 func TestSettingsEditZonesOnScreen(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	settings := s.Settings("snapping")
 	settings.Click(uitest.Named("Edit on screen").Role("push button"))
 	overlay := s.Layer("whiterose-zone-editor")
-	overlay.Click(uitest.Named("Delete").Role("radio button"))
+	// The tools are in the island, over the zones.
+	bar := s.Bar()
+	del := uitest.Named("Delete").Role("radio button")
+	bar.Click(del)
+	if !uitest.WaitUntil(func() bool { n, ok := bar.Find(del); return ok && n.Checked() }) {
+		t.Fatal("the Delete tool wasn't picked in the island")
+	}
 	overlay.Click(uitest.Named("Zone 2").Role("push button").Described("Delete"))
 	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), "[[0,0,0.6667,1]]") }) {
 		t.Fatalf("the zone deleted on screen wasn't saved: %s", s.Setting("windows.snap.zones"))
 	}
-	overlay.Click(uitest.Named("Done").Role("push button"))
+	done := uitest.Named("Done").Role("push button")
+	bar.Click(done)
 	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-zone-editor") }) {
 		t.Error("Done didn't close the editor on screen")
 	}
+	bar.Gone(done)
 }
 
 // Settings › Window rules: a rule added from an open window matches its app

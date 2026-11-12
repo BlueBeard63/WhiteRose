@@ -14,7 +14,9 @@ Item {
     id: root
 
     // The switcher (run by the compositor) takes over while ALT+TAB is held.
-    readonly property string view: Compositor.switcher ? "switcher" : ShellState.islandView
+    // A view for one screen only leaves the other islands at rest.
+    readonly property string view: Compositor.switcher ? "switcher"
+        : ShellState.islandScreen && ShellState.islandScreen !== screenName ? "idle" : ShellState.islandView
     readonly property bool idle: view === "idle"
     // Views that take the keyboard (each says; see IslandView.qml).
     readonly property bool wantsKeyboard: !idle && (shown?.keyboard ?? false)

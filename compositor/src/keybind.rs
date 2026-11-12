@@ -362,7 +362,7 @@ const fn def(id: &'static str, name: &'static str, group: &'static str, defaults
 pub const CATALOG: &[Def] = &[
     def("launcher", "App launcher", "Shell", &["SUPER"]),
     def("app-switcher", "Application switcher", "Windows", &["ALT+TAB"]),
-    def("window-switcher", "Window switcher", "Windows", &["SUPER+ALT+TAB"]),
+    def("window-switcher", "Window switcher", "Windows", &["SUPER+TAB"]),
     def("quick-settings", "Quick settings", "Shell", &["SUPER+S"]),
     def("notifications", "Notifications", "Shell", &["SUPER+N"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
@@ -595,7 +595,7 @@ mod tests {
             (Mods::NONE, keysyms::KEY_Print, Action::ScreenshotScreen),
             (SUPER_SHIFT, keysyms::KEY_s, Action::ScreenshotRegion),
             (ALT, keysyms::KEY_Tab, Action::AppSwitcher),
-            (Mods { logo: true, alt: true, ..Mods::NONE }, keysyms::KEY_Tab, Action::WindowSwitcher),
+            (SUPER, keysyms::KEY_Tab, Action::WindowSwitcher),
             (SUPER, keysyms::KEY_s, Action::QuickSettings),
             (SUPER, keysyms::KEY_l, Action::Lock),
             (SUPER, keysyms::KEY_q, Action::CloseWindow),

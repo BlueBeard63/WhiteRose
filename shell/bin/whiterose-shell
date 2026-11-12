@@ -1,0 +1,15 @@
+#!/bin/sh
+# Calls this session's running shell over QuickShell IPC, e.g.
+#   whiterose-shell zones edit <monitor id> <workspace or ""> <tool>
+# (Settings uses it for things the shell draws). Like whiterose-settings,
+# the shell is found by its command line and Wayland display, so a shell
+# in another session (a nested test one) doesn't count.
+dir="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+pid=""
+for p in $(pgrep -u "$(id -u)" -f "^qs -p $dir/?\$"); do
+    if tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -qx "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}"; then
+        pid="$p"
+    fi
+done
+[ -n "$pid" ] || { echo "whiterose-shell: no shell running in this session" >&2; exit 1; }
+exec qs ipc --pid "$pid" call "$@"

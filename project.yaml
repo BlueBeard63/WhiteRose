@@ -14,9 +14,32 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.2.1
+version: 0.3.0-alpha.1
 
 releases:
+  - version: 0.3.0-alpha.1
+    date: 2026-11-12
+    title: Layouts (alpha)
+    summary: >-
+      A first look at 0.3 Layouts, for trying out: windows can tile themselves, snap to edges and zones, follow per-app rules, and drop down as scratchpads. Expect rough edges; the in-app updater stays on full releases, so this is installed by hand.
+    added:
+      - "Tiling: dwindle and master-stack layouts with gaps, chosen for everything and overridden per workspace or monitor (Settings › Windows, SUPER+T, or the button on the bar)"
+      - "Tabbed groups: several windows in one tile with a tab strip (SUPER+G, SUPER+. and SUPER+,)"
+      - "Snapping: drag a floating window to an edge or corner, or pick a layout from SUPER+Z, a drag to the top, or a WhiteRose app's maximise button"
+      - "Snap zones: your own grid per monitor or per workspace, used with SHIFT while dragging; edit it in Settings › Snapping or at full size on the monitor, with the tools in the island"
+      - "Window rules: by app and title, open a window on a workspace or monitor, floating or tiled, at a size, in a snap zone, see-through or always on top (Settings › Window rules)"
+      - "Scratchpads: apps shown and hidden with a key, sliding down from the island, like a drop-down terminal (Settings › Scratchpads)"
+      - "Keyboard control of tiles: focus, move and resize with SUPER and the arrows, SUPER+R to resize, SUPER+J to flip a split, SUPER+M to make master"
+    changed:
+      - "The window switcher is SUPER+TAB (was SUPER+ALT+TAB); ALT+TAB still switches apps"
+      - "Settings fits narrow windows: the sidebar folds away and pages reflow"
+      - "Sharper bar icons"
+    fixed:
+      - "A panel or overlay layer could be drawn under one in a lower layer that opened after it"
+    notes: |
+      Install it with this release's `install.sh` (it installs this version, checked against the release key). Your settings carry over, and moving to 0.3.0 when it's out is a normal update.
+    contributors: [BlueBeard63]
+
   - version: 0.2.1
     date: 2026-11-11
     title: Island views, one-command install

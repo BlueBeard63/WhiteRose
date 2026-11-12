@@ -192,10 +192,15 @@ pub fn output_elements(
 fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose, elements: &mut Vec<OutputElement>) {
     let Some(out) = state.space.output_geometry(output) else { return };
     let scale = output.current_scale().fractional_scale();
-    let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
+    // Front to back: by layer (overlay over top, bottom over background),
+    // then the newest first within one. (The map keeps them in the order
+    // they opened, whatever their layer: a top surface opened after the bar
+    // moved to overlay would otherwise cover it.)
+    let mut layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
         let map = layer_map_for_output(output);
         map.layers().rev().filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
     };
+    layers.sort_by_key(|(l, _)| std::cmp::Reverse(l.layer() as u32));
     let lower = |l: &LayerSurface| matches!(l.layer(), WlrLayer::Background | WlrLayer::Bottom);
     let layer_elements = |renderer: &mut GlesRenderer, below: bool, elements: &mut Vec<OutputElement>| {
         for (layer, loc) in layers.iter().filter(|(l, _)| lower(l) == below) {

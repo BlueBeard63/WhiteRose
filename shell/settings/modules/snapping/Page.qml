@@ -18,27 +18,15 @@ Column {
     // {"<workspace 1-9>": {"<monitor id>": grid}}: a workspace's own grids.
     readonly property var workspaceGrids: Daemon.setting("windows.snap.zones.workspaces", ({}))
 
-    // Sets (or, for "", clears) workspace `ws`'s own grid on monitor `id`.
-    function setWorkspace(ws, id, value) {
-        const m = JSON.parse(JSON.stringify(page.workspaceGrids ?? {}));
-        const own = m[ws] ?? {};
-        if (value === "") delete own[id];
-        else own[id] = value;
-        if (Object.keys(own).length > 0) m[ws] = own;
-        else delete m[ws];
-        Daemon.set("windows.snap.zones.workspaces", m);
+    // Saves (or, for "", clears) monitor `id`'s grid for workspace `ws` ("" for all).
+    function save(ws, id, zones) {
+        const out = Z.save(page.grids, page.workspaceGrids, ws, id, zones);
+        Daemon.set(out.key, out.value);
     }
-
-    // Sets (or, for "", clears) one monitor's grid.
-    function setIn(key, map, entry, value) {
-        const m = Object.assign({}, map ?? {});
-        if (value === "") delete m[entry];
-        else m[entry] = value;
-        Daemon.set(key, m);
-    }
-    function monitorName(o) {
-        if (o.builtin) return "Built-in display";
-        return [o.make, o.model].filter(s => s).join(" ") || o.connector;
+    // The shell edits a grid on screen (ZonesOverlay.qml), over that
+    // monitor with its tools in the island; it saves as it goes, as here.
+    function editOnScreen(ws, id, tool) {
+        Quickshell.execDetached([Quickshell.shellDir + "/bin/whiterose-shell", "zones", "edit", id, ws, tool]);
     }
 
     PageHeader { title: "Snapping"; subtitle: "Drag a floating window to an edge or corner to fill part of the screen." }
@@ -70,16 +58,13 @@ Column {
                 // What Reset clears and edits save to: the workspace's own, or the monitor's.
                 readonly property var own: forWs ? workspaceOwn : monitorOwn
                 // The grid shown (and edited from): a workspace without its own shows the monitor's.
-                readonly property var shown: forWs ? workspaceOwn ?? monitorOwn : monitorOwn
-                function save(zones) {
-                    if (forWs) page.setWorkspace(forWs, monitor, zones);
-                    else page.setIn("windows.snap.zones", page.grids, monitor, zones);
-                }
+                readonly property var shown: Z.shown(page.grids, page.workspaceGrids, forWs, monitor)
+                function save(zones) { page.save(forWs, monitor, zones) }
                 width: parent.width
                 Rectangle { width: parent.width; height: 1; color: Theme.surface2 }
                 SettingRow {
                     divider: false
-                    title: page.monitorName(zonesFor.modelData)
+                    title: Z.monitorName(zonesFor.modelData)
                     subtitle: zonesFor.modelData.connector + " · " + (zonesFor.forWs
                         ? (zonesFor.workspaceOwn ? "Workspace " + zonesFor.forWs + "'s own zones" : "Same as all workspaces")
                         : (zonesFor.monitorOwn ? "Your zones" : "Two thirds and a third"))
@@ -128,21 +113,8 @@ Column {
                             id: onScreenButton
                             text: "Edit on screen"
                             icon: "monitor"
-                            onClicked: onScreen.active = true
+                            onClicked: page.editOnScreen(zonesFor.forWs, zonesFor.monitor, editor.tool)
                         }
-                    }
-                }
-                LazyLoader {
-                    id: onScreen
-                    active: false
-                    ZonesOnScreen {
-                        monitor: zonesFor.modelData
-                        title: page.monitorName(zonesFor.modelData)
-                        whose: zonesFor.forWs ? "Workspace " + zonesFor.forWs : "All workspaces"
-                        saved: zonesFor.shown
-                        Component.onCompleted: tool = editor.tool
-                        onSave: zones => zonesFor.save(zones)
-                        onDone: onScreen.active = false
                     }
                 }
             }

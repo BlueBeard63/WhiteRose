@@ -23,7 +23,10 @@ PanelWindow {
 
     WlrLayershell.namespace: "whiterose-bar"
     LayerTitle { name: "whiterose-bar" }
-    WlrLayershell.layer: root.fullscreen ? WlrLayer.Overlay : WlrLayer.Top
+    // Over the snap zones being edited on its screen (ZonesOverlay.qml), so
+    // the tools in the island aren't dimmed with the desktop.
+    readonly property bool overZones: ShellState.zones !== null && ShellState.islandScreen === (modelData?.name ?? "")
+    WlrLayershell.layer: root.fullscreen || root.overZones ? WlrLayer.Overlay : WlrLayer.Top
     // Open views take the keyboard (Esc closes; clicking elsewhere moves focus
     // away, which closes them too).
     WlrLayershell.keyboardFocus: island.wantsKeyboard || quick.open || notifications.open || calendar.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None

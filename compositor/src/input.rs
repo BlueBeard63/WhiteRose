@@ -306,7 +306,7 @@ impl WhiteRose {
         None
     }
 
-    /// Keys while ALT+TAB / SUPER+ALT+TAB is open. Releasing the modifiers
+    /// Keys while ALT+TAB / SUPER+TAB is open. Releasing the modifiers
     /// that opened it focuses the selection.
     fn switcher_key(
         &mut self,

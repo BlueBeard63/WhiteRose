@@ -6,6 +6,8 @@
 //   qs -p shell ipc call notifications toggle|open|close
 //   qs -p shell ipc call calendar toggle|open|close
 //   qs -p shell ipc call session lock
+//   qs -p shell ipc call zones edit <monitor id> <workspace 1-9 or ""> <tool>
+//   qs -p shell ipc call zones done
 pragma Singleton
 import QtQuick
 import Quickshell
@@ -27,9 +29,35 @@ Singleton {
         stdout: StdioCollector { onStreamFinished: root.islandViews = text.split("\n").filter(n => /^[a-z][a-z0-9-]*$/.test(n)) }
     }
 
-    function show(view) { if (views.includes(view)) { islandView = view; if (view !== "idle") panel = "" } }
+    // The screen (connector) a view is for, if only one: the others' islands
+    // stay at rest. "" for every screen.
+    property string islandScreen: ""
+    function show(view) { if (views.includes(view)) { islandView = view; islandScreen = ""; if (view !== "idle") panel = "" } }
     function toggle(view) { islandView === view ? close() : show(view) }
-    function close() { islandView = "idle" }
+    function close() { islandView = "idle"; islandScreen = "" }
+
+    // A monitor's snap zones edited on screen (Settings › Snapping, "Edit on
+    // screen"): { monitor: its Compositor.outputs id, ws: "" for all
+    // workspaces' grid or "1"-"9" for one's own, tool }, or null. The zones
+    // are drawn over that monitor (ZonesOverlay.qml) and the tools are in
+    // its island (island/zones.qml). Ending it any way ends both.
+    property var zones: null
+    // The tools' size in the island (ZoneTools.qml), so the zones overlay
+    // leaves the island hanging over it clickable.
+    property size zoneTools: Qt.size(0, 0)
+    function editZones(monitor, ws, tool) {
+        const out = Compositor.outputs.find(o => o.id === monitor);
+        if (!out) return;
+        show("zones");
+        zones = { monitor, ws: /^[1-9]$/.test(ws) ? ws : "", tool: tool || "resize" };
+        // Its island, if that monitor has a bar (else every island shows it).
+        const bars = Daemon.setting("bar.screens", "all") !== "main" || Compositor.outputs.find(o => o.enabled)?.connector === out.connector;
+        islandScreen = bars ? out.connector : "";
+    }
+    function zonesTool(tool) { if (zones) zones = Object.assign({}, zones, { tool }) }
+    function endZones() { if (islandView === "zones") close(); zones = null }
+    // Another view (or none) taking the island ends the editing.
+    onIslandViewChanged: if (islandView !== "zones") zones = null
 
     // The side panel hanging from the bar: "" (none) or "quick". Only one
     // thing is open at a time: opening it returns the island to idle.
@@ -109,6 +137,11 @@ Singleton {
         function toggle(): void { root.togglePanel("calendar") }
         function open(): void { if (root.panel !== "calendar") root.togglePanel("calendar") }
         function close(): void { root.closePanel() }
+    }
+    IpcHandler {
+        target: "zones"
+        function edit(monitor: string, ws: string, tool: string): void { root.editZones(monitor, ws, tool) }
+        function done(): void { root.endZones() }
     }
     IpcHandler {
         target: "session"

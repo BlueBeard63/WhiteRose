@@ -38,7 +38,7 @@ Every screen starts in Figma, and the code follows the frames closely. A few of 
 <table>
   <tr>
     <td width="50%"><img src="docs/designs/launcher.png" alt="Design: App Launcher"><br><sub>App Launcher</sub></td>
-    <td width="50%"><img src="docs/designs/window-switcher.png" alt="Design: Window Switcher"><br><sub>Window Switcher (SUPER + ALT + TAB)</sub></td>
+    <td width="50%"><img src="docs/designs/window-switcher.png" alt="Design: Window Switcher"><br><sub>Window Switcher (SUPER + TAB)</sub></td>
   </tr>
   <tr>
     <td><img src="docs/designs/quick-settings.png" alt="Design: Quick Settings"><br><sub>Quick Settings</sub></td>
@@ -57,7 +57,7 @@ Every screen starts in Figma, and the code follows the frames closely. A few of 
 ### The desktop
 - **The island:** one shape hanging from the top bar that morphs between every view: the dock, the launcher, clipboard history, recent screenshots, the switchers, and prompts. It tucks into the bar when a maximized window sits under it.
 - **Launcher (SUPER):** apps ranked by use, files, commands, and a calculator, with tabs to narrow it down.
-- **Switchers:** ALT+TAB between apps, SUPER+ALT+TAB between windows, with live previews.
+- **Switchers:** ALT+TAB between apps, SUPER+TAB between windows, with live previews.
 - **Dock:** pinned and running apps, with window previews on hover.
 - **Quick settings:** Wi-Fi, Bluetooth, Do Not Disturb, Night Light, airplane mode, power mode, brightness, battery.
 - **Notifications:** WhiteRose is the notification server: popups, a history panel, actions, Do Not Disturb.

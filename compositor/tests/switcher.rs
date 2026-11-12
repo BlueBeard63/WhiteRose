@@ -1,4 +1,4 @@
-//! ALT+TAB and SUPER+ALT+TAB driven by real key events through the seat's
+//! ALT+TAB and SUPER+TAB driven by real key events through the seat's
 //! keyboard (xkb keycodes = evdev + 8), against windows from a real client.
 
 mod common;
@@ -104,20 +104,18 @@ fn escape_cancels_without_changing_focus() {
 }
 
 #[test]
-fn super_alt_tab_switches_window_by_window() {
+fn super_tab_switches_window_by_window() {
     let mut h = Headless::new(true);
     three_windows(&mut h);
     let s = &mut h.state;
     key(s, SUPER, true);
-    key(s, ALT, true);
     tap(s, TAB); // browser (previous window)
     tap(s, TAB); // term-1
     let (sw, _) = s.switcher.clone().unwrap();
     assert_eq!(sw.mode, Mode::Windows);
     assert_eq!(sw.items.len(), 3);
-    key(s, ALT, false); // releasing either held modifier commits
+    key(s, SUPER, false); // releasing SUPER commits
     assert!(s.switcher.is_none());
-    key(s, SUPER, false);
     assert_eq!(focused_title(s), "term-1");
     // The SUPER release after switching must not open the launcher.
     assert!(!s.logo_tap_pending);

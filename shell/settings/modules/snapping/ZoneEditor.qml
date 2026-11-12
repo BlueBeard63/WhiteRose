@@ -47,9 +47,9 @@ Item {
     // Red: a zone being deleted, or one drawn that won't fit.
     readonly property color danger: Qt.rgba(0.77, 0.17, 0.11, 0.45)
 
-    // Full: the zones at their real size over the whole item (the editor on
-    // screen, ZonesOnScreen.qml), translucent over the desktop; otherwise a
-    // small monitor with its bar.
+    // Full: the zones at their real size over the whole item (the shell's
+    // editor on screen, ZonesOverlay.qml), translucent over the desktop;
+    // otherwise a small monitor with its bar.
     property bool full: false
     readonly property int gap: full ? 16 : 4
     readonly property int bar: full ? 0 : 7

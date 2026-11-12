@@ -24,7 +24,7 @@ Singleton {
     // Every window, most recently used first:
     // { id, app_id, title, workspace (1-based), focused }.
     property var windows: []
-    // ALT+TAB / SUPER+ALT+TAB, run by the compositor: null when closed, else
+    // ALT+TAB / SUPER+TAB, run by the compositor: null when closed, else
     // { mode: "apps"|"windows", items: [{ app_id, windows: [id] }], selected, sub }.
     property var switcher: null
     // The snap layout picker while it's open (SnapPicker.qml draws it).

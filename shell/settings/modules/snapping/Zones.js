@@ -261,3 +261,37 @@ function aspect(output, bar) {
     const w = (turned ? m.height : m.width) / s, h = (turned ? m.width : m.height) / s;
     return h - bar > 0 ? w / (h - bar) : 16 / 9;
 }
+
+// A monitor (a Compositor.outputs entry) as Settings and the on-screen
+// editor name it.
+function monitorName(o) {
+    if (o?.builtin) return "Built-in display";
+    return [o?.make, o?.model].filter(s => s).join(" ") || (o?.connector ?? "");
+}
+
+// The grid shown for monitor `id` and workspace `ws` ("" for all
+// workspaces): a workspace without its own shows the monitor's. `grids` is
+// windows.snap.zones, `wsGrids` windows.snap.zones.workspaces.
+function shown(grids, wsGrids, ws, id) {
+    const own = grids?.[id] ?? null;
+    return ws ? wsGrids?.[ws]?.[id] ?? own : own;
+}
+
+// The setting to write for saving (or, with "", clearing) monitor `id`'s
+// grid for workspace `ws`: { key, value }. Workspaces left with no grids
+// of their own are dropped.
+function save(grids, wsGrids, ws, id, zones) {
+    if (!ws) {
+        const m = Object.assign({}, grids ?? {});
+        if (zones === "") delete m[id];
+        else m[id] = zones;
+        return { key: "windows.snap.zones", value: m };
+    }
+    const m = JSON.parse(JSON.stringify(wsGrids ?? {}));
+    const own = m[ws] ?? {};
+    if (zones === "") delete own[id];
+    else own[id] = zones;
+    if (Object.keys(own).length > 0) m[ws] = own;
+    else delete m[ws];
+    return { key: "windows.snap.zones.workspaces", value: m };
+}
