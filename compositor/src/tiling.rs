@@ -201,6 +201,7 @@ impl WhiteRose {
                     self.tiling.sets[i].tiling.remove(&w);
                 }
             }
+            let area = to_rect(self.usable_area_on(o));
             for w in &members {
                 if self.tiling.sets[i].tiling.contains(w) {
                     continue;
@@ -209,8 +210,14 @@ impl WhiteRose {
                 let tiling = &self.tiling.sets[i].tiling;
                 let next_to = self.workspaces.mru().iter().find(|m| *m != w && tiling.contains(m)).cloned();
                 self.tiling.sets[i].tiling.insert(w.clone(), next_to.as_ref());
+                // A new window has focus already (it got it when it was
+                // created): a strip scrolls to show it.
+                if self.workspaces.focused() == Some(w) {
+                    if let Tiling::Scroll(strip) = &mut self.tiling.sets[i].tiling {
+                        strip.ensure_visible(w, next_to.as_ref(), area, &self.tiling.settings.gaps);
+                    }
+                }
             }
-            let area = to_rect(self.usable_area_on(o));
             for (w, r) in self.tiling.sets[i].tiling.arrange(area, &self.tiling.settings.gaps) {
                 let mut r = to_rectangle(r);
                 // A group's shown window sits under its tab strip.
@@ -399,6 +406,9 @@ impl WhiteRose {
                     value.as_f64().unwrap_or(defaults.master_ratio).clamp(layout::MIN_RATIO, layout::MAX_RATIO)
             }
             "windows.master.side" => s.master_side = value.as_str().and_then(Side::parse).unwrap_or_default(),
+            "windows.scroll.center" => {
+                s.scroll_center = value.as_str().and_then(layout::Center::parse).unwrap_or_default()
+            }
             "windows.dwindle.split" => {
                 s.dwindle_split = match value.as_str() {
                     Some("horizontal") => Some(Axis::Horizontal),
@@ -420,6 +430,52 @@ impl WhiteRose {
         }
         self.retile();
         self.ipc_sync();
+    }
+}
+
+/// Scrolling strips: keeping the focus in view, and the windows scrolled
+/// off screen.
+///
+/// Windows scrolled off screen stay mapped (being mapped is what "on the
+/// visible workspace" means everywhere else), past their output's edge. Each
+/// one is clipped to its own output: it's drawn there only, takes the
+/// pointer only there, and gets frame callbacks only while some of it shows,
+/// so a window scrolled out of sight stops drawing.
+impl WhiteRose {
+    /// Scrolls `w`'s strip to show it, now that it has the focus (`previous`
+    /// had it before). True if the view moved; the windows are placed again.
+    pub(crate) fn scroll_to(&mut self, w: &Window, previous: Option<&Window>) -> bool {
+        let Some(i) = self.tiling.sets.iter().position(|s| s.tiling.contains(w)) else { return false };
+        let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
+        let gaps = self.tiling.settings.gaps;
+        let Tiling::Scroll(strip) = &mut self.tiling.sets[i].tiling else { return false };
+        if !strip.ensure_visible(w, previous, area, &gaps) {
+            return false;
+        }
+        self.retile();
+        true
+    }
+
+    /// The part of the screen a strip window may show on: its own output.
+    /// None for every other window (including a tile being dragged, which
+    /// follows the pointer across outputs).
+    pub fn clip_of(&self, w: &Window) -> Option<Rectangle<i32, Logical>> {
+        if self.tiling.dragging.as_ref() == Some(w) {
+            return None;
+        }
+        let set = self.tiling.sets.iter().find(|s| matches!(s.tiling, Tiling::Scroll(_)) && s.tiling.contains(w))?;
+        self.space.output_geometry(&set.output)
+    }
+
+    /// Whether `output` shows any of `w` (always, for an unclipped window).
+    pub fn shows_on(&self, w: &Window, output: &Output) -> bool {
+        match self.clip_of(w) {
+            None => true,
+            Some(clip) => {
+                self.space.output_geometry(output) == Some(clip)
+                    && self.space.element_bbox(w).is_some_and(|b| b.overlaps(clip))
+            }
+        }
     }
 }
 

@@ -29,14 +29,12 @@ pub enum Layout {
     Dwindle,
     /// One large master tile and a stack of the rest.
     Master,
-    /// A strip of columns that scrolls sideways (`scroll.rs`). Not in
-    /// [`Layout::ALL`] yet, so nothing picks it until the compositor can
-    /// show it.
+    /// A strip of columns that scrolls sideways (`scroll.rs`).
     Scrolling,
 }
 
 impl Layout {
-    pub const ALL: [Layout; 3] = [Layout::Floating, Layout::Dwindle, Layout::Master];
+    pub const ALL: [Layout; 4] = [Layout::Floating, Layout::Dwindle, Layout::Master, Layout::Scrolling];
 
     /// The name used in settings and IPC.
     pub fn as_str(self) -> &'static str {
@@ -596,7 +594,8 @@ mod tests {
         assert_eq!(Layout::parse("spiral"), None);
         assert_eq!(Layout::Floating.next(), Layout::Dwindle);
         assert_eq!(Layout::Dwindle.next(), Layout::Master);
-        assert_eq!(Layout::Master.next(), Layout::Floating);
+        assert_eq!(Layout::Master.next(), Layout::Scrolling);
+        assert_eq!(Layout::Scrolling.next(), Layout::Floating);
     }
 
     #[test]
@@ -618,7 +617,6 @@ mod tests {
         let mut t = Tiling::new(Layout::Scrolling, &settings, [1, 2, 3]).unwrap();
         assert_eq!(t.layout(), Layout::Scrolling);
         assert_eq!(Layout::Scrolling.as_str(), "scrolling");
-        assert!(!Layout::ALL.contains(&Layout::Scrolling), "not offered until the compositor shows it");
         let tiles = t.arrange(AREA, &NO_GAPS);
         assert_eq!(tiles[2], (3, Rect::new(1000, 0, 500, 600)), "off the right edge");
         assert!(t.move_dir(&3, Dir::Left, AREA, &NO_GAPS));

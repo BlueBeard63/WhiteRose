@@ -53,6 +53,10 @@ fn super_t_cycles_the_workspace_layout_and_saves_it() {
             assert_eq!(s.daemon_waiting, vec![waiting]);
             // Master: 55% of the 1416px left after the gap.
             assert_eq!(rects(s), vec![Some((8, 34, 779, 766)), Some((795, 34, 637, 766))]);
+            // Scrolling: one column each, half wide, so the two fit.
+            press(s, &[SUPER, T]);
+            assert_eq!(rects(s), vec![Some(LEFT), Some(RIGHT)]);
+            assert_eq!(s.tiling.settings.workspaces.get(&0), Some(&Layout::Scrolling));
             press(s, &[SUPER, T]);
             assert_eq!(rects(s), vec![Some((48, 74, 0, 0)), Some((80, 106, 0, 0))], "floating again");
             // Only this workspace.

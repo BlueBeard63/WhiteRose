@@ -603,7 +603,7 @@ impl WhiteRose {
         }
         let pointer = self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
         let (w, mode, anchor) = if under_pointer {
-            let Some((w, _)) = self.space.element_under(pointer) else { return };
+            let Some((w, _)) = self.window_under(pointer) else { return };
             (w.clone(), PickerMode::Hover, Some(pointer))
         } else {
             let Some(w) = self.focused_window() else { return };

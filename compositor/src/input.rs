@@ -119,7 +119,7 @@ impl WhiteRose {
                     keyboard.set_focus(self, Some(layer.wl_surface().clone()), serial);
                 }
             } else {
-                let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
+                let clicked = self.window_under(at).map(|(w, _)| w.clone());
                 if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
                     // Click-to-focus; clicking the background clears focus.
                     self.focus_window(clicked);

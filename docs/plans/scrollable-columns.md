@@ -97,19 +97,18 @@ per-monitor overrides all work as they do for the others.
   moves the split between two windows in a column.
 - A tab group is one window in a column, like a tile in dwindle.
 
-**Off-screen windows:**
-- A window entirely off the output is unmapped from the `Space`. It isn't
-  drawn and gets no frame callbacks, so it costs nothing. It's mapped
-  again when it scrolls back into view.
-- A window partly on screen stays mapped, with a clip: its output's usable
-  area.
-  - `render.rs` crops it to that clip (a `CropRenderElement`), so it never
-    shows on the next monitor.
-  - Pointer hit-testing ignores the part outside the clip.
-- Its workspace and output stay its own, not whatever the off-screen
-  position would suggest (`output_of` asks the `TileSet` first).
+**Off-screen windows:** (changed in commit 2; see "Along the way")
+- A strip window stays mapped in the `Space`, past its output's edge if
+  it's scrolled off. Its clip is its own output.
+  - `render.rs` draws it on that output only.
+  - `window_under` (all pointer hit-testing) ignores it outside the clip.
+  - It gets frame callbacks (and its scale) only from that output, and
+    only while some of it shows. So a window scrolled out of sight stops
+    drawing and costs nothing, unless a live preview is exporting it.
+- Its output is its tile set's (`output_of` asks the `TileSet` first), not
+  whatever the off-screen position would suggest.
 - The window switcher, the dock and the foreign-toplevel list still show
-  unmapped windows. Activating one focuses it, and the strip scrolls to it.
+  every window. Activating one focuses it, and the strip scrolls to it.
 
 **Focus follows into view:** whenever focus moves to a window in a strip
 (a click, a key, ALT+TAB, a new window opening), the strip scrolls to show
@@ -197,3 +196,14 @@ position, as tiling and snapping do. Animations come with 0.4's overview.
   `centre: always`, the strip can scroll so the first or last column sits
   in the middle, with empty space beside it; otherwise it stays against
   the left edge and stops at the right end.
+- (commit 2) Off-screen strip windows are **not unmapped**: everywhere in
+  the compositor, "mapped" means "on the visible workspace" (`retile`'s
+  members, the switcher, idle, snapping), so unmapping would drop them
+  from the strip. They stay mapped and are clipped to their output
+  instead. That needs no crop element: the clip is the whole output, and
+  the framebuffer already cuts off anything past its edge. So
+  `render.rs` now builds the space's elements itself
+  (`space_elements`, the same order as Smithay's
+  `space_render_elements`) to leave a strip window off other outputs.
+  The `Space` variant of `OutputElement` is gone; windows are `Surface`
+  elements.
