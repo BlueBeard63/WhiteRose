@@ -6,7 +6,7 @@ DAEMON   := daemon
 WM       := compositor
 FUZZTIME ?= 20s
 
-.PHONY: release-key release release-notes changelog ui-test dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
+.PHONY: release-key release release-notes changelog ui-test shots dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
 
 check: go-check rust-check shell-check
 
@@ -61,6 +61,13 @@ build:
 # sessions are nested windows; without one (or with WR_UITEST_HEADLESS=1, as
 # CI does) they use the compositor's headless backend. UITEST=Name runs only
 # tests matching Name.
+shots:               ## Screenshots for review: the bar's icons and every Settings page at tile sizes (build/shots)
+	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
+	cd $(WM) && $(CARGO) build --release --locked
+	cd apps && $(CARGO) build --locked
+	rm -rf build/shots
+	cd $(DAEMON) && WHITEROSE_SHOTS=$(CURDIR)/build/shots $(GO) test -tags 'uitest shots' -count=1 -timeout 20m -run TestShots ./uitest/
+
 ui-test:             ## Run the click-and-check UI tests
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
 	cd $(WM) && $(CARGO) build --release --locked

@@ -240,3 +240,27 @@ Settings and zone-editor work added to this branch, before the docs commit:
 4. **Edit on screen:** a button per monitor opens the zone editor full size
    over that monitor (its own overlay layer), same tools plus Done, Escape
    closes; it edits the workspace you're on. Settings keeps its editor.
+
+## Screenshots and the bar's icons (2026-11-12)
+
+- `make shots` (daemon/uitest/shots_test.go, tag `shots`) writes
+  build/shots: the bar's ends with each layout, Quick Settings, and every
+  Settings page at a third, a half, two thirds, and half height (Settings
+  as a scrolling column), with a contact sheet per size. Scale 1 only: a
+  scale seeded in `displays` doesn't reach the headless output.
+- What they showed:
+  - **Settings below two thirds is unusable.** The fixed 250px sidebar
+    leaves a third-wide window about 100px for the page, so every page's
+    header, cards and controls are cut off. It needs a narrow layout for
+    Settings as a whole, not a fix per page.
+  - **Quick Settings:** the screenshot toast stacks into the panel, which
+    then runs to about 410px while the bar's layer stays 264px, so its
+    lower part can't be clicked (`TestQuickSettingsOpensSettings`).
+  - **The bar's icons are soft:** 24px Lucide paths with 2px strokes
+    shrunk to 13-16px (strokes about 1.1px, between pixels), and a 13px
+    icon centred in the 26px bar sits on a half pixel. Dwindle is a
+    smudge; scrolling looks like a film strip.
+- **Decided:** the bar gets its own icon set: **solid glyphs on a 16px
+  grid** (like macOS's menu bar and GNOME's symbolic icons), drawn 1:1 and
+  placed on whole pixels. Lucide outlines stay for Settings and panels.
+  Figma first.
