@@ -243,3 +243,40 @@ func TestClockOpensTheMonthWithTheAgendaOff(t *testing.T) {
 		t.Error("the agenda opened with its module off")
 	}
 }
+
+// "Now playing" opens what's playing in the island: the track, its
+// controls (which reach the player), shuffle and repeat as the player has
+// them. (A playing player is sent Pause, or PlayPause.)
+func TestNowPlayingOpensTheMusicIsland(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	p := fakePlayer(t, s)
+	bar := s.Bar()
+	bar.Click(uitest.Named("Now playing").Role("push button"))
+	bar.WaitFor(uitest.Named("Midnight City").Role("label"))
+	bar.Click(uitest.Named("Next").Role("push button"))
+	bar.Click(uitest.Named("Pause").Role("push button"))
+	if !uitest.WaitUntil(func() bool {
+		c := p.Calls()
+		return len(c) >= 2 && c[0] == "Next" && (c[1] == "Pause" || c[1] == "PlayPause")
+	}) {
+		t.Errorf("the player was sent %v", p.Calls())
+	}
+	bar.Click(uitest.Named("Shuffle").Role("push button"))
+	if !uitest.WaitUntil(func() bool { v, _ := p.props.Get("org.mpris.MediaPlayer2.Player", "Shuffle"); return v.Value() == true }) {
+		t.Error("shuffle didn't turn on")
+	}
+}
+
+// The Music module off: "Now playing" plays and pauses, as before.
+func TestNowPlayingPausesWithTheMusicModuleOff(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"settings.modules.disabled": []string{"music"}}})
+	p := fakePlayer(t, s)
+	bar := s.Bar()
+	bar.Click(uitest.Named("Now playing").Role("push button"))
+	if !uitest.WaitUntil(func() bool { c := p.Calls(); return len(c) == 1 && (c[0] == "Pause" || c[0] == "PlayPause") }) {
+		t.Errorf("the player was sent %v", p.Calls())
+	}
+	if _, ok := bar.Lookup(uitest.Named("Next").Role("push button")); ok {
+		t.Error("the music island opened with its module off")
+	}
+}

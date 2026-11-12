@@ -11,7 +11,11 @@ Trigger {
 
     // Turned off in Settings > Top Bar: hidden (and its EQ stops).
     visible: enabled && player !== null && (player.trackTitle ?? "") !== ""
-    onClicked: if (player && player.canTogglePlaying) player.togglePlaying()
+    // What's playing, in the island (the Music module on); else play / pause.
+    onClicked: {
+        if (!Daemon.setting("settings.modules.disabled", []).includes("music")) ShellState.toggle("music");
+        else if (player && player.canTogglePlaying) player.togglePlaying();
+    }
 
     Row {
         id: eq

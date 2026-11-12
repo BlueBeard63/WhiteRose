@@ -56,6 +56,8 @@ pub enum Action {
     Note,
     /// Today's agenda in the island (SUPER+A; the Agenda module).
     Agenda,
+    /// What's playing, in the island (SUPER+SHIFT+M; the Music module).
+    Music,
     ScreenshotRegion,
     // Handled by the compositor.
     /// PrtSc: capture the whole screen straight away.
@@ -141,6 +143,7 @@ impl Action {
                 | Action::Clipboard
                 | Action::Note
                 | Action::Agenda
+                | Action::Music
                 | Action::ScreenshotRegion
                 | Action::Media(_)
         )
@@ -336,6 +339,7 @@ impl Def {
             "clipboard" => Action::Clipboard,
             "note" => Action::Note,
             "agenda" => Action::Agenda,
+            "music" => Action::Music,
             "lock" => Action::Lock,
             "screenshot-region" => Action::ScreenshotRegion,
             "screenshot-screen" => Action::ScreenshotScreen,
@@ -387,6 +391,7 @@ pub const CATALOG: &[Def] = &[
     def("clipboard", "Clipboard history", "Shell", &["SUPER+V"]),
     def("note", "Note", "Shell", &["SUPER+SHIFT+N"]),
     def("agenda", "Today's agenda", "Shell", &["SUPER+A"]),
+    def("music", "Now playing", "Shell", &["SUPER+SHIFT+M"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
     def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
@@ -647,6 +652,7 @@ mod tests {
             (SUPER, keysyms::KEY_v, Action::Clipboard),
             (SUPER_SHIFT, keysyms::KEY_n, Action::Note),
             (SUPER, keysyms::KEY_a, Action::Agenda),
+            (SUPER_SHIFT, keysyms::KEY_m, Action::Music),
             (SUPER_ALT, keysyms::KEY_Left, Action::MoveToWorkspaceStep(Dir::Left)),
             (SUPER_ALT, keysyms::KEY_Down, Action::MoveToWorkspaceStep(Dir::Down)),
             (SUPER_CTRL, keysyms::KEY_Right, Action::MoveToOutput(Dir::Right)),
