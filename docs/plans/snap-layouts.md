@@ -1,6 +1,8 @@
 # Plan: snap layouts (v0.3)
 
-**Status: planned** (2026-11-12).
+**Status: done** (2026-11-12), in seven commits on this branch, plus a
+fix and a follow-up; what was built is described in ARCHITECTURE.md,
+"Snapping". The answers below record the decisions made along the way.
 
 Branch: `v0.3/snap-layouts` (off `v0.3-release`). Roadmap item: "Snap
 layouts" (0.3 · Layouts). Scrollable columns, window rules and scratchpads
@@ -188,3 +190,17 @@ the same line follows too (for example, quarters).
 - **One zone per drop:** no spanning zones.
 - **The top edge maximizes**, except its middle third, which shows the
   picker targets.
+
+## Along the way
+
+- (commit 5) The picker is its own overlay layer, not an island view: the
+  compositor works out its tiles and cells and hit-tests them, so a drag
+  can drop on one while it holds the pointer; the shell only draws them.
+- (commit 6) The `windows` event wasn't re-sent when a Qt app resized
+  itself: the commit handler compared the geometry after the commit was
+  applied with itself. It now remembers the size it last saw (a fix commit).
+- (after commit 6, the user's suggestion) Snapping got its own Settings
+  page beside Windows, instead of a section at the end of it.
+- A zone smaller than an app's minimum size (420x300 for the kit's apps) is
+  asked for, but the app keeps its own size. Nothing breaks; showing it in
+  the editor is left for later.
