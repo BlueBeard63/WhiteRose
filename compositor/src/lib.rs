@@ -34,6 +34,7 @@ pub mod switcher;
 pub mod tab_strip;
 pub mod tiling;
 pub mod toplevel_export;
+pub mod window_rules;
 pub mod window_state;
 pub mod winit;
 pub mod workspace;

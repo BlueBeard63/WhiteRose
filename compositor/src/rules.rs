@@ -119,29 +119,24 @@ impl Actions {
         *self == Actions::default()
     }
 
-    /// A floating window's rectangle in the usable `area`, from its own
-    /// `size` (what it would open at): the rule's size, then its position,
-    /// kept inside the area. `None` if the rule sets neither.
-    pub fn place(&self, area: Rect, size: (i32, i32)) -> Option<Rect> {
-        if self.size.is_none() && self.position.is_none() {
-            return None;
-        }
-        let (w, h) = self.size.map_or(size, |(w, h)| (w.of(area.w), h.of(area.h)));
-        let (w, h) = (w.clamp(1, area.w.max(1)), h.clamp(1, area.h.max(1)));
-        let (x, y) = match self.position {
-            None => (area.x, area.y),
-            Some(Position::Centre) => (area.x + (area.w - w) / 2, area.y + (area.h - h) / 2),
-            Some(Position::At(x, y)) => (area.x + x.of(area.w), area.y + y.of(area.h)),
-        };
-        Some(keep_in(Rect::new(x, y, w, h), area))
+    /// The size a floating window is told to open at in the usable
+    /// `area`, cut to fit it. `None` lets the app choose.
+    pub fn size_in(&self, area: Rect) -> Option<(i32, i32)> {
+        let (w, h) = self.size?;
+        Some((w.of(area.w).clamp(1, area.w.max(1)), h.of(area.h).clamp(1, area.h.max(1))))
     }
-}
 
-/// `r` moved (not resized) to lie inside `area`; its size already fits.
-fn keep_in(r: Rect, area: Rect) -> Rect {
-    let x = r.x.clamp(area.x, (area.x + area.w - r.w).max(area.x));
-    let y = r.y.clamp(area.y, (area.y + area.h - r.h).max(area.y));
-    Rect::new(x, y, r.w, r.h)
+    /// Where a floating window of `size` (the size it drew) goes in the
+    /// usable `area`: its top left, kept inside the area. `None` leaves it
+    /// where it would open.
+    pub fn position_in(&self, area: Rect, size: (i32, i32)) -> Option<(i32, i32)> {
+        let (w, h) = size;
+        let (x, y) = match self.position? {
+            Position::Centre => (area.x + (area.w - w) / 2, area.y + (area.h - h) / 2),
+            Position::At(x, y) => (area.x + x.of(area.w), area.y + y.of(area.h)),
+        };
+        Some((x.clamp(area.x, (area.x + area.w - w).max(area.x)), y.clamp(area.y, (area.y + area.h - h).max(area.y))))
+    }
 }
 
 /// One rule: what it matches and what it does.
@@ -316,44 +311,25 @@ mod tests {
     }
 
     #[test]
-    fn places_floating_windows() {
+    fn sizes_floating_windows() {
         let area = Rect::new(100, 40, 1000, 800);
         let with = |v: Value| Rules::parse(&json!([v])).resolve("a", "");
-        assert_eq!(with(json!({"app": "a"})).place(area, (300, 200)), None);
-        // Centred at its own size, or the rule's.
-        assert_eq!(
-            with(json!({"app": "a", "position": "centre"})).place(area, (300, 200)),
-            Some(Rect::new(450, 340, 300, 200))
-        );
-        assert_eq!(
-            with(json!({"app": "a", "size": ["50%", 400], "position": "centre"})).place(area, (300, 200)),
-            Some(Rect::new(350, 240, 500, 400))
-        );
-        // From the area's top left, in pixels or fractions.
-        assert_eq!(
-            with(json!({"app": "a", "position": [20, "25%"]})).place(area, (300, 200)),
-            Some(Rect::new(120, 240, 300, 200))
-        );
-        // A size alone keeps the top left of the area.
-        assert_eq!(
-            with(json!({"app": "a", "size": [640, 480]})).place(area, (300, 200)),
-            Some(Rect::new(100, 40, 640, 480))
-        );
+        assert_eq!(with(json!({"app": "a"})).size_in(area), None);
+        assert_eq!(with(json!({"app": "a", "size": ["50%", 400]})).size_in(area), Some((500, 400)));
+        assert_eq!(with(json!({"app": "a", "size": [5000, "100%"]})).size_in(area), Some((1000, 800)), "cut to fit");
     }
 
     #[test]
-    fn placement_stays_in_the_area() {
-        let area = Rect::new(0, 30, 1000, 800);
+    fn positions_floating_windows() {
+        let area = Rect::new(100, 40, 1000, 800);
         let with = |v: Value| Rules::parse(&json!([v])).resolve("a", "");
-        // Too big: cut to the area.
-        assert_eq!(
-            with(json!({"app": "a", "size": [5000, 5000]})).place(area, (1, 1)),
-            Some(Rect::new(0, 30, 1000, 800))
-        );
-        // Past the right and bottom: moved back in.
-        assert_eq!(
-            with(json!({"app": "a", "position": ["90%", 790]})).place(area, (300, 200)),
-            Some(Rect::new(700, 630, 300, 200))
-        );
+        assert_eq!(with(json!({"app": "a"})).position_in(area, (300, 200)), None);
+        assert_eq!(with(json!({"app": "a", "position": "centre"})).position_in(area, (300, 200)), Some((450, 340)));
+        assert_eq!(with(json!({"app": "a", "position": "center"})).position_in(area, (300, 200)), Some((450, 340)));
+        // From the area's top left, in pixels or fractions.
+        assert_eq!(with(json!({"app": "a", "position": [20, "25%"]})).position_in(area, (300, 200)), Some((120, 240)));
+        // Past the right and bottom: moved back in; too big: the top left.
+        assert_eq!(with(json!({"app": "a", "position": ["90%", 790]})).position_in(area, (300, 200)), Some((800, 640)));
+        assert_eq!(with(json!({"app": "a", "position": [50, 50]})).position_in(area, (2000, 2000)), Some((100, 40)));
     }
 }

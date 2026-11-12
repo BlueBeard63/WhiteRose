@@ -104,18 +104,23 @@ fn to_rectangle(r: Rect) -> Rectangle<i32, Logical> {
 }
 
 impl WhiteRose {
-    /// Called on every commit of a window's surface; tiles it on the first.
+    /// Called on every commit of a window's surface. On the first, applies
+    /// the window rules and tiles it; later, places it by its rule once it
+    /// has drawn.
     pub fn window_committed(&mut self, w: &Window) {
         if w.user_data().get::<Committed>().is_none() {
             w.user_data().insert_if_missing(|| Committed);
+            self.apply_rules(w);
             self.retile();
+        } else {
+            self.place_by_rule(w);
         }
     }
 
     /// Whether a window can be tiled: not a dialog (it has a parent), not
     /// fixed-size, and not taken out of the tiles. Unknown until its first
     /// commit.
-    fn tileable(&self, w: &Window) -> bool {
+    pub(crate) fn tileable(&self, w: &Window) -> bool {
         let Some(t) = w.toplevel() else { return false };
         if w.user_data().get::<Committed>().is_none() || t.parent().is_some() || self.tiling.floating.contains(w) {
             return false;
