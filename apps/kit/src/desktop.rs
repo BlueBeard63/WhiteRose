@@ -33,6 +33,11 @@ pub mod qobject {
         /// one; `local_hour` is used without one (07-19).
         #[qinvokable]
         fn daytime(self: &Desktop, local_hour: i32) -> bool;
+        /// Asks WhiteRose for its snap layout picker under the pointer (the
+        /// maximize button was hovered); false outside WhiteRose.
+        #[qinvokable]
+        #[cxx_name = "snapPicker"]
+        fn snap_picker(self: &Desktop) -> bool;
 
         #[qsignal]
         #[cxx_name = "settingChanged"]
@@ -144,6 +149,10 @@ impl qobject::Desktop {
         self.daemon
             .as_ref()
             .is_some_and(|d| d.set(&key.to_string(), v))
+    }
+
+    pub fn snap_picker(&self) -> bool {
+        crate::compositor::snap_picker()
     }
 
     pub fn daytime(&self, local_hour: i32) -> bool {

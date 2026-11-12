@@ -754,6 +754,7 @@ impl WhiteRose {
             Action::ToggleSplit => self.toggle_split(),
             Action::MakeMaster => self.make_master(),
             Action::ToggleGroup => self.toggle_group(),
+            Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
             Action::NextTab => self.next_tab(true),
             Action::PreviousTab => self.next_tab(false),
             shell => {

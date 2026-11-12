@@ -1,10 +1,12 @@
 // A WhiteRose app's window: rounded, in the desktop's colours, with the
 // desktop's title buttons (minimise, maximise / restore, close) at the top
 // right. Drag the title bar to move it (double-click maximises), drag the
-// edges to resize. Put toolbar items in `toolbar` (left of the buttons) and
-// the app below.
+// edges to resize. Resting the pointer on maximise shows WhiteRose's snap
+// layouts. Put toolbar items in `toolbar` (left of the buttons) and the app
+// below.
 import QtQuick
 import QtQuick.Window
+import WhiteRose.Kit
 
 Window {
     id: win
@@ -49,14 +51,17 @@ Window {
                 anchors { top: parent.top; right: parent.right }
                 Repeater {
                     model: [
-                        { icon: "minus", run: () => win.showMinimized() },
-                        { icon: win.maximized ? "restore" : "square", run: () => win.toggleMaximized() },
-                        { icon: "x", close: true, run: () => win.close() },
+                        { name: "Minimise", icon: "minus", run: () => win.showMinimized() },
+                        { name: win.maximized ? "Restore" : "Maximise", icon: win.maximized ? "restore" : "square", snap: !win.maximized, run: () => win.toggleMaximized() },
+                        { name: "Close", icon: "x", close: true, run: () => win.close() },
                     ]
                     delegate: Rectangle {
                         required property var modelData
                         width: 46; height: 34
                         color: !btn.containsMouse ? "transparent" : modelData.close ? "#C42B1C" : Theme.surface2
+                        Accessible.role: Accessible.Button
+                        Accessible.name: modelData.name
+                        Accessible.onPressAction: modelData.run()
                         Icon {
                             anchors.centerIn: parent
                             name: modelData.icon
@@ -64,6 +69,12 @@ Window {
                             color: btn.containsMouse && modelData.close ? "white" : Theme.text
                         }
                         MouseArea { id: btn; anchors.fill: parent; hoverEnabled: true; onClicked: modelData.run() }
+                        // Resting on maximise: WhiteRose's snap layouts, just below.
+                        Timer {
+                            interval: 500
+                            running: !!modelData.snap && btn.containsMouse && !btn.pressed
+                            onTriggered: Desktop.snapPicker()
+                        }
                     }
                 }
             }

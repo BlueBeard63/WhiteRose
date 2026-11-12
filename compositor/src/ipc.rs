@@ -109,6 +109,39 @@ pub enum Event {
     Layers {
         layers: Vec<LayerInfo>,
     },
+    /// The snap layout picker; null when it's closed (snapping.rs).
+    SnapPicker {
+        picker: Option<PickerView>,
+    },
+}
+
+/// The snap layout picker, for the shell to draw exactly there: `x`, `y`
+/// on the output named; tiles and cells relative to the picker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PickerView {
+    pub output: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    /// A card under the pointer (a WhiteRose app's maximize button), not
+    /// hanging from the bar like the island.
+    pub card: bool,
+    /// The window's title.
+    pub title: String,
+    pub layouts: Vec<PickerLayoutView>,
+    /// [layout, cell] under the pointer or chosen with the arrows.
+    pub hovered: Option<[usize; 2]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PickerLayoutView {
+    /// `halves`, `thirds`, `quarters`, `two-thirds-left`,
+    /// `two-thirds-right`, `zones`.
+    pub id: String,
+    /// [x, y, w, h]
+    pub rect: [i32; 4],
+    pub cells: Vec<[i32; 4]>,
 }
 
 impl Event {
@@ -232,6 +265,13 @@ pub enum Request {
     PauseShortcuts {
         on: bool,
     },
+    /// Open the snap layout picker for the focused window (as SUPER+Z), or
+    /// for the window under the pointer, just below it (a WhiteRose app's
+    /// maximize button).
+    SnapPicker {
+        #[serde(default)]
+        under_pointer: bool,
+    },
 }
 
 fn yes() -> bool {
@@ -277,6 +317,7 @@ impl Request {
                 Action::Capture(crate::screenshot::Shot { region, pointer, save })
             }
             Request::WindowsList => Action::Shell(ShellRequest::WindowsList),
+            Request::SnapPicker { under_pointer } => Action::SnapPicker(under_pointer),
             Request::PauseShortcuts { .. } => unreachable!("handled per client in ipc_request"),
         }
     }
@@ -348,6 +389,7 @@ pub struct Server {
     last_outputs: Option<Event>,
     last_shortcuts: Option<Event>,
     last_keyboard: Option<Event>,
+    last_snap_picker: Option<Event>,
 }
 
 impl Server {
@@ -387,6 +429,7 @@ impl Server {
             last_outputs: None,
             last_shortcuts: None,
             last_keyboard: None,
+            last_snap_picker: None,
         })
     }
 
@@ -425,6 +468,7 @@ impl Server {
             Event::Outputs { .. } => &mut self.last_outputs,
             Event::Shortcuts { .. } => &mut self.last_shortcuts,
             Event::Keyboard { .. } => &mut self.last_keyboard,
+            Event::SnapPicker { .. } => &mut self.last_snap_picker,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } | Event::Layers { .. } => {
                 self.broadcast(&event);
                 return;

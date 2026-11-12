@@ -273,6 +273,80 @@ pub fn picker_layouts(grid: Option<&[Zone]>) -> Vec<PickerLayout> {
     layouts
 }
 
+/// The picker's measurements, from the Figma frames "Snap Picker - SUPER +
+/// Z" and "Snap Picker - Maximize button" (the shell draws it at these).
+pub mod picker {
+    /// A layout's tile.
+    pub const TILE_W: i32 = 132;
+    pub const TILE_H: i32 = 80;
+    pub const TILE_GAP: i32 = 14;
+    /// Around the tiles; the top holds the title row.
+    pub const PAD_X: i32 = 24;
+    pub const PAD_TOP: i32 = 52;
+    pub const PAD_BOTTOM: i32 = 20;
+    /// Cells inside a tile: in from its edge, and apart.
+    pub const INSET: i32 = 6;
+    pub const CELL_GAP: i32 = 4;
+}
+
+/// Where the picker's tiles and cells are, relative to its top left.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PickerGeometry {
+    pub width: i32,
+    pub height: i32,
+    /// Each layout's tile, and its cells' rectangles.
+    pub tiles: Vec<(Rect, Vec<Rect>)>,
+}
+
+impl PickerGeometry {
+    pub fn new(layouts: &[PickerLayout]) -> PickerGeometry {
+        use picker::*;
+        let n = layouts.len() as i32;
+        let width = 2 * PAD_X + n * TILE_W + (n - 1).max(0) * TILE_GAP;
+        let gaps = Gaps { inner: CELL_GAP, outer: INSET, smart: false };
+        let tiles = layouts
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                let tile = Rect::new(PAD_X + i as i32 * (TILE_W + TILE_GAP), PAD_TOP, TILE_W, TILE_H);
+                (tile, l.cells.iter().map(|z| z.rect(tile, &gaps)).collect())
+            })
+            .collect();
+        PickerGeometry { width, height: PAD_TOP + TILE_H + PAD_BOTTOM, tiles }
+    }
+
+    /// The (layout, cell) under the point (`x`, `y`), relative to the
+    /// picker. Anywhere on a tile counts, the gaps between its cells too.
+    pub fn hit(&self, layouts: &[PickerLayout], x: f64, y: f64) -> Option<(usize, usize)> {
+        self.tiles.iter().zip(layouts).enumerate().find_map(|(i, ((tile, _), l))| {
+            let inside =
+                x >= tile.x as f64 && x < tile.right() as f64 && y >= tile.y as f64 && y < tile.bottom() as f64;
+            if !inside {
+                return None;
+            }
+            zone_at(&l.cells, *tile, x, y).map(|c| (i, c))
+        })
+    }
+}
+
+/// The cell the arrow `dir` moves to in the picker: left and right go
+/// through every cell in order, across the layouts; up and down move
+/// within a layout (quarters). Nothing chosen yet: the first cell.
+pub fn picker_step(geometry: &PickerGeometry, at: Option<(usize, usize)>, dir: Dir) -> Option<(usize, usize)> {
+    let cells: Vec<(usize, usize)> =
+        geometry.tiles.iter().enumerate().flat_map(|(l, (_, cs))| (0..cs.len()).map(move |c| (l, c))).collect();
+    let Some(at) = at else { return cells.first().copied() };
+    let i = cells.iter().position(|c| *c == at)?;
+    match dir {
+        Dir::Left => Some(cells[i.saturating_sub(1)]),
+        Dir::Right => Some(cells[(i + 1).min(cells.len() - 1)]),
+        Dir::Up | Dir::Down => {
+            let rects: Vec<(usize, Rect)> = geometry.tiles[at.0].1.iter().copied().enumerate().collect();
+            Some(super::neighbour(&rects, &at.1, dir).map_or(at, |c| (at.0, c)))
+        }
+    }
+}
+
 /// A zone grid from the settings (`[[x, y, w, h], ...]`), or None if it's
 /// unusable: empty, too many zones, a zone outside the area or smaller than
 /// [`MIN_ZONE`], or two zones overlapping (a point must have one zone).
@@ -709,5 +783,50 @@ mod tests {
         assert!(z.same_as(&Zone::new(1.0 / 3.0, 0.0, 2.0 / 3.0, 1.0)));
         let top = KeyState::Snapped(Zone::half(Up));
         assert_eq!(key_step(top, Right), KeyStep::Snap(Zone::half(Right)));
+    }
+
+    #[test]
+    fn the_picker_matches_the_figma_frame() {
+        let layouts = picker_layouts(None);
+        let g = PickerGeometry::new(&layouts);
+        // Five tiles: the island's body in Figma is 764 x 152.
+        assert_eq!((g.width, g.height), (764, 152));
+        assert_eq!(g.tiles[1].0, Rect::new(170, 52, 132, 80));
+        // Halves: 6px in, 4px apart.
+        assert_eq!(g.tiles[0].1, vec![Rect::new(30, 58, 58, 68), Rect::new(92, 58, 58, 68)]);
+        // With the monitor's own grid: a sixth tile.
+        let grid = [Zone::half(Dir::Up), Zone::half(Dir::Down)];
+        assert_eq!(PickerGeometry::new(&picker_layouts(Some(&grid))).width, 764 + 146);
+    }
+
+    #[test]
+    fn the_picker_finds_the_cell_under_the_pointer() {
+        let layouts = picker_layouts(None);
+        let g = PickerGeometry::new(&layouts);
+        assert_eq!(g.hit(&layouts, 40.0, 80.0), Some((0, 0)));
+        assert_eq!(g.hit(&layouts, 100.0, 80.0), Some((0, 1)));
+        // The gap between two cells of a tile belongs to one of them.
+        assert_eq!(g.hit(&layouts, 89.5, 80.0).map(|h| h.0), Some(0));
+        // Quarters' lower right.
+        assert_eq!(g.hit(&layouts, 420.0, 120.0), Some((2, 3)));
+        // Between tiles, above them, outside: nothing.
+        assert_eq!(g.hit(&layouts, 160.0, 80.0), None);
+        assert_eq!(g.hit(&layouts, 40.0, 20.0), None);
+        assert_eq!(g.hit(&layouts, 2000.0, 80.0), None);
+    }
+
+    #[test]
+    fn arrows_walk_the_picker() {
+        use Dir::*;
+        let layouts = picker_layouts(None);
+        let g = PickerGeometry::new(&layouts);
+        assert_eq!(picker_step(&g, None, Right), Some((0, 0)));
+        assert_eq!(picker_step(&g, Some((0, 0)), Left), Some((0, 0)), "stays at the start");
+        assert_eq!(picker_step(&g, Some((0, 1)), Right), Some((1, 0)), "on into the next layout");
+        assert_eq!(picker_step(&g, Some((4, 1)), Right), Some((4, 1)), "stays at the end");
+        // Quarters: down from the top left is the bottom left.
+        assert_eq!(picker_step(&g, Some((2, 0)), Down), Some((2, 2)));
+        assert_eq!(picker_step(&g, Some((2, 2)), Down), Some((2, 2)));
+        assert_eq!(picker_step(&g, Some((0, 0)), Up), Some((0, 0)), "halves have nothing above");
     }
 }

@@ -16,6 +16,14 @@
 //! Holding SHIFT while dragging shows the monitor's zone grid
 //! (`windows.snap.zones`, else two thirds and a third) instead, and the
 //! window drops into the zone under the pointer.
+//!
+//! The picker shows the layouts (halves, thirds, quarters, two thirds and a
+//! third, the monitor's own grid) as small diagrams; a cell puts the window
+//! there. It opens with SUPER+Z (the focused window), when a drag reaches
+//! the top edge's middle, or when the pointer rests on the maximize button
+//! of a WhiteRose app (the kit asks for it). The compositor places it and
+//! finds the cell under the pointer, even while a drag holds the pointer;
+//! the shell only draws it (`snap_picker` event).
 
 use smithay::{
     backend::renderer::{element::Id, utils::CommitCounter},
@@ -29,7 +37,7 @@ use smithay::{
 use crate::{
     grabs::SnapResizeGrab,
     layout::{
-        snap::{self, EdgeDrag, KeyState, KeyStep, Open, Target, Zone},
+        snap::{self, EdgeDrag, KeyState, KeyStep, Open, PickerGeometry, PickerLayout, Target, Zone},
         Axis, Dir, Layout, Rect,
     },
     outputs,
@@ -58,7 +66,63 @@ pub struct SnapState {
     pub grid: Vec<(Rectangle<i32, Logical>, Id)>,
     /// Bumped when the grid changes, so the renderer redraws it.
     pub grid_commit: CommitCounter,
+    /// The layout picker, while it's open.
+    pub picker: Option<OpenPicker>,
 }
+
+/// How the picker was opened, which decides how it closes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PickerMode {
+    /// SUPER+Z: the arrows, Enter and Escape work it; a click outside
+    /// closes it.
+    Key,
+    /// A drag reached the top edge's middle: dropping on a cell snaps
+    /// there; moving away closes it.
+    Drag,
+    /// The pointer rested on a WhiteRose app's maximize button: moving well
+    /// away closes it.
+    Hover,
+}
+
+#[derive(Debug)]
+pub struct OpenPicker {
+    pub window: Window,
+    pub output: Output,
+    pub mode: PickerMode,
+    /// Its top-left corner (global).
+    pub at: Point<i32, Logical>,
+    /// A card under the pointer, not hanging from the bar like the island.
+    pub card: bool,
+    pub layouts: Vec<PickerLayout>,
+    pub geometry: PickerGeometry,
+    /// The (layout, cell) under the pointer or chosen with the arrows.
+    pub hovered: Option<(usize, usize)>,
+}
+
+impl OpenPicker {
+    pub fn rect(&self) -> Rectangle<i32, Logical> {
+        Rectangle::new(self.at, (self.geometry.width, self.geometry.height).into())
+    }
+
+    fn hit(&self, pos: Point<f64, Logical>) -> Option<(usize, usize)> {
+        self.geometry.hit(&self.layouts, pos.x - self.at.x as f64, pos.y - self.at.y as f64)
+    }
+
+    /// Whether `pos` is on it, or within `margin` of it.
+    fn near(&self, pos: Point<f64, Logical>, margin: i32) -> bool {
+        let r = self.rect();
+        let grown = Rectangle::<i32, Logical>::new(
+            (r.loc.x - margin, r.loc.y - margin).into(),
+            (r.size.w + 2 * margin, r.size.h + 2 * margin).into(),
+        );
+        grown.to_f64().contains(pos)
+    }
+}
+
+/// How far (px) the pointer can stray from a hover-opened picker (it opens
+/// a little below the button) or a drag's picker before it closes.
+const HOVER_REACH: i32 = 48;
+const DRAG_REACH: i32 = 24;
 
 /// The accent rose (#E8A3AE) at 12%, premultiplied: the zones not under
 /// the pointer (the one under it gets the drop preview on top).
@@ -209,6 +273,9 @@ impl WhiteRose {
     /// A closed window's snap.
     pub(crate) fn forget_snap(&mut self, w: &Window) {
         self.snap.snapped.retain(|s| s.window != *w);
+        if self.snap.picker.as_ref().is_some_and(|p| p.window == *w) {
+            self.close_picker();
+        }
     }
 
     /// A snapped window starts being dragged with the pointer at `pointer`:
@@ -275,11 +342,30 @@ impl WhiteRose {
             return;
         }
         self.show_grid(Vec::new());
+        // On the picker a drag opened: the cell under the pointer.
+        if let Some(p) = self.snap.picker.as_ref().filter(|p| p.mode == PickerMode::Drag) {
+            if p.near(pos, DRAG_REACH) {
+                let hovered = p.hit(pos);
+                let target = hovered.map(|(l, c)| (p.output.clone(), Target::Zone(p.layouts[l].cells[c])));
+                self.snap.drag_target = target;
+                self.set_picker_hovered(hovered);
+                return;
+            }
+        }
         let target = self.snap_target_at(w, pos);
+        if let Some((o, Target::Picker)) = target {
+            if self.snap.picker.is_none() {
+                self.open_picker(w, o, PickerMode::Drag, None);
+            }
+            self.snap.drag_target = None;
+            self.set_preview(None);
+            return;
+        }
+        if self.snap.picker.as_ref().is_some_and(|p| p.mode == PickerMode::Drag) {
+            self.close_picker();
+        }
         let preview = target.as_ref().map(|(o, t)| match t {
             Target::Zone(z) => self.zone_rect(z, o),
-            // (The picker's cells come with the picker; until then, the
-            // middle of the top edge maximizes like the rest of it.)
             Target::Maximize | Target::Picker => self.usable_area_on(o),
         });
         self.snap.drag_target = target;
@@ -315,6 +401,9 @@ impl WhiteRose {
     pub fn snap_drop(&mut self, w: &Window, from: Point<i32, Logical>) {
         self.snap.dragging = None;
         self.show_grid(Vec::new());
+        if self.snap.picker.as_ref().is_some_and(|p| p.mode == PickerMode::Drag) {
+            self.close_picker();
+        }
         let Some((o, target)) = self.snap.drag_target.take() else { return };
         self.set_preview(None);
         match target {
@@ -327,6 +416,9 @@ impl WhiteRose {
     pub fn snap_drag_end(&mut self) {
         self.snap.dragging = None;
         self.show_grid(Vec::new());
+        if self.snap.picker.as_ref().is_some_and(|p| p.mode == PickerMode::Drag) {
+            self.close_picker();
+        }
         if self.snap.drag_target.take().is_some() {
             self.set_preview(None);
         }
@@ -494,5 +586,198 @@ impl WhiteRose {
             .collect();
             (!edges.is_empty()).then(|| (s.window.clone(), edges))
         })
+    }
+}
+
+/// The layout picker.
+impl WhiteRose {
+    /// SUPER+Z (the focused window), or a WhiteRose app's maximize button
+    /// (`under_pointer`: the window under the pointer, the picker just
+    /// below it). SUPER+Z again closes it.
+    pub fn snap_picker(&mut self, under_pointer: bool) {
+        if self.snap.picker.is_some() {
+            self.close_picker();
+            if !under_pointer {
+                return;
+            }
+        }
+        let pointer = self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
+        let (w, mode, anchor) = if under_pointer {
+            let Some((w, _)) = self.space.element_under(pointer) else { return };
+            (w.clone(), PickerMode::Hover, Some(pointer))
+        } else {
+            let Some(w) = self.focused_window() else { return };
+            (w, PickerMode::Key, None)
+        };
+        let Some(o) = (if under_pointer { self.output_at(pointer) } else { self.output_of(&w) }) else { return };
+        if !self.can_snap(&w, &o) {
+            return;
+        }
+        self.open_picker(&w, o, mode, anchor);
+    }
+
+    /// Opens the picker for `w` on `o`: hanging from the top of the usable
+    /// area in the middle, or as a card just below `anchor`.
+    fn open_picker(&mut self, w: &Window, o: Output, mode: PickerMode, anchor: Option<Point<f64, Logical>>) {
+        let id = outputs::info(&o).id;
+        let grid = self.tiling.settings.snap_zones.get(&id).cloned();
+        let layouts = snap::picker_layouts(grid.as_deref());
+        let geometry = PickerGeometry::new(&layouts);
+        let area = self.usable_area_on(&o);
+        let (gw, gh) = (geometry.width, geometry.height);
+        let at = match anchor {
+            Some(p) => {
+                let margin = 8;
+                let max_x = (area.loc.x + area.size.w - gw - margin).max(area.loc.x);
+                let max_y = (area.loc.y + area.size.h - gh - margin).max(area.loc.y);
+                let x = (p.x as i32 - gw / 2).clamp(area.loc.x + margin, max_x);
+                let y = (p.y as i32 + 16).clamp(area.loc.y + margin, max_y);
+                Point::from((x, y))
+            }
+            None => Point::from((area.loc.x + (area.size.w - gw) / 2, area.loc.y)),
+        };
+        let hovered = (mode == PickerMode::Key).then_some((0, 0));
+        let card = anchor.is_some();
+        self.snap.picker =
+            Some(OpenPicker { window: w.clone(), output: o, mode, at, card, layouts, geometry, hovered });
+        self.picker_changed();
+    }
+
+    pub fn close_picker(&mut self) {
+        if self.snap.picker.take().is_some() {
+            self.set_preview(None);
+            self.picker_sync();
+        }
+    }
+
+    fn set_picker_hovered(&mut self, hovered: Option<(usize, usize)>) {
+        let Some(p) = self.snap.picker.as_mut() else { return };
+        if p.hovered != hovered {
+            p.hovered = hovered;
+            self.picker_changed();
+        }
+    }
+
+    /// The hovered cell's zone shows as the drop preview; the shell redraws.
+    fn picker_changed(&mut self) {
+        let preview = self.snap.picker.as_ref().and_then(|p| {
+            let (l, c) = p.hovered?;
+            Some(self.zone_rect(&p.layouts[l].cells[c], &p.output))
+        });
+        self.set_preview(preview);
+        self.picker_sync();
+    }
+
+    /// Snaps the picker's window into the hovered cell, and closes it.
+    fn picker_choose(&mut self) {
+        let Some(p) = self.snap.picker.as_ref() else { return };
+        let chosen = p.hovered.map(|(l, c)| (p.window.clone(), p.output.clone(), p.layouts[l].cells[c]));
+        self.close_picker();
+        if let Some((w, o, zone)) = chosen {
+            self.snap_window(&w, o, zone);
+        }
+    }
+
+    /// The pointer moved (not in a drag): the cell under it is hovered; a
+    /// hover-opened picker closes once the pointer is well away.
+    pub fn picker_pointer(&mut self, pos: Point<f64, Logical>) {
+        let Some(p) = self.snap.picker.as_ref().filter(|p| p.mode != PickerMode::Drag) else { return };
+        if p.near(pos, 0) {
+            let hovered = p.hit(pos);
+            if hovered.is_some() || p.mode == PickerMode::Hover {
+                self.set_picker_hovered(hovered);
+            }
+        } else if p.mode == PickerMode::Hover && !p.near(pos, HOVER_REACH) {
+            self.close_picker();
+        }
+    }
+
+    /// A button was pressed at `pos` (not in a drag). On the picker: a cell
+    /// chooses it, and the click is the picker's (true). Elsewhere it
+    /// closes the picker and the click goes on as usual.
+    pub fn picker_click(&mut self, pos: Point<f64, Logical>) -> bool {
+        let Some(p) = self.snap.picker.as_ref().filter(|p| p.mode != PickerMode::Drag) else { return false };
+        if !p.near(pos, 0) {
+            self.close_picker();
+            return false;
+        }
+        let hovered = p.hit(pos);
+        if hovered.is_some() {
+            self.set_picker_hovered(hovered);
+            self.picker_choose();
+        }
+        true
+    }
+
+    /// A key pressed while the picker is open (not in a drag): arrows move
+    /// between cells, Enter chooses, Escape closes. True if it was the
+    /// picker's; any other key closes it and works as usual.
+    pub fn picker_key(&mut self, sym: smithay::input::keyboard::Keysym) -> bool {
+        use smithay::input::keyboard::keysyms as k;
+        let Some(p) = self.snap.picker.as_ref().filter(|p| p.mode != PickerMode::Drag) else { return false };
+        let dir = match sym.raw() {
+            k::KEY_Left => Some(Dir::Left),
+            k::KEY_Right => Some(Dir::Right),
+            k::KEY_Up => Some(Dir::Up),
+            k::KEY_Down => Some(Dir::Down),
+            _ => None,
+        };
+        if let Some(d) = dir {
+            let next = snap::picker_step(&p.geometry, p.hovered, d);
+            self.set_picker_hovered(next);
+            return true;
+        }
+        match sym.raw() {
+            k::KEY_Return | k::KEY_KP_Enter => {
+                self.picker_choose();
+                true
+            }
+            k::KEY_Escape => {
+                self.close_picker();
+                true
+            }
+            _ if sym.is_modifier_key() => false,
+            _ => {
+                self.close_picker();
+                false
+            }
+        }
+    }
+
+    /// What the shell draws.
+    pub fn picker_event(&self) -> crate::ipc::Event {
+        let picker = self.snap.picker.as_ref().map(|p| {
+            let og = self.space.output_geometry(&p.output).unwrap_or_default();
+            let r = |r: &Rect| [r.x, r.y, r.w, r.h];
+            crate::ipc::PickerView {
+                output: p.output.name(),
+                x: p.at.x - og.loc.x,
+                y: p.at.y - og.loc.y,
+                width: p.geometry.width,
+                height: p.geometry.height,
+                card: p.card,
+                title: crate::ipc::toplevel_ids(&p.window).1.unwrap_or_default(),
+                layouts: p
+                    .layouts
+                    .iter()
+                    .zip(&p.geometry.tiles)
+                    .map(|(l, (tile, cells))| crate::ipc::PickerLayoutView {
+                        id: l.id.to_string(),
+                        rect: r(tile),
+                        cells: cells.iter().map(r).collect(),
+                    })
+                    .collect(),
+                hovered: p.hovered.map(|(l, c)| [l, c]),
+            }
+        });
+        crate::ipc::Event::SnapPicker { picker }
+    }
+
+    fn picker_sync(&mut self) {
+        let event = self.picker_event();
+        if let Some(ipc) = self.ipc.as_mut() {
+            ipc.update(event);
+        }
+        self.schedule_redraw();
     }
 }

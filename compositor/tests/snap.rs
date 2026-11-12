@@ -479,3 +479,163 @@ fn a_gap_in_the_grid_drops_nowhere_and_bad_grids_are_ignored() {
         assert_eq!(preview, Some(LAST_THIRD));
     });
 }
+
+const Z: u32 = 44 + 8;
+const ENTER: u32 = 28 + 8;
+const ESC: u32 = 1 + 8;
+/// SUPER+Z's picker: five layouts (764 wide) hanging from the bar, in the
+/// middle.
+const PICKER_AT: (i32, i32) = (338, 26);
+
+fn picker_hovered(s: &WhiteRose) -> Option<(usize, usize)> {
+    s.snap.picker.as_ref().and_then(|p| p.hovered)
+}
+
+fn preview(s: &WhiteRose) -> Option<(i32, i32, i32, i32)> {
+    s.tiling.preview.rect.map(|r| (r.loc.x, r.loc.y, r.size.w, r.size.h))
+}
+
+/// A point on the picker opened by SUPER+Z (relative to it).
+fn on_picker(x: i32, y: i32) -> (f64, f64) {
+    ((PICKER_AT.0 + x) as f64, (PICKER_AT.1 + y) as f64)
+}
+
+#[test]
+fn super_z_opens_the_picker_and_the_arrows_choose() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        press(s, &[SUPER, Z]);
+        let p = s.snap.picker.as_ref().expect("open");
+        assert_eq!((p.at.x, p.at.y), PICKER_AT);
+        assert_eq!(picker_hovered(s), Some((0, 0)), "the left half to start with");
+        assert_eq!(preview(s), Some(LEFT), "its place shows on the desktop");
+        // What the shell draws.
+        let whiterose_wm::ipc::Event::SnapPicker { picker: Some(v) } = s.picker_event() else { panic!() };
+        assert_eq!((v.x, v.y, v.width, v.height, v.card), (338, 26, 764, 152, false));
+        assert_eq!(v.layouts.len(), 5);
+        assert_eq!(v.layouts[0].cells, vec![[30, 58, 58, 68], [92, 58, 58, 68]]);
+        assert_eq!(v.hovered, Some([0, 0]));
+
+        press(s, &[KEY_RIGHT]);
+        assert_eq!(preview(s), Some(RIGHT));
+        press(s, &[ENTER]);
+        assert!(s.snap.picker.is_none());
+        assert_eq!(where_(s), Some(RIGHT));
+        assert_eq!(preview(s), None);
+    });
+}
+
+#[test]
+fn escape_or_super_z_again_closes_it() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        press(s, &[SUPER, Z]);
+        press(s, &[ESC]);
+        assert!(s.snap.picker.is_none());
+        assert_eq!(preview(s), None);
+        press(s, &[SUPER, Z]);
+        press(s, &[SUPER, Z]);
+        assert!(s.snap.picker.is_none());
+        assert!(s.snap_of(&the_window(s)).is_none(), "nothing chosen");
+    });
+}
+
+#[test]
+fn the_pointer_hovers_and_a_click_chooses() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        press(s, &[SUPER, Z]);
+        // The first of the thirds.
+        s.on_pointer_motion(on_picker(182, 60).into(), 1);
+        assert_eq!(picker_hovered(s), Some((1, 0)));
+        s.on_pointer_button(BTN_LEFT, smithay::backend::input::ButtonState::Pressed, 2);
+        s.on_pointer_button(BTN_LEFT, smithay::backend::input::ButtonState::Released, 3);
+        assert!(s.snap.picker.is_none());
+        assert_eq!(where_(s), Some((8, 34, 471, 766)));
+    });
+}
+
+#[test]
+fn a_click_outside_closes_it() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        press(s, &[SUPER, Z]);
+        s.on_pointer_motion((700.0, 600.0).into(), 1);
+        assert_eq!(picker_hovered(s), Some((0, 0)), "moving off it keeps the arrows' choice");
+        s.on_pointer_button(BTN_LEFT, smithay::backend::input::ButtonState::Pressed, 2);
+        s.on_pointer_button(BTN_LEFT, smithay::backend::input::ButtonState::Released, 3);
+        assert!(s.snap.picker.is_none());
+        assert!(s.snap_of(&the_window(s)).is_none());
+    });
+}
+
+#[test]
+fn dragging_to_the_top_middle_opens_it_to_drop_on() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        use smithay::backend::input::ButtonState;
+        super_key(s, true);
+        s.on_pointer_motion((100.0, 100.0).into(), 1);
+        s.on_pointer_button(BTN_LEFT, ButtonState::Pressed, 2);
+        s.on_pointer_motion((720.0, 0.0).into(), 3);
+        let p = s.snap.picker.as_ref().expect("open");
+        assert_eq!((p.at.x, p.at.y), PICKER_AT);
+        assert_eq!(preview(s), None, "nothing chosen yet");
+        // Down onto the quarters' lower right.
+        s.on_pointer_motion(on_picker(420, 120).into(), 4);
+        assert_eq!(picker_hovered(s), Some((2, 3)));
+        assert_eq!(preview(s), Some((724, 421, 708, 379)));
+        s.on_pointer_button(BTN_LEFT, ButtonState::Released, 5);
+        super_key(s, false);
+        assert!(s.snap.picker.is_none());
+        assert_eq!(where_(s), Some((724, 421, 708, 379)));
+    });
+}
+
+#[test]
+fn dragging_away_from_the_picker_closes_it() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        use smithay::backend::input::ButtonState;
+        super_key(s, true);
+        s.on_pointer_motion((100.0, 100.0).into(), 1);
+        s.on_pointer_button(BTN_LEFT, ButtonState::Pressed, 2);
+        s.on_pointer_motion((720.0, 0.0).into(), 3);
+        assert!(s.snap.picker.is_some());
+        s.on_pointer_motion((720.0, 500.0).into(), 4);
+        assert!(s.snap.picker.is_none());
+        s.on_pointer_button(BTN_LEFT, ButtonState::Released, 5);
+        super_key(s, false);
+        assert!(s.snap_of(&the_window(s)).is_none());
+    });
+}
+
+#[test]
+fn a_maximize_button_opens_a_card_under_the_pointer() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        // As a WhiteRose app asks for it: the pointer on its button.
+        s.on_pointer_motion((100.0, 90.0).into(), 1);
+        let req = whiterose_wm::ipc::Request::parse(r#"{"cmd":"snap_picker","under_pointer":true}"#).unwrap();
+        s.run_action(req.into_action());
+        let p = s.snap.picker.as_ref().expect("open");
+        // Centred under the pointer would be off the left of the screen:
+        // kept 8px inside it.
+        assert_eq!((p.at.x, p.at.y, p.card), (8, 106, true));
+        assert_eq!(picker_hovered(s), None);
+        // A little way off (towards it) keeps it; well away closes it.
+        s.on_pointer_motion((100.0, 70.0).into(), 2);
+        assert!(s.snap.picker.is_some());
+        s.on_pointer_motion((1300.0, 700.0).into(), 3);
+        assert!(s.snap.picker.is_none());
+    });
+}
+
+#[test]
+fn no_picker_on_tiled_workspaces() {
+    let mut h = Headless::new(true);
+    two_tiles(&mut h, |s| {
+        press(s, &[SUPER, Z]);
+        assert!(s.snap.picker.is_none());
+    });
+}

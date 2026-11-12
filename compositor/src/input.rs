@@ -74,6 +74,9 @@ impl WhiteRose {
         let under = self.surface_under(pos);
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
         pointer.frame(self);
+        if !pointer.is_grabbed() {
+            self.picker_pointer(pos);
+        }
         // The drag icon follows the pointer, and so does a pointer we draw.
         if self.dnd_icon.is_some() || self.draws_cursor {
             self.schedule_redraw();
@@ -106,7 +109,9 @@ impl WhiteRose {
             self.focus_lock_surface();
         } else if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
             let at = pointer.current_location();
-            if let Some(layer) = self.top_layer_at(at) {
+            if self.picker_click(at) {
+                // The snap picker's: a cell was chosen (or a gap clicked).
+            } else if let Some(layer) = self.top_layer_at(at) {
                 // Clicks on panels never change window focus. Panels that
                 // take typing (e.g. a search field) get the keyboard.
                 if layer.can_receive_keyboard_focus() {
@@ -206,6 +211,19 @@ impl WhiteRose {
                 // While a switcher is open it owns the keyboard.
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
+                }
+                // The snap picker takes the arrows, Enter and Escape; its
+                // own shortcut closes it.
+                if pressed && state.snap.picker.is_some() {
+                    let toggle =
+                        matches!(state.bindings.lookup(Mods::from(mods), sym), Some(Action::SnapPicker(false)));
+                    if toggle {
+                        state.close_picker();
+                    }
+                    if toggle || state.picker_key(sym) {
+                        state.swallowed.push(keycode);
+                        return FilterResult::Intercept(None);
+                    }
                 }
                 // Resize mode takes the arrows (and Escape or Enter ends it).
                 if state.tiling.key_resize && pressed {
