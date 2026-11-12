@@ -36,7 +36,8 @@ smithay::backend::renderer::element::render_elements! {
     pub OutputElement<=GlesRenderer>;
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
-    Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
+    /// Pixels the compositor draws: the pointer, tab strips.
+    Image=MemoryRenderBufferRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,
 }
 
@@ -140,6 +141,16 @@ pub fn output_elements(
             }
             if let Ok(space) = smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0) {
                 elements.extend(space.into_iter().map(OutputElement::Space));
+            }
+            // Tab strips: behind every window (a dialog over one covers it),
+            // in front of the wallpaper and other bottom layers.
+            let strips = crate::tab_strip::elements(renderer, output, state);
+            if !strips.is_empty() {
+                let behind_windows = elements
+                    .iter()
+                    .rposition(|e| matches!(e, OutputElement::Space(SpaceRenderElements::Element(_))))
+                    .map_or(elements.len(), |i| i + 1);
+                elements.splice(behind_windows..behind_windows, strips);
             }
         }
     }

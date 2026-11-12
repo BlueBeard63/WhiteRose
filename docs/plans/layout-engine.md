@@ -185,3 +185,7 @@ moving (later, with 0.4 Overview).
 - Grouped (tabbed) windows go **in this branch**, as their own commit after
   the mouse work (before keys, so their keys join commit 4).
 - One master tile only; SUPER+M swaps the focused window into it.
+- (2026-11-12, before commit 4) A drag joins a group when dropped on a
+  tile's top strip (its tab bar, or the top of an ungrouped tile); the
+  middle still swaps and the edges still split. The compositor draws the
+  tab strip itself, titles included (fontdue, a pure-Rust rasterizer).

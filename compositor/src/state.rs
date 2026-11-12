@@ -487,6 +487,10 @@ impl WhiteRose {
                     self.retile();
                 }
             }
+            // A group's hidden tab (ALT+TAB, the dock): show it.
+            if self.tiling.groups.is_hidden(w) {
+                self.show_tab(w);
+            }
             self.space.raise_element(w, true);
             self.restack();
             self.workspaces.focus(w);
@@ -537,7 +541,8 @@ impl WhiteRose {
             self.hide(w);
         }
         for w in &switch.show {
-            if !self.minimized.contains(w) {
+            // Not minimised windows, nor the hidden tabs of a group.
+            if !self.minimized.contains(w) && !self.tiling.groups.is_hidden(w) {
                 self.show(w);
             }
         }
@@ -547,13 +552,18 @@ impl WhiteRose {
     }
 
     /// The window to focus when the focused one goes away: the most
-    /// recently used on this workspace that isn't minimised.
+    /// recently used on this workspace that's on screen (not minimised, not
+    /// a group's hidden tab).
     pub fn next_focus(&self) -> Option<Window> {
         let ws = self.workspaces.active();
         self.workspaces
             .mru()
             .iter()
-            .find(|w| self.workspaces.workspace_of(w) == Some(ws) && !self.minimized.contains(w))
+            .find(|w| {
+                self.workspaces.workspace_of(w) == Some(ws)
+                    && !self.minimized.contains(w)
+                    && !self.tiling.groups.is_hidden(w)
+            })
             .cloned()
     }
 
@@ -565,6 +575,8 @@ impl WhiteRose {
         if self.fullscreen.contains(w) {
             self.unfullscreen(w);
         }
+        // It comes back on its own, not as a tab.
+        self.leave_group(w);
         self.minimized.push(w.clone());
         self.hide(w);
         self.retile();
@@ -575,6 +587,9 @@ impl WhiteRose {
     /// Moves the focused window to a workspace (0-based index).
     pub fn move_focused_to(&mut self, ws: usize) {
         let Some(w) = self.focused_window() else { return };
+        if ws < self.workspaces.count() && self.workspaces.workspace_of(&w) != Some(ws) {
+            self.leave_group(&w);
+        }
         if self.workspaces.move_to(&w, ws) {
             self.hide(&w);
             self.retile();
@@ -583,14 +598,14 @@ impl WhiteRose {
         }
     }
 
-    fn hide(&mut self, w: &Window) {
+    pub(crate) fn hide(&mut self, w: &Window) {
         if let Some(loc) = self.space.element_location(w) {
             self.hidden_at.push((w.clone(), loc));
         }
         self.space.unmap_elem(w);
     }
 
-    fn show(&mut self, w: &Window) {
+    pub(crate) fn show(&mut self, w: &Window) {
         let loc = self
             .hidden_at
             .iter()

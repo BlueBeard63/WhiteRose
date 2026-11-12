@@ -4,55 +4,6 @@
 mod common;
 
 use common::{tiles::*, *};
-use serde_json::json;
-use smithay::backend::input::KeyState;
-use smithay::{backend::input::ButtonState, input::keyboard::Keycode};
-use whiterose_wm::WhiteRose;
-
-const BTN_LEFT: u32 = 0x110;
-const BTN_RIGHT: u32 = 0x111;
-const SUPER: u32 = 125 + 8;
-
-fn super_key(s: &mut WhiteRose, down: bool) {
-    s.on_key(Keycode::new(SUPER), if down { KeyState::Pressed } else { KeyState::Released }, 0);
-}
-
-/// Presses `button` at `from`, moves to `to`, and lets go; returns the drop
-/// preview seen just before letting go.
-fn drag(s: &mut WhiteRose, button: u32, from: (f64, f64), to: (f64, f64)) -> Option<(i32, i32, i32, i32)> {
-    s.on_pointer_motion(from.into(), 1);
-    s.on_pointer_button(button, ButtonState::Pressed, 2);
-    s.on_pointer_motion(((from.0 + to.0) / 2.0, (from.1 + to.1) / 2.0).into(), 3);
-    s.on_pointer_motion(to.into(), 4);
-    let preview = s.tiling.preview.rect.map(|r| (r.loc.x, r.loc.y, r.size.w, r.size.h));
-    s.on_pointer_button(button, ButtonState::Released, 5);
-    preview
-}
-
-fn super_drag(s: &mut WhiteRose, button: u32, from: (f64, f64), to: (f64, f64)) -> Option<(i32, i32, i32, i32)> {
-    super_key(s, true);
-    let preview = drag(s, button, from, to);
-    super_key(s, false);
-    preview
-}
-
-/// A bar and two dwindle tiles that have drawn at their size, so the
-/// pointer finds them.
-fn two_tiles(h: &mut Headless, test: impl FnOnce(&mut WhiteRose) + Send + 'static) {
-    set(&mut h.state, "windows.layout", json!("dwindle"));
-    h.drive(move |conn, ask| {
-        let mut c = Client::connect(&conn);
-        c.open_bar();
-        let (a, _ta) = open(&mut c);
-        let (b, _tb) = open(&mut c);
-        c.attach_buffer(&a, LEFT.2, LEFT.3);
-        c.attach_buffer(&b, RIGHT.2, RIGHT.3);
-        ask.run(move |s| {
-            assert_eq!(rects(s), vec![Some(LEFT), Some(RIGHT)]);
-            test(s);
-        });
-    });
-}
 
 #[test]
 fn super_drag_onto_the_middle_of_a_tile_swaps_them() {

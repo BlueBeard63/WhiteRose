@@ -108,6 +108,10 @@ impl XdgShellHandler for WhiteRose {
 
     fn title_changed(&mut self, _surface: ToplevelSurface) {
         self.ipc_sync();
+        // Tab strips show titles.
+        if !self.tiling.strips.is_empty() {
+            self.schedule_redraw();
+        }
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {

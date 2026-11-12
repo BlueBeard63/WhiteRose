@@ -28,9 +28,10 @@ use smithay::{
 
 use crate::{
     grabs::{TileMoveGrab, TileResizeGrab},
-    layout::{self, Axis, Dir, Drop, Layout, Rect, Side, Tiling},
+    layout::{self, Axis, Dir, Drop, Layout, Rect, Side, Tiling, TAB_STRIP},
     outputs,
     state::WhiteRose,
+    tab_strip::{Strip, StripImages},
 };
 
 /// The states that tell a client it's tiled: it drops its shadows and
@@ -59,6 +60,11 @@ pub struct TilingState {
     pub dragging: Option<Window>,
     /// Where the dragged tile will land, drawn under the pointer.
     pub preview: DropPreview,
+    /// Tabbed windows sharing a tile.
+    pub groups: layout::Groups<Window>,
+    /// The visible groups' tab strips, and their drawn pictures.
+    pub strips: Vec<Strip>,
+    pub strip_images: StripImages,
 }
 
 /// The drop preview: a translucent rectangle (global coordinates).
@@ -145,6 +151,7 @@ impl WhiteRose {
         self.tiling.sets.retain(|s| outputs.contains(&s.output));
 
         let mut tiled: Vec<Window> = Vec::new();
+        let mut strips: Vec<Strip> = Vec::new();
         for o in &outputs {
             let layout = self.layout_of(ws, o);
             let set = self.tiling.sets.iter().position(|s| s.workspace == ws && s.output == *o);
@@ -197,10 +204,37 @@ impl WhiteRose {
             }
             let area = to_rect(self.usable_area_on(o));
             for (w, r) in self.tiling.sets[i].tiling.arrange(area, &self.tiling.settings.gaps) {
+                let mut r = to_rectangle(r);
+                // A group's shown window sits under its tab strip.
+                if let Some(tabs) = self.tiling.groups.tabs_of(&w) {
+                    let h = TAB_STRIP.min(r.size.h);
+                    let shown = tabs.iter().position(|t| *t == w).unwrap_or(0);
+                    let rect = Rectangle::new(r.loc, (r.size.w, h).into());
+                    strips.push(Strip { output: o.clone(), rect, tabs: tabs.to_vec(), shown });
+                    r = Rectangle::new((r.loc.x, r.loc.y + h).into(), (r.size.w, r.size.h - h).into());
+                }
                 if !Self::maximized_or_fullscreen(&w) {
-                    self.place(&w, to_rectangle(r));
+                    self.place(&w, r);
                 }
                 tiled.push(w);
+            }
+        }
+        self.tiling.strips = strips;
+
+        // A group whose tile is gone (the workspace floats now) ends: its
+        // hidden tabs come back, and they all float where they were.
+        let loose: Vec<Window> = self
+            .tiling
+            .groups
+            .iter()
+            .map(|(_, shown)| shown.clone())
+            .filter(|s| !tiled.contains(s) && self.space.element_location(s).is_some())
+            .collect();
+        for shown in loose {
+            for tab in self.tiling.groups.dissolve(&shown) {
+                if self.workspaces.workspace_of(&tab) == Some(ws) && !self.minimized.contains(&tab) {
+                    self.show(&tab);
+                }
             }
         }
 
@@ -295,6 +329,7 @@ impl WhiteRose {
 
     /// Drops a closed window from every tree.
     pub(crate) fn forget_tiled(&mut self, w: &Window) {
+        self.leave_group(w);
         for s in &mut self.tiling.sets {
             s.tiling.remove(w);
         }
@@ -380,7 +415,12 @@ impl WhiteRose {
         let i = self.tiled_area_at(pos)?;
         let p = pos.to_i32_round::<i32>();
         let (target, r) = self.tiles_of(i).into_iter().find(|(t, r)| t != w && to_rectangle(*r).contains(p))?;
-        Some((i, target, r, layout::drop_zone(r, p.x, p.y)))
+        let drop = match layout::drop_zone(r, p.x, p.y) {
+            // A tab leaves its group's place to the group: it splits instead.
+            Drop::Swap if self.tiling.groups.tabs_of(w).is_some() => Drop::Side(layout::nearest_side(r, p.x, p.y)),
+            drop => drop,
+        };
+        Some((i, target, r, drop))
     }
 
     /// Starts dragging a tile with the pointer.
@@ -420,13 +460,16 @@ impl WhiteRose {
         self.set_preview(None);
     }
 
-    /// Drops the dragged tile `w` at `pos`: it swaps with or splits the
-    /// tile there, joins an empty tiled area, or, outside every tiled area,
-    /// floats where it is. Anywhere else it goes back to its tile.
+    /// Drops the dragged tile `w` at `pos`: it joins the group of the tile
+    /// whose top band it's on, swaps with or splits the tile there, joins
+    /// an empty tiled area, or, outside every tiled area, floats where it
+    /// is. Anywhere else it goes back to its place. A tab that goes
+    /// somewhere else leaves its group.
     pub fn drop_tile(&mut self, w: &Window, pos: Point<f64, Logical>) {
         self.end_tile_drag();
         let Some(from) = self.tiling.sets.iter().position(|s| s.tiling.contains(w)) else { return };
         match self.drop_target(w, pos) {
+            Some((i, target, _, Drop::Group)) => self.join_group(w, &target, i),
             Some((i, target, _, Drop::Swap)) if i == from => {
                 self.tiling.sets[i].tiling.swap(w, &target);
             }
@@ -435,11 +478,13 @@ impl WhiteRose {
                 self.tiling.sets[i].tiling.replace(&target, w.clone());
             }
             Some((i, target, _, Drop::Side(side))) => {
+                self.leave_group(w);
                 self.tiling.sets[from].tiling.remove(w);
                 self.tiling.sets[i].tiling.insert_at(w.clone(), &target, side);
             }
             None => match self.tiled_area_at(pos) {
                 Some(i) if i != from && self.tiles_of(i).is_empty() => {
+                    self.leave_group(w);
                     self.tiling.sets[from].tiling.remove(w);
                     self.tiling.sets[i].tiling.insert(w.clone(), None);
                 }
@@ -450,9 +495,52 @@ impl WhiteRose {
         self.retile();
     }
 
+    /// Makes `w` a tab of `target`'s group in set `i`, shown in its place.
+    fn join_group(&mut self, w: &Window, target: &Window, i: usize) {
+        self.leave_group(w);
+        for s in &mut self.tiling.sets {
+            s.tiling.remove(w);
+        }
+        if let Some(old) = self.tiling.groups.join(w.clone(), target) {
+            self.tiling.sets[i].tiling.replace(&old, w.clone());
+            self.hide(&old);
+        }
+    }
+
+    /// Takes `w` out of its group. If it was the shown tab, the next one
+    /// takes its place in the tiles.
+    pub(crate) fn leave_group(&mut self, w: &Window) {
+        let Some(next) = self.tiling.groups.leave(w) else { return };
+        for s in &mut self.tiling.sets {
+            s.tiling.replace(w, next.clone());
+        }
+        if self.workspaces.workspace_of(&next) == Some(self.workspaces.active()) && !self.minimized.contains(&next) {
+            self.show(&next);
+        }
+    }
+
+    /// Shows tab `w` of its group in place of the shown one.
+    pub fn show_tab(&mut self, w: &Window) {
+        let Some(old) = self.tiling.groups.show(w) else { return };
+        for s in &mut self.tiling.sets {
+            s.tiling.replace(&old, w.clone());
+        }
+        self.hide(&old);
+        if self.workspaces.workspace_of(w) == Some(self.workspaces.active()) {
+            self.show(w);
+        }
+        self.retile();
+    }
+
+    /// The tab under `pos`, on a visible tab strip.
+    pub fn tab_at(&self, pos: Point<f64, Logical>) -> Option<Window> {
+        self.tiling.strips.iter().find_map(|s| s.tab_at(pos)).cloned()
+    }
+
     /// Takes a window out of the tiles: it floats where it is, at its tile's
     /// size, until it's tiled again.
     pub fn float_window(&mut self, w: &Window) {
+        self.leave_group(w);
         for s in &mut self.tiling.sets {
             s.tiling.remove(w);
         }

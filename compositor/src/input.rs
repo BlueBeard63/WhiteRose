@@ -126,7 +126,8 @@ impl WhiteRose {
     }
 
     /// SUPER+left-drag moves a window and SUPER+right-drag resizes it from
-    /// the nearest corner; dragging the gap between tiles resizes them.
+    /// the nearest corner; a tab shows its window (and drags it out);
+    /// dragging the gap between tiles resizes them.
     /// True if a drag started (the click is the compositor's).
     fn mouse_grab(&mut self, button: u32, at: Point<f64, Logical>, clicked: Option<&Window>, serial: Serial) -> bool {
         const BTN_LEFT: u32 = 0x110;
@@ -144,6 +145,12 @@ impl WhiteRose {
             return true;
         }
         if button == BTN_LEFT && clicked.is_none() {
+            // A tab: show it, and drag it if the pointer moves.
+            if let Some(tab) = self.tab_at(at) {
+                self.focus_window(Some(tab.clone()));
+                self.start_move(tab, start, serial);
+                return true;
+            }
             if let Some((w, edges)) = self.gap_at(at) {
                 self.start_tile_resize(&w, edges, start, serial);
                 return true;

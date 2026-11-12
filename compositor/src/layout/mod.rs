@@ -7,11 +7,13 @@
 //! isn't floating, and places windows from [`Tiling::arrange`].
 
 mod dwindle;
+mod group;
 mod master;
 
 use std::collections::HashMap;
 
 pub use dwindle::Dwindle;
+pub use group::{Groups, TAB_STRIP};
 pub use master::{Master, Side};
 
 /// How a workspace places its windows.
@@ -477,6 +479,8 @@ pub fn neighbour<W: Clone + PartialEq>(tiles: &[(W, Rect)], w: &W, dir: Dir) -> 
 /// What dropping a dragged tile on another does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Drop {
+    /// On its top band (the tab strip): it joins that tile's group.
+    Group,
     /// On the middle: the two swap places.
     Swap,
     /// Near an edge: it goes on that side, splitting the tile.
@@ -487,6 +491,7 @@ impl Drop {
     /// The part of `target` the dropped tile will take (for the preview).
     pub fn preview(self, target: Rect) -> Rect {
         match self {
+            Drop::Group => Rect::new(target.x, target.y, target.w, TAB_STRIP.min(target.h)),
             Drop::Swap => target,
             Drop::Side(dir) => {
                 let (a, b) = target.split(dir.axis(), 0.5, 0);
@@ -500,19 +505,30 @@ impl Drop {
     }
 }
 
-/// Where on `target` the point `(x, y)` drops a tile: the middle third (each
-/// way) swaps, elsewhere the nearest edge (the diagonals divide the sides).
+/// Where on `target` the point `(x, y)` drops a tile: the top band (as
+/// tall as a tab strip) groups, the middle third (each way) swaps,
+/// elsewhere the nearest edge.
 pub fn drop_zone(target: Rect, x: i32, y: i32) -> Drop {
-    let (w, h) = (target.w.max(1) as f64, target.h.max(1) as f64);
-    // 0..1 across the tile.
-    let (fx, fy) = ((x - target.x) as f64 / w, (y - target.y) as f64 / h);
+    if y < target.y + TAB_STRIP {
+        return Drop::Group;
+    }
+    let (fx, fy) = fractions(target, x, y);
     if (1.0 / 3.0..=2.0 / 3.0).contains(&fx) && (1.0 / 3.0..=2.0 / 3.0).contains(&fy) {
         return Drop::Swap;
     }
-    // Distance to each edge, as a share of the tile.
+    Drop::Side(nearest_side(target, x, y))
+}
+
+/// The edge of `target` nearest `(x, y)` (the diagonals divide the sides).
+pub fn nearest_side(target: Rect, x: i32, y: i32) -> Dir {
+    let (fx, fy) = fractions(target, x, y);
     let edges = [(fx, Dir::Left), (1.0 - fx, Dir::Right), (fy, Dir::Up), (1.0 - fy, Dir::Down)];
-    let nearest = edges.iter().min_by(|a, b| a.0.total_cmp(&b.0)).map(|e| e.1).unwrap_or(Dir::Right);
-    Drop::Side(nearest)
+    edges.iter().min_by(|a, b| a.0.total_cmp(&b.0)).map(|e| e.1).unwrap_or(Dir::Right)
+}
+
+/// How far across `target` the point is, each way (0..1).
+fn fractions(target: Rect, x: i32, y: i32) -> (f64, f64) {
+    ((x - target.x) as f64 / target.w.max(1) as f64, (y - target.y) as f64 / target.h.max(1) as f64)
 }
 
 /// How much [a0, a1) and [b0, b1) overlap.
@@ -616,11 +632,15 @@ mod tests {
         assert_eq!(drop_zone(t, 250, 250), Drop::Swap);
         assert_eq!(drop_zone(t, 110, 250), Drop::Side(Dir::Left));
         assert_eq!(drop_zone(t, 390, 250), Drop::Side(Dir::Right));
-        assert_eq!(drop_zone(t, 250, 105), Drop::Side(Dir::Up));
+        assert_eq!(drop_zone(t, 250, 140), Drop::Side(Dir::Up));
         assert_eq!(drop_zone(t, 250, 395), Drop::Side(Dir::Down));
         // Near a corner, the closer edge wins.
-        assert_eq!(drop_zone(t, 110, 130), Drop::Side(Dir::Left));
-        assert_eq!(drop_zone(t, 130, 110), Drop::Side(Dir::Up));
+        assert_eq!(drop_zone(t, 110, 150), Drop::Side(Dir::Left));
+        assert_eq!(drop_zone(t, 150, 135), Drop::Side(Dir::Up));
+        // The top band groups.
+        assert_eq!(drop_zone(t, 250, 110), Drop::Group);
+        assert_eq!(Drop::Group.preview(t), Rect::new(100, 100, 300, TAB_STRIP));
+        assert_eq!(nearest_side(t, 250, 250), Dir::Left, "a tie in the middle picks the first");
         assert_eq!(Drop::Swap.preview(t), t);
         assert_eq!(Drop::Side(Dir::Right).preview(t), Rect::new(250, 100, 150, 300));
         assert_eq!(Drop::Side(Dir::Up).preview(t), Rect::new(100, 100, 300, 150));
