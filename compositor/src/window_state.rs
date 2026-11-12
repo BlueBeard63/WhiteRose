@@ -30,7 +30,7 @@ impl WhiteRose {
     }
 
     /// Remembers which output `w` fills from now on.
-    fn fill(&mut self, w: &Window, o: Output) {
+    pub(crate) fn fill(&mut self, w: &Window, o: Output) {
         self.filling.retain(|(f, _)| f != w);
         self.filling.push((w.clone(), o));
     }
@@ -48,7 +48,7 @@ impl WhiteRose {
     }
 
     /// Applies `state` with `rect` as the window's size and position.
-    fn apply(&mut self, w: &Window, state: ToplevelState, on: bool, rect: Option<Rectangle<i32, Logical>>) {
+    pub(crate) fn apply(&mut self, w: &Window, state: ToplevelState, on: bool, rect: Option<Rectangle<i32, Logical>>) {
         let Some(toplevel) = w.toplevel() else { return };
         toplevel.with_pending_state(|s| {
             if on {

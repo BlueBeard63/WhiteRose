@@ -257,7 +257,7 @@ impl WhiteRose {
 
     /// Ends a snap and gives the window back its size from before, at
     /// `loc` (or where it was before).
-    fn unsnap(&mut self, w: &Window, loc: Option<Point<i32, Logical>>) -> Option<Rectangle<i32, Logical>> {
+    pub(crate) fn unsnap(&mut self, w: &Window, loc: Option<Point<i32, Logical>>) -> Option<Rectangle<i32, Logical>> {
         let s = self.end_snap(w)?;
         let rect = Rectangle::new(loc.unwrap_or(s.before.loc), s.before.size);
         if let Some(t) = w.toplevel() {

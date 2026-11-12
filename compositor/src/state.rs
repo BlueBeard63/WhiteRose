@@ -771,6 +771,7 @@ impl WhiteRose {
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspaceStep(dir) => self.move_focused_step(dir),
+            Action::MoveToOutput(dir) => self.move_focused_to_output(dir),
             Action::Quit => self.loop_signal.stop(),
             Action::Restart => {
                 self.exit_code = crate::keybind::RESTART_CODE;

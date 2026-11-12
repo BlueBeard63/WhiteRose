@@ -21,6 +21,7 @@ pub mod keyboard;
 pub mod layout;
 pub mod monitor_id;
 pub mod night_light;
+pub mod output_move;
 pub mod outputs;
 pub mod pointer;
 pub mod protocols;
