@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"whiterose/daemon/internal/uitest"
@@ -116,4 +117,42 @@ func TestSettingsWorkspaceLayoutTilesItsWindows(t *testing.T) {
 	}
 	pick("Workspace 1", "Default")
 	s.WaitSetting("windows.layout.workspaces", map[string]any{})
+}
+
+// Snapping: choose a monitor's first zone (two thirds) and split it
+// stacked (saved as that monitor's grid), then SUPER+SHIFT-drag a window
+// onto the lower half: it fills it. (A zone narrower than the window's
+// smallest size, like the default grid's third, the app wouldn't take.)
+func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	dir := filepath.Join(s.Home, "zones")
+	os.MkdirAll(dir, 0o755)
+	files := s.Open(filesBinary(s)+" "+dir, "zones — Files")
+	settings := s.Settings("windows")
+	// (Maximised, so the end of the page is on the test's small screen.)
+	settings.Click(uitest.Named("Maximise").Role("push button"))
+	zone := uitest.Named("Zone 1").Role("check box")
+	settings.Click(zone)
+	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(zone); return ok && n.Checked() }) {
+		t.Fatal("clicking zone 1 didn't choose it")
+	}
+	settings.Click(uitest.Named("Split stacked").Role("push button"))
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), "[0,0.5,0.6667,0.5]") }) {
+		t.Fatalf("no split grid saved: %s", s.Setting("windows.snap.zones"))
+	}
+	settings.Click(uitest.Named("Close").Role("push button"))
+	settings.Closed()
+
+	screen := s.Layer("whiterose-wallpaper").Geometry()
+	g := files.Geometry()
+	bar := 26
+	below := screen[3] - bar
+	s.Drag(float64(g[0]+g[2]/2), float64(g[1]+g[3]/2), float64(screen[2])*0.3, float64(bar)+float64(below)*0.8, "super", "shift")
+	inZone := uitest.WaitUntil(func() bool {
+		g = files.Geometry()
+		return g[0] < 20 && abs(g[1]-(bar+below/2)) < 20 && abs(3*g[2]-2*screen[2]) < 60
+	})
+	if !inZone {
+		t.Fatalf("not in the lower left zone of a %dx%d screen: %v", screen[2], screen[3], g)
+	}
 }

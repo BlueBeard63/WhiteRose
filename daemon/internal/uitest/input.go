@@ -101,3 +101,32 @@ func (s *Session) press(combo string) {
 	}
 	time.Sleep(150 * time.Millisecond)
 }
+
+// Drag presses the left button at (x1, y1), moves to (x2, y2) in steps and
+// lets go, with the keys `hold` ("super", "shift") held throughout.
+func (s *Session) Drag(x1, y1, x2, y2 float64, hold ...string) {
+	s.t.Helper()
+	var codes []int
+	for _, h := range hold {
+		c, ok := named[strings.ToLower(h)]
+		if !ok {
+			s.t.Fatalf("no key %q to hold", h)
+		}
+		codes = append(codes, c)
+	}
+	for _, c := range codes {
+		s.key(c, true)
+	}
+	s.pointer(x1, y1, "")
+	s.pointer(x1, y1, "press")
+	const steps = 8
+	for i := 1; i <= steps; i++ {
+		f := float64(i) / steps
+		s.pointer(x1+(x2-x1)*f, y1+(y2-y1)*f, "")
+	}
+	s.pointer(x2, y2, "release")
+	for i := len(codes) - 1; i >= 0; i-- {
+		s.key(codes[i], false)
+	}
+	time.Sleep(150 * time.Millisecond)
+}

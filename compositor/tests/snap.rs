@@ -639,3 +639,23 @@ fn no_picker_on_tiled_workspaces() {
         assert!(s.snap.picker.is_none());
     });
 }
+
+#[test]
+fn super_then_shift_drag_drops_into_a_zone() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        use smithay::backend::input::ButtonState;
+        super_key(s, true);
+        shift(s, true);
+        s.on_pointer_motion((100.0, 100.0).into(), 1);
+        s.on_pointer_button(BTN_LEFT, ButtonState::Pressed, 2);
+        for i in 1..=8 {
+            let f = i as f64 / 8.0;
+            s.on_pointer_motion((100.0 + 1100.0 * f, 100.0 + 300.0 * f).into(), 2 + i);
+        }
+        s.on_pointer_button(BTN_LEFT, ButtonState::Released, 20);
+        shift(s, false);
+        super_key(s, false);
+        assert_eq!(where_(s), Some(LAST_THIRD));
+    });
+}

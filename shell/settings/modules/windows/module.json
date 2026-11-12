@@ -1,11 +1,11 @@
 {
   "id": "windows",
   "name": "Windows",
-  "description": "How windows are placed: floating or tiled, per workspace and monitor",
+  "description": "How windows are placed: floating or tiled, per workspace and monitor, and snapping",
   "icon": "appWindow",
   "category": "desktop",
   "order": 12.5,
   "version": "1.0.0",
   "core": true,
-  "keywords": ["windows", "tiling", "tile", "tiled", "layout", "floating", "dwindle", "master", "stack", "gaps", "gap", "split", "workspace", "monitor", "groups", "tabs"]
+  "keywords": ["windows", "tiling", "tile", "tiled", "layout", "floating", "dwindle", "master", "stack", "gaps", "gap", "split", "workspace", "monitor", "groups", "tabs", "snap", "snapping", "zones", "zone", "grid", "fancyzones", "halves", "quarters"]
 }

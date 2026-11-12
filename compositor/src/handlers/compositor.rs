@@ -19,6 +19,10 @@ use smithay::{
 
 use super::xdg_shell;
 
+/// A window's size as of its last commit, so the windows event is re-sent
+/// when it changes.
+struct SeenSize(std::cell::Cell<Option<smithay::utils::Size<i32, smithay::utils::Logical>>>);
+
 impl CompositorHandler for WhiteRose {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
@@ -42,15 +46,18 @@ impl CompositorHandler for WhiteRose {
             }
             // Includes windows hidden on other workspaces, so their previews update too.
             if let Some(window) = self.window_for_surface(&root) {
-                let before = self.space.element_geometry(&window);
                 window.on_commit();
                 self.window_committed(&window);
                 self.mark_export_dirty(&window);
                 // Its size may have changed (maximized, resized).
                 self.island_sync();
                 // The windows event carries sizes: re-sent when one changes
-                // (its first buffer, a resize), not on every frame.
-                if self.space.element_geometry(&window) != before {
+                // (its first buffer, a resize), not on every frame. Compared
+                // with the size last seen here: by now the commit has been
+                // applied, so the window's geometry is already the new one.
+                let size = window.geometry().size;
+                let seen = window.user_data().get_or_insert(|| SeenSize(std::cell::Cell::new(None)));
+                if seen.0.replace(Some(size)) != Some(size) {
                     self.ipc_sync();
                 }
             }
