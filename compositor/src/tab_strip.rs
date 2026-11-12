@@ -1,10 +1,13 @@
-//! The tab strip above a grouped tile: one tab per window, the shown one
-//! lit with an accent underline, each with its title in Geist.
+//! The tab strip above a grouped tile, as a small island (Figma: "Grouping
+//! — tab strip options", C): a thin black band across the top of the tile
+//! with the tabs hanging from it in the middle on concave ears, as the
+//! island hangs from the bar. Each tab is its title; the shown one sits on
+//! a lighter pill. Beside the island the strip is see-through.
 //!
 //! The compositor draws it itself: each strip is drawn once into a pixel
 //! buffer at the output's real resolution (sharp at 125%, 150%, ...) and
 //! kept until its size, titles or shown tab change, so an idle desktop
-//! draws nothing new.
+//! draws nothing new. `layout` places the tabs for both drawing and clicks.
 
 use std::{cell::RefCell, collections::HashMap, sync::OnceLock};
 
@@ -37,25 +40,87 @@ pub struct Strip {
 }
 
 impl Strip {
-    /// The tab under `pos`, if it's on this strip.
+    /// The middle of tab `i` (global coordinates).
+    pub fn tab_middle(&self, i: usize) -> Option<Point<f64, Logical>> {
+        let titles: Vec<String> = self.tabs.iter().map(label).collect();
+        let (x0, x1) = *layout(self.rect.size.w as f64, &titles).tabs.get(i)?;
+        Some((self.rect.loc.x as f64 + (x0 + x1) / 2.0, self.rect.loc.y as f64 + BAND + ISLAND / 2.0).into())
+    }
+
+    /// The tab under `pos`, if it's on this strip's island.
     pub fn tab_at(&self, pos: Point<f64, Logical>) -> Option<&Window> {
         if !self.rect.to_f64().contains(pos) || self.tabs.is_empty() {
             return None;
         }
-        let i = ((pos.x - self.rect.loc.x as f64) * self.tabs.len() as f64 / self.rect.size.w.max(1) as f64) as usize;
-        self.tabs.get(i.min(self.tabs.len() - 1))
+        let titles: Vec<String> = self.tabs.iter().map(label).collect();
+        let l = layout(self.rect.size.w as f64, &titles);
+        let (x, y) = (pos.x - self.rect.loc.x as f64, pos.y - self.rect.loc.y as f64);
+        if !(BAND..BAND + ISLAND).contains(&y) {
+            return None;
+        }
+        l.tabs.iter().position(|(x0, x1)| (*x0..*x1).contains(&x)).and_then(|i| self.tabs.get(i))
     }
 }
 
-// Colours as (r, g, b): the dark of the bar and island.
-const BACKGROUND: [u8; 3] = [0x16, 0x16, 0x18];
-const SHOWN: [u8; 3] = [0x2C, 0x2C, 0x30];
-const TEXT: [u8; 3] = [0xF5, 0xF5, 0xF7];
-const TEXT_DIM: [u8; 3] = [0x8E, 0x8E, 0x93];
-const ACCENT: [u8; 3] = [0xE8, 0xA3, 0xAE];
-/// Title size and side padding, in logical pixels.
+// Colours as (r, g, b): the island's black, the shown tab's pill, text.
+const PANEL: [u8; 3] = [0x0F, 0x0F, 0x0F];
+const SHOWN: [u8; 3] = [0x2A, 0x2A, 0x2E];
+const TEXT: [u8; 3] = [0xF4, 0xF4, 0xF5];
+const TEXT_DIM: [u8; 3] = [0x8E, 0x8E, 0x96];
+/// Sizes in logical pixels: the band, the island under it, the ears, the
+/// island's bottom corners; its padding, a tab's (each side), the gap
+/// between tabs, a tab pill's height and corners; the longest a tab gets.
+pub const BAND: f64 = 6.0;
+pub const ISLAND: f64 = 30.0;
+const EAR: f64 = 12.0;
+const CORNER: f64 = 14.0;
+const ISLAND_PAD: f64 = 6.0;
+const TAB_PAD: f64 = 12.0;
+const TAB_GAP: f64 = 2.0;
+const PILL: f64 = 24.0;
+const PILL_RADIUS: f64 = 9.0;
+const TAB_MAX: f64 = 220.0;
 const FONT_SIZE: f64 = 12.5;
-const PADDING: f64 = 10.0;
+
+/// Where things go on a strip `w` logical pixels wide: the island's left
+/// edge and width, and each tab's [x0, x1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct StripLayout {
+    pub island_x: f64,
+    pub island_w: f64,
+    pub tabs: Vec<(f64, f64)>,
+}
+
+/// Tabs as wide as their titles (up to TAB_MAX); if the island would be
+/// wider than the tile allows, they share the room evenly.
+pub fn layout(w: f64, titles: &[String]) -> StripLayout {
+    let n = titles.len().max(1) as f64;
+    let room = (w - 2.0 * (EAR + 8.0) - 2.0 * ISLAND_PAD - (n - 1.0) * TAB_GAP).max(n * 2.0 * TAB_PAD);
+    // (+2: a title exactly its tab's room would lose a letter to rounding.)
+    let mut widths: Vec<f64> = titles
+        .iter()
+        .map(|t| (text_width(t, FONT_SIZE as f32).ceil() as f64 + 2.0 + 2.0 * TAB_PAD).min(TAB_MAX))
+        .collect();
+    if widths.iter().sum::<f64>() > room {
+        widths = vec![(room / n).floor(); titles.len()];
+    }
+    let island_w = widths.iter().sum::<f64>() + (n - 1.0) * TAB_GAP + 2.0 * ISLAND_PAD;
+    let island_x = ((w - island_w) / 2.0).round();
+    let mut x = island_x + ISLAND_PAD;
+    let tabs = widths
+        .iter()
+        .map(|tw| {
+            let t = (x, x + tw);
+            x += tw + TAB_GAP;
+            t
+        })
+        .collect();
+    StripLayout { island_x, island_w, tabs }
+}
+
+fn text_width(s: &str, size: f32) -> f32 {
+    s.chars().map(|c| font().metrics(c, size).advance_width).sum()
+}
 
 fn font() -> &'static fontdue::Font {
     static FONT: OnceLock<fontdue::Font> = OnceLock::new();
@@ -65,43 +130,110 @@ fn font() -> &'static fontdue::Font {
     })
 }
 
-/// Draws a strip `w` x `h` pixels (Argb8888: B, G, R, A in memory) at
-/// `scale` pixels per logical pixel.
+/// True if (x, y) (logical) is inside the rounded rectangle.
+fn in_round_rect(x: f64, y: f64, (x0, y0, x1, y1): (f64, f64, f64, f64), top: f64, bottom: f64) -> bool {
+    if x < x0 || x >= x1 || y < y0 || y >= y1 {
+        return false;
+    }
+    let corner = |cx: f64, cy: f64, r: f64| (x - cx).powi(2) + (y - cy).powi(2) <= r * r;
+    let r = if y < y0 + top { top } else { bottom };
+    if r <= 0.0 || (y >= y0 + top && y < y1 - bottom) {
+        return true;
+    }
+    let cy = if y < y0 + top { y0 + top } else { y1 - bottom };
+    if x < x0 + r {
+        corner(x0 + r, cy, r)
+    } else if x >= x1 - r {
+        corner(x1 - r, cy, r)
+    } else {
+        true
+    }
+}
+
+/// True if (x, y) (logical) is on the island: the band, the body under
+/// it with round bottom corners, and the ears joining them.
+fn in_island(x: f64, y: f64, w: f64, l: &StripLayout) -> bool {
+    if (0.0..BAND).contains(&y) && (0.0..w).contains(&x) {
+        return true;
+    }
+    let (bx0, bx1) = (l.island_x, l.island_x + l.island_w);
+    if in_round_rect(x, y, (bx0, BAND, bx1, BAND + ISLAND), 0.0, CORNER) {
+        return true;
+    }
+    // The ears: under the band, outside a circle in the corner they fill.
+    let ear = |cx: f64| (BAND..BAND + EAR).contains(&y) && (x - cx).powi(2) + (y - (BAND + EAR)).powi(2) >= EAR * EAR;
+    ((bx0 - EAR)..bx0).contains(&x) && ear(bx0 - EAR) || (bx1..(bx1 + EAR)).contains(&x) && ear(bx1 + EAR)
+}
+
+/// How much of pixel (px, py) `inside` covers, 0–255 (4x4 samples).
+fn coverage(px: usize, py: usize, scale: f64, inside: impl Fn(f64, f64) -> bool) -> u32 {
+    let mut n = 0;
+    for sy in 0..4 {
+        for sx in 0..4 {
+            let (x, y) = ((px as f64 + (sx as f64 + 0.5) / 4.0) / scale, (py as f64 + (sy as f64 + 0.5) / 4.0) / scale);
+            n += inside(x, y) as u32;
+        }
+    }
+    n * 255 / 16
+}
+
+/// Paints `colour` over pixel i at coverage `a` (premultiplied BGRA).
+fn paint(px: &mut [u8], i: usize, [r, g, b]: [u8; 3], a: u32) {
+    for (k, c) in [b, g, r, 0xFF].into_iter().enumerate() {
+        px[i + k] = ((c as u32 * a + px[i + k] as u32 * (255 - a)) / 255) as u8;
+    }
+}
+
+/// Draws a strip `w` x `h` pixels (Argb8888, premultiplied: B, G, R, A in
+/// memory) at `scale` pixels per logical pixel.
 pub fn draw(w: i32, h: i32, scale: f64, titles: &[String], shown: usize) -> Vec<u8> {
     let (w, h) = (w.max(1) as usize, h.max(1) as usize);
     let mut px = vec![0u8; w * h * 4];
-    fill(&mut px, w, 0..w, 0..h, BACKGROUND);
-    let n = titles.len().max(1);
-    let gap = scale.round().max(1.0) as usize;
-    let underline = (2.0 * scale).round().max(1.0) as usize;
-    let pad = (PADDING * scale).round() as usize;
-    let size = (FONT_SIZE * scale) as f32;
-    for (i, title) in titles.iter().enumerate() {
-        let x0 = i * w / n;
-        let x1 = ((i + 1) * w / n).saturating_sub(if i + 1 < n { gap } else { 0 }).max(x0);
-        if i == shown {
-            fill(&mut px, w, x0..x1, 0..h, SHOWN);
-            fill(&mut px, w, x0..x1, h.saturating_sub(underline)..h, ACCENT);
+    let lw = w as f64 / scale;
+    let l = layout(lw, titles);
+    let pill_top = BAND + (ISLAND - PILL) / 2.0 - 1.0;
+    let pill = l.tabs.get(shown).map(|(x0, x1)| (*x0, pill_top, *x1, pill_top + PILL));
+    // Only the rows the island covers need looking at.
+    let rows = (((BAND + ISLAND) * scale).ceil() as usize + 1).min(h);
+    for y in 0..rows {
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            let a = coverage(x, y, scale, |lx, ly| in_island(lx, ly, lw, &l));
+            if a > 0 {
+                paint(&mut px, i, PANEL, a);
+            }
+            if let Some(p) = pill {
+                let a = coverage(x, y, scale, |lx, ly| in_round_rect(lx, ly, p, PILL_RADIUS, PILL_RADIUS));
+                if a > 0 {
+                    paint(&mut px, i, SHOWN, a);
+                }
+            }
         }
+    }
+    let size = (FONT_SIZE * scale) as f32;
+    let (ty0, ty1) = ((pill_top * scale).round() as usize, ((pill_top + PILL) * scale).round() as usize);
+    for (i, (title, (x0, x1))) in titles.iter().zip(&l.tabs).enumerate() {
         let colour = if i == shown { TEXT } else { TEXT_DIM };
-        text(&mut px, w, h, x0 + pad, x1.saturating_sub(pad), title, size, colour);
+        let (tx0, tx1) = (((x0 + TAB_PAD) * scale).round() as usize, ((x1 - TAB_PAD) * scale).round() as usize);
+        text(&mut px, w, (ty0, ty1), tx0, tx1, title, size, colour);
     }
     px
-}
-
-fn fill(px: &mut [u8], w: usize, xs: std::ops::Range<usize>, ys: std::ops::Range<usize>, [r, g, b]: [u8; 3]) {
-    for y in ys {
-        for x in xs.clone() {
-            let i = (y * w + x) * 4;
-            px[i..i + 4].copy_from_slice(&[b, g, r, 0xFF]);
-        }
-    }
 }
 
 /// Writes `s` between `x0` and `x1`, centred vertically; cut short with
 /// an ellipsis if it doesn't fit.
 #[allow(clippy::too_many_arguments)]
-fn text(px: &mut [u8], w: usize, h: usize, x0: usize, x1: usize, s: &str, size: f32, colour: [u8; 3]) {
+fn text(
+    px: &mut [u8],
+    w: usize,
+    (top, bottom): (usize, usize),
+    x0: usize,
+    x1: usize,
+    s: &str,
+    size: f32,
+    colour: [u8; 3],
+) {
+    let h = bottom.saturating_sub(top);
     let font = font();
     let room = x1.saturating_sub(x0) as f32;
     let advance = |c: char| font.metrics(c, size).advance_width;
@@ -124,7 +256,7 @@ fn text(px: &mut [u8], w: usize, h: usize, x0: usize, x1: usize, s: &str, size: 
         chars.push('…');
     }
     let Some(line) = font.horizontal_line_metrics(size) else { return };
-    let baseline = ((h as f32 - (line.ascent - line.descent)) / 2.0 + line.ascent).round() as i32;
+    let baseline = top as i32 + ((h as f32 - (line.ascent - line.descent)) / 2.0 + line.ascent).round() as i32;
     let mut pen = x0 as f32;
     for c in chars {
         let (m, bitmap) = font.rasterize(c, size);
@@ -133,15 +265,11 @@ fn text(px: &mut [u8], w: usize, h: usize, x0: usize, x1: usize, s: &str, size: 
         for row in 0..m.height {
             for col in 0..m.width {
                 let (x, y) = (gx + col as i32, gy + row as i32);
-                if x < x0 as i32 || x >= x1.max(x0) as i32 || y < 0 || y >= h as i32 {
+                if x < x0 as i32 || x >= x1.max(x0) as i32 || y < top as i32 || y >= bottom as i32 {
                     continue;
                 }
                 let a = bitmap[row * m.width + col] as u32;
-                let i = (y as usize * w + x as usize) * 4;
-                let [r, g, b] = colour;
-                for (k, c) in [b, g, r].into_iter().enumerate() {
-                    px[i + k] = ((c as u32 * a + px[i + k] as u32 * (255 - a)) / 255) as u8;
-                }
+                paint(px, (y as usize * w + x as usize) * 4, colour, a);
             }
         }
         pen += m.advance_width;
@@ -207,38 +335,78 @@ mod tests {
         let i = (y * w + x) * 4;
         [px[i], px[i + 1], px[i + 2], px[i + 3]]
     }
-
-    #[test]
-    fn the_shown_tab_is_lit_and_underlined() {
-        let titles = vec!["Terminal".to_string(), "Files".to_string()];
-        let px = draw(400, 28, 1.0, &titles, 1);
-        assert_eq!(px.len(), 400 * 28 * 4);
-        // In memory: blue, green, red, alpha.
-        let bgra = |[r, g, b]: [u8; 3]| [b, g, r, 0xFF];
-        assert_eq!(pixel(&px, 400, 2, 2), bgra(BACKGROUND), "the first tab: background");
-        assert_eq!(pixel(&px, 400, 202, 2), bgra(SHOWN), "the second tab: lit");
-        assert_eq!(pixel(&px, 400, 300, 27), bgra(ACCENT), "underlined");
-        assert_ne!(pixel(&px, 400, 199, 27), bgra(ACCENT), "only the shown tab");
+    // In memory: blue, green, red, alpha.
+    fn bgra([r, g, b]: [u8; 3]) -> [u8; 4] {
+        [b, g, r, 0xFF]
+    }
+    fn titles(t: &[&str]) -> Vec<String> {
+        t.iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
-    fn titles_are_drawn_inside_their_tab() {
-        let px = draw(400, 28, 1.0, &["Terminal".to_string(), String::new()], 1);
-        // Text is the only light grey or white above the underline.
-        let bright = |x0: usize, x1: usize| (0..24).any(|y| (x0..x1).any(|x| pixel(&px, 400, x, y)[1] > 0x60));
-        assert!(bright(10, 190), "the title shows");
-        assert!(!bright(200, 400), "an empty title draws nothing");
+    fn tabs_fit_their_titles_and_the_island_is_centred() {
+        let l = layout(600.0, &titles(&["Ghostty", "WhiteRose — VS Code"]));
+        assert_eq!(l.tabs.len(), 2);
+        let (a, b) = (l.tabs[0].1 - l.tabs[0].0, l.tabs[1].1 - l.tabs[1].0);
+        assert!(a < b, "a short title, a short tab ({a} vs {b})");
+        assert!((l.island_x + l.island_w / 2.0 - 300.0).abs() <= 1.0, "centred");
+        assert_eq!(l.tabs[1].0, l.tabs[0].1 + TAB_GAP);
+        // Too many for the tile: they share it, and the island still fits.
+        let l = layout(300.0, &titles(&["A very long title one", "A very long title two", "A very long title three"]));
+        assert!(l.island_x >= EAR, "{l:?}");
+        let w = l.tabs[0].1 - l.tabs[0].0;
+        assert!(l.tabs.iter().all(|(x0, x1)| (x1 - x0 - w).abs() < 0.01), "even");
     }
 
     #[test]
-    fn long_titles_stop_at_their_tab() {
-        let long = "A very long window title that cannot possibly fit".to_string();
-        let px = draw(120, 28, 1.0, &[long, "B".to_string()], 0);
-        // Nothing of the first title past its padding (the tab ends at 59).
-        for y in 0..26 {
-            for x in 50..59 {
-                assert_eq!(pixel(&px, 120, x, y)[..3], [SHOWN[2], SHOWN[1], SHOWN[0]], "({x}, {y})");
-            }
-        }
+    fn the_island_hangs_from_a_band_and_the_rest_is_see_through() {
+        let t = titles(&["Terminal", "Files"]);
+        let px = draw(400, 44, 1.0, &t, 1);
+        assert_eq!(px.len(), 400 * 44 * 4);
+        let l = layout(400.0, &t);
+        assert_eq!(pixel(&px, 400, 2, 2), bgra(PANEL), "the band, across the tile");
+        assert_eq!(pixel(&px, 400, 2, 20)[3], 0, "beside the island: see-through");
+        assert_eq!(pixel(&px, 400, 2, 40)[3], 0, "under it too");
+        let mid = (l.island_x + l.island_w / 2.0) as usize;
+        assert_eq!(pixel(&px, 400, (l.tabs[0].0 + 3.0) as usize, 32), bgra(PANEL), "the island");
+        assert_eq!(pixel(&px, 400, (l.tabs[1].1 - 4.0) as usize, 20), bgra(SHOWN), "the shown tab's pill");
+        assert_ne!(pixel(&px, 400, (l.tabs[0].0 + 3.0) as usize, 20), bgra(SHOWN), "only the shown one");
+        assert_eq!(pixel(&px, 400, mid, 41)[3], 0, "the gap before the window");
+        // An ear: filled right by the band and the island, empty further out.
+        let ex = l.island_x as usize - 1;
+        assert!(pixel(&px, 400, ex, 7)[3] > 200, "the ear meets the band");
+        assert_eq!(pixel(&px, 400, ex - 10, 16)[3], 0, "and curves away");
+    }
+
+    #[test]
+    fn a_title_that_fits_is_drawn_whole() {
+        // Not the same picture as the title cut short with an ellipsis.
+        let t = titles(&["Pictures — Files"]);
+        let l = layout(600.0, &t);
+        let w = text_width("Pictures — Files", FONT_SIZE as f32) as f64;
+        assert!(l.tabs[0].1 - l.tabs[0].0 - 2.0 * TAB_PAD >= w + 1.0, "room for it all");
+        let (a, b) = (draw(600, 44, 1.0, &t, 0), draw(600, 44, 1.0, &titles(&["Pictures — Fil…"]), 0));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn titles_are_drawn_in_their_tab_and_cut_short() {
+        let long = "A very long window title that cannot possibly fit in a tab".to_string();
+        let t = vec![long, "B".to_string()];
+        let px = draw(400, 44, 1.0, &t, 1);
+        let l = layout(400.0, &t);
+        let bright =
+            |x0: f64, x1: f64| (8..34).any(|y| (x0 as usize..x1 as usize).any(|x| pixel(&px, 400, x, y)[1] > 0x60));
+        assert!(bright(l.tabs[0].0 + TAB_PAD, l.tabs[0].1 - TAB_PAD), "the title shows");
+        assert!(!bright(l.tabs[0].1 - TAB_PAD + 1.0, l.tabs[1].0), "and stops at its tab's padding");
+    }
+
+    #[test]
+    fn sharp_at_other_scales() {
+        let t = titles(&["Terminal"]);
+        let px = draw(800, 88, 2.0, &t, 0);
+        assert_eq!(px.len(), 800 * 88 * 4);
+        assert_eq!(pixel(&px, 800, 4, 4), bgra(PANEL));
+        assert_eq!(pixel(&px, 800, 4, 40)[3], 0);
     }
 }

@@ -139,9 +139,9 @@ fn group_and_tab_keys() {
         let ws = all(s);
         // The focused window joins the last one used.
         press(s, &[SUPER, G]);
-        assert_eq!(rects(s), vec![None, Some((8, 62, 1424, 738))]);
+        assert_eq!(rects(s), vec![None, Some((8, 78, 1424, 722))]);
         press(s, &[SUPER, COMMA]);
-        assert_eq!(rects(s), vec![Some((8, 62, 1424, 738)), None]);
+        assert_eq!(rects(s), vec![Some((8, 78, 1424, 722)), None]);
         assert_eq!(s.focused_window(), Some(ws[0].clone()));
         press(s, &[SUPER, PERIOD]);
         assert_eq!(s.focused_window(), Some(ws[1].clone()));

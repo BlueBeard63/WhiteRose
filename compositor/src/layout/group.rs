@@ -5,9 +5,12 @@
 //! hidden (like windows on another workspace). Changing the shown tab is a
 //! [`super::Tiling::replace`] of the old one with the new one.
 
-/// The height of the tab strip above a grouped tile, and of the band at the
-/// top of any tile where a dropped window joins its group.
-pub const TAB_STRIP: i32 = 28;
+/// The height of the tab strip above a grouped tile (tab_strip.rs: a 6 px
+/// band, a 30 px island under it, 8 px to the window).
+pub const TAB_STRIP: i32 = 44;
+/// The band at the top of any tile where a dropped window joins its group
+/// (kept as it was when the strip grew, so dropping above still splits).
+pub const GROUP_DROP: i32 = 28;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Group<W> {

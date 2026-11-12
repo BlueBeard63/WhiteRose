@@ -9,8 +9,8 @@ use serde_json::json;
 use whiterose_wm::{keybind::Action, WhiteRose};
 
 /// The whole area as one grouped tile: the strip, and the window below it.
-const STRIP: (i32, i32, i32, i32) = (8, 34, 1424, 28);
-const UNDER_STRIP: (i32, i32, i32, i32) = (8, 62, 1424, 738);
+const STRIP: (i32, i32, i32, i32) = (8, 34, 1424, 44);
+const UNDER_STRIP: (i32, i32, i32, i32) = (8, 78, 1424, 722);
 
 /// A strip: where, how many tabs, and which is shown.
 type StripSeen = ((i32, i32, i32, i32), usize, usize);
@@ -23,10 +23,16 @@ fn strips(s: &WhiteRose) -> Vec<StripSeen> {
         .collect()
 }
 
+/// The middle of the first strip's tab `i`.
+fn tab(s: &WhiteRose, i: usize) -> (f64, f64) {
+    let p = s.tiling.strips[0].tab_middle(i).expect("a tab");
+    (p.x, p.y)
+}
+
 /// The first window dragged onto the top band of the second.
 fn group_them(s: &mut WhiteRose) {
     let preview = super_drag(s, BTN_LEFT, (362.0, 417.0), (1078.0, 40.0));
-    assert_eq!(preview, Some((724, 34, 708, 28)), "the preview is the strip it joins");
+    assert_eq!(preview, Some((724, 34, 708, 44)), "the preview is the strip it joins");
 }
 
 #[test]
@@ -49,7 +55,8 @@ fn clicking_a_tab_shows_its_window() {
     two_tiles(&mut h, |s| {
         group_them(s);
         // The first tab (the window it joined).
-        drag(s, BTN_LEFT, (300.0, 45.0), (300.0, 45.0));
+        let tab = tab(s, 0);
+        drag(s, BTN_LEFT, tab, tab);
         let ws = all(s);
         assert_eq!(rects(s), vec![None, Some(UNDER_STRIP)]);
         assert_eq!(strips(s), vec![(STRIP, 2, 0)]);
@@ -80,10 +87,11 @@ fn dragging_a_tab_out_splits_it_off() {
             assert_eq!(rects(s)[2], Some((724, 421, 708, 379)));
             // The third onto the first's band.
             super_drag(s, BTN_LEFT, (1078.0, 600.0), (362.0, 40.0));
-            assert_eq!(rects(s), vec![None, Some(RIGHT), Some((8, 62, 708, 738))]);
+            assert_eq!(rects(s), vec![None, Some(RIGHT), Some((8, 78, 708, 722))]);
             // The first's tab dragged to the bottom edge of the second: it
             // splits that, and the group (one left) ends.
-            drag(s, BTN_LEFT, (100.0, 45.0), (1078.0, 780.0));
+            let tab = tab(s, 0);
+            drag(s, BTN_LEFT, tab, (1078.0, 780.0));
             assert_eq!(rects(s), vec![Some((724, 421, 708, 379)), Some((724, 34, 708, 379)), Some(LEFT)]);
             assert!(strips(s).is_empty());
             assert_eq!(s.tiling.groups.iter().count(), 0);
