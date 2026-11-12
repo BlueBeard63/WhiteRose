@@ -8,6 +8,7 @@ use smithay::{
         damage::OutputDamageTracker,
         element::{
             memory::MemoryRenderBufferRenderElement,
+            solid::SolidColorRenderElement,
             surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
             AsRenderElements, Kind,
         },
@@ -36,6 +37,7 @@ smithay::backend::renderer::element::render_elements! {
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
+    Solid=SolidColorRenderElement,
 }
 
 /// What `output` shows, front to back, and the colour behind it. `front`
@@ -124,6 +126,18 @@ pub fn output_elements(
             );
         }
         None => {
+            // Where a dragged tile will land: above the windows.
+            let out = state.space.output_geometry(output).unwrap_or_default();
+            if let Some(r) = state.tiling.preview.rect.and_then(|r| r.intersection(out)) {
+                let local = Rectangle::new(r.loc - out.loc, r.size);
+                elements.push(OutputElement::Solid(SolidColorRenderElement::new(
+                    state.tiling.preview.id.clone(),
+                    local.to_physical_precise_round(scale),
+                    state.tiling.preview.commit,
+                    crate::tiling::PREVIEW_COLOR,
+                    Kind::Unspecified,
+                )));
+            }
             if let Ok(space) = smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0) {
                 elements.extend(space.into_iter().map(OutputElement::Space));
             }

@@ -23,7 +23,7 @@ use smithay::{
 };
 
 use crate::{
-    grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    grabs::{resize_grab::ResizeEdge, MoveSurfaceGrab, ResizeSurfaceGrab},
     WhiteRose,
 };
 
@@ -81,17 +81,9 @@ impl XdgShellHandler for WhiteRose {
 
         let wl_surface = surface.wl_surface();
 
-        if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
-
-            let window =
-                self.space.elements().find(|w| w.toplevel().unwrap().wl_surface() == wl_surface).unwrap().clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-
-            let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
-
-            pointer.set_grab(self, grab, serial, Focus::Clear);
-        }
+        let Some(start_data) = check_grab(&seat, wl_surface, serial) else { return };
+        let Some(window) = self.window_for_surface(wl_surface) else { return };
+        self.start_move(window, start_data, serial);
     }
 
     fn resize_request(
@@ -105,29 +97,9 @@ impl XdgShellHandler for WhiteRose {
 
         let wl_surface = surface.wl_surface();
 
-        if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
-
-            let window =
-                self.space.elements().find(|w| w.toplevel().unwrap().wl_surface() == wl_surface).unwrap().clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-            let initial_window_size = window.geometry().size;
-
-            surface.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Resizing);
-            });
-
-            surface.send_pending_configure();
-
-            let grab = ResizeSurfaceGrab::start(
-                start_data,
-                window,
-                edges.into(),
-                Rectangle::new(initial_window_location, initial_window_size),
-            );
-
-            pointer.set_grab(self, grab, serial, Focus::Clear);
-        }
+        let Some(start_data) = check_grab(&seat, wl_surface, serial) else { return };
+        let Some(window) = self.window_for_surface(wl_surface) else { return };
+        self.start_resize(window, edges.into(), start_data, serial);
     }
 
     fn app_id_changed(&mut self, _surface: ToplevelSurface) {
@@ -231,6 +203,45 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
 }
 
 impl WhiteRose {
+    /// Moves a window with the pointer (its title bar, or SUPER+drag): a
+    /// tile is dragged to a new place; anything else moves freely.
+    pub fn start_move(&mut self, window: Window, start_data: PointerGrabStartData<WhiteRose>, serial: Serial) {
+        if self.is_tiled(&window) && !Self::maximized_or_fullscreen(&window) {
+            self.start_tile_move(&window, start_data, serial);
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        let Some(initial_window_location) = self.space.element_location(&window) else { return };
+        let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
+    /// Resizes a window from `edges` with the pointer (its border, or
+    /// SUPER+right-drag): a tile moves the splits on those edges; anything
+    /// else changes size.
+    pub fn start_resize(
+        &mut self,
+        window: Window,
+        edges: ResizeEdge,
+        start_data: PointerGrabStartData<WhiteRose>,
+        serial: Serial,
+    ) {
+        if self.is_tiled(&window) && !Self::maximized_or_fullscreen(&window) {
+            self.start_tile_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        let Some(loc) = self.space.element_location(&window) else { return };
+        let Some(surface) = window.toplevel().cloned() else { return };
+        surface.with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::Resizing);
+        });
+        surface.send_pending_configure();
+        let rect = Rectangle::new(loc, window.geometry().size);
+        let grab = ResizeSurfaceGrab::start(start_data, window, edges, rect);
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
     fn unconstrain_popup(&self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             return;

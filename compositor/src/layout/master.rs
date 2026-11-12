@@ -102,6 +102,13 @@ impl<W: Clone + PartialEq> Master<W> {
         }
     }
 
+    /// Puts `new` in `old`'s place. Callers check `old` is tiled.
+    pub fn replace(&mut self, old: &W, new: W) {
+        if let Some(i) = self.index(old) {
+            self.windows[i] = new;
+        }
+    }
+
     /// Makes `w` the master, or, if it already is, swaps it with the top of
     /// the stack.
     pub fn make_master(&mut self, w: &W) -> bool {

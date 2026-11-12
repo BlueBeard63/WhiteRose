@@ -379,6 +379,19 @@ impl<W: Clone + PartialEq> Tiling<W> {
         true
     }
 
+    /// Puts `new` in `old`'s place (a tile swapped with one on another
+    /// output). False unless `old` is tiled here and `new` isn't.
+    pub fn replace(&mut self, old: &W, new: W) -> bool {
+        if !self.contains(old) || self.contains(&new) {
+            return false;
+        }
+        match self {
+            Tiling::Dwindle(d) => d.replace(old, new),
+            Tiling::Master(m) => m.replace(old, new),
+        }
+        true
+    }
+
     /// Every tile's rectangle within `area`.
     pub fn arrange(&self, area: Rect, gaps: &Gaps) -> Vec<(W, Rect)> {
         match self {
@@ -459,6 +472,47 @@ pub fn neighbour<W: Clone + PartialEq>(tiles: &[(W, Rect)], w: &W, dir: Dir) -> 
         })
         .min_by_key(|(d, o, _)| (*d, *o))
         .map(|(_, _, x)| x.clone())
+}
+
+/// What dropping a dragged tile on another does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Drop {
+    /// On the middle: the two swap places.
+    Swap,
+    /// Near an edge: it goes on that side, splitting the tile.
+    Side(Dir),
+}
+
+impl Drop {
+    /// The part of `target` the dropped tile will take (for the preview).
+    pub fn preview(self, target: Rect) -> Rect {
+        match self {
+            Drop::Swap => target,
+            Drop::Side(dir) => {
+                let (a, b) = target.split(dir.axis(), 0.5, 0);
+                if dir.forward() {
+                    b
+                } else {
+                    a
+                }
+            }
+        }
+    }
+}
+
+/// Where on `target` the point `(x, y)` drops a tile: the middle third (each
+/// way) swaps, elsewhere the nearest edge (the diagonals divide the sides).
+pub fn drop_zone(target: Rect, x: i32, y: i32) -> Drop {
+    let (w, h) = (target.w.max(1) as f64, target.h.max(1) as f64);
+    // 0..1 across the tile.
+    let (fx, fy) = ((x - target.x) as f64 / w, (y - target.y) as f64 / h);
+    if (1.0 / 3.0..=2.0 / 3.0).contains(&fx) && (1.0 / 3.0..=2.0 / 3.0).contains(&fy) {
+        return Drop::Swap;
+    }
+    // Distance to each edge, as a share of the tile.
+    let edges = [(fx, Dir::Left), (1.0 - fx, Dir::Right), (fy, Dir::Up), (1.0 - fy, Dir::Down)];
+    let nearest = edges.iter().min_by(|a, b| a.0.total_cmp(&b.0)).map(|e| e.1).unwrap_or(Dir::Right);
+    Drop::Side(nearest)
 }
 
 /// How much [a0, a1) and [b0, b1) overlap.
@@ -557,6 +611,22 @@ mod tests {
     }
 
     #[test]
+    fn drops_swap_in_the_middle_and_split_near_an_edge() {
+        let t = Rect::new(100, 100, 300, 300);
+        assert_eq!(drop_zone(t, 250, 250), Drop::Swap);
+        assert_eq!(drop_zone(t, 110, 250), Drop::Side(Dir::Left));
+        assert_eq!(drop_zone(t, 390, 250), Drop::Side(Dir::Right));
+        assert_eq!(drop_zone(t, 250, 105), Drop::Side(Dir::Up));
+        assert_eq!(drop_zone(t, 250, 395), Drop::Side(Dir::Down));
+        // Near a corner, the closer edge wins.
+        assert_eq!(drop_zone(t, 110, 130), Drop::Side(Dir::Left));
+        assert_eq!(drop_zone(t, 130, 110), Drop::Side(Dir::Up));
+        assert_eq!(Drop::Swap.preview(t), t);
+        assert_eq!(Drop::Side(Dir::Right).preview(t), Rect::new(250, 100, 150, 300));
+        assert_eq!(Drop::Side(Dir::Up).preview(t), Rect::new(100, 100, 300, 150));
+    }
+
+    #[test]
     fn move_dir_swaps_with_the_neighbour() {
         let mut t = Tiling::new(Layout::Dwindle, &Settings::default(), [1, 2]).unwrap();
         assert!(t.move_dir(&1, Dir::Right, AREA, &NO_GAPS));
@@ -587,6 +657,17 @@ mod tests {
         assert!(t.swap(&1, &2));
         assert_eq!(t.windows(), vec![2, 1]);
         assert!(!t.toggle_split(&1, AREA, &NO_GAPS), "master has no splits to flip");
+    }
+
+    #[test]
+    fn replace_takes_the_place_of_a_tile() {
+        for layout in [Layout::Dwindle, Layout::Master] {
+            let mut t = Tiling::new(layout, &Settings::default(), [1, 2, 3]).unwrap();
+            assert!(t.replace(&2, 9));
+            assert_eq!(t.windows(), vec![1, 9, 3]);
+            assert!(!t.replace(&2, 8), "2 is gone");
+            assert!(!t.replace(&1, 3), "3 is already tiled");
+        }
     }
 
     #[test]

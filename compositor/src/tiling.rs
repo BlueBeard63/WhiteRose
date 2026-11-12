@@ -17,15 +17,18 @@
 
 use serde_json::Value;
 use smithay::{
+    backend::renderer::utils::CommitCounter,
     desktop::Window,
+    input::pointer::{Focus, GrabStartData},
     output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState,
-    utils::{Logical, Rectangle},
+    utils::{Logical, Point, Rectangle, Serial},
     wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
 
 use crate::{
-    layout::{self, Axis, Layout, Rect, Side, Tiling},
+    grabs::{TileMoveGrab, TileResizeGrab},
+    layout::{self, Axis, Dir, Drop, Layout, Rect, Side, Tiling},
     outputs,
     state::WhiteRose,
 };
@@ -50,7 +53,31 @@ pub struct TilingState {
     pub sets: Vec<TileSet>,
     /// Where each tiled window floated before it was tiled.
     pub floating_at: Vec<(Window, Rectangle<i32, Logical>)>,
+    /// Windows the user took out of the tiles: they float anywhere.
+    pub floating: Vec<Window>,
+    /// The tile being dragged: it follows the pointer, not its tile.
+    pub dragging: Option<Window>,
+    /// Where the dragged tile will land, drawn under the pointer.
+    pub preview: DropPreview,
 }
+
+/// The drop preview: a translucent rectangle (global coordinates).
+#[derive(Debug)]
+pub struct DropPreview {
+    pub rect: Option<Rectangle<i32, Logical>>,
+    pub id: smithay::backend::renderer::element::Id,
+    /// Bumped when it moves, so the renderer redraws it.
+    pub commit: CommitCounter,
+}
+
+impl Default for DropPreview {
+    fn default() -> Self {
+        DropPreview { rect: None, id: smithay::backend::renderer::element::Id::new(), commit: Default::default() }
+    }
+}
+
+/// The accent rose (#E8A3AE) at 35%, premultiplied.
+pub const PREVIEW_COLOR: [f32; 4] = [0.910 * 0.35, 0.639 * 0.35, 0.682 * 0.35, 0.35];
 
 /// Marks a window whose first commit we've seen: by then the client has
 /// said whether it's a dialog and what sizes it accepts.
@@ -73,11 +100,12 @@ impl WhiteRose {
         }
     }
 
-    /// Whether a window can be tiled: not a dialog (it has a parent) and
-    /// not fixed-size. Unknown until its first commit.
+    /// Whether a window can be tiled: not a dialog (it has a parent), not
+    /// fixed-size, and not taken out of the tiles. Unknown until its first
+    /// commit.
     fn tileable(&self, w: &Window) -> bool {
         let Some(t) = w.toplevel() else { return false };
-        if w.user_data().get::<Committed>().is_none() || t.parent().is_some() {
+        if w.user_data().get::<Committed>().is_none() || t.parent().is_some() || self.tiling.floating.contains(w) {
             return false;
         }
         let (min, max) = with_states(t.wl_surface(), |s| {
@@ -103,7 +131,7 @@ impl WhiteRose {
         self.tile_set_of(w).is_some()
     }
 
-    fn maximized_or_fullscreen(w: &Window) -> bool {
+    pub(crate) fn maximized_or_fullscreen(w: &Window) -> bool {
         Self::has_state(w, ToplevelState::Maximized) || Self::has_state(w, ToplevelState::Fullscreen)
     }
 
@@ -207,9 +235,12 @@ impl WhiteRose {
         self.tiling.floating_at.push((w.clone(), rect));
     }
 
-    /// Gives a window its tile.
+    /// Gives a window its tile (a dragged one gets it when it's dropped).
     fn place(&mut self, w: &Window, r: Rectangle<i32, Logical>) {
         let Some(t) = w.toplevel() else { return };
+        if self.tiling.dragging.as_ref() == Some(w) {
+            return;
+        }
         t.with_pending_state(|s| {
             s.size = Some(r.size);
             for state in TILED {
@@ -268,6 +299,10 @@ impl WhiteRose {
             s.tiling.remove(w);
         }
         self.tiling.floating_at.retain(|(f, _)| f != w);
+        self.tiling.floating.retain(|f| f != w);
+        if self.tiling.dragging.as_ref() == Some(w) {
+            self.tiling.dragging = None;
+        }
     }
 
     /// Takes a `windows.*` setting; true if it changed anything.
@@ -322,5 +357,183 @@ impl WhiteRose {
             s.tiling.apply_settings(&settings);
         }
         self.retile();
+    }
+}
+
+/// Moving and resizing tiles with the mouse (grabs/tile_grab.rs).
+impl WhiteRose {
+    /// The tiles of set `i`, where they are now.
+    fn tiles_of(&self, i: usize) -> Vec<(Window, Rect)> {
+        let s = &self.tiling.sets[i];
+        s.tiling.arrange(to_rect(self.usable_area_on(&s.output)), &self.tiling.settings.gaps)
+    }
+
+    /// The visible workspace's tiled area under `pos`, as a set index.
+    fn tiled_area_at(&self, pos: Point<f64, Logical>) -> Option<usize> {
+        let ws = self.workspaces.active();
+        self.tiling.sets.iter().position(|s| s.workspace == ws && self.usable_area_on(&s.output).to_f64().contains(pos))
+    }
+
+    /// Where dropping `w` at `pos` puts it: on which tile (of which set),
+    /// that tile's rectangle, and how.
+    fn drop_target(&self, w: &Window, pos: Point<f64, Logical>) -> Option<(usize, Window, Rect, Drop)> {
+        let i = self.tiled_area_at(pos)?;
+        let p = pos.to_i32_round::<i32>();
+        let (target, r) = self.tiles_of(i).into_iter().find(|(t, r)| t != w && to_rectangle(*r).contains(p))?;
+        Some((i, target, r, layout::drop_zone(r, p.x, p.y)))
+    }
+
+    /// Starts dragging a tile with the pointer.
+    pub fn start_tile_move(&mut self, w: &Window, start_data: GrabStartData<WhiteRose>, serial: Serial) {
+        let Some(loc) = self.space.element_location(w) else { return };
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        self.tiling.dragging = Some(w.clone());
+        let grab = TileMoveGrab { start_data, window: w.clone(), initial_window_location: loc };
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
+    /// Shows where the dragged tile `w` lands if dropped at `pos`: half of
+    /// the tile it splits, the tile it swaps with, or the whole of an empty
+    /// tiled area. Nothing where it would float.
+    pub fn show_drop_preview(&mut self, w: &Window, pos: Point<f64, Logical>) {
+        let rect = match self.drop_target(w, pos) {
+            Some((_, _, r, drop)) => Some(drop.preview(r)),
+            None => self.tiled_area_at(pos).filter(|i| self.tiles_of(*i).is_empty()).map(|i| {
+                let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
+                self.tiling.settings.gaps.apply(area, 1).0
+            }),
+        };
+        self.set_preview(rect.map(to_rectangle));
+    }
+
+    fn set_preview(&mut self, rect: Option<Rectangle<i32, Logical>>) {
+        if self.tiling.preview.rect != rect {
+            self.tiling.preview.rect = rect;
+            self.tiling.preview.commit.increment();
+            self.schedule_redraw();
+        }
+    }
+
+    /// The drag ended (dropped, or the grab was taken away).
+    pub fn end_tile_drag(&mut self) {
+        self.tiling.dragging = None;
+        self.set_preview(None);
+    }
+
+    /// Drops the dragged tile `w` at `pos`: it swaps with or splits the
+    /// tile there, joins an empty tiled area, or, outside every tiled area,
+    /// floats where it is. Anywhere else it goes back to its tile.
+    pub fn drop_tile(&mut self, w: &Window, pos: Point<f64, Logical>) {
+        self.end_tile_drag();
+        let Some(from) = self.tiling.sets.iter().position(|s| s.tiling.contains(w)) else { return };
+        match self.drop_target(w, pos) {
+            Some((i, target, _, Drop::Swap)) if i == from => {
+                self.tiling.sets[i].tiling.swap(w, &target);
+            }
+            Some((i, target, _, Drop::Swap)) => {
+                self.tiling.sets[from].tiling.replace(w, target.clone());
+                self.tiling.sets[i].tiling.replace(&target, w.clone());
+            }
+            Some((i, target, _, Drop::Side(side))) => {
+                self.tiling.sets[from].tiling.remove(w);
+                self.tiling.sets[i].tiling.insert_at(w.clone(), &target, side);
+            }
+            None => match self.tiled_area_at(pos) {
+                Some(i) if i != from && self.tiles_of(i).is_empty() => {
+                    self.tiling.sets[from].tiling.remove(w);
+                    self.tiling.sets[i].tiling.insert(w.clone(), None);
+                }
+                Some(_) => {} // between tiles, or on its own place: back it goes
+                None => self.float_window(w),
+            },
+        }
+        self.retile();
+    }
+
+    /// Takes a window out of the tiles: it floats where it is, at its tile's
+    /// size, until it's tiled again.
+    pub fn float_window(&mut self, w: &Window) {
+        for s in &mut self.tiling.sets {
+            s.tiling.remove(w);
+        }
+        self.tiling.floating_at.retain(|(f, _)| f != w);
+        if !self.tiling.floating.contains(w) {
+            self.tiling.floating.push(w.clone());
+        }
+        if let Some(t) = w.toplevel() {
+            t.with_pending_state(|s| {
+                for state in TILED {
+                    s.states.unset(state);
+                }
+            });
+            t.send_pending_configure();
+        }
+        self.retile();
+    }
+
+    /// Starts moving the edges `edges` of tile `w` with the pointer.
+    pub fn start_tile_resize(
+        &mut self,
+        w: &Window,
+        edges: Vec<Dir>,
+        start_data: GrabStartData<WhiteRose>,
+        serial: Serial,
+    ) {
+        let Some(snapshot) = self.tile_set_of(w).map(|s| s.tiling.clone()) else { return };
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        let grab = TileResizeGrab { start_data, window: w.clone(), edges, snapshot };
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
+    /// Resizes tile `w` from how its tiles were (`snapshot`): each edge
+    /// moves outwards by its pixels. Ignored if the tiles changed meanwhile.
+    pub fn resize_tile(&mut self, snapshot: &Tiling<Window>, w: &Window, moves: &[(Dir, i32)]) {
+        let Some(i) = self.tiling.sets.iter().position(|s| s.tiling.contains(w)) else { return };
+        if self.tiling.sets[i].tiling.windows() != snapshot.windows() {
+            return;
+        }
+        let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
+        let gaps = self.tiling.settings.gaps;
+        let mut tiling = snapshot.clone();
+        for (edge, px) in moves {
+            tiling.resize_edge(w, *edge, *px, area, &gaps);
+        }
+        self.tiling.sets[i].tiling = tiling;
+        self.retile();
+    }
+
+    /// The tile edges at `pos`, when it's in the gap between tiles: the
+    /// tile, and which of its edges (only ones that can move).
+    pub fn gap_at(&self, pos: Point<f64, Logical>) -> Option<(Window, Vec<Dir>)> {
+        let i = self.tiled_area_at(pos)?;
+        let p = pos.to_i32_round::<i32>();
+        let tiles = self.tiles_of(i);
+        if tiles.iter().any(|(_, r)| to_rectangle(*r).contains(p)) {
+            return None;
+        }
+        // Within half the gap of a tile (and a few pixels more, so thin gaps
+        // can be caught too).
+        let reach = self.tiling.settings.gaps.inner / 2 + 4;
+        let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
+        let gaps = self.tiling.settings.gaps;
+        tiles.iter().find_map(|(w, r)| {
+            let grown = Rect::new(r.x - reach, r.y - reach, r.w + 2 * reach, r.h + 2 * reach);
+            if !to_rectangle(grown).contains(p) {
+                return None;
+            }
+            let mut edges = Vec::new();
+            for (beyond, edge) in [
+                (p.x < r.x, Dir::Left),
+                (p.x >= r.right(), Dir::Right),
+                (p.y < r.y, Dir::Up),
+                (p.y >= r.bottom(), Dir::Down),
+            ] {
+                // Only edges on a split: the area's border can't move.
+                if beyond && self.tiling.sets[i].tiling.clone().resize_edge(w, edge, 0, area, &gaps) {
+                    edges.push(edge);
+                }
+            }
+            (!edges.is_empty()).then(|| (w.clone(), edges))
+        })
     }
 }

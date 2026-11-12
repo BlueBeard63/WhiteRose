@@ -6,14 +6,16 @@ use smithay::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
+    desktop::Window,
     input::{
         keyboard::FilterResult,
-        pointer::{AxisFrame, ButtonEvent, MotionEvent},
+        pointer::{AxisFrame, ButtonEvent, GrabStartData, MotionEvent},
     },
-    utils::{Logical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point, Serial, SERIAL_COUNTER},
 };
 
 use crate::{
+    grabs::tile_grab::nearest_corner,
     keybind::{is_logo_key, Action, Mods},
     state::WhiteRose,
 };
@@ -113,12 +115,53 @@ impl WhiteRose {
                 }
             } else {
                 let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
-                // Click-to-focus; clicking the background clears focus.
-                self.focus_window(clicked);
+                if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
+                    // Click-to-focus; clicking the background clears focus.
+                    self.focus_window(clicked);
+                }
             }
         }
         pointer.button(self, &ButtonEvent { button, state: button_state, serial, time });
         pointer.frame(self);
+    }
+
+    /// SUPER+left-drag moves a window and SUPER+right-drag resizes it from
+    /// the nearest corner; dragging the gap between tiles resizes them.
+    /// True if a drag started (the click is the compositor's).
+    fn mouse_grab(&mut self, button: u32, at: Point<f64, Logical>, clicked: Option<&Window>, serial: Serial) -> bool {
+        const BTN_LEFT: u32 = 0x110;
+        const BTN_RIGHT: u32 = 0x111;
+        let start = GrabStartData { focus: None, button, location: at };
+        if self.super_held() && (button == BTN_LEFT || button == BTN_RIGHT) {
+            let Some(w) = clicked.filter(|w| !self.fullscreen.contains(w)).cloned() else { return false };
+            self.focus_window(Some(w.clone()));
+            if button == BTN_LEFT {
+                self.start_move(w, start, serial);
+            } else {
+                let rect = self.space.element_geometry(&w).unwrap_or_default();
+                self.start_resize(w, nearest_corner(rect, at), start, serial);
+            }
+            return true;
+        }
+        if button == BTN_LEFT && clicked.is_none() {
+            if let Some((w, edges)) = self.gap_at(at) {
+                self.start_tile_resize(&w, edges, start, serial);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Is SUPER held (or what stands in for it, with --mod ctrl-alt)?
+    fn super_held(&self) -> bool {
+        let Some(keyboard) = self.seat.get_keyboard() else { return false };
+        let held = Mods::from(&keyboard.modifier_state());
+        match self.keyboard.logo_remap {
+            Some(m) => {
+                (!m.ctrl || held.ctrl) && (!m.alt || held.alt) && (!m.shift || held.shift) && (!m.logo || held.logo)
+            }
+            None => held.logo,
+        }
     }
 
     /// One key event from any backend (also driven directly by tests).

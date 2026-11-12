@@ -197,6 +197,17 @@ impl<W: Clone + PartialEq> Dwindle<W> {
         }
     }
 
+    /// Puts `new` in `old`'s place. Callers check `old` is tiled.
+    pub fn replace(&mut self, old: &W, new: W) {
+        if let Some(root) = &mut self.root {
+            root.for_each_leaf(&mut |x| {
+                if x == old {
+                    *x = new.clone();
+                }
+            });
+        }
+    }
+
     pub fn arrange(&self, area: Rect, gaps: &Gaps) -> Vec<(W, Rect)> {
         let mut out = Vec::new();
         if let Some(root) = &self.root {
