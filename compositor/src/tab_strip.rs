@@ -42,8 +42,7 @@ pub struct Strip {
 impl Strip {
     /// The middle of tab `i` (global coordinates).
     pub fn tab_middle(&self, i: usize) -> Option<Point<f64, Logical>> {
-        let titles: Vec<String> = self.tabs.iter().map(label).collect();
-        let (x0, x1) = *layout(self.rect.size.w as f64, &titles).tabs.get(i)?;
+        let (x0, x1) = *layout(self.rect.size.w as f64, &tabs_of(&self.tabs, ICON as u32)).tabs.get(i)?;
         Some((self.rect.loc.x as f64 + (x0 + x1) / 2.0, self.rect.loc.y as f64 + BAND + ISLAND / 2.0).into())
     }
 
@@ -52,8 +51,7 @@ impl Strip {
         if !self.rect.to_f64().contains(pos) || self.tabs.is_empty() {
             return None;
         }
-        let titles: Vec<String> = self.tabs.iter().map(label).collect();
-        let l = layout(self.rect.size.w as f64, &titles);
+        let l = layout(self.rect.size.w as f64, &tabs_of(&self.tabs, ICON as u32));
         let (x, y) = (pos.x - self.rect.loc.x as f64, pos.y - self.rect.loc.y as f64);
         if !(BAND..BAND + ISLAND).contains(&y) {
             return None;
@@ -80,6 +78,11 @@ const TAB_GAP: f64 = 2.0;
 const PILL: f64 = 24.0;
 const PILL_RADIUS: f64 = 9.0;
 const TAB_MAX: f64 = 220.0;
+/// An app's icon before its title, and the space after it.
+const ICON: f64 = 16.0;
+const ICON_GAP: f64 = 7.0;
+/// How strongly a tab that isn't shown draws its icon.
+const ICON_DIM: u32 = 170;
 const FONT_SIZE: f64 = 12.5;
 
 /// Where things go on a strip `w` logical pixels wide: the island's left
@@ -91,18 +94,39 @@ pub struct StripLayout {
     pub tabs: Vec<(f64, f64)>,
 }
 
-/// Tabs as wide as their titles (up to TAB_MAX); if the island would be
-/// wider than the tile allows, they share the room evenly.
-pub fn layout(w: f64, titles: &[String]) -> StripLayout {
-    let n = titles.len().max(1) as f64;
+/// One tab: its title, and its app's icon if it has one (app_icons.rs).
+#[derive(Debug, Clone, Default)]
+pub struct Tab {
+    pub title: String,
+    pub icon: Option<std::sync::Arc<crate::app_icons::Icon>>,
+}
+
+/// The tabs for `windows`, icons `px` pixels big.
+fn tabs_of(windows: &[Window], px: u32) -> Vec<Tab> {
+    windows
+        .iter()
+        .map(|w| {
+            let (app, _) = crate::ipc::toplevel_ids(w);
+            Tab { title: label(w), icon: app.and_then(|a| crate::app_icons::icon(&a, px)) }
+        })
+        .collect()
+}
+
+/// Tabs as wide as their icon and title (up to TAB_MAX); if the island
+/// would be wider than the tile allows, they share the room evenly.
+pub fn layout(w: f64, tabs: &[Tab]) -> StripLayout {
+    let n = tabs.len().max(1) as f64;
     let room = (w - 2.0 * (EAR + 8.0) - 2.0 * ISLAND_PAD - (n - 1.0) * TAB_GAP).max(n * 2.0 * TAB_PAD);
     // (+2: a title exactly its tab's room would lose a letter to rounding.)
-    let mut widths: Vec<f64> = titles
+    let mut widths: Vec<f64> = tabs
         .iter()
-        .map(|t| (text_width(t, FONT_SIZE as f32).ceil() as f64 + 2.0 + 2.0 * TAB_PAD).min(TAB_MAX))
+        .map(|t| {
+            let icon = if t.icon.is_some() { ICON + ICON_GAP } else { 0.0 };
+            (icon + text_width(&t.title, FONT_SIZE as f32).ceil() as f64 + 2.0 + 2.0 * TAB_PAD).min(TAB_MAX)
+        })
         .collect();
     if widths.iter().sum::<f64>() > room {
-        widths = vec![(room / n).floor(); titles.len()];
+        widths = vec![(room / n).floor(); tabs.len()];
     }
     let island_w = widths.iter().sum::<f64>() + (n - 1.0) * TAB_GAP + 2.0 * ISLAND_PAD;
     let island_x = ((w - island_w) / 2.0).round();
@@ -186,11 +210,11 @@ fn paint(px: &mut [u8], i: usize, [r, g, b]: [u8; 3], a: u32) {
 
 /// Draws a strip `w` x `h` pixels (Argb8888, premultiplied: B, G, R, A in
 /// memory) at `scale` pixels per logical pixel.
-pub fn draw(w: i32, h: i32, scale: f64, titles: &[String], shown: usize) -> Vec<u8> {
+pub fn draw(w: i32, h: i32, scale: f64, tabs: &[Tab], shown: usize) -> Vec<u8> {
     let (w, h) = (w.max(1) as usize, h.max(1) as usize);
     let mut px = vec![0u8; w * h * 4];
     let lw = w as f64 / scale;
-    let l = layout(lw, titles);
+    let l = layout(lw, tabs);
     let pill_top = BAND + (ISLAND - PILL) / 2.0 - 1.0;
     let pill = l.tabs.get(shown).map(|(x0, x1)| (*x0, pill_top, *x1, pill_top + PILL));
     // Only the rows the island covers need looking at.
@@ -212,12 +236,35 @@ pub fn draw(w: i32, h: i32, scale: f64, titles: &[String], shown: usize) -> Vec<
     }
     let size = (FONT_SIZE * scale) as f32;
     let (ty0, ty1) = ((pill_top * scale).round() as usize, ((pill_top + PILL) * scale).round() as usize);
-    for (i, (title, (x0, x1))) in titles.iter().zip(&l.tabs).enumerate() {
+    for (i, (tab, (x0, x1))) in tabs.iter().zip(&l.tabs).enumerate() {
         let colour = if i == shown { TEXT } else { TEXT_DIM };
-        let (tx0, tx1) = (((x0 + TAB_PAD) * scale).round() as usize, ((x1 - TAB_PAD) * scale).round() as usize);
-        text(&mut px, w, (ty0, ty1), tx0, tx1, title, size, colour);
+        let mut start = x0 + TAB_PAD;
+        if let Some(icon) = &tab.icon {
+            let (ix, iy) =
+                ((start * scale).round() as usize, ((pill_top + (PILL - ICON) / 2.0) * scale).round() as usize);
+            blit(&mut px, w, h, ix, iy, icon, if i == shown { 255 } else { ICON_DIM });
+            start += ICON + ICON_GAP;
+        }
+        let (tx0, tx1) = ((start * scale).round() as usize, ((x1 - TAB_PAD) * scale).round() as usize);
+        text(&mut px, w, (ty0, ty1), tx0, tx1, &tab.title, size, colour);
     }
     px
+}
+
+/// Draws `icon` (premultiplied) with its top left at (x, y), at `alpha`.
+fn blit(px: &mut [u8], w: usize, h: usize, x: usize, y: usize, icon: &crate::app_icons::Icon, alpha: u32) {
+    let n = icon.size as usize;
+    for iy in 0..n.min(h.saturating_sub(y)) {
+        for ix in 0..n.min(w.saturating_sub(x)) {
+            let s = (iy * n + ix) * 4;
+            let d = ((y + iy) * w + x + ix) * 4;
+            let a = icon.bgra[s + 3] as u32 * alpha / 255;
+            for k in 0..4 {
+                let src = icon.bgra[s + k] as u32 * alpha / 255;
+                px[d + k] = (src + px[d + k] as u32 * (255 - a) / 255).min(255) as u8;
+            }
+        }
+    }
 }
 
 /// Writes `s` between `x0` and `x1`, centred vertically; cut short with
@@ -277,7 +324,7 @@ fn text(
 }
 
 /// What a drawn strip shows: its size in pixels, the titles, the shown tab.
-type StripKey = (i32, i32, Vec<String>, usize);
+type StripKey = (i32, i32, Vec<(String, Option<String>)>, usize);
 
 /// Drawn strips, by what they show.
 #[derive(Debug, Default)]
@@ -303,10 +350,11 @@ pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose)
     let mut out = Vec::new();
     for s in state.tiling.strips.iter().filter(|s| s.output == *output) {
         let (w, h) = ((s.rect.size.w as f64 * scale).round() as i32, (s.rect.size.h as f64 * scale).round() as i32);
-        let titles: Vec<String> = s.tabs.iter().map(label).collect();
-        let key = (w, h, titles, s.shown);
-        let buffer = images.entry(key).or_insert_with_key(|(w, h, titles, shown)| {
-            let pixels = draw(*w, *h, scale, titles, *shown);
+        let ids: Vec<(String, Option<String>)> =
+            s.tabs.iter().map(|t| (label(t), crate::ipc::toplevel_ids(t).0)).collect();
+        let key = (w, h, ids, s.shown);
+        let buffer = images.entry(key).or_insert_with_key(|(w, h, _, shown)| {
+            let pixels = draw(*w, *h, scale, &tabs_of(&s.tabs, (ICON * scale).round() as u32), *shown);
             MemoryRenderBuffer::from_slice(&pixels, Fourcc::Argb8888, (*w, *h), 1, Transform::Normal, None)
         });
         let loc = (s.rect.loc - origin).to_f64().to_physical(scale);
@@ -339,8 +387,8 @@ mod tests {
     fn bgra([r, g, b]: [u8; 3]) -> [u8; 4] {
         [b, g, r, 0xFF]
     }
-    fn titles(t: &[&str]) -> Vec<String> {
-        t.iter().map(|s| s.to_string()).collect()
+    fn titles(t: &[&str]) -> Vec<Tab> {
+        t.iter().map(|s| Tab { title: s.to_string(), icon: None }).collect()
     }
 
     #[test]
@@ -392,13 +440,34 @@ mod tests {
     #[test]
     fn titles_are_drawn_in_their_tab_and_cut_short() {
         let long = "A very long window title that cannot possibly fit in a tab".to_string();
-        let t = vec![long, "B".to_string()];
+        let t = vec![Tab { title: long, icon: None }, Tab { title: "B".into(), icon: None }];
         let px = draw(400, 44, 1.0, &t, 1);
         let l = layout(400.0, &t);
         let bright =
             |x0: f64, x1: f64| (8..34).any(|y| (x0 as usize..x1 as usize).any(|x| pixel(&px, 400, x, y)[1] > 0x60));
         assert!(bright(l.tabs[0].0 + TAB_PAD, l.tabs[0].1 - TAB_PAD), "the title shows");
         assert!(!bright(l.tabs[0].1 - TAB_PAD + 1.0, l.tabs[1].0), "and stops at its tab's padding");
+    }
+
+    #[test]
+    fn an_apps_icon_comes_before_its_title() {
+        // A solid red 16 px icon.
+        let red = std::sync::Arc::new(crate::app_icons::Icon {
+            size: 16,
+            bgra: (0..16 * 16).flat_map(|_| [0u8, 0, 255, 255]).collect(),
+        });
+        let plain = titles(&["Terminal"]);
+        let with = vec![Tab { title: "Terminal".into(), icon: Some(red) }];
+        let (a, b) = (layout(400.0, &plain), layout(400.0, &with));
+        assert_eq!((b.tabs[0].1 - b.tabs[0].0) - (a.tabs[0].1 - a.tabs[0].0), ICON + ICON_GAP, "room for it");
+        let px = draw(400, 44, 1.0, &with, 0);
+        let (x, y) = ((b.tabs[0].0 + TAB_PAD + 8.0) as usize, (BAND + ISLAND / 2.0) as usize);
+        assert_eq!(pixel(&px, 400, x, y), [0, 0, 255, 255], "drawn at the tab's start");
+        // Not shown: fainter.
+        let px = draw(400, 44, 1.0, &[with[0].clone(), Tab { title: "B".into(), icon: None }], 1);
+        let b = layout(400.0, &[with[0].clone(), Tab { title: "B".into(), icon: None }]);
+        let p = pixel(&px, 400, (b.tabs[0].0 + TAB_PAD + 8.0) as usize, y);
+        assert!(p[2] < 255 && p[2] > 150, "{p:?}");
     }
 
     #[test]
