@@ -59,10 +59,27 @@ the Music module had nothing to show).
    windows drawn unmanaged.
 3. **Everything else sees them**: tiling, maximize and fullscreen, snapping,
    groups, rules, scratchpads, switchers, dock, IPC ids.
-4. **Clipboard and drag and drop** between X11 and Wayland.
+4. **Clipboard** between X11 and Wayland (drag and drop moved to 7).
 5. **Started on demand**: the vendored Smithay patch, Xwayland launched on
    the first X11 connection.
 6. **Packaging**: depend on Xwayland (`xwayland` / `xorg-x11-server-Xwayland`).
+7. **Drag and drop between X11 and Wayland apps.** Smithay's X11 WM has no
+   XDND, so the compositor speaks it itself, as its own small X11 client
+   (an x11rb connection to our Xwayland, as KWin does), not inside Smithay:
+   - *Wayland → X11:* while a Wayland drag is over an XdndAware X11
+     window, the compositor is the XDND source: it owns XdndSelection,
+     sends XdndEnter / Position / Leave / Drop, reads XdndStatus /
+     Finished, and serves the data from the Wayland source (as the
+     clipboard bridge does).
+   - *X11 → Wayland:* when an X11 drag leaves the X11 windows, an
+     invisible XdndAware proxy window under the pointer receives it; the
+     compositor turns it into a Wayland drag (a server-side source whose
+     data is read from XdndSelection) and answers the X11 app with
+     XdndStatus / Finished from the Wayland target's accept and drop.
+   - Actions (copy / move / ask) mapped both ways; the drag icon drawn by
+     whoever owns the drag.
+   Tests: `tests/xwayland.rs`, an X11 client as XDND source and as target
+   against a Wayland client, both directions, and a cancelled drag.
 
 Tests: compositor integration tests with an X11 client (x11rb) against a
 real Xwayland in the headless backend (skipped where Xwayland isn't
