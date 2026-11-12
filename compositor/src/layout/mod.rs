@@ -9,6 +9,7 @@
 mod dwindle;
 mod group;
 mod master;
+pub mod snap;
 
 use std::collections::HashMap;
 
