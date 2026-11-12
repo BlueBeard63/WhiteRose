@@ -50,6 +50,8 @@ pub enum Action {
     /// Show each output's number on it (the shell draws it).
     IdentifyOutputs,
     Notifications,
+    /// The island's clipboard history (SUPER+V).
+    Clipboard,
     ScreenshotRegion,
     // Handled by the compositor.
     /// PrtSc: capture the whole screen straight away.
@@ -132,6 +134,7 @@ impl Action {
                 | Action::Lock
                 | Action::IdentifyOutputs
                 | Action::Notifications
+                | Action::Clipboard
                 | Action::ScreenshotRegion
                 | Action::Media(_)
         )
@@ -324,6 +327,7 @@ impl Def {
             "window-switcher" => Action::WindowSwitcher,
             "quick-settings" => Action::QuickSettings,
             "notifications" => Action::Notifications,
+            "clipboard" => Action::Clipboard,
             "lock" => Action::Lock,
             "screenshot-region" => Action::ScreenshotRegion,
             "screenshot-screen" => Action::ScreenshotScreen,
@@ -372,6 +376,7 @@ pub const CATALOG: &[Def] = &[
     def("window-switcher", "Window switcher", "Windows", &["SUPER+TAB"]),
     def("quick-settings", "Quick settings", "Shell", &["SUPER+S"]),
     def("notifications", "Notifications", "Shell", &["SUPER+N"]),
+    def("clipboard", "Clipboard history", "Shell", &["SUPER+V"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
     def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
@@ -629,6 +634,7 @@ mod tests {
         let cases = [
             (Mods::NONE, keysyms::KEY_Print, Action::ScreenshotScreen),
             (SUPER_SHIFT, keysyms::KEY_s, Action::ScreenshotRegion),
+            (SUPER, keysyms::KEY_v, Action::Clipboard),
             (SUPER_ALT, keysyms::KEY_Left, Action::MoveToWorkspaceStep(Dir::Left)),
             (SUPER_ALT, keysyms::KEY_Down, Action::MoveToWorkspaceStep(Dir::Down)),
             (SUPER_CTRL, keysyms::KEY_Right, Action::MoveToOutput(Dir::Right)),

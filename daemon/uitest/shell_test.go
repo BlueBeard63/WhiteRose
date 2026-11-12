@@ -148,3 +148,16 @@ func TestScreenshotToastDeletes(t *testing.T) {
 	}
 	t.Fatalf("%s is still there after Delete", shots[0])
 }
+
+// SUPER+V shows the clipboard history in the island; again, it goes.
+func TestSuperVShowsTheClipboard(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	tab := uitest.Named("Clipboard").Role("page tab")
+	bar.Press("super+v")
+	if !bar.WaitFor(tab).Selected() {
+		t.Error("the island isn't on the clipboard")
+	}
+	bar.Press("super+v")
+	bar.Gone(tab)
+}

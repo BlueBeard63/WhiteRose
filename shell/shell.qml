@@ -24,6 +24,8 @@ ShellRoot {
             if (name === "app_launcher") ShellState.toggle("launcher");
             else if (name === "quick_settings") ShellState.togglePanel("quick");
             else if (name === "notifications") ShellState.togglePanel("notifications");
+            // SUPER+V: the clipboard history, in the island.
+            else if (name === "clipboard") ShellState.toggle("clipboard");
             else if (name === "lock") ShellState.lock();
         }
     }

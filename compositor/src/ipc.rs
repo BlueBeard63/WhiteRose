@@ -332,6 +332,7 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
         Action::IdentifyOutputs => "identify_outputs",
         Action::Media(name) => name,
         Action::Notifications => "notifications",
+        Action::Clipboard => "clipboard",
         Action::ScreenshotRegion => "screenshot_region",
         _ => return None,
     })
