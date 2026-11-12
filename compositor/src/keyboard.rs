@@ -262,7 +262,8 @@ impl WhiteRose {
     pub fn apply_shortcuts(&mut self) {
         let k = &self.keyboard;
         let (mut bindings, errors) = Bindings::build(&k.terminal, &k.overrides, &k.custom);
-        for e in errors {
+        let pad_errors = bindings.add_scratchpads(&self.scratchpads.pads);
+        for e in errors.into_iter().chain(pad_errors) {
             tracing::warn!("shortcut skipped: {e}");
         }
         if let Some(to) = k.logo_remap {

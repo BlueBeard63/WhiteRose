@@ -134,8 +134,9 @@ impl XdgShellHandler for WhiteRose {
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<wl_output::WlOutput>) {
-        // On the output asked for, else the one the window is on.
-        if let Some(w) = self.window_for_surface(surface.wl_surface()) {
+        // On the output asked for, else the one the window is on. A
+        // scratchpad stays as it is (it's told so).
+        if let Some(w) = self.window_for_surface(surface.wl_surface()).filter(|w| !self.scratchpads.is_pad(w)) {
             self.fullscreen_to(&w, output.as_ref().and_then(smithay::output::Output::from_resource));
         } else {
             surface.send_configure();

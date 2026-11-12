@@ -72,12 +72,21 @@ impl Pad {
     pub fn rect(&self, area: Rect) -> Rect {
         let w = self.size.0.of(area.w).clamp(1, area.w.max(1));
         let h = self.size.1.of(area.h).clamp(1, area.h.max(1));
+        let (x, y) = self.origin(area, (w, h));
+        Rect::new(x, y, w, h)
+    }
+
+    /// Where its top left goes for a window of `size` (the size it drew,
+    /// which an app may choose for itself): centred across, against the
+    /// top or in the middle, and kept inside the area.
+    pub fn origin(&self, area: Rect, size: (i32, i32)) -> (i32, i32) {
+        let (w, h) = size;
         let x = area.x + (area.w - w) / 2;
         let y = match self.place {
             Place::Top => area.y,
             Place::Centre => area.y + (area.h - h) / 2,
         };
-        Rect::new(x, y, w, h)
+        (x.max(area.x), y.max(area.y))
     }
 }
 
@@ -268,6 +277,9 @@ mod tests {
         // On a second monitor, and too big: cut to the area.
         let big = pad(json!({"id": "a", "command": "x", "size": [5000, 5000]}));
         assert_eq!(big.rect(Rect::new(1920, 0, 1280, 800)), Rect::new(1920, 0, 1280, 800));
+        // An app that drew bigger than it was asked stays inside, from the top left.
+        assert_eq!(big.origin(Rect::new(1920, 0, 1280, 800), (2000, 900)), (1920, 0));
+        assert_eq!(mid.origin(area, (1000, 500)), (460, 310));
     }
 
     #[test]

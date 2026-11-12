@@ -116,6 +116,23 @@ pub fn output_elements(
                     );
                 }
             }
+            // Scratchpads shown here go over it, top first.
+            let origin = state.space.output_geometry(output).map(|g| g.loc).unwrap_or_default();
+            let pads: Vec<&Window> = state.scratchpads.shown_on(output).collect();
+            for pad in pads.into_iter().rev() {
+                let Some(at) = state.space.element_location(pad) else { continue };
+                let loc = at - pad.geometry().loc - origin;
+                elements.extend(
+                    pad.render_elements::<WaylandSurfaceRenderElement<_>>(
+                        renderer,
+                        loc.to_physical_precise_round(scale),
+                        Scale::from(scale),
+                        state.window_alpha(pad),
+                    )
+                    .into_iter()
+                    .map(OutputElement::Surface),
+                );
+            }
             let loc = state.space.element_location(window).unwrap_or_default() - window.geometry().loc;
             elements.extend(
                 window

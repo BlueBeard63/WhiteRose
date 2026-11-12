@@ -114,17 +114,28 @@ impl WhiteRose {
             let next = self.workspaces.focused().cloned();
             self.focus_window(next);
         }
-        // Its look, for its life. Above the others now if it's on top (it
-        // was raised when it was created, before the rules were known).
-        if a.opacity.is_some() || a.on_top == Some(true) {
-            w.user_data().insert_if_missing(|| Look { opacity: a.opacity, on_top: a.on_top == Some(true) });
-            self.restack();
-        }
+        self.keep_look(w, &a);
 
         // Its first configure went out when it was created (focusing it);
         // this one carries what the rules changed, before it draws.
         if let Some(t) = w.toplevel() {
             t.send_pending_configure();
+        }
+    }
+
+    /// Only the rules' look, for a window that places itself (a
+    /// scratchpad's).
+    pub(crate) fn apply_look(&mut self, w: &Window) {
+        let a = self.rules_for(w);
+        self.keep_look(w, &a);
+    }
+
+    /// Its look, for its life. Above the others now if it's on top (it was
+    /// raised when it was created, before the rules were known).
+    fn keep_look(&mut self, w: &Window, a: &Actions) {
+        if a.opacity.is_some() || a.on_top == Some(true) {
+            w.user_data().insert_if_missing(|| Look { opacity: a.opacity, on_top: a.on_top == Some(true) });
+            self.restack();
         }
     }
 

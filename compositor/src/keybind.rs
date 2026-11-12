@@ -61,6 +61,8 @@ pub enum Action {
     /// Move the focused window to workspace N (1-based).
     MoveToWorkspace(u8),
     Spawn(String),
+    /// A scratchpad's key (its id): start, show, focus or hide it.
+    Scratchpad(String),
     /// Focus a window by its IPC id (switching workspace if needed).
     FocusWindow(u64),
     /// Focus an app's most recent window, or cycle if it already has focus.
@@ -464,6 +466,22 @@ impl Bindings {
         (Bindings { entries }, errors)
     }
 
+    /// Adds the scratchpads' keys, so `conflicts()` sees them against the
+    /// rest. Keys that don't parse are skipped and reported.
+    pub fn add_scratchpads(&mut self, pads: &[crate::scratchpad::Pad]) -> Vec<String> {
+        let mut errors = Vec::new();
+        for p in pads {
+            for k in &p.keys {
+                match expand(k) {
+                    Ok(list) if list.len() == 1 => self.entries.push((list[0], Action::Scratchpad(p.id.clone()))),
+                    Ok(_) => errors.push(format!("{}: {k:?} can't use a range of keys", p.id)),
+                    Err(e) => errors.push(format!("{}: {k:?}: {e}", p.id)),
+                }
+            }
+        }
+        errors
+    }
+
     /// Replaces SUPER with other modifiers in every binding. Used when running
     /// nested inside another desktop, which usually keeps SUPER for itself.
     /// The SUPER-tap binding is left alone.
@@ -683,6 +701,20 @@ mod tests {
         let c = parse_combo("SUPER+F").unwrap();
         let b = Bindings::new(vec![(c, Action::ToggleFullscreen), (c, Action::Spawn("files".into()))]);
         assert_eq!(b.conflicts(), vec![(Action::ToggleFullscreen, Action::Spawn("files".into()))]);
+    }
+
+    #[test]
+    fn scratchpad_keys_bind_and_clash() {
+        let pads = crate::scratchpad::parse(&serde_json::json!([
+            {"id": "term", "command": "foot", "keys": ["SUPER+GRAVE"]},
+            {"id": "notes", "command": "notes", "keys": ["SUPER+F", "SUPER+NOPE", "SUPER+1-9"]}
+        ]));
+        let mut b = Bindings::defaults("foot");
+        let errors = b.add_scratchpads(&pads);
+        assert_eq!(errors.len(), 2, "{errors:?}");
+        let grave = parse_combo("SUPER+GRAVE").unwrap();
+        assert_eq!(b.lookup(grave.mods, grave.key), Some(&Action::Scratchpad("term".into())));
+        assert_eq!(b.conflicts(), vec![(Action::ToggleFullscreen, Action::Scratchpad("notes".into()))]);
     }
 
     #[test]

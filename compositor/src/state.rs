@@ -89,6 +89,8 @@ pub struct WhiteRose {
     pub snap: crate::snapping::SnapState,
     /// `windows.rules`: applied as windows open (window_rules.rs).
     pub rules: crate::rules::Rules,
+    /// `windows.scratchpads` and their windows (scratchpad_windows.rs).
+    pub scratchpads: crate::scratchpad_windows::Scratchpads,
     /// Output and usable area last used to fit maximized/fullscreen windows.
     /// PrtSc pressed: capture on the next frame.
     pub screenshot_pending: bool,
@@ -299,6 +301,7 @@ impl WhiteRose {
             idle_inhibit_state,
             clipboard_history_on: true,
             rules: Default::default(),
+            scratchpads: Default::default(),
             cursor_shape_state,
             vt_switch: None,
             session_lock_state,
@@ -510,6 +513,7 @@ impl WhiteRose {
         }
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
+        self.scratchpad_focus_moves(window.as_ref());
         if let Some(w) = &window {
             // Focusing a minimised window (dock, ALT+TAB) brings it back.
             if let Some(i) = self.minimized.iter().position(|m| m == w) {
@@ -562,8 +566,10 @@ impl WhiteRose {
         self.focus_window(Some(w.clone()));
     }
 
+    /// The focused window: a scratchpad's if one has the keyboard, else
+    /// the active workspace's.
     pub fn focused_window(&self) -> Option<Window> {
-        self.workspaces.focused().cloned()
+        self.scratchpads.focus.clone().or_else(|| self.workspaces.focused().cloned())
     }
 
     /// Switches workspace (0-based index).
@@ -579,7 +585,8 @@ impl WhiteRose {
             }
         }
         self.retile();
-        let focus = self.next_focus();
+        // A scratchpad you're in comes along, keeping the keyboard.
+        let focus = self.scratchpads.focus.clone().or_else(|| self.next_focus());
         self.focus_window(focus);
     }
 
@@ -601,7 +608,7 @@ impl WhiteRose {
 
     /// Hides a window until it's focused again.
     pub fn minimize(&mut self, w: &Window) {
-        if self.minimized.contains(w) {
+        if self.minimized.contains(w) || self.minimize_scratchpad(w) {
             return;
         }
         if self.fullscreen.contains(w) {
@@ -657,6 +664,9 @@ impl WhiteRose {
             }
             self.switcher_sync();
         }
+        // A shown scratchpad keeps the keyboard when another window closes.
+        let keep = self.scratchpads.focus.clone().filter(|f| f != w);
+        self.forget_scratchpad(w);
         self.forget_window_state(w);
         self.forget_tiled(w);
         self.forget_snap(w);
@@ -665,7 +675,7 @@ impl WhiteRose {
         self.minimized.retain(|m| m != w);
         self.space.unmap_elem(w);
         self.retile();
-        let next = self.next_focus();
+        let next = keep.or_else(|| self.next_focus());
         self.focus_window(next);
     }
 
@@ -681,18 +691,44 @@ impl WhiteRose {
         env
     }
 
-    pub fn spawn(&self, command: &str) {
+    /// Starts `command`; its process id if it started.
+    pub fn spawn(&self, command: &str) -> Option<u32> {
         let mut parts = command.split_whitespace();
-        let Some(program) = parts.next() else { return };
+        let program = parts.next()?;
         match Command::new(program).args(parts).env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env()).spawn() {
-            Ok(_) => tracing::info!(command, "spawned"),
-            Err(err) => tracing::warn!(command, %err, "failed to spawn"),
+            Ok(child) => {
+                tracing::info!(command, "spawned");
+                Some(child.id())
+            }
+            Err(err) => {
+                tracing::warn!(command, %err, "failed to spawn");
+                None
+            }
         }
     }
 
     pub fn run_action(&mut self, action: Action) {
+        // A scratchpad places itself: what would put it on a workspace, in
+        // the tiles, a group, a zone or fullscreen leaves it be.
+        if self.scratchpads.focus.is_some()
+            && matches!(
+                action,
+                Action::MoveToWorkspace(_)
+                    | Action::ToggleFloating
+                    | Action::ToggleGroup
+                    | Action::MakeMaster
+                    | Action::ToggleSplit
+                    | Action::ToggleFullscreen
+                    | Action::SnapPicker(false)
+            )
+        {
+            return;
+        }
         match action {
-            Action::Spawn(cmd) => self.spawn(&cmd),
+            Action::Spawn(cmd) => {
+                self.spawn(&cmd);
+            }
+            Action::Scratchpad(id) => self.scratchpad_key(&id),
             Action::CloseWindow => {
                 if let Some(t) = self.focused_window().and_then(|w| w.toplevel().cloned()) {
                     t.send_close();

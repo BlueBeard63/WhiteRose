@@ -26,6 +26,7 @@ pub mod ready;
 pub mod render;
 pub mod rules;
 pub mod scratchpad;
+pub mod scratchpad_windows;
 pub mod screenshot;
 pub mod session_lock;
 pub mod shell_supervisor;

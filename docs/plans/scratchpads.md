@@ -1,6 +1,6 @@
 # Plan: scratchpads (v0.3)
 
-**Status: in progress** (2026-11-12): commit 1 written.
+**Status: in progress** (2026-11-12): commits 1–2 written.
 
 Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
 "Scratchpads" (0.3 · Layouts), the last 0.3 part.
@@ -47,6 +47,22 @@ Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
   (`ghostty --gtk-single-instance=false`); Settings fills that in when the
   command is Ghostty. A start that opens no window within 10 s is given
   up, with a warning in the log.
+
+## As built
+
+- **Switching workspace while a scratchpad has the keyboard** leaves it
+  there: the pad comes along on top, so it keeps focus (and one that
+  hides on losing focus doesn't hide).
+- **Another window closing** doesn't take the keyboard from a shown pad.
+- **What would put a pad elsewhere is ignored** while it's focused: move
+  to workspace, toggle floating, group, master, split, fullscreen (the
+  key and the app's own request) and the SUPER+Z picker. Minimizing it
+  hides it.
+- **The "monitor you're on"** is the one under the pointer, as for new
+  windows.
+- **A pad removed from the setting** lets its window go: it becomes an
+  ordinary window on the active workspace.
+- **Window rules** give a pad only their look (`apply_look`).
 
 ## How things are today (read before starting)
 
@@ -122,8 +138,10 @@ Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
 - Hiding unmaps it (as workspaces do); focus goes back to the window that
   had it before.
 - A closed pad window goes back to `Off`.
-- `WindowInfo` gets `scratchpad` (the pad's id, or none); the shell's
-  switchers and dock skip those.
+- Being out of `Workspaces` keeps it out of everything built from its
+  focus history: ALT+TAB, SUPER+ALT+TAB, the shell's window list (dock,
+  screenshot window picking, Settings' open windows) and other apps'
+  taskbars (foreign toplevel). No `WindowInfo` field is needed.
 
 **The slide:** about 150 ms, eased. Showing moves the window down from
 behind the top of the usable area (clipped there, so it comes out from
@@ -147,8 +165,7 @@ frame first, as for the other pages):
    in the daemon with its check and tests. No behaviour change.
 2. **Compositor:** keys, start, claim on the first commit, show / hide /
    focus, follow across workspaces and monitors, above everything, hide
-   on focus loss, closing; `WindowInfo.scratchpad` and the shell's
-   switchers and dock skipping them. Headless tests (a test client
+   on focus loss, closing; out of the switchers and the dock. Headless tests (a test client
    started by the key is claimed, shown, hidden; switching workspace
    keeps it).
 3. **The slide** from the island, in and out, turning around mid-slide.
