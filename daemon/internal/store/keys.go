@@ -345,6 +345,61 @@ var Known = map[string]Key{
 		}
 		return nil
 	})},
+	// Window layout (the compositor's layout/ module). The global default,
+	// then overrides per workspace ("1"-"9") and per monitor (its ID, as in
+	// "displays"); a monitor's beats a workspace's.
+	"windows.layout": {Default: json.RawMessage(`"floating"`), Check: into(oneOf(layouts...))},
+	"windows.layout.workspaces": {Default: json.RawMessage(`{}`), Check: into(func(m map[string]string) error {
+		for ws, l := range m {
+			if len(ws) != 1 || ws < "1" || ws > "9" {
+				return fmt.Errorf("invalid workspace %q (want 1-9)", ws)
+			}
+			if err := oneOf(layouts...)(l); err != nil {
+				return fmt.Errorf("workspace %s: %w", ws, err)
+			}
+		}
+		return nil
+	})},
+	"windows.layout.monitors": {Default: json.RawMessage(`{}`), Check: into(func(m map[string]string) error {
+		if len(m) > 32 {
+			return errors.New("at most 32 monitors")
+		}
+		for id, l := range m {
+			if !config.ValidID(id) {
+				return fmt.Errorf("invalid monitor id %q", id)
+			}
+			if err := oneOf(layouts...)(l); err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+		}
+		return nil
+	})},
+	// Gaps in pixels: between tiles, and around them. Smart: none with one tile.
+	"windows.gaps.inner": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.outer": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.smart": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// Master layout: the master tile's share of the area, and its side.
+	"windows.master.ratio": {Default: json.RawMessage(`0.55`), Check: into(func(v float64) error {
+		if v < 0.1 || v > 0.9 {
+			return errors.New("must be 0.1-0.9")
+		}
+		return nil
+	})},
+	"windows.master.side": {Default: json.RawMessage(`"left"`), Check: into(oneOf("left", "right", "top", "bottom"))},
+	// Dwindle: which way new tiles split (auto: by the tile's shape).
+	"windows.dwindle.split": {Default: json.RawMessage(`"auto"`), Check: into(oneOf("auto", "horizontal", "vertical"))},
+}
+
+// The window layouts (windows.layout and its overrides).
+var layouts = []string{"floating", "dwindle", "master"}
+
+func pixels(lo, hi int) func(int) error {
+	return func(v int) error {
+		if v < lo || v > hi {
+			return fmt.Errorf("must be %d-%d px", lo, hi)
+		}
+		return nil
+	}
 }
 
 // KeyboardLayout is an XKB layout and optional variant ("gb", "extd").

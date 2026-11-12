@@ -81,6 +81,8 @@ pub struct WhiteRose {
     pub filling: Vec<(Window, smithay::output::Output)>,
     /// Minimised windows: hidden until focused again (dock, ALT+TAB).
     pub minimized: Vec<Window>,
+    /// Tiled workspaces and the layout settings (see tiling.rs).
+    pub tiling: crate::tiling::TilingState,
     /// Output and usable area last used to fit maximized/fullscreen windows.
     /// PrtSc pressed: capture on the next frame.
     pub screenshot_pending: bool,
@@ -246,6 +248,7 @@ impl WhiteRose {
             fullscreen: Vec::new(),
             filling: Vec::new(),
             minimized: Vec::new(),
+            tiling: Default::default(),
             fitted_to: Vec::new(),
             next_window_id: 1,
             switcher: None,
@@ -431,7 +434,8 @@ impl WhiteRose {
     }
 
     /// The output a window is on: the one it fills if maximized or
-    /// fullscreen, else the one it overlaps most (the first if none).
+    /// fullscreen, else the one it overlaps most, else (it hasn't drawn yet)
+    /// the one its corner is on, else the first.
     pub fn output_of(&self, w: &Window) -> Option<smithay::output::Output> {
         if let Some((_, o)) = self.filling.iter().find(|(f, o)| f == w && self.space.output_geometry(o).is_some()) {
             return Some(o.clone());
@@ -447,6 +451,10 @@ impl WhiteRose {
             .outputs()
             .max_by_key(|o| area(o))
             .filter(|o| area(o) > 0)
+            .or_else(|| {
+                let at = geo?.loc;
+                self.space.outputs().find(|o| self.space.output_geometry(o).is_some_and(|g| g.contains(at)))
+            })
             .or_else(|| self.space.outputs().next())
             .cloned()
     }
@@ -476,9 +484,11 @@ impl WhiteRose {
                 self.minimized.swap_remove(i);
                 if self.workspaces.workspace_of(w) == Some(self.workspaces.active()) {
                     self.show(w);
+                    self.retile();
                 }
             }
             self.space.raise_element(w, true);
+            self.restack();
             self.workspaces.focus(w);
         }
         for w in self.space.elements() {
@@ -531,6 +541,7 @@ impl WhiteRose {
                 self.show(w);
             }
         }
+        self.retile();
         let focus = self.next_focus();
         self.focus_window(focus);
     }
@@ -556,6 +567,7 @@ impl WhiteRose {
         }
         self.minimized.push(w.clone());
         self.hide(w);
+        self.retile();
         let next = self.next_focus();
         self.focus_window(next);
     }
@@ -565,6 +577,7 @@ impl WhiteRose {
         let Some(w) = self.focused_window() else { return };
         if self.workspaces.move_to(&w, ws) {
             self.hide(&w);
+            self.retile();
             let next = self.workspaces.focused().cloned();
             self.focus_window(next);
         }
@@ -597,10 +610,12 @@ impl WhiteRose {
             self.switcher_sync();
         }
         self.forget_window_state(w);
+        self.forget_tiled(w);
         self.workspaces.remove(w);
         self.hidden_at.retain(|(h, _)| h != w);
         self.minimized.retain(|m| m != w);
         self.space.unmap_elem(w);
+        self.retile();
         let next = self.next_focus();
         self.focus_window(next);
     }

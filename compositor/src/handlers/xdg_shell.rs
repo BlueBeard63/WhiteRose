@@ -41,7 +41,8 @@ impl XdgShellHandler for WhiteRose {
             self.unfullscreen(&fs);
         }
         // Cascade new windows so they don't stack exactly on top of each other.
-        // A real placement policy (tiling / centring) replaces this later.
+        // On a tiled workspace this is where it floats if it's untiled later;
+        // its first commit gives it a tile (tiling.rs).
         let n = self.workspaces.active_windows().len() as i32;
         // Start inside the area the bar doesn't reserve.
         let area = output.map(|o| self.usable_area_on(&o)).unwrap_or_default().loc;

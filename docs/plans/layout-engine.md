@@ -150,29 +150,38 @@ layout, the same as SUPER+T.
      between tiles).
    - SUPER+drag for floating windows too.
    - Tests that drive the debug pointer.
-4. **Keys:** the actions above in `keybind.rs` and the default table, with
+4. **Grouped (tabbed) windows:** several windows share one tile and show
+   one at a time, with a tab strip drawn by the compositor above the tile.
+   - In the core: a tile holds a group (a list plus the shown one), not just
+     a window; arrange returns the shown window, the others stay hidden.
+   - Dropping a dragged window on a tile's centre adds it to that group;
+     dragging a tab out takes it back out as its own tile.
+   - Clicking a tab shows that window; closing one shows the next.
+   - Keys (in commit 5): group or ungroup the focused window, and next or
+     previous tab.
+5. **Keys:** the actions above in `keybind.rs` and the default table, with
    SUPER+SHIFT+SPACE to float. Also shown in Settings › Keyboard's list
    (the "Windows" category).
-5. **Bar:** the layout in `Event::Workspaces`, and the bar's layout button.
+6. **Bar:** the layout in `Event::Workspaces`, and the bar's layout button.
    UI test: clicking it cycles the layout and the stored setting changes.
-6. **Settings › Windows:** the Figma design first, then the module. UI
+7. **Settings › Windows:** the Figma design first, then the module. UI
    tests: choosing a per-workspace layout tiles that workspace's windows,
    and every control has a name.
-7. **Docs:**
+8. **Docs:**
    - ARCHITECTURE.md (the layout module, keys and settings).
-   - ROADMAP.md: tick the engine and dynamic tiling items; groups (tabbed)
-     are left for later unless done here.
+   - ROADMAP.md: tick the engine, dynamic tiling and grouped windows items.
 
 ## Not in this branch
 
-Grouped (tabbed) windows; snap layouts and FancyZones; scrollable columns;
+Snap layouts and FancyZones; scrollable columns;
 window rules (by app, title regex, etc.); scratchpads; animations for tiles
 moving (later, with 0.4 Overview).
 
-## Open questions for the user
+## Answers (2026-11-11)
 
-- Default keys: SUPER+T for the layout cycle and SUPER+SHIFT+SPACE to float
-  are proposals. Are these the keys you want?
-- Should a window dragged out of a tiled workspace's area float, or snap back?
-  (Proposed: it floats.)
-- Grouped (tabbed) windows: in this branch or later? (Proposed: later.)
+- Keys: SUPER+T cycles the layout, SUPER+SHIFT+SPACE floats or tiles the
+  focused window (check for clashes in commit 4).
+- A tile dragged out of the tiled area floats where it's dropped.
+- Grouped (tabbed) windows go **in this branch**, as their own commit after
+  the mouse work (before keys, so their keys join commit 4).
+- One master tile only; SUPER+M swaps the focused window into it.

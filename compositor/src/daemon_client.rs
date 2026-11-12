@@ -1,7 +1,8 @@
 //! The compositor's connection to whiterosed (this session's settings
 //! daemon): it follows the display settings ("displays", and a layout being
-//! tried out, "displays.test") and the keyboard and shortcut settings
-//! (keyboard.rs), and applies changes live. Reconnects if the
+//! tried out, "displays.test"), the keyboard and shortcut settings
+//! (keyboard.rs) and the window layouts (tiling.rs), and applies changes
+//! live. Reconnects if the
 //! daemon restarts; works without one (built-in defaults).
 
 use std::{
@@ -110,10 +111,11 @@ impl WhiteRose {
     }
 
     fn daemon_message(&mut self, v: &Value) {
-        let (mut displays, mut keyboard, mut shortcuts, mut idle) = (false, false, false, false);
+        let (mut displays, mut keyboard, mut shortcuts, mut idle, mut layout) = (false, false, false, false, false);
         let mut take = |state: &mut WhiteRose, key: &str, value: &Value| {
             displays |= state.set_display_setting(key, value);
             idle |= state.idle_setting(key, value);
+            layout |= state.layout_setting(key, value);
             if key == "privacy.clipboardHistory" {
                 state.clipboard_history_on = value.as_bool().unwrap_or(true);
             }
@@ -147,6 +149,9 @@ impl WhiteRose {
         }
         if idle {
             self.arm_idle();
+        }
+        if layout {
+            self.apply_layout_settings();
         }
     }
 
