@@ -85,6 +85,8 @@ pub struct WhiteRose {
     pub minimized: Vec<Window>,
     /// Tiled workspaces and the layout settings (see tiling.rs).
     pub tiling: crate::tiling::TilingState,
+    /// Snapped floating windows (see snapping.rs).
+    pub snap: crate::snapping::SnapState,
     /// Output and usable area last used to fit maximized/fullscreen windows.
     /// PrtSc pressed: capture on the next frame.
     pub screenshot_pending: bool,
@@ -252,6 +254,7 @@ impl WhiteRose {
             filling: Vec::new(),
             minimized: Vec::new(),
             tiling: Default::default(),
+            snap: Default::default(),
             fitted_to: Vec::new(),
             next_window_id: 1,
             switcher: None,
@@ -594,6 +597,7 @@ impl WhiteRose {
             self.leave_group(&w);
         }
         if self.workspaces.move_to(&w, ws) {
+            self.end_snap(&w);
             self.hide(&w);
             self.retile();
             let next = self.workspaces.focused().cloned();
@@ -629,6 +633,7 @@ impl WhiteRose {
         }
         self.forget_window_state(w);
         self.forget_tiled(w);
+        self.forget_snap(w);
         self.workspaces.remove(w);
         self.hidden_at.retain(|(h, _)| h != w);
         self.minimized.retain(|m| m != w);

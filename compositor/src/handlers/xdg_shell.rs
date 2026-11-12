@@ -216,7 +216,7 @@ impl WhiteRose {
         }
         let Some(pointer) = self.seat.get_pointer() else { return };
         let Some(initial_window_location) = self.space.element_location(&window) else { return };
-        let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
+        let grab = MoveSurfaceGrab { start_data, window, initial_window_location, unsnapped: false };
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
@@ -234,6 +234,8 @@ impl WhiteRose {
             self.start_tile_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
             return;
         }
+        // A snap ends where a window is resized by hand.
+        self.end_snap(&window);
         let Some(pointer) = self.seat.get_pointer() else { return };
         let Some(loc) = self.space.element_location(&window) else { return };
         let Some(surface) = window.toplevel().cloned() else { return };

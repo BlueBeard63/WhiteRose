@@ -237,6 +237,8 @@ pub struct Settings {
     pub master_side: Side,
     /// Dwindle's split direction: None picks it from each tile's shape.
     pub dwindle_split: Option<Axis>,
+    /// Floating windows snap to edges, corners and zones (`snap.rs`).
+    pub snap: bool,
 }
 
 impl Default for Settings {
@@ -249,6 +251,7 @@ impl Default for Settings {
             master_ratio: 0.55,
             master_side: Side::Left,
             dwindle_split: None,
+            snap: true,
         }
     }
 }

@@ -374,6 +374,8 @@ var Known = map[string]Key{
 		}
 		return nil
 	})},
+	// Floating windows snap to edges, corners and zones.
+	"windows.snap": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Gaps in pixels: between tiles, and around them. Smart: none with one tile.
 	"windows.gaps.inner": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
 	"windows.gaps.outer": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},

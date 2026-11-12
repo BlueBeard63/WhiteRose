@@ -365,7 +365,8 @@ pub const CATALOG: &[Def] = &[
     def("toggle-floating", "Float or tile window", "Windows", &["SUPER+SHIFT+SPACE"]),
     Def { range: Range::Arrows, ..def("focus-direction", "Focus window ←→↑↓", "Windows", &["SUPER+ARROWS"]) },
     Def {
-        range: Range::Arrows, ..def("move-direction", "Move window ←→↑↓", "Windows", &["SUPER+SHIFT+ARROWS"])
+        range: Range::Arrows,
+        ..def("move-direction", "Move or snap window ←→↑↓", "Windows", &["SUPER+SHIFT+ARROWS"])
     },
     def("resize-mode", "Resize window (then arrows; Esc ends)", "Windows", &["SUPER+R"]),
     def("toggle-split", "Flip split (dwindle)", "Windows", &["SUPER+J"]),

@@ -22,6 +22,8 @@ pub struct MoveSurfaceGrab {
     pub start_data: PointerGrabStartData<WhiteRose>,
     pub window: Window,
     pub initial_window_location: Point<i32, Logical>,
+    /// A snapped window gets its own size back once it moves.
+    pub unsnapped: bool,
 }
 
 impl PointerGrab<WhiteRose> for MoveSurfaceGrab {
@@ -35,6 +37,12 @@ impl PointerGrab<WhiteRose> for MoveSurfaceGrab {
         // While the grab is active, no client has pointer focus
         handle.motion(data, None, event);
 
+        if !self.unsnapped {
+            self.unsnapped = true;
+            if let Some(at) = data.unsnap_for_drag(&self.window, self.start_data.location) {
+                self.initial_window_location = at;
+            }
+        }
         let delta = event.location - self.start_data.location;
         let mut at = (self.initial_window_location.to_f64() + delta).to_i32_round();
         // Never under the bar: its title bar would be covered there and
@@ -43,6 +51,7 @@ impl PointerGrab<WhiteRose> for MoveSurfaceGrab {
             at.y = keep_below(at.y, data.usable_area_on(&o).loc.y);
         }
         data.space.map_element(self.window.clone(), at, true);
+        data.snap_drag_motion(&self.window, event.location);
         data.island_sync(); // dragged under (or away from) the island
     }
 
@@ -61,6 +70,7 @@ impl PointerGrab<WhiteRose> for MoveSurfaceGrab {
         // Released the button that started it (left for a title bar, right
         // or left for SUPER+drag).
         if !handle.current_pressed().contains(&self.start_data.button) {
+            data.snap_drop(&self.window, self.initial_window_location);
             handle.unset_grab(self, data, event.serial, event.time, true);
             // Dropped on a tiled output, a window joins its tiles.
             data.retile();
@@ -151,7 +161,9 @@ impl PointerGrab<WhiteRose> for MoveSurfaceGrab {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut WhiteRose) {}
+    fn unset(&mut self, data: &mut WhiteRose) {
+        data.snap_drag_end();
+    }
 }
 
 #[cfg(test)]

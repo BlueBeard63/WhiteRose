@@ -155,6 +155,8 @@ fn group_and_tab_keys() {
 #[test]
 fn floating_windows_move_and_resize_by_keys() {
     let mut h = Headless::new(true);
+    // With snapping on, SUPER+SHIFT+arrows snap instead (tests/snap.rs).
+    set(&mut h.state, "windows.snap", serde_json::json!(false));
     h.drive(|conn, ask| {
         let mut c = Client::connect(&conn);
         c.open_bar();
