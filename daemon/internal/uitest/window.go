@@ -207,6 +207,7 @@ func (w *Window) ScrollTo(q Query) Node {
 		w.s.t.Fatalf("%s isn't in %q; showing:\n%s", q, w.title, describe(w.Nodes()))
 	}
 	var g [4]int
+	scrolled := false
 	for range 60 {
 		// (Each time: a layer grows as what it shows opens, e.g. the bar
 		// as a panel slides down.)
@@ -215,6 +216,12 @@ func (w *Window) ScrollTo(q Query) Node {
 			// Still gliding from the wheel? (A click would only stop it.)
 			time.Sleep(150 * time.Millisecond)
 			if m, ok := w.Find(q); ok && m.X == n.X && m.Y == n.Y {
+				// Scrolled to the end, a page settles a moment longer
+				// (bouncing back) with nothing seeming to move; a press
+				// then stops it instead of clicking.
+				if scrolled {
+					time.Sleep(350 * time.Millisecond)
+				}
 				return m
 			}
 			continue
@@ -224,6 +231,7 @@ func (w *Window) ScrollTo(q Query) Node {
 			clicks = -2
 		}
 		w.s.scroll(float64(g[0]+found.X+found.W/2), float64(g[1]+g[3]/2), clicks)
+		scrolled = true
 		if n, ok := w.Lookup(q); ok {
 			found = n
 		}

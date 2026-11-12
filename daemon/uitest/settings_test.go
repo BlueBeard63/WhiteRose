@@ -434,16 +434,20 @@ func TestSettingsMouseAndTouchpad(t *testing.T) {
 }
 
 // Mouse & Touchpad › Faster while you hold: Ctrl+Shift to start with;
-// another pick is stored, and how much faster follows the wheel (3× up
-// two turns: 4×).
+// another pick is stored, and how much faster follows a click and then
+// the wheel.
 func TestSettingsFasterPointer(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("mouse")
 	settings.Click(uitest.Named("Faster while you hold").Role("combo box").Described("Ctrl + Shift"))
 	settings.Activate(uitest.Named("Super + Shift"))
 	s.WaitSetting("mouse.fasterWith", "SUPER+SHIFT")
+	// (Clicked first: the wheel only moves a slider once it's clicked.
+	// The middle is 3.5×; two turns up, 4.5×.)
+	settings.Click(uitest.Named("How much faster").Role("slider"))
+	s.WaitSetting("mouse.fasterBy", 3.5)
 	settings.Wheel(uitest.Named("How much faster").Role("slider"), -2)
-	s.WaitSetting("mouse.fasterBy", 4)
+	s.WaitSetting("mouse.fasterBy", 4.5)
 }
 
 // Settings chooses files and folders with Files' picker: a folder left out
@@ -470,12 +474,35 @@ func TestSettingsPicksWithFiles(t *testing.T) {
 	s.WaitSetting("wallpaper.files", []any{"~/Pictures/dunes.png"})
 }
 
-// Windows › Switching: ALT+TAB can list only this workspace's apps.
-// (Picked by its action: the page's end is reached past the gap and
-// master sliders, which take the wheel the harness scrolls with.)
+// Windows › Switching: ALT+TAB can list only this workspace's apps. (At
+// the end of the page, scrolled to past the gap and master sliders: they
+// leave the wheel to the page.)
 func TestSettingsAltTabThisWorkspace(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("windows")
-	settings.Activate(uitest.Named("This workspace").Role("radio button"))
+	settings.Click(uitest.Named("This workspace").Role("radio button"))
 	s.WaitSetting("windows.appSwitcher.workspaces", "current")
+}
+
+// A slider ignores the wheel until it's clicked: scrolling past one scrolls
+// the page and leaves its value be; clicked, the wheel moves it.
+func TestSettingsSlidersTakeTheWheelOnlyOnceClicked(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("keyboard")
+	delay := uitest.Named("Repeat delay").Role("slider")
+	before := settings.WaitFor(delay)
+	settings.Wheel(delay, 3)
+	time.Sleep(400 * time.Millisecond)
+	if got := s.Setting("keyboard.repeatDelay"); got != "300" {
+		t.Errorf("the wheel moved an unclicked slider: %s", got)
+	}
+	if after, _ := settings.Lookup(delay); after.Y >= before.Y {
+		t.Errorf("the page didn't scroll (%d, then %d)", before.Y, after.Y)
+	}
+	settings.Click(delay)
+	clicked := s.Setting("keyboard.repeatDelay")
+	settings.Wheel(delay, -3)
+	if !uitest.WaitUntil(func() bool { return s.Setting("keyboard.repeatDelay") != clicked }) {
+		t.Errorf("clicked, the wheel didn't move it (still %s)", clicked)
+	}
 }
