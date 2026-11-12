@@ -5,9 +5,11 @@
 package uitest_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"whiterose/daemon/internal/uitest"
 )
@@ -89,4 +91,43 @@ func TestNewFolderIsNamedInPlace(t *testing.T) {
 	if len(entries) != 2 {
 		t.Errorf("want todo.txt and Drafts, got %d entries", len(entries))
 	}
+}
+
+// Files makes the search index in a process of its own: closing Files
+// straight away doesn't stop it, and Files opened again says it's indexed.
+func TestIndexCarriesOnWhenFilesCloses(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	for i := range 40 {
+		dir := filepath.Join(s.Home, "Documents", fmt.Sprintf("project-%02d", i))
+		os.MkdirAll(dir, 0o755)
+		for j := range 250 {
+			os.WriteFile(filepath.Join(dir, fmt.Sprintf("note-%03d.txt", j)), nil, 0o644)
+		}
+	}
+	index := filepath.Join(s.Home, ".cache/whiterose/files/index")
+	title := "Home — Files"
+	files := s.Open(filesBinary(s)+" "+s.Home, title)
+	files.Click(uitest.Named("Close").Role("push button"))
+	files.Closed()
+
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		_, err := os.Stat(index)
+		_, busy := os.Stat(filepath.Join(s.Home, ".cache/whiterose/files/index.progress"))
+		if err == nil && os.IsNotExist(busy) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no index after Files closed (index: %v, progress file: %v)", err, busy)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Searching home: the index row says when it was made.
+	files = s.Open(filesBinary(s)+" "+s.Home, title)
+	files.Press("ctrl+f")
+	files.Type("note-007")
+	files = files.Retitled("Search — Files")
+	files.Click(uitest.Named("Home").Role("radio button"))
+	files.WaitFor(uitest.Named("Index again").Role("push button"))
 }

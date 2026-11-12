@@ -740,26 +740,45 @@ AppWindow {
                 Timer { id: insideTimer; interval: 450; onTriggered: if (insideField.text !== (searchRow.ask.content ?? "")) win.current?.find({ content: insideField.text, either: insideField.text === searchField.text }) }
             }
         }
-        // The index (home and drives): how fresh, and freshen it.
+        // The index (home and drives): how fresh, and freshen it; while
+        // it's being made, how far it's got and about how long is left.
         Row {
             id: indexRow
             visible: (searchRow.ask.scope ?? "here") !== "here"
             anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-            spacing: 4
+            spacing: 8
+            Rectangle {
+                visible: Search.indexing && Search.indexDone >= 0
+                anchors.verticalCenter: parent.verticalCenter
+                width: 64; height: 4; radius: 2
+                color: Theme.surface2
+                Accessible.role: Accessible.ProgressBar
+                Accessible.name: "Indexing"
+                Accessible.description: Math.round(Search.indexDone * 100) + "%"
+                Rectangle {
+                    width: parent.width * Math.max(0, Search.indexDone); height: parent.height; radius: 2
+                    color: Theme.pearl
+                    Behavior on width { NumberAnimation { duration: 380 } }
+                }
+            }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: Search.indexing ? "Indexing…" : Search.indexedAt > 0 ? "Indexed " + F.date(Search.indexedAt, Date.now()).replace(/^Today /, "at ") : "Not indexed yet"
+                text: Search.indexing ? F.indexing(Search.indexCount, Search.indexDone, Search.indexLeft)
+                    : Search.indexedAt > 0 ? "Indexed " + F.date(Search.indexedAt, Date.now()).replace(/^Today /, "at ") : "Not indexed yet"
                 color: Theme.faint
                 font { family: Theme.font; pointSize: Theme.pt(11) }
             }
             IconButton {
                 visible: !Search.indexing
+                label: "Index again"
                 width: 26; height: 26; icon: "restart"; iconSize: 12; fill: "transparent"
-                onClicked: Search.reindex(JSON.stringify(Session.indexOpts))
+                onClicked: Search.reindex()
             }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.surface1 }
     }
+    // How far the indexer has got (its own process: read every so often).
+    Timer { running: Search.indexing; repeat: true; interval: 500; onTriggered: Search.poll() }
     // Index done: searches of home and the drives see what it found.
     Connections {
         target: Search

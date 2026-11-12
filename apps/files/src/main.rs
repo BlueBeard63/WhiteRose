@@ -17,6 +17,7 @@ mod diff;
 mod finder;
 mod git;
 mod hash;
+mod indexer;
 mod jobs;
 mod journal;
 mod json_view;
@@ -53,9 +54,11 @@ fn main() {
             &mut std::io::stdout().lock(),
             &mut std::io::stderr(),
         )),
+        // The search index, made in the background (indexer.rs).
+        Some("--index") => std::process::exit(indexer::main()),
         Some("--help") | Some("-h") => {
             println!(
-                "whiterose-files [FOLDER…]   open folders in Files\n{}",
+                "whiterose-files [FOLDER…]   open folders in Files\nwhiterose-files --index      make the search index again (in the background)\n{}",
                 cli::HELP
             );
             return;

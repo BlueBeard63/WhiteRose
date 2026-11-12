@@ -22,7 +22,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Home dashboard with drives, recents and shortcuts (Next) — Start: workspaces, places, recent files, drives with how full, tags; can be where Files opens (Settings › Files)
 
 ## 2. Search, filtering & discovery
-- [x] Instant indexed filename search (MVP) — home and drives; built in the background at idle priority, read from disk when searching (no memory held)
+- [x] Instant indexed filename search (MVP) — home and drives; built by its own background process at idle priority (`--index`; carries on when Files closes, with progress and time left), read from disk when searching (no memory held)
 - [x] Search across multiple locations (MVP) — Here and below (this folder's whole tree, live), Home, or Everywhere (home and drives)
 - [x] Inline folder filtering as you type (MVP) — type in any folder; Esc clears; take it to subfolders or everywhere
 - [x] Search by file type, extension, size and date (MVP) — type, size and modified filters; `*.pdf` / `ext:pdf`

@@ -83,7 +83,6 @@ QtObject {
         return Object.keys(session.palette).find(c => !used.includes(c)) ?? "rose";
     }
     property var defaultView: session.setting("files.defaultView", ({ mode: "grid", sortBy: "name", descending: false, group: "" }))
-    readonly property var indexOpts: ({ drives: session.setting("files.indexDrives", true), exclude: session.setting("files.indexExclude", []) })
     // The daemon's settings arrive a moment after start (the values above are
     // the defaults until then): everything read again once they're here.
     function readAll() {
@@ -141,7 +140,7 @@ QtObject {
             case "files.sidebarOpen": session.sidebarOpen = v(key, []); break;
             case "files.tags": session.tagDefs = v(key, []); session.reload(false); break;
             case "files.defaultView": session.defaultView = v(key, session.defaultView); session.reload(true); break;
-            case "files.reindex": Search.keepFresh(JSON.stringify(session.indexOpts), v(key, 0)); break;
+            case "files.reindex": Search.keepFresh(v(key, 0)); break;
             }
         }
     }
@@ -190,7 +189,7 @@ QtObject {
     // Starts the first window; returns its tabs ({tabs, current}).
     function start() {
         // The search index, made or freshened in the background.
-        Search.keepFresh(JSON.stringify(session.indexOpts), session.setting("files.reindex", 0));
+        Search.keepFresh(session.setting("files.reindex", 0));
         const args = JSON.parse(Fs.arguments());
         if (args.length > 0) return { tabs: args.map(a => ({ path: a })), current: 0 };
         session.owner = true;
