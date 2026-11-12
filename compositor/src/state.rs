@@ -779,6 +779,10 @@ impl WhiteRose {
             Action::MakeMaster => self.make_master(),
             Action::ToggleGroup => self.toggle_group(),
             Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
+            Action::ColumnWidth => self.change_strip(|s, w| s.cycle_width(w)),
+            Action::FullWidth => self.change_strip(|s, w| s.toggle_full(w)),
+            Action::ColumnPull => self.change_strip(|s, w| s.consume(w)),
+            Action::ColumnPush => self.change_strip(|s, w| s.expel(w)),
             Action::NextTab => self.next_tab(true),
             Action::PreviousTab => self.next_tab(false),
             shell => {

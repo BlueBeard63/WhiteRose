@@ -724,13 +724,27 @@ impl WhiteRose {
     }
 
     /// Changes the focused tile's tiles with `f` (given the window, its
-    /// area and the gaps), and re-tiles if it did something.
+    /// area and the gaps), and re-tiles if it did something. A strip then
+    /// scrolls to keep the focused window in view.
     fn change_tiles(&mut self, f: impl FnOnce(&mut Tiling<Window>, &Window, Rect, &layout::Gaps) -> bool) {
         let Some((w, i, area)) = self.focused_tile() else { return };
         let gaps = self.tiling.settings.gaps;
-        if f(&mut self.tiling.sets[i].tiling, &w, area, &gaps) {
+        let tiling = &mut self.tiling.sets[i].tiling;
+        if f(tiling, &w, area, &gaps) {
+            if let Tiling::Scroll(strip) = tiling {
+                strip.ensure_visible(&w, None, area, &gaps);
+            }
             self.retile();
         }
+    }
+
+    /// Changes the focused window's strip with `f` (the column keys); does
+    /// nothing on other layouts.
+    pub fn change_strip(&mut self, f: impl FnOnce(&mut layout::Scroll<Window>, &Window) -> bool) {
+        self.change_tiles(|t, w, _, _| match t {
+            Tiling::Scroll(s) => f(s, w),
+            _ => false,
+        });
     }
 
     /// SUPER+T and the bar's layout button: the next layout on the output
@@ -774,11 +788,32 @@ impl WhiteRose {
     }
 
     /// SUPER+arrow: focuses the window beside the focused one (tiled or
-    /// not, on any output).
+    /// not, on any output). In a strip, that's the next column (scrolled
+    /// off screen or not) or the window above or below; past the strip's
+    /// end, whatever is beside it on screen.
     pub fn focus_direction(&mut self, dir: Dir) {
         let Some(w) = self.focused_window() else { return };
-        let windows: Vec<(Window, Rect)> =
-            self.space.elements().filter_map(|e| Some((e.clone(), to_rect(self.space.element_geometry(e)?)))).collect();
+        if let Some((_, i, area)) = self.focused_tile() {
+            let tiling = &self.tiling.sets[i].tiling;
+            if matches!(tiling, Tiling::Scroll(_)) {
+                if let Some(n) = tiling.neighbour(&w, dir, area, &self.tiling.settings.gaps) {
+                    self.focus_window(Some(n));
+                    return;
+                }
+            }
+        }
+        // Strip windows count only where they show on their output.
+        let windows: Vec<(Window, Rect)> = self
+            .space
+            .elements()
+            .filter_map(|e| {
+                let mut r = self.space.element_geometry(e)?;
+                if let Some(clip) = self.clip_of(e).filter(|_| *e != w) {
+                    r = r.intersection(clip)?;
+                }
+                Some((e.clone(), to_rect(r)))
+            })
+            .collect();
         if let Some(n) = layout::neighbour(&windows, &w, dir) {
             self.focus_window(Some(n));
         }
