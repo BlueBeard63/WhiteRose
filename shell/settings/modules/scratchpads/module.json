@@ -1,0 +1,11 @@
+{
+  "id": "scratchpads",
+  "name": "Scratchpads",
+  "description": "Apps you show and hide with a key, sliding down from the island",
+  "icon": "scratchpad",
+  "category": "desktop",
+  "order": 12.8,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["scratchpad", "scratchpads", "drop-down", "dropdown", "quake", "guake", "terminal", "toggle", "show", "hide", "key", "shortcut", "slide", "island"]
+}

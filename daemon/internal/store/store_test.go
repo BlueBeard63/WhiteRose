@@ -120,7 +120,7 @@ func TestValidation(t *testing.T) {
 		"windows.dwindle.split":         `"diagonal"`,
 		"windows.snap.zones.workspaces": `{"10":{"builtin":[[0,0,1,1]]}}`,
 		"windows.rules":                 `[{"workspace":2}]`,
-		"windows.scratchpads":           `[{"id":"a","command":"foot"}]`,
+		"windows.scratchpads":           `[{"id":"a","command":""}]`,
 		"nope.unknown":                  `1`,
 		"Bad Key":                       `1`,
 		"module.x":                      `{not json`,
@@ -216,7 +216,6 @@ func TestWindowRules(t *testing.T) {
 func TestScratchpads(t *testing.T) {
 	s, _ := open(t)
 	for _, v := range []string{
-		`[{"id":"a","command":"foot"}]`,
 		`[{"id":"a","command":"","keys":["SUPER+GRAVE"]}]`,
 		`[{"id":"","command":"foot","keys":["SUPER+GRAVE"]}]`,
 		`[{"id":"Bad Id","command":"foot","keys":["SUPER+GRAVE"]}]`,
@@ -235,6 +234,7 @@ func TestScratchpads(t *testing.T) {
 	}
 	for _, v := range []string{
 		`[]`,
+		`[{"id":"a","command":"foot","keys":[]}]`,
 		`[{"id":"pad-1","name":"Terminal","command":"ghostty --gtk-single-instance=false","keys":["SUPER+GRAVE"]}]`,
 		`[{"id":"notes","name":"Notes","command":"whiterose-notepad","keys":["SUPER+N","SUPER+SHIFT+N"],"size":[900,"40%"],"place":"centre","hideOnBlur":true}]`,
 	} {

@@ -1,6 +1,6 @@
 # Plan: scratchpads (v0.3)
 
-**Status: in progress** (2026-11-12): commits 1–3 written.
+**Status: in progress** (2026-11-12): commits 1–4 written.
 
 Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
 "Scratchpads" (0.3 · Layouts), the last 0.3 part.
@@ -70,6 +70,22 @@ Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
   at once and lets the pointer through while it slides up; a timer
   unmaps it at the end. `Scratchpads::slide_length` zero turns slides
   off (the headless tests do, except the one about slides).
+
+- **A pad may have no key** (the daemon allows it): another shortcut
+  can take its only key, from either page. Its card then says it has
+  none. Only a command is needed to save a pad.
+- **Keys on both pages:** the Keyboard page lists pads' keys as
+  shortcuts `scratchpad:<id>` in a "Scratchpads" group (`Keys.js`
+  `setKeys` writes them into `windows.scratchpads`); recording there
+  works as for any shortcut, and its menu has "Edit scratchpad…". The
+  Scratchpads page records with `KeyRecorder.qml`; a clash waits for
+  Enter and takes the key from the other shortcut.
+- **New instance flags:** a command for Ghostty gets
+  `--gtk-single-instance=false`, one for Ptyxis `--standalone` (both
+  hand new windows to a running copy otherwise). A new pad starts as the
+  `apps.terminal` setting (Ptyxis if unset) with SUPER+` if free.
+- **Figma:** "Settings - Scratchpads" (117:5999) with its note,
+  `Icon/scratchpad` and `Nav/Scratchpads` in the sidebar component.
 
 ## How things are today (read before starting)
 

@@ -531,6 +531,8 @@ func checkWindowRule(r WindowRule) error {
 
 // Scratchpad is one of windows.scratchpads: the key runs Command, and the
 // first window that process opens is shown and hidden by the key after.
+// No keys is allowed (another shortcut took its key): it's off until it
+// has one.
 // Size is pixels or "N%" of the monitor's usable area; Place is "top"
 // (under the island) or "centre".
 type Scratchpad struct {
@@ -569,8 +571,6 @@ func checkScratchpad(p Scratchpad) error {
 		return errors.New("name must be at most 100 characters")
 	case strings.TrimSpace(p.Command) == "" || len(p.Command) > 2000:
 		return errors.New("command must be 1-2000 characters")
-	case len(p.Keys) == 0:
-		return errors.New("needs a key")
 	case p.Place != "" && p.Place != "top" && p.Place != "centre" && p.Place != "center":
 		return errors.New(`place is "top" or "centre"`)
 	}
