@@ -332,3 +332,122 @@ mod keys {
         });
     }
 }
+
+mod mouse {
+    //! SUPER with a wheel or touchpad, the gap between columns, and a
+    //! dragged tile held at a strip's edge.
+
+    use super::*;
+    use smithay::backend::input::ButtonState;
+    use whiterose_wm::tiling::StripScroll;
+
+    #[test]
+    fn super_scrolling_moves_the_strip_by_columns_or_pixels() {
+        let mut h = Headless::new(true);
+        strip_settings(&mut h.state);
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            open_columns(&mut c, 3);
+            ask.run(|s| {
+                let ws = all(s);
+                let over = (100.0, 100.0).into();
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(-HALF));
+                // A wheel click back: one column.
+                assert!(s.scroll_strip(over, StripScroll::V120(-120)));
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(0));
+                // A high-resolution wheel: two half clicks make one.
+                assert!(s.scroll_strip(over, StripScroll::V120(60)));
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(0));
+                assert!(s.scroll_strip(over, StripScroll::V120(60)));
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(-HALF));
+                // A touchpad: 1:1, fractions kept for the next event.
+                assert!(s.scroll_strip(over, StripScroll::Pixels(-100.4)));
+                assert!(s.scroll_strip(over, StripScroll::Pixels(-0.6)));
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(-HALF + 101));
+                // At the end it still takes the scroll from the app.
+                assert!(s.scroll_strip(over, StripScroll::Pixels(-10_000.0)));
+                assert!(s.scroll_strip(over, StripScroll::Pixels(-1.0)));
+                // A floating workspace has no strip: the app gets it.
+                set(s, "windows.layout", json!("floating"));
+                assert!(!s.scroll_strip(over, StripScroll::Pixels(10.0)));
+            });
+        });
+    }
+
+    #[test]
+    fn dragging_the_gap_between_columns_resizes_the_left_one() {
+        let mut h = Headless::new(true);
+        strip_settings(&mut h.state);
+        set(&mut h.state, "windows.gaps.inner", json!(16));
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            open_columns(&mut c, 2);
+            ask.run(|s| {
+                let ws = all(s);
+                // Two halves of (1440 + 16), less the gap: 712 each.
+                assert_eq!(rect(s, &ws[0]), Some((0, 0, 712, H)));
+                assert_eq!(rect(s, &ws[1]).map(|r| r.0), Some(728));
+                drag(s, BTN_LEFT, (724.0, 400.0), (824.0, 400.0));
+                assert_eq!(rect(s, &ws[0]).map(|r| r.2), Some(812));
+                assert_eq!(rect(s, &ws[1]).map(|r| r.0), Some(828), "the next column follows");
+                // The left half of the gap (that was the right half: either
+                // half works).
+                drag(s, BTN_LEFT, (816.0, 400.0), (716.0, 400.0));
+                assert_eq!(rect(s, &ws[0]).map(|r| r.2), Some(712));
+            });
+        });
+    }
+
+    #[test]
+    fn a_dragged_tile_held_at_the_edge_scrolls_the_strip() {
+        let mut h = Headless::new(true);
+        strip_settings(&mut h.state);
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            open_columns(&mut c, 3);
+            ask.run(|s| {
+                let ws = all(s);
+                super_key(s, true);
+                s.on_pointer_motion((1000.0, 400.0).into(), 1);
+                s.on_pointer_button(BTN_LEFT, ButtonState::Pressed, 2);
+                assert_eq!(s.tiling.dragging.as_ref(), Some(&ws[2]));
+                // Near the left edge: it scrolls a step at once, then a step
+                // a tick.
+                s.on_pointer_motion((5.0, 400.0).into(), 3);
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(-HALF + 24));
+                assert!(s.edge_scroll_tick());
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(-HALF + 48));
+                // Away from the edge it stops.
+                s.on_pointer_motion((700.0, 400.0).into(), 4);
+                assert!(!s.edge_scroll_tick());
+                assert_eq!(rect(s, &ws[0]).map(|r| r.0), Some(-HALF + 48));
+                s.on_pointer_button(BTN_LEFT, ButtonState::Released, 5);
+                super_key(s, false);
+                assert!(s.tiling.dragging.is_none());
+                assert!(s.tiling.edge_scroll.is_none());
+            });
+        });
+    }
+
+    #[test]
+    fn dropping_on_a_columns_side_or_half_makes_or_joins_a_column() {
+        let mut h = Headless::new(true);
+        strip_settings(&mut h.state);
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            open_columns(&mut c, 3);
+            ask.run(|s| {
+                let ws = all(s);
+                // The third onto the bottom of the second: it joins that
+                // column, below it.
+                super_drag(s, BTN_LEFT, (1000.0, 400.0), (360.0, 700.0));
+                assert_eq!(s.tiling.sets[0].tiling.windows(), vec![ws[0].clone(), ws[1].clone(), ws[2].clone()]);
+                let tiles = s.tiling.sets[0]
+                    .tiling
+                    .arrange(whiterose_wm::layout::Rect::new(0, 0, W, H), &s.tiling.settings.gaps.clone());
+                assert_eq!(tiles[1].1.h, H / 2, "{tiles:?}");
+                assert_eq!(tiles[2].1.y, H / 2);
+            });
+        });
+    }
+}

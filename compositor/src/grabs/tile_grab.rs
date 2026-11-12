@@ -161,6 +161,7 @@ impl PointerGrab<WhiteRose> for TileMoveGrab {
         }
         data.space.map_element(self.window.clone(), at, false);
         data.show_drop_preview(&self.window, event.location);
+        data.drag_near_edge(event.location);
     }
 
     fn button(&mut self, data: &mut WhiteRose, handle: &mut PointerInnerHandle<'_, WhiteRose>, event: &ButtonEvent) {

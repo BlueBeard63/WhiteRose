@@ -207,3 +207,11 @@ position, as tiling and snapping do. Animations come with 0.4's overview.
   `space_render_elements`) to leave a strip window off other outputs.
   The `Space` variant of `OutputElement` is gone; windows are `Surface`
   elements.
+- (commit 4) Gap drags in a strip always move a column's right edge: the
+  gap between two columns resizes the one on its left, from either half of
+  the gap. A wheel click lines the view up with the next column; partway
+  through a column, a click back lines up with that column. Edge scrolling
+  while dragging a tile runs on a 16 ms timer only while the tile is held
+  in the 32 px band at a strip's edge. It keeps the pointer position
+  itself: a grab's motion runs with the pointer locked, so reading
+  `current_location()` there deadlocks.

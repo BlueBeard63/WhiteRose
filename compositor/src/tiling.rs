@@ -67,7 +67,33 @@ pub struct TilingState {
     /// The visible groups' tab strips, and their drawn pictures.
     pub strips: Vec<Strip>,
     pub strip_images: StripImages,
+    /// SUPER+wheel: high-resolution wheel steps not yet a whole click.
+    pub wheel_v120: i32,
+    /// SUPER+touchpad: the fraction of a pixel not scrolled yet.
+    pub scroll_rest: f64,
+    /// A dragged tile held near a strip's edge: that output's strip
+    /// scrolls that way (-1 left, 1 right) while it stays there, at that
+    /// pointer position (kept here: the tick can't ask the pointer, which
+    /// is locked while a grab handles motion).
+    pub edge_scroll: Option<(Output, i32, Point<f64, Logical>)>,
+    /// Whether the edge-scroll timer is running.
+    pub edge_timer: bool,
 }
+
+/// How SUPER with a wheel or touchpad scrolls a strip.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StripScroll {
+    /// A wheel, in 120ths of a click: a whole click scrolls one column.
+    V120(i32),
+    /// A touchpad (or a smooth wheel): pixels, 1:1.
+    Pixels(f64),
+}
+
+/// How near a strip's left or right edge a dragged tile scrolls it.
+const EDGE_ZONE: f64 = 32.0;
+/// How far it scrolls each tick, and how often.
+const EDGE_STEP: i32 = 24;
+const EDGE_TICK: std::time::Duration = std::time::Duration::from_millis(16);
 
 /// The drop preview: a translucent rectangle (global coordinates).
 #[derive(Debug)]
@@ -456,6 +482,95 @@ impl WhiteRose {
         true
     }
 
+    /// The visible workspace's strip under `pos`, as a set index.
+    fn strip_at(&self, pos: Point<f64, Logical>) -> Option<usize> {
+        self.tiled_area_at(pos).filter(|i| matches!(self.tiling.sets[*i].tiling, Tiling::Scroll(_)))
+    }
+
+    /// SUPER with a wheel or touchpad over a strip scrolls it. True if a
+    /// strip was there: the app under the pointer doesn't get the scroll,
+    /// even at the strip's end.
+    pub fn scroll_strip(&mut self, pos: Point<f64, Logical>, how: StripScroll) -> bool {
+        let Some(i) = self.strip_at(pos) else { return false };
+        let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
+        let gaps = self.tiling.settings.gaps;
+        let t = &mut self.tiling;
+        let Tiling::Scroll(strip) = &mut t.sets[i].tiling else { return false };
+        let moved = match how {
+            StripScroll::V120(v) => {
+                t.wheel_v120 += v;
+                let clicks = t.wheel_v120 / 120;
+                t.wheel_v120 %= 120;
+                strip.scroll_columns(clicks, area, &gaps)
+            }
+            StripScroll::Pixels(px) => {
+                let total = t.scroll_rest + px;
+                t.scroll_rest = total.fract();
+                strip.scroll_by(total.trunc() as i32, area, &gaps)
+            }
+        };
+        if moved {
+            self.retile();
+        }
+        true
+    }
+
+    /// A dragged tile moved to `pos`: near a strip's left or right edge,
+    /// the strip starts scrolling that way, and keeps on while it's held
+    /// there (`edge_scroll_tick`).
+    pub fn drag_near_edge(&mut self, pos: Point<f64, Logical>) {
+        self.tiling.edge_scroll = self.strip_at(pos).and_then(|i| {
+            let o = self.tiling.sets[i].output.clone();
+            let a = self.usable_area_on(&o).to_f64();
+            if pos.x < a.loc.x + EDGE_ZONE {
+                Some((o, -1, pos))
+            } else if pos.x >= a.loc.x + a.size.w - EDGE_ZONE {
+                Some((o, 1, pos))
+            } else {
+                None
+            }
+        });
+        if self.tiling.edge_scroll.is_some() && !self.tiling.edge_timer {
+            self.tiling.edge_timer = true;
+            self.edge_scroll_tick();
+            let timer = smithay::reexports::calloop::timer::Timer::from_duration(EDGE_TICK);
+            let inserted = self.loop_handle.insert_source(timer, |_, _, state| {
+                if state.edge_scroll_tick() {
+                    smithay::reexports::calloop::timer::TimeoutAction::ToDuration(EDGE_TICK)
+                } else {
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                }
+            });
+            if inserted.is_err() {
+                self.tiling.edge_timer = false;
+            }
+        }
+    }
+
+    /// One step of a held edge scroll; false once the tile left the edge
+    /// or was dropped (the timer stops).
+    pub fn edge_scroll_tick(&mut self) -> bool {
+        let (Some((o, dir, pos)), Some(w)) = (self.tiling.edge_scroll.clone(), self.tiling.dragging.clone()) else {
+            self.tiling.edge_scroll = None;
+            self.tiling.edge_timer = false;
+            return false;
+        };
+        let ws = self.workspaces.active();
+        let Some(i) = self.tiling.sets.iter().position(|s| s.workspace == ws && s.output == o) else {
+            self.tiling.edge_timer = false;
+            return false;
+        };
+        let area = to_rect(self.usable_area_on(&o));
+        let gaps = self.tiling.settings.gaps;
+        if let Tiling::Scroll(strip) = &mut self.tiling.sets[i].tiling {
+            if strip.scroll_by(dir * EDGE_STEP, area, &gaps) {
+                self.retile();
+                self.show_drop_preview(&w, pos);
+            }
+        }
+        true
+    }
+
     /// The part of the screen a strip window may show on: its own output.
     /// None for every other window (including a tile being dragged, which
     /// follows the pointer across outputs).
@@ -541,6 +656,7 @@ impl WhiteRose {
     /// The drag ended (dropped, or the grab was taken away).
     pub fn end_tile_drag(&mut self) {
         self.tiling.dragging = None;
+        self.tiling.edge_scroll = None;
         self.set_preview(None);
     }
 
@@ -688,10 +804,17 @@ impl WhiteRose {
         let reach = self.tiling.settings.gaps.inner / 2 + 4;
         let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
         let gaps = self.tiling.settings.gaps;
+        // In a strip, a column's left edge isn't on a split: the gap there
+        // resizes the column on its left (its right edge).
+        let strip = matches!(self.tiling.sets[i].tiling, Tiling::Scroll(_));
         tiles.iter().find_map(|(w, r)| {
             let grown = Rect::new(r.x - reach, r.y - reach, r.w + 2 * reach, r.h + 2 * reach);
             if !to_rectangle(grown).contains(p) {
                 return None;
+            }
+            if strip && p.x < r.x {
+                let left = layout::neighbour(&tiles, w, Dir::Left)?;
+                return Some((left, vec![Dir::Right]));
             }
             let mut edges = Vec::new();
             for (beyond, edge) in [

@@ -401,6 +401,34 @@ impl<W: Clone + PartialEq> Scroll<W> {
         self.offset != before
     }
 
+    /// Scrolls by `n` whole columns (wheel clicks; negative: towards the
+    /// start). The column at the view's left edge (in the middle, when
+    /// centring always) steps `n` along, and the view lines up with it; from
+    /// partway through a column, one step back lines up with that column.
+    /// True if the view moved.
+    pub fn scroll_columns(&mut self, n: i32, area: Rect, gaps: &Gaps) -> bool {
+        let g = self.geometry(area, gaps);
+        if g.xs.is_empty() || n == 0 {
+            return false;
+        }
+        let before = self.clamped(&g);
+        let last = g.xs.len() as i32 - 1;
+        let want = match self.center {
+            Center::Always => {
+                let now = (0..g.xs.len()).min_by_key(|c| (g.centred(*c) - before).abs()).unwrap_or(0) as i32;
+                g.centred((now + n).clamp(0, last) as usize)
+            }
+            Center::Never | Center::Overflow => {
+                let now = g.xs.iter().rposition(|x| *x <= before).unwrap_or(0);
+                let partway = g.xs[now] < before;
+                let step = if n < 0 && partway { n + 1 } else { n };
+                g.xs[(now as i32 + step).clamp(0, last) as usize]
+            }
+        };
+        self.offset = self.clamp(&g, want);
+        self.offset != before
+    }
+
     /// The view offset as [`Scroll::arrange`] uses it.
     pub fn offset(&self, area: Rect, gaps: &Gaps) -> i32 {
         self.clamped(&self.geometry(area, gaps))
@@ -640,6 +668,36 @@ mod tests {
         // A strip narrower than the screen doesn't scroll at all.
         let mut s = strip(2, Center::Never);
         assert!(!s.scroll_by(100, AREA, &NO_GAPS));
+    }
+
+    #[test]
+    fn wheel_clicks_scroll_whole_columns() {
+        let mut s = strip(4, Center::Never);
+        assert!(s.scroll_columns(1, AREA, &NO_GAPS));
+        assert_eq!(rect_of(&s, 2).x, 0, "the second column at the left edge");
+        assert!(s.scroll_columns(5, AREA, &NO_GAPS));
+        assert_eq!(rect_of(&s, 4).right(), 1200, "stops at the end");
+        assert!(!s.scroll_columns(1, AREA, &NO_GAPS));
+        // Partway through a column, one click back lines up with it.
+        s.scroll_by(-100, AREA, &NO_GAPS);
+        assert_eq!(rect_of(&s, 2).x, -500);
+        assert!(s.scroll_columns(-1, AREA, &NO_GAPS));
+        assert_eq!(rect_of(&s, 2).x, 0);
+        assert!(s.scroll_columns(-1, AREA, &NO_GAPS));
+        assert_eq!(rect_of(&s, 1).x, 0);
+        assert!(!s.scroll_columns(0, AREA, &NO_GAPS));
+        assert!(!strip(0, Center::Never).scroll_columns(1, AREA, &NO_GAPS));
+    }
+
+    #[test]
+    fn wheel_clicks_step_the_centred_column_when_centring_always() {
+        let mut s = strip(3, Center::Always);
+        s.ensure_visible(&1, None, AREA, &NO_GAPS);
+        assert!(s.scroll_columns(1, AREA, &NO_GAPS));
+        assert_eq!(rect_of(&s, 2).x, 300);
+        assert!(s.scroll_columns(1, AREA, &NO_GAPS));
+        assert_eq!(rect_of(&s, 3).x, 300);
+        assert!(!s.scroll_columns(1, AREA, &NO_GAPS));
     }
 
     #[test]
