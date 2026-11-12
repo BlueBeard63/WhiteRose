@@ -247,3 +247,80 @@ fn a_rule_keeps_a_window_above_the_others() {
         });
     });
 }
+
+/// A zone of the default grid (two thirds and a third).
+fn zone_of(s: &WhiteRose, app: &str) -> Option<(f64, f64, f64, f64)> {
+    s.snap_of(&by_app(s, app)).map(|z| (z.zone.x, z.zone.y, z.zone.w, z.zone.h))
+}
+
+#[test]
+fn a_rule_opens_a_window_in_a_snap_zone() {
+    let mut h = Headless::new(true);
+    rules(&mut h.state, json!([{"app": "notes", "zone": 2, "size": [500, 400]}, {"app": "far", "zone": 3}]));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open_with(&mut c, |t| t.set_app_id("notes".into()));
+        let (w, hh, _) = last_configure(&mut c);
+        c.attach_buffer(&a, w, hh);
+        let (b, _tb) = open_with(&mut c, |t| t.set_app_id("far".into()));
+        c.attach_buffer(&b, 300, 200);
+        ask.run(move |s| {
+            let notes = by_app(s, "notes");
+            assert_eq!(zone_of(s, "notes"), Some((2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0)), "the default grid's second zone");
+            let r = rect(s, &notes).unwrap();
+            assert!(r.0 > W / 2 && r.2 == w && r.2 < W / 2, "in the right third: {r:?}");
+            assert!(told_tiled(&notes), "told it's snapped, so it drops its shadows");
+            let before = s.snap_of(&notes).unwrap().before.size;
+            assert_eq!((before.w, before.h), (500, 400), "dragged out, it gets the rule's size");
+            assert_eq!(zone_of(s, "far"), None, "the grid has no third zone");
+        });
+    });
+}
+
+#[test]
+fn a_zone_needs_a_floating_workspace() {
+    let mut h = Headless::new(true);
+    set(&mut h.state, "windows.layout", json!("dwindle"));
+    rules(&mut h.state, json!([{"app": "notes", "zone": 1}]));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open_with(&mut c, |t| t.set_app_id("notes".into()));
+        c.attach_buffer(&a, AREA.2, AREA.3);
+        ask.run(|s| {
+            assert_eq!(zone_of(s, "notes"), None);
+            assert!(s.is_tiled(&by_app(s, "notes")));
+        });
+    });
+}
+
+#[test]
+fn a_zone_on_another_workspace_uses_its_grid() {
+    let mut h = Headless::new(true);
+    // (Named, so it can have its own grid.)
+    outputs::set_info(
+        h.output.as_ref().unwrap(),
+        outputs::OutputInfo { id: "connector:TEST-1".into(), ..Default::default() },
+    );
+    set(
+        &mut h.state,
+        "windows.snap.zones.workspaces",
+        json!({"2": {"connector:TEST-1": [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]}}),
+    );
+    rules(&mut h.state, json!([{"app": "mail", "workspace": 2, "zone": 2}]));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open_with(&mut c, |t| t.set_app_id("mail".into()));
+        let (w, hh, _) = last_configure(&mut c);
+        c.attach_buffer(&a, w, hh);
+        ask.run(|s| {
+            assert_eq!(zone_of(s, "mail"), Some((0.5, 0.0, 0.5, 1.0)), "workspace 2's own grid");
+            assert_eq!(rect(s, &by_app(s, "mail")), None, "hidden: workspace 2 isn't showing");
+            s.switch_workspace(1);
+            let r = rect(s, &by_app(s, "mail")).unwrap();
+            assert!(r.0 > W / 2 - 8 && r.0 < W / 2 + 8, "the right half when it shows: {r:?}");
+        });
+    });
+}

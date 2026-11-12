@@ -14,7 +14,7 @@ use serde_json::Value;
 use smithay::{desktop::Window, output::Output, utils::Point};
 
 use crate::{
-    layout::{Layout, Rect},
+    layout::{snap, Layout, Rect},
     outputs,
     rules::{Actions, Rules},
     state::WhiteRose,
@@ -42,8 +42,8 @@ impl WhiteRose {
     }
 
     /// What the rules say for a window on its first commit: monitor,
-    /// float, size, maximized, fullscreen and workspace now; position once
-    /// it has drawn (`place_by_rule`).
+    /// float, size, zone, maximized, fullscreen and workspace now; position
+    /// once it has drawn (`place_by_rule`).
     pub(crate) fn apply_rules(&mut self, w: &Window) {
         let a = self.rules_for(w);
         let active = self.workspaces.active();
@@ -65,18 +65,34 @@ impl WhiteRose {
 
         let maximized = a.maximized == Some(true);
         let fullscreen = a.fullscreen == Some(true);
+        // A snap zone (floating workspaces only, as snapping is): of the
+        // grid on its monitor and workspace, as the Snapping page numbers
+        // them. A zone the grid doesn't have is ignored.
+        let zone = a.zone.zip(self.output_of(w)).and_then(|(n, o)| {
+            if self.layout_of(ws, &o) != Layout::Floating || Self::fixed_size(w) {
+                return None;
+            }
+            let id = outputs::info(&o).id;
+            let grid = self.tiling.settings.zones_for(ws, &id).cloned().unwrap_or_else(snap::default_grid);
+            grid.get(usize::from(n) - 1).copied().map(|z| (o, z))
+        });
         if let Some(o) = self.output_of(w).filter(|o| self.floats_on(w, ws, o)) {
             let area = self.usable_area_on(&o);
             let area = Rect::new(area.loc.x, area.loc.y, area.size.w, area.size.h);
             if let (Some((width, height)), Some(t)) = (a.size_in(area), w.toplevel()) {
                 t.with_pending_state(|s| s.size = Some((width, height).into()));
             }
-            if a.position.is_some() && !maximized && !fullscreen {
+            if a.position.is_some() && zone.is_none() && !maximized && !fullscreen {
                 w.user_data().insert_if_missing(|| Placing(RefCell::new(None)));
                 if let Some(p) = w.user_data().get::<Placing>() {
                     *p.0.borrow_mut() = Some((o, a.clone()));
                 }
             }
+        }
+        // Snapped as if dropped there: it refits with the bar and the
+        // outputs, and dragged out it gets its own size (the rule's) back.
+        if let Some((o, z)) = zone {
+            self.snap_window(w, o, z);
         }
         if maximized {
             self.maximize(w);

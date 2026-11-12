@@ -31,7 +31,7 @@ const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect"]);
-const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "offers"]);
+const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "zoneCount", "offers"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -437,6 +437,10 @@ test("rules: the header names a rule and says what it does", () => {
     assert.equal(R.summary({ app: "a" }, 4), "4 · Does nothing yet");
     assert.equal(R.summary({ title: "^PiP$", opacity: [1, 0.85], onTop: true }, 6), "6 · Opacity 100% / 85% · On top");
     assert.equal(R.percent(0.849), "85%");
+    assert.equal(R.summary({ app: "a", zone: 2 }, 7), "7 · Zone 2");
+    assert.equal(R.zoneCount({}, {}), 2, "the default grid");
+    assert.equal(R.zoneCount({ "edid:1": [[0, 0, 1, 1]] }, { "2": { "edid:1": [[0, 0, 0.25, 1], [0.25, 0, 0.25, 1], [0.5, 0, 0.5, 1]] } }), 3);
+    assert.equal(R.zoneCount(undefined, undefined, 5), 5, "a rule's own zone is offered");
     assert.match(R.summary({}, 5), /^5 · Not saved/);
     assert.equal(R.tiling({}), "");
     assert.equal(R.position({ position: "center" }), "centre");

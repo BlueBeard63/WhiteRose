@@ -121,12 +121,24 @@ function summary(r, n, monitorName) {
     const p = position(r);
     if (p === "centre") does.push("Centred");
     if (p === "at") does.push("At " + r.position[0] + ", " + r.position[1]);
+    if (r.zone) does.push("Zone " + r.zone);
     const o = opens(r);
     if (o) does.push(o === "fullscreen" ? "Full screen" : "Maximised");
     if (isPair(r.opacity)) does.push("Opacity " + percent(r.opacity[0]) + " / " + percent(r.opacity[1]));
     if (r.onTop) does.push("On top");
     if (does.length === 0) does.push("Does nothing yet");
     return [String(n)].concat(r.app && r.title ? ["Title " + r.title] : [], does).join(" · ");
+}
+
+// How many zones to offer: the most in any grid (windows.snap.zones, and
+// windows.snap.zones.workspaces), at least the default grid's two, and at
+// least `has` (the rule's own).
+function zoneCount(grids, workspaceGrids, has) {
+    let n = Math.max(2, Number(has) || 0);
+    for (const id in grids ?? {}) n = Math.max(n, grids[id]?.length ?? 0);
+    for (const ws in workspaceGrids ?? {})
+        for (const id in workspaceGrids[ws] ?? {}) n = Math.max(n, workspaceGrids[ws][id]?.length ?? 0);
+    return n;
 }
 
 // The open windows to offer a rule for: one per app id (those with one),
