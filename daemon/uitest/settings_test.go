@@ -119,7 +119,7 @@ func TestSettingsWorkspaceLayoutTilesItsWindows(t *testing.T) {
 	s.WaitSetting("windows.layout.workspaces", map[string]any{})
 }
 
-// Snapping: choose a monitor's first zone (two thirds) and split it
+// Settings › Snapping: choose a monitor's first zone (two thirds) and split it
 // stacked (saved as that monitor's grid), then SUPER+SHIFT-drag a window
 // onto the lower half: it fills it. (A zone narrower than the window's
 // smallest size, like the default grid's third, the app wouldn't take.)
@@ -128,7 +128,7 @@ func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 	dir := filepath.Join(s.Home, "zones")
 	os.MkdirAll(dir, 0o755)
 	files := s.Open(filesBinary(s)+" "+dir, "zones — Files")
-	settings := s.Settings("windows")
+	settings := s.Settings("snapping")
 	// (Maximised, so the end of the page is on the test's small screen.)
 	settings.Click(uitest.Named("Maximise").Role("push button"))
 	zone := uitest.Named("Zone 1").Role("check box")

@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js and the Windows page's Zones.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js and the Snapping page's Zones.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -30,7 +30,7 @@ const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
 const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "command", "quote", "menu", "toolbar"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
-const Z = load("settings/modules/windows/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "select", "aspect"]);
+const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "select", "aspect"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -870,7 +870,7 @@ test("files: the tab shown after a close", () => {
     assert.equal(Tabs.afterClose(4, 3, 1), 1, "one after: shown stays");
 });
 
-// ---- Zones (Settings > Windows > Snapping) ------------------------------------
+// ---- Zones (Settings > Snapping) ------------------------------------
 test("zone grids are checked as the compositor does", () => {
     assert.ok(Z.valid(Z.fallback()));
     assert.ok(Z.valid([[0, 0, 0.4, 1], [0.6, 0, 0.4, 1]]), "gaps are fine");

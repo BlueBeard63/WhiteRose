@@ -1,4 +1,4 @@
-// One monitor's zone grid (Figma: "Settings - Windows (snapping)"), edited
+// One monitor's zone grid (Figma: "Settings - Snapping"), edited
 // in place: click a zone to choose it (a second one beside it, to merge
 // them), split it side by side or stacked, drag the line between zones.
 // Every change is saved as it's made; only grids the compositor takes are

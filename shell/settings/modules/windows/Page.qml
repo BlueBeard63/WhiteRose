@@ -1,12 +1,11 @@
-// Windows (Figma: "Settings - Windows", "… (snapping)"): how windows are
-// placed. The default layout, a layout per workspace and per monitor (a
-// monitor's wins), the tiling options, and snapping with each monitor's
-// zone grid. The compositor follows the windows.* settings live.
+// Windows (Figma: "Settings - Windows"): how windows are placed. The
+// default layout, a layout per workspace and per monitor (a monitor's wins),
+// and the tiling options. Snapping has its own page. The compositor follows
+// the windows.* settings live.
 import QtQuick
 import Quickshell.Widgets
 import qs
 import qs.settings
-import "Zones.js" as Z
 
 Column {
     id: page
@@ -15,7 +14,6 @@ Column {
     readonly property string layout: Daemon.setting("windows.layout", "floating")
     readonly property var workspaces: Daemon.setting("windows.layout.workspaces", ({}))
     readonly property var monitors: Daemon.setting("windows.layout.monitors", ({}))
-    readonly property var zoneGrids: Daemon.setting("windows.snap.zones", ({}))
     readonly property var choices: [
         { label: "Default", value: "" },
         { label: "Floating", value: "floating" },
@@ -258,39 +256,6 @@ Column {
                 value: Daemon.setting("windows.dwindle.split", "auto")
                 options: [{ label: "By shape", value: "auto" }, { label: "Side by side", value: "horizontal" }, { label: "Stacked", value: "vertical" }]
                 onPicked: v => Daemon.set("windows.dwindle.split", v)
-            }
-        }
-    }
-
-    // ---- snapping --------------------------------------------------------------------
-    Section { text: "Snapping" }
-    Card {
-        SettingRow {
-            title: "Snap windows"
-            subtitle: "Drag a window to an edge or corner, or onto a zone with SHIFT held"
-            Toggle { checked: Daemon.setting("windows.snap", true); onToggled: v => Daemon.set("windows.snap", v) }
-        }
-        Repeater {
-            model: Compositor.outputs
-            delegate: Column {
-                id: zonesFor
-                required property var modelData
-                readonly property var own: page.zoneGrids?.[modelData.id] ?? null
-                width: parent.width
-                SettingRow {
-                    title: page.monitorName(zonesFor.modelData)
-                    subtitle: zonesFor.modelData.connector + " · " + (zonesFor.own ? "Your zones" : "Two thirds and a third")
-                    Button {
-                        visible: !!zonesFor.own
-                        text: "Reset"
-                        onClicked: page.setIn("windows.snap.zones", page.zoneGrids, zonesFor.modelData.id, "")
-                    }
-                }
-                ZoneEditor {
-                    saved: zonesFor.own
-                    ratio: Z.aspect(zonesFor.modelData, Theme.barHeight)
-                    onSave: zones => page.setIn("windows.snap.zones", page.zoneGrids, zonesFor.modelData.id, zones)
-                }
             }
         }
     }
