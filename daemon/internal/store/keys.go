@@ -434,6 +434,8 @@ var Known = map[string]Key{
 	// matched by app id and/or title (regular expressions). Every rule that
 	// matches applies; for the same action the later rule wins.
 	"windows.rules": {Default: json.RawMessage(`[]`), Check: into(checkWindowRules)},
+	// Apps shown and hidden with a key, sliding down from the island.
+	"windows.scratchpads": {Default: json.RawMessage(`[]`), Check: into(checkScratchpads)},
 }
 
 // The window layouts (windows.layout and its overrides).
@@ -521,6 +523,67 @@ func checkWindowRule(r WindowRule) error {
 		for _, o := range r.Opacity {
 			if o < 0.1 || o > 1 {
 				return errors.New("opacity must be 0.1-1")
+			}
+		}
+	}
+	return nil
+}
+
+// Scratchpad is one of windows.scratchpads: the key runs Command, and the
+// first window that process opens is shown and hidden by the key after.
+// Size is pixels or "N%" of the monitor's usable area; Place is "top"
+// (under the island) or "centre".
+type Scratchpad struct {
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	Command    string            `json:"command"`
+	Keys       []string          `json:"keys"`
+	Size       []json.RawMessage `json:"size,omitempty"`
+	Place      string            `json:"place,omitempty"`
+	HideOnBlur bool              `json:"hideOnBlur,omitempty"`
+}
+
+func checkScratchpads(pads []Scratchpad) error {
+	if len(pads) > 50 {
+		return errors.New("at most 50 scratchpads")
+	}
+	seen := map[string]bool{}
+	for i, p := range pads {
+		switch {
+		case !shortcutID.MatchString(p.ID):
+			return fmt.Errorf("scratchpad %d: invalid id %q", i+1, p.ID)
+		case seen[p.ID]:
+			return fmt.Errorf("scratchpad %d: id %q used twice", i+1, p.ID)
+		}
+		seen[p.ID] = true
+		if err := checkScratchpad(p); err != nil {
+			return fmt.Errorf("%s: %w", p.ID, err)
+		}
+	}
+	return nil
+}
+
+func checkScratchpad(p Scratchpad) error {
+	switch {
+	case len(p.Name) > 100:
+		return errors.New("name must be at most 100 characters")
+	case strings.TrimSpace(p.Command) == "" || len(p.Command) > 2000:
+		return errors.New("command must be 1-2000 characters")
+	case len(p.Keys) == 0:
+		return errors.New("needs a key")
+	case p.Place != "" && p.Place != "top" && p.Place != "centre" && p.Place != "center":
+		return errors.New(`place is "top" or "centre"`)
+	}
+	if err := checkCombos(p.Keys); err != nil {
+		return err
+	}
+	if p.Size != nil {
+		if len(p.Size) != 2 {
+			return errors.New("size is [width, height]")
+		}
+		for _, l := range p.Size {
+			if err := checkRuleLength(l, 1); err != nil {
+				return fmt.Errorf("size: %w", err)
 			}
 		}
 	}
