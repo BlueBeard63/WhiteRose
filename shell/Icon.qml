@@ -40,9 +40,11 @@ Item {
         chevUp: "m18 15-6-6-6 6",
         // Window layouts (the bar's layout button). Floating is Lucide's
         // "copy", master its "layout-panel-left"; dwindle is drawn the same
-        // way: a half, a quarter, two eighths.
+        // way: a half, a quarter, two eighths. Scrolling: a column with the
+        // strip running off both sides (Figma: Icon/layoutScrolling).
         layoutFloating: "M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
         layoutDwindle: "M4 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M14 3h6a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1z M13.5 13h2a.5 .5 0 0 1 .5 .5v7a.5 .5 0 0 1 -.5 .5h-2a.5 .5 0 0 1 -.5 -.5v-7a.5 .5 0 0 1 .5 -.5z M18.5 13h2a.5 .5 0 0 1 .5 .5v7a.5 .5 0 0 1 -.5 .5h-2a.5 .5 0 0 1 -.5 -.5v-7a.5 .5 0 0 1 .5 -.5z",
+        layoutScrolling: "M2 3h1a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-1 M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-8a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M22 3h-1a1 1 0 0 0 -1 1v16a1 1 0 0 0 1 1h1",
         layoutMaster: "M4 3h5a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-5a1 1 0 0 1 1 -1z M15 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-5a1 1 0 0 1 1 -1z",
         // Snapping (Settings): a screen split into a half and two quarters.
         layoutSnap: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M12 4v16 M12 12h10",

@@ -67,7 +67,7 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     size: 13
                     color: layoutButton.layout === "floating" ? Theme.muted : Theme.text
-                    name: layoutButton.layout === "dwindle" ? "layoutDwindle" : layoutButton.layout === "master" ? "layoutMaster" : "layoutFloating"
+                    name: ({ dwindle: "layoutDwindle", master: "layoutMaster", scrolling: "layoutScrolling" })[layoutButton.layout] ?? "layoutFloating"
                 }
             }
             Rectangle {
