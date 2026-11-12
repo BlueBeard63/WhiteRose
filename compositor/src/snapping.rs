@@ -25,6 +25,7 @@
 //! finds the cell under the pointer, even while a drag holds the pointer;
 //! the shell only draws it (`snap_picker` event).
 
+use crate::win::WinExt;
 use smithay::{
     backend::renderer::{element::Id, utils::CommitCounter},
     desktop::Window,
@@ -155,7 +156,7 @@ impl WhiteRose {
     /// Where a window is and the size it was last told (or chose).
     fn current_rect(&self, w: &Window) -> Rectangle<i32, Logical> {
         let loc = self.space.element_location(w).unwrap_or_default();
-        let told = w.toplevel().and_then(|t| t.with_pending_state(|s| s.size)).filter(|s| s.w > 0 && s.h > 0);
+        let told = w.pending_size().filter(|s| s.w > 0 && s.h > 0);
         Rectangle::new(loc, told.unwrap_or_else(|| w.geometry().size))
     }
 
@@ -203,17 +204,14 @@ impl WhiteRose {
             return;
         }
         let rect = self.zone_rect(&s.zone, &s.output);
-        let Some(t) = w.toplevel() else { return };
-        let changed = t.with_pending_state(|p| {
-            let changed = p.size != Some(rect.size) || !TILED.iter().all(|st| p.states.contains(*st));
+        let changed = w.pend(|p| {
             p.size = Some(rect.size);
             for st in TILED {
-                p.states.set(st);
+                p.set(st);
             }
-            changed
         });
         if changed {
-            t.send_pending_configure();
+            w.configure();
         }
         if self.space.element_location(w) != Some(rect.loc) {
             self.space.map_element(w.clone(), rect.loc, false);
@@ -244,14 +242,12 @@ impl WhiteRose {
     pub(crate) fn end_snap(&mut self, w: &Window) -> Option<Snapped> {
         let i = self.snap.snapped.iter().position(|s| s.window == *w)?;
         let s = self.snap.snapped.remove(i);
-        if let Some(t) = w.toplevel() {
-            t.with_pending_state(|p| {
-                for st in TILED {
-                    p.states.unset(st);
-                }
-            });
-            t.send_pending_configure();
-        }
+        w.pend(|p| {
+            for st in TILED {
+                p.unset(st);
+            }
+        });
+        w.configure();
         Some(s)
     }
 
@@ -260,11 +256,9 @@ impl WhiteRose {
     pub(crate) fn unsnap(&mut self, w: &Window, loc: Option<Point<i32, Logical>>) -> Option<Rectangle<i32, Logical>> {
         let s = self.end_snap(w)?;
         let rect = Rectangle::new(loc.unwrap_or(s.before.loc), s.before.size);
-        if let Some(t) = w.toplevel() {
-            // A window that never chose a size lets the client choose again.
-            t.with_pending_state(|p| p.size = Some(rect.size).filter(|sz| sz.w > 0 && sz.h > 0));
-            t.send_pending_configure();
-        }
+        // A window that never chose a size lets the client choose again.
+        w.pend(|p| p.size = Some(rect.size).filter(|sz| sz.w > 0 && sz.h > 0));
+        w.configure();
         self.space.map_element(w.clone(), rect.loc, false);
         self.schedule_redraw();
         Some(rect)

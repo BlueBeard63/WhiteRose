@@ -7,6 +7,7 @@
 //! above every other window, fullscreen ones included, on the monitor the
 //! pointer was on when its key was pressed.
 
+use crate::win::WinExt;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -14,7 +15,6 @@ use smithay::{
     desktop::Window,
     output::Output,
     reexports::calloop::timer::{TimeoutAction, Timer},
-    reexports::wayland_server::Resource,
     utils::{Logical, Point},
 };
 
@@ -231,10 +231,8 @@ impl WhiteRose {
         // The size it has drawn at, if it kept the one it was given (an
         // app with a minimum may not): placed by that, else by the rect.
         let drawn = w.geometry().size;
-        if let Some(t) = w.toplevel() {
-            t.with_pending_state(|s| s.size = Some((rect.w, rect.h).into()));
-            t.send_pending_configure();
-        }
+        w.pend(|s| s.size = Some((rect.w, rect.h).into()));
+        w.configure();
         let (x, y) = if drawn.w > 0 && drawn.h > 0 { pad.origin(area, (drawn.w, drawn.h)) } else { (rect.x, rect.y) };
         // It slides down from the island: from where it is if it was on
         // its way out here, afresh if it was hidden or on another monitor.
@@ -271,9 +269,7 @@ impl WhiteRose {
             self.scratchpads.focus = None;
         }
         w.set_activated(false);
-        if let Some(t) = w.toplevel() {
-            t.send_pending_configure();
-        }
+        w.configure();
         let on = match self.scratchpads.state(id) {
             Some(State::Shown { on, .. }) => Some(on.clone()),
             _ => None,
@@ -354,13 +350,11 @@ impl WhiteRose {
 
     /// Whether `w` has the keyboard.
     fn has_keyboard(&self, w: &Window) -> bool {
-        self.keyboard_focus().zip(w.toplevel()).is_some_and(|(f, t)| &f == t.wl_surface())
+        self.keyboard_focus().is_some_and(|f| Some(f) == w.surface())
     }
 
     /// The process id of the client that owns `w`.
     fn client_pid(&self, w: &Window) -> Option<u32> {
-        let client = w.toplevel()?.wl_surface().client()?;
-        let creds = client.get_credentials(&self.display_handle).ok()?;
-        u32::try_from(creds.pid).ok()
+        w.pid(&self.display_handle)
     }
 }

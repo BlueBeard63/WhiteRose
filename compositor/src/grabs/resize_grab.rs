@@ -1,4 +1,5 @@
 // Adapted from Smithay's smallvil example (MIT, (c) Victor Berger and Victoria Brekenfeld).
+use crate::win::WinExt;
 use crate::WhiteRose;
 use smithay::{
     desktop::{Space, Window},
@@ -10,7 +11,7 @@ use smithay::{
     },
     reexports::{wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Rectangle, Size},
-    wayland::{compositor, shell::xdg::SurfaceCachedState},
+    wayland::compositor,
 };
 use std::cell::RefCell;
 
@@ -56,9 +57,11 @@ impl ResizeSurfaceGrab {
     ) -> Self {
         let initial_rect = initial_window_rect;
 
-        ResizeSurfaceState::with(window.toplevel().unwrap().wl_surface(), |state| {
-            *state = ResizeSurfaceState::Resizing { edges, initial_rect };
-        });
+        if let Some(s) = window.surface() {
+            ResizeSurfaceState::with(&s, |state| {
+                *state = ResizeSurfaceState::Resizing { edges, initial_rect };
+            });
+        }
 
         Self { start_data, window, edges, initial_rect, last_window_size: initial_rect.size }
     }
@@ -96,11 +99,7 @@ impl PointerGrab<WhiteRose> for ResizeSurfaceGrab {
             new_window_height = (self.initial_rect.size.h as f64 + delta.y) as i32;
         }
 
-        let (min_size, max_size) = compositor::with_states(self.window.toplevel().unwrap().wl_surface(), |states| {
-            let mut guard = states.cached_state.get::<SurfaceCachedState>();
-            let data = guard.current();
-            (data.min_size, data.max_size)
-        });
+        let (min_size, max_size) = self.window.size_limits();
 
         let min_width = min_size.w.max(1);
         let min_height = min_size.h.max(1);
@@ -113,13 +112,11 @@ impl PointerGrab<WhiteRose> for ResizeSurfaceGrab {
             new_window_height.max(min_height).min(max_height),
         ));
 
-        let xdg = self.window.toplevel().unwrap();
-        xdg.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Resizing);
+        self.window.pend(|state| {
+            state.set(xdg_toplevel::State::Resizing);
             state.size = Some(self.last_window_size);
         });
-
-        xdg.send_pending_configure();
+        self.window.configure();
     }
 
     fn relative_motion(
@@ -140,18 +137,18 @@ impl PointerGrab<WhiteRose> for ResizeSurfaceGrab {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
 
-            let xdg = self.window.toplevel().unwrap();
-            xdg.with_pending_state(|state| {
-                state.states.unset(xdg_toplevel::State::Resizing);
+            self.window.pend(|state| {
+                state.unset(xdg_toplevel::State::Resizing);
                 state.size = Some(self.last_window_size);
             });
+            self.window.configure();
 
-            xdg.send_pending_configure();
-
-            ResizeSurfaceState::with(xdg.wl_surface(), |state| {
-                *state =
-                    ResizeSurfaceState::WaitingForLastCommit { edges: self.edges, initial_rect: self.initial_rect };
-            });
+            if let Some(s) = self.window.surface() {
+                ResizeSurfaceState::with(&s, |state| {
+                    *state =
+                        ResizeSurfaceState::WaitingForLastCommit { edges: self.edges, initial_rect: self.initial_rect };
+                });
+            }
         }
     }
 
@@ -292,7 +289,7 @@ impl ResizeSurfaceState {
 
 /// Should be called on `WlSurface::commit`
 pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<()> {
-    let window = space.elements().find(|w| w.toplevel().unwrap().wl_surface() == surface).cloned()?;
+    let window = space.elements().find(|w| w.surface().as_ref() == Some(surface)).cloned()?;
 
     let mut window_loc = space.element_location(&window)?;
     let geometry = window.geometry();

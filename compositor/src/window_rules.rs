@@ -8,6 +8,7 @@
 //! say about its look (opacity, always on top) stays with the window for
 //! its life.
 
+use crate::win::WinExt;
 use std::cell::RefCell;
 
 use serde_json::Value;
@@ -79,8 +80,8 @@ impl WhiteRose {
         if let Some(o) = self.output_of(w).filter(|o| self.floats_on(w, ws, o)) {
             let area = self.usable_area_on(&o);
             let area = Rect::new(area.loc.x, area.loc.y, area.size.w, area.size.h);
-            if let (Some((width, height)), Some(t)) = (a.size_in(area), w.toplevel()) {
-                t.with_pending_state(|s| s.size = Some((width, height).into()));
+            if let Some((width, height)) = a.size_in(area) {
+                w.pend(|s| s.size = Some((width, height).into()));
             }
             if a.position.is_some() && zone.is_none() && !maximized && !fullscreen {
                 w.user_data().insert_if_missing(|| Placing(RefCell::new(None)));
@@ -118,9 +119,7 @@ impl WhiteRose {
 
         // Its first configure went out when it was created (focusing it);
         // this one carries what the rules changed, before it draws.
-        if let Some(t) = w.toplevel() {
-            t.send_pending_configure();
-        }
+        w.configure();
     }
 
     /// Only the rules' look, for a window that places itself (a
@@ -143,7 +142,7 @@ impl WhiteRose {
     /// the keyboard.
     pub fn window_alpha(&self, w: &Window) -> f32 {
         let Some((focused, unfocused)) = w.user_data().get::<Look>().and_then(|l| l.opacity) else { return 1.0 };
-        let has_focus = self.keyboard_focus().zip(w.toplevel()).is_some_and(|(f, t)| &f == t.wl_surface());
+        let has_focus = self.keyboard_focus().is_some_and(|f| Some(f) == w.surface());
         if has_focus {
             focused
         } else {

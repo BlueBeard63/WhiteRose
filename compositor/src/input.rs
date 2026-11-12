@@ -1,6 +1,7 @@
 //! Input handling: shortcuts first, then forwarding to clients.
 //! Pointer handling follows Smithay's smallvil example (MIT).
 
+use crate::win::WinExt;
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
@@ -378,9 +379,7 @@ impl WhiteRose {
             k::KEY_q => {
                 let targets = s.close_targets();
                 for w in self.workspaces.mru().iter().filter(|w| targets.contains(&self.window_id(w))) {
-                    if let Some(t) = w.toplevel() {
-                        t.send_close();
-                    }
+                    w.close();
                 }
             }
             k::KEY_Escape => self.cancel_switcher(),

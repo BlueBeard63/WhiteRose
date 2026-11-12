@@ -12,6 +12,7 @@
 //! -> {"cmd":"spawn","command":"ptyxis --standalone"}
 //! ```
 
+use crate::win::WinExt;
 use std::{
     io::{ErrorKind, Read, Write},
     os::unix::net::{UnixListener, UnixStream},
@@ -751,23 +752,7 @@ impl WhiteRose {
     }
 
     pub fn focus_event(&self) -> Event {
-        use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
-        let (app_id, title) = self
-            .focused_window()
-            .and_then(|w| w.toplevel().cloned())
-            .map(|t| {
-                with_states(t.wl_surface(), |states| {
-                    states
-                        .data_map
-                        .get::<XdgToplevelSurfaceData>()
-                        .map(|d| {
-                            let d = d.lock().unwrap();
-                            (d.app_id.clone(), d.title.clone())
-                        })
-                        .unwrap_or_default()
-                })
-            })
-            .unwrap_or_default();
+        let (app_id, title) = self.focused_window().map(|w| w.ids()).unwrap_or_default();
         Event::Focus { app_id, title }
     }
 
@@ -827,23 +812,9 @@ pub fn island_covered(
     windows.iter().any(|w| w.overlaps(zone))
 }
 
-/// A toplevel's (app_id, title).
+/// A window's (app_id, title).
 pub fn toplevel_ids(w: &smithay::desktop::Window) -> (Option<String>, Option<String>) {
-    use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
-    w.toplevel()
-        .map(|t| {
-            with_states(t.wl_surface(), |states| {
-                states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()
-                    .map(|d| {
-                        let d = d.lock().unwrap();
-                        (d.app_id.clone(), d.title.clone())
-                    })
-                    .unwrap_or_default()
-            })
-        })
-        .unwrap_or_default()
+    w.ids()
 }
 
 #[cfg(test)]
