@@ -385,3 +385,33 @@ func TestSettingsScratchpadIsAddedAndItsKeyStartsIt(t *testing.T) {
 		t.Fatalf("%d scratchpad windows opened, want 1", n)
 	}
 }
+
+// Settings › Files › Search › Make again: whiterosed makes the index with
+// Files never opened, and the row says when.
+func TestSettingsMakesTheSearchIndexWithoutFiles(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	os.WriteFile(filepath.Join(s.Home, "Documents", "plan.txt"), nil, 0o644)
+	settings := s.Settings("files/search")
+	settings.Click(uitest.Named("Make again").Role("push button"))
+	index := filepath.Join(s.Home, ".cache/whiterose/files/index")
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if _, err := os.Stat(index); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no index after Make again")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if s.HasWindow("Home — Files") || s.HasWindow("Files") {
+		t.Error("a Files window opened")
+	}
+	// Done: the button's back (it's off while the index is being made).
+	for !settings.WaitFor(uitest.Named("Make again").Role("push button")).Enabled() {
+		if time.Now().After(deadline) {
+			t.Fatal("Make again stays off after the index was made")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}

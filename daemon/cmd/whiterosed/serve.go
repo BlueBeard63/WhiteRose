@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,7 @@ import (
 
 	"whiterose/daemon/internal/backlight"
 	"whiterose/daemon/internal/calendar"
+	"whiterose/daemon/internal/filesindex"
 	"whiterose/daemon/internal/migrate"
 	"whiterose/daemon/internal/netconf"
 	"whiterose/daemon/internal/power"
@@ -420,10 +422,17 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	}
 	go every(15*time.Minute, refreshCalendars)
 	go every(30*time.Minute, refreshWeather)
+	// Files' search index (Settings › Files › Search): kept fresh with
+	// Files closed, on mains power; made at once when asked for.
+	index := filesIndexKeeper(stderr)
+	srv.Ops["files_index"] = func(server.Request) (any, error) { return filesindex.Read(filesindex.File()), nil }
+	if index != nil {
+		go index.Keep(2*time.Minute, 10*time.Minute)
+	}
 	changes, stopChanges := st.Subscribe()
 	defer stopChanges()
 	go func() {
-		var t *time.Timer
+		var t, it *time.Timer
 		for c := range changes {
 			switch {
 			case strings.HasPrefix(c.Key, "weather."):
@@ -434,6 +443,15 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 				t = time.AfterFunc(time.Second, refreshWeather)
 			case c.Key == "calendar.sources":
 				poke()
+			case index != nil && c.Key == "files.reindex":
+				index.Now()
+			case index != nil && (c.Key == "files.indexDrives" || c.Key == "files.indexExclude"):
+				// What's indexed changed (several folders left out in a
+				// row: wait for a pause).
+				if it != nil {
+					it.Stop()
+				}
+				it = time.AfterFunc(2*time.Second, index.Now)
 			}
 		}
 	}()
@@ -452,6 +470,25 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// filesIndexKeeper runs Files' indexer ($WHITEROSE_FILES, else
+// whiterose-files on PATH); nil without Files.
+func filesIndexKeeper(stderr io.Writer) *filesindex.Keeper {
+	files := os.Getenv("WHITEROSE_FILES")
+	if files == "" {
+		p, err := exec.LookPath("whiterose-files")
+		if err != nil {
+			return nil
+		}
+		files = p
+	}
+	return &filesindex.Keeper{
+		Files: files,
+		Index: filesindex.File(),
+		Power: os.DirFS("/sys/class/power_supply"),
+		Log:   func(f string, a ...any) { fmt.Fprintf(stderr, "whiterosed: "+f+"\n", a...) },
+	}
 }
 
 // request sends one request to the running daemon and returns its reply.

@@ -178,6 +178,9 @@ func Start(t testing.TB, o Options) *Session {
 		// With no GPU (headless), Qt Quick draws in software.
 		"QT_QUICK_BACKEND="+map[bool]string{true: "software", false: os.Getenv("QT_QUICK_BACKEND")}[headless],
 		"PATH="+filepath.Dir(daemon)+":"+os.Getenv("PATH"),
+		// The daemon's search indexer: this checkout's Files, never an
+		// installed one on PATH.
+		"WHITEROSE_FILES="+s.binary("WR_UITEST_FILES", "apps/target/debug/whiterose-files"),
 	)
 	s.cmd.Stdout, s.cmd.Stderr = s.log, s.log
 	s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
