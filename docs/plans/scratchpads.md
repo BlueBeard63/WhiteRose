@@ -1,6 +1,6 @@
 # Plan: scratchpads (v0.3)
 
-**Status: in progress** (2026-11-12): commits 1–2 written.
+**Status: in progress** (2026-11-12): commits 1–3 written.
 
 Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
 "Scratchpads" (0.3 · Layouts), the last 0.3 part.
@@ -63,6 +63,13 @@ Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
 - **A pad removed from the setting** lets its window go: it becomes an
   ordinary window on the active workspace.
 - **Window rules** give a pad only their look (`apply_look`).
+- **The slide** (`Slide` in scratchpad.rs, drawn by `sliding_pad` in
+  render.rs): 150 ms, eased out (cubic). The window is in its place at
+  once (so it can be focused and typed into); only its drawing slides,
+  cut off at the top of the usable area. Hiding gives the keyboard back
+  at once and lets the pointer through while it slides up; a timer
+  unmaps it at the end. `Scratchpads::slide_length` zero turns slides
+  off (the headless tests do, except the one about slides).
 
 ## How things are today (read before starting)
 

@@ -409,7 +409,8 @@ impl WhiteRose {
     pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&Window, Point<i32, Logical>)> {
         use smithay::desktop::space::SpaceElement;
         self.space.elements().rev().find_map(|w| {
-            if !self.space.element_bbox(w)?.to_f64().contains(pos) {
+            // A scratchpad on its way out lets the pointer through.
+            if self.scratchpads.sliding_out(w) || !self.space.element_bbox(w)?.to_f64().contains(pos) {
                 return None;
             }
             let at = self.space.element_location(w)? - w.geometry().loc;

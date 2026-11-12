@@ -176,6 +176,73 @@ impl<W, M: PartialEq> State<W, M> {
     }
 }
 
+/// How long showing or hiding a scratchpad slides for.
+pub const SLIDE: Duration = Duration::from_millis(150);
+
+/// A scratchpad sliding down from the island (showing) or back up
+/// (hiding). Its progress is linear from 0 (hidden) to 1 (shown); what's
+/// drawn is that eased.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Slide {
+    pub showing: bool,
+    start: Instant,
+    /// The progress it started from: 0 or 1, or where a slide the other
+    /// way was when the key turned it round.
+    from: f32,
+}
+
+impl Slide {
+    /// A slide from fully hidden (showing) or fully shown (hiding).
+    pub fn new(showing: bool, now: Instant) -> Slide {
+        Slide { showing, start: now, from: if showing { 0.0 } else { 1.0 } }
+    }
+
+    /// A slide `showing` (or not) from where this one is now: turned
+    /// round mid-way, it goes back from there without a jump.
+    pub fn turn(&self, showing: bool, now: Instant, length: Duration) -> Slide {
+        Slide { showing, start: now, from: self.progress(now, length) }
+    }
+
+    /// Linear progress, 0 (hidden) to 1 (shown).
+    pub fn progress(&self, now: Instant, length: Duration) -> f32 {
+        let step = if length.is_zero() {
+            1.0
+        } else {
+            now.saturating_duration_since(self.start).as_secs_f32() / length.as_secs_f32()
+        };
+        let p = if self.showing { self.from + step } else { self.from - step };
+        p.clamp(0.0, 1.0)
+    }
+
+    /// How much of it shows, eased (fast, then settling): 0 to 1.
+    pub fn shown(&self, now: Instant, length: Duration) -> f32 {
+        let p = self.progress(now, length);
+        1.0 - (1.0 - p).powi(3)
+    }
+
+    pub fn done(&self, now: Instant, length: Duration) -> bool {
+        let p = self.progress(now, length);
+        if self.showing {
+            p >= 1.0
+        } else {
+            p <= 0.0
+        }
+    }
+
+    /// How long until it's done.
+    pub fn left(&self, now: Instant, length: Duration) -> Duration {
+        let p = self.progress(now, length);
+        length.mul_f32(if self.showing { 1.0 - p } else { p })
+    }
+}
+
+/// How far up to draw a window whose bottom edge is at `bottom` when
+/// `shown` (0–1) of it has come down from under `top` (the top of the
+/// usable area, where it's cut off).
+pub fn slide_offset(shown: f32, bottom: i32, top: i32) -> i32 {
+    -((1.0 - shown.clamp(0.0, 1.0)) * (bottom - top).max(0) as f32).round() as i32
+}
+
 /// Whether `pid` is `ancestor` or one of its descendants, walking up
 /// through `parent_of`.
 pub fn descends_from(mut pid: u32, ancestor: u32, parent_of: impl Fn(u32) -> Option<u32>) -> bool {
@@ -303,6 +370,38 @@ mod tests {
         assert_eq!(State::<u8, ()>::Starting { pid: 1, since: Instant::now() }.window(), None);
         assert_eq!(State::<u8, ()>::Hidden(3).window(), Some(&3));
         assert_eq!(State::Shown { window: 3, on: () }.window(), Some(&3));
+    }
+
+    #[test]
+    fn slides_ease_in_and_turn_round_without_a_jump() {
+        let t0 = Instant::now();
+        let ms = Duration::from_millis;
+        let show = Slide::new(true, t0);
+        assert_eq!(show.progress(t0, SLIDE), 0.0);
+        assert_eq!(show.shown(t0 + ms(75), SLIDE), 1.0 - 0.5f32.powi(3), "eased: most of it by half way");
+        assert!(!show.done(t0 + ms(149), SLIDE));
+        assert!(show.done(t0 + ms(150), SLIDE));
+        assert!(show.left(t0 + ms(50), SLIDE).abs_diff(ms(100)) <= ms(1));
+
+        // Hidden a third of the way in: back up from there, for that long.
+        let hide = show.turn(false, t0 + ms(50), SLIDE);
+        assert!((hide.progress(t0 + ms(50), SLIDE) - 1.0 / 3.0).abs() < 1e-4);
+        assert!(hide.left(t0 + ms(50), SLIDE).abs_diff(ms(50)) <= ms(1));
+        assert!(hide.done(t0 + ms(100), SLIDE));
+
+        // No length: done at once.
+        assert!(Slide::new(false, t0).done(t0, Duration::ZERO));
+        assert_eq!(Slide::new(true, t0).shown(t0, Duration::ZERO), 1.0);
+    }
+
+    #[test]
+    fn offsets_from_under_the_top() {
+        // A 391px window under a bar at 26: all of it above 26 when hidden.
+        assert_eq!(slide_offset(0.0, 26 + 391, 26), -391);
+        assert_eq!(slide_offset(0.5, 26 + 391, 26), -196);
+        assert_eq!(slide_offset(1.0, 26 + 391, 26), 0);
+        // Centred lower down, it comes from further up.
+        assert_eq!(slide_offset(0.0, 600, 26), -574);
     }
 
     /// 1 → 100 (sh) → 200 (ghostty) → 300; 400 is unrelated.

@@ -11,6 +11,7 @@ mod common;
 use common::{tiles::*, *};
 use serde_json::{json, Value};
 use smithay::desktop::Window;
+use std::time::Duration;
 use wayland_client::protocol::wl_surface::WlSurface;
 use whiterose_wm::{keybind::Action, WhiteRose};
 
@@ -24,7 +25,10 @@ fn pads(s: &mut WhiteRose, v: Value) {
     }
 }
 
+/// A pad "term"; it shows and hides at once (no slide) unless a test
+/// says otherwise.
 fn term(s: &mut WhiteRose, extra: Value) {
+    s.scratchpads.slide_length = Duration::ZERO;
     let mut pad = json!({"id": "term", "name": "Terminal", "command": "true", "keys": ["SUPER+GRAVE"]});
     pad.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
     pads(s, json!([pad]));
@@ -226,6 +230,47 @@ fn it_shows_over_a_fullscreen_window() {
             assert!(s.fullscreen.contains(&v), "the video stays fullscreen");
             assert_eq!(s.space.elements().last(), Some(&pad), "the pad is above it");
             assert_eq!(s.window_under((300.0, 100.0).into()).map(|(w, _)| w.clone()), Some(pad));
+        });
+    });
+}
+
+#[test]
+fn it_slides_out_letting_the_pointer_through_and_turns_round_mid_way() {
+    let mut h = Headless::new(true);
+    term(&mut h.state, json!({}));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let _ = editor_and_pad(&mut c, &ask);
+        ask.run(|s| {
+            s.scratchpads.slide_length = Duration::from_millis(60);
+            let pad = by_app(s, "pad");
+            key(s);
+            assert_eq!(rect(s, &pad), Some(PAD), "still drawn while it slides up");
+            assert!(s.scratchpads.sliding_out(&pad));
+            assert_eq!(focused_app(s).as_deref(), Some("editor"), "the keyboard goes back at once");
+            let under = s.window_under((300.0, 100.0).into()).map(|(w, _)| w.clone());
+            assert_ne!(under, Some(pad), "clicks go through it");
+        });
+        std::thread::sleep(Duration::from_millis(150));
+        ask.run(|s| {
+            let pad = by_app(s, "pad");
+            assert_eq!(rect(s, &pad), None, "gone once the slide ends");
+            assert_eq!(s.scratchpads.slide_of(&pad), None);
+
+            // Shown, then hidden again straight away: it goes back up from
+            // where it got to, so sooner than a whole slide.
+            key(s);
+            assert_eq!(rect(s, &pad), Some(PAD), "in place at once (it's drawn sliding)");
+            assert!(s.scratchpads.slide_of(&pad).is_some_and(|sl| sl.showing));
+            key(s);
+            assert!(s.scratchpads.sliding_out(&pad));
+        });
+        std::thread::sleep(Duration::from_millis(150));
+        ask.run(|s| {
+            let pad = by_app(s, "pad");
+            assert_eq!(rect(s, &pad), None);
+            assert!(!s.scratchpads.animating());
         });
     });
 }

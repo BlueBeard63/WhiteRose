@@ -7,24 +7,25 @@
 //! above every other window, fullscreen ones included, on the monitor the
 //! pointer was on when its key was pressed.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use smithay::{
     desktop::Window,
     output::Output,
+    reexports::calloop::timer::{TimeoutAction, Timer},
     reexports::wayland_server::Resource,
     utils::{Logical, Point},
 };
 
 use crate::{
     layout::Rect,
-    scratchpad::{self, Pad, State, Step},
+    scratchpad::{self, Pad, Slide, State, Step},
     state::WhiteRose,
 };
 
 /// The scratchpads from the setting, and where each one is.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Scratchpads {
     pub pads: Vec<Pad>,
     /// By pad id; a pad not here is `Off`.
@@ -32,6 +33,23 @@ pub struct Scratchpads {
     /// The scratchpad window that has the keyboard, if one does: the
     /// "focused window" then, since it isn't on a workspace.
     pub focus: Option<Window>,
+    /// Windows sliding in or out, and the output they slide on. One
+    /// sliding out is still mapped until its slide ends.
+    slides: Vec<(Window, Output, Slide)>,
+    /// How long a slide takes (zero: none).
+    pub slide_length: Duration,
+}
+
+impl Default for Scratchpads {
+    fn default() -> Self {
+        Scratchpads {
+            pads: Vec::new(),
+            states: Vec::new(),
+            focus: None,
+            slides: Vec::new(),
+            slide_length: scratchpad::SLIDE,
+        }
+    }
 }
 
 impl Scratchpads {
@@ -69,6 +87,46 @@ impl Scratchpads {
         })
     }
 
+    /// The scratchpad windows to draw on `output`: the ones shown there
+    /// and the ones still sliding out of it.
+    pub fn drawn_on<'a>(&'a self, output: &'a Output) -> impl Iterator<Item = &'a Window> + 'a {
+        let out = self.slides.iter().filter(move |(w, o, s)| o == output && !s.showing && !self.is_shown(w));
+        self.shown_on(output).chain(out.map(|(w, _, _)| w))
+    }
+
+    /// `w`'s slide, if it's sliding.
+    pub fn slide_of(&self, w: &Window) -> Option<Slide> {
+        self.slides.iter().find(|(s, _, _)| s == w).map(|(_, _, s)| *s)
+    }
+
+    /// Whether `w` is on its way out (it no longer takes the pointer).
+    pub fn sliding_out(&self, w: &Window) -> bool {
+        self.slide_of(w).is_some_and(|s| !s.showing)
+    }
+
+    /// Whether anything is sliding: the frames keep coming until it ends.
+    pub fn animating(&self) -> bool {
+        !self.slides.is_empty()
+    }
+
+    /// Starts `w` sliding in or out on `output`, turning round a slide
+    /// already going (`fresh`: from the start even so, as when it moves
+    /// to another monitor). Returns how long it'll take.
+    fn slide(&mut self, w: &Window, output: &Output, showing: bool, fresh: bool) -> Duration {
+        let (now, length) = (Instant::now(), self.slide_length);
+        let old = self.slide_of(w).filter(|_| !fresh);
+        self.slides.retain(|(s, _, _)| s != w);
+        if length.is_zero() {
+            return Duration::ZERO;
+        }
+        let slide = match old {
+            Some(old) => old.turn(showing, now, length),
+            None => Slide::new(showing, now),
+        };
+        self.slides.push((w.clone(), output.clone(), slide));
+        slide.left(now, length)
+    }
+
     fn pad(&self, id: &str) -> Option<&Pad> {
         self.pads.iter().find(|p| p.id == id)
     }
@@ -93,6 +151,7 @@ impl WhiteRose {
             gone
         };
         for w in gone.iter().filter_map(|(_, s)| s.window()) {
+            self.scratchpads.slides.retain(|(s, _, _)| s != w);
             if self.scratchpads.focus.as_ref() == Some(w) {
                 self.scratchpads.focus = None;
             }
@@ -177,6 +236,14 @@ impl WhiteRose {
             t.send_pending_configure();
         }
         let (x, y) = if drawn.w > 0 && drawn.h > 0 { pad.origin(area, (drawn.w, drawn.h)) } else { (rect.x, rect.y) };
+        // It slides down from the island: from where it is if it was on
+        // its way out here, afresh if it was hidden or on another monitor.
+        let here = matches!(self.scratchpads.state(id), Some(State::Shown { on, .. }) if on == output);
+        let mapped = self.space.element_location(&w).is_some();
+        if !here {
+            let left = self.scratchpads.slide(&w, output, true, !mapped);
+            self.after_slide(left);
+        }
         self.hidden_at.retain(|(h, _)| h != &w);
         self.space.map_element(w.clone(), Point::<i32, Logical>::from((x, y)), true);
         self.scratchpads.set(id, State::Shown { window: w.clone(), on: output.clone() });
@@ -197,7 +264,8 @@ impl WhiteRose {
         }
     }
 
-    /// Unmaps a pad's window and marks it hidden, leaving focus alone.
+    /// Marks a pad's window hidden and slides it up (then unmaps it),
+    /// leaving focus alone.
     fn put_away(&mut self, id: &str, w: &Window) {
         if self.scratchpads.focus.as_ref() == Some(w) {
             self.scratchpads.focus = None;
@@ -206,8 +274,48 @@ impl WhiteRose {
         if let Some(t) = w.toplevel() {
             t.send_pending_configure();
         }
-        self.hide(w);
+        let on = match self.scratchpads.state(id) {
+            Some(State::Shown { on, .. }) => Some(on.clone()),
+            _ => None,
+        };
         self.scratchpads.set(id, State::Hidden(w.clone()));
+        let left = on.map(|o| self.scratchpads.slide(w, &o, false, false)).unwrap_or_default();
+        if left.is_zero() {
+            self.hide(w);
+        } else {
+            self.after_slide(left);
+        }
+    }
+
+    /// Ends the slides that are done after `left`, and draws until then.
+    fn after_slide(&mut self, left: Duration) {
+        if left.is_zero() {
+            return;
+        }
+        let timer = Timer::from_duration(left);
+        let added = self.loop_handle.insert_source(timer, |_, _, state| {
+            state.finish_slides();
+            TimeoutAction::Drop
+        });
+        if let Err(err) = added {
+            tracing::warn!(%err, "couldn't time a scratchpad's slide");
+        }
+        self.schedule_redraw();
+    }
+
+    /// Forgets the slides that are done; a window that slid out is
+    /// unmapped now.
+    pub fn finish_slides(&mut self) {
+        let (now, length) = (Instant::now(), self.scratchpads.slide_length);
+        let (done, going): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut self.scratchpads.slides).into_iter().partition(|(_, _, s)| s.done(now, length));
+        self.scratchpads.slides = going;
+        for (w, _, slide) in done {
+            if !slide.showing && !self.scratchpads.is_shown(&w) && self.space.element_location(&w).is_some() {
+                self.hide(&w);
+            }
+        }
+        self.schedule_redraw();
     }
 
     /// Focus is moving to `to`: remembers whether that's a scratchpad, and
@@ -228,6 +336,7 @@ impl WhiteRose {
     /// A closed window: if it was a pad's, the pad is off (its key starts
     /// it again).
     pub(crate) fn forget_scratchpad(&mut self, w: &Window) {
+        self.scratchpads.slides.retain(|(s, _, _)| s != w);
         if self.scratchpads.focus.as_ref() == Some(w) {
             self.scratchpads.focus = None;
         }
