@@ -106,7 +106,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 <details>
-<summary><b>Layout engine: floating by default, global with overrides</b>: One layout for everything, overridden per workspace or per monitor, from Settings or a key. <sub>· Windows, KDE</sub></summary>
+<summary>✅ <b>Layout engine: floating by default, global with overrides</b>: One layout for everything, overridden per workspace or per monitor, from Settings or a key. <sub>· Windows, KDE</sub></summary>
 
 - Layout is a property the compositor resolves: monitor override > workspace override > global.
 - Settings › Windows: the global layout, and overrides per workspace and per monitor.
@@ -126,12 +126,13 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 <details>
-<summary><b>Dynamic tiling</b>: Windows fill the screen automatically, with gaps, splits and grouped (tabbed) windows. <sub>· Hyprland, KDE</sub></summary>
+<summary>✅ <b>Dynamic tiling</b>: Windows fill the screen automatically, with gaps, splits and grouped (tabbed) windows. <sub>· Hyprland, KDE</sub></summary>
 
 - Dwindle and master-stack layouts; gaps inner/outer; smart gaps with one window.
 - Keyboard: focus/move/swap in four directions, resize splits, toggle split direction.
+- Mouse: drag a tile to swap, split or float it; drag the gap between tiles to resize.
 - Groups: windows tabbed into one tile (Hyprland groups), with a tab bar.
-- Floating windows (dialogs, rules) sit above tiles.
+- Floating windows (dialogs, fixed-size windows, ones you float) sit above tiles; by app comes with window rules.
 
 </details>
 

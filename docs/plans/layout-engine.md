@@ -1,5 +1,9 @@
 # Plan: layout engine and tiling (v0.3)
 
+**Status: done** (2026-11-12), in eight commits on this branch; what was
+built is described in ARCHITECTURE.md, "Layouts and tiling". The answers
+below record the decisions made along the way.
+
 Branch: `v0.3/layout-engine` (off `v0.3-release`). Roadmap items: "Layout
 engine" and "Dynamic tiling" (0.3 · Layouts). Snap layouts, scrollable
 columns, window rules and scratchpads come later, on their own branches.
