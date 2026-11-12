@@ -97,7 +97,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 **Next up.** How windows are arranged: four models, one global choice with overrides.
 
 <details>
-<summary><b>Click-and-check tests</b>: Tests that use WhiteRose like a person would, without guessing where things are on screen. <sub>· Qt Test, Playwright</sub></summary>
+<summary>✅ <b>Click-and-check tests</b>: Tests that use WhiteRose like a person would, without guessing where things are on screen. <sub>· Qt Test, Playwright</sub></summary>
 
 - Every button, row, tab and field has a name; a test says "click Rename in the Sheet, type IMG_, check the list shows lab-day 0412.jpg" and the test harness finds it, clicks it and reads back what's shown.
 - Runs in a nested session in CI, for Files, Settings, Notepad and the shell (windows, layouts, the island), with a screenshot kept when something fails.
