@@ -264,3 +264,7 @@ Settings and zone-editor work added to this branch, before the docs commit:
   grid** (like macOS's menu bar and GNOME's symbolic icons), drawn 1:1 and
   placed on whole pixels. Lucide outlines stay for Settings and panels.
   Figma first.
+- (bar icons) `shell/Glyph.qml` holds the bar's solid glyphs (Figma:
+  Components › "Bar Icons — 16px", Bar/*; the Top Bar component uses
+  them). Do Not Disturb shows the moon: a solid bell can't show a slash
+  through it in one colour. `Trigger` now centres its row on whole pixels.
