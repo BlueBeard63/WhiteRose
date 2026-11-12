@@ -36,7 +36,7 @@ use crate::{
 
 /// The states that tell a client it's tiled: it drops its shadows and
 /// rounded corners on those sides.
-const TILED: [ToplevelState; 4] =
+pub(crate) const TILED: [ToplevelState; 4] =
     [ToplevelState::TiledLeft, ToplevelState::TiledRight, ToplevelState::TiledTop, ToplevelState::TiledBottom];
 
 /// The tiles of one workspace on one output.
@@ -116,12 +116,18 @@ impl WhiteRose {
         if w.user_data().get::<Committed>().is_none() || t.parent().is_some() || self.tiling.floating.contains(w) {
             return false;
         }
+        !Self::fixed_size(w)
+    }
+
+    /// Whether a window has one size only (its minimum is its maximum).
+    pub(crate) fn fixed_size(w: &Window) -> bool {
+        let Some(t) = w.toplevel() else { return false };
         let (min, max) = with_states(t.wl_surface(), |s| {
             let mut cached = s.cached_state.get::<SurfaceCachedState>();
             let c = cached.current();
             (c.min_size, c.max_size)
         });
-        !(min == max && min.w > 0 && min.h > 0)
+        min == max && min.w > 0 && min.h > 0
     }
 
     /// The layout of workspace `ws` (0-based) on `output`.
@@ -253,6 +259,7 @@ impl WhiteRose {
             self.tiling.floating_at.retain(|(f, _)| *f != w);
             self.float_again(&w, rect);
         }
+        self.refit_snapped();
         self.restack();
         self.schedule_redraw();
     }
@@ -262,6 +269,11 @@ impl WhiteRose {
     /// fullscreen window floats where it was before that.
     fn remember_floating_rect(&mut self, w: &Window) {
         if self.tiling.floating_at.iter().any(|(f, _)| f == w) {
+            return;
+        }
+        // A snapped window's snap ends; it floats at its own size again.
+        if let Some(s) = self.end_snap(w) {
+            self.tiling.floating_at.push((w.clone(), s.before));
             return;
         }
         let rect =
@@ -369,6 +381,18 @@ impl WhiteRose {
             }
             "windows.gaps.inner" => s.gaps.inner = px(value, defaults.gaps.inner),
             "windows.gaps.outer" => s.gaps.outer = px(value, defaults.gaps.outer),
+            "windows.snap" => s.snap = value.as_bool().unwrap_or(defaults.snap),
+            "windows.snap.zones" => {
+                s.snap_zones = value
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(id, grid)| {
+                        let raw: Vec<[f64; 4]> = serde_json::from_value(grid.clone()).ok()?;
+                        Some((id.clone(), layout::snap::validate_grid(&raw)?))
+                    })
+                    .collect()
+            }
             "windows.gaps.smart" => s.gaps.smart = value.as_bool().unwrap_or(defaults.gaps.smart),
             "windows.master.ratio" => {
                 s.master_ratio =
@@ -450,7 +474,7 @@ impl WhiteRose {
         self.set_preview(rect.map(to_rectangle));
     }
 
-    fn set_preview(&mut self, rect: Option<Rectangle<i32, Logical>>) {
+    pub(crate) fn set_preview(&mut self, rect: Option<Rectangle<i32, Logical>>) {
         if self.tiling.preview.rect != rect {
             self.tiling.preview.rect = rect;
             self.tiling.preview.commit.increment();
@@ -705,10 +729,13 @@ impl WhiteRose {
     }
 
     /// SUPER+SHIFT+arrow: a tile swaps with the one beside it; a floating
-    /// window moves a step.
+    /// window snaps (snapping.rs), or moves a step where it can't.
     pub fn move_direction(&mut self, dir: Dir) {
         if self.focused_tile().is_some() {
             self.change_tiles(|t, w, area, gaps| t.move_dir(w, dir, area, gaps));
+            return;
+        }
+        if self.snap_key(dir) {
             return;
         }
         let Some(w) = self.focused_window().filter(|w| !Self::maximized_or_fullscreen(w)) else { return };

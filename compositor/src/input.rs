@@ -74,6 +74,9 @@ impl WhiteRose {
         let under = self.surface_under(pos);
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
         pointer.frame(self);
+        if !pointer.is_grabbed() {
+            self.picker_pointer(pos);
+        }
         // The drag icon follows the pointer, and so does a pointer we draw.
         if self.dnd_icon.is_some() || self.draws_cursor {
             self.schedule_redraw();
@@ -106,7 +109,9 @@ impl WhiteRose {
             self.focus_lock_surface();
         } else if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
             let at = pointer.current_location();
-            if let Some(layer) = self.top_layer_at(at) {
+            if self.picker_click(at) {
+                // The snap picker's: a cell was chosen (or a gap clicked).
+            } else if let Some(layer) = self.top_layer_at(at) {
                 // Clicks on panels never change window focus. Panels that
                 // take typing (e.g. a search field) get the keyboard.
                 if layer.can_receive_keyboard_focus() {
@@ -127,7 +132,7 @@ impl WhiteRose {
 
     /// SUPER+left-drag moves a window and SUPER+right-drag resizes it from
     /// the nearest corner; a tab shows its window (and drags it out);
-    /// dragging the gap between tiles resizes them.
+    /// dragging the gap between tiles (or snapped windows) resizes them.
     /// True if a drag started (the click is the compositor's).
     fn mouse_grab(&mut self, button: u32, at: Point<f64, Logical>, clicked: Option<&Window>, serial: Serial) -> bool {
         const BTN_LEFT: u32 = 0x110;
@@ -153,6 +158,10 @@ impl WhiteRose {
             }
             if let Some((w, edges)) = self.gap_at(at) {
                 self.start_tile_resize(&w, edges, start, serial);
+                return true;
+            }
+            if let Some((w, edges)) = self.snap_gap_at(at) {
+                self.start_snap_resize(&w, edges, start, serial);
                 return true;
             }
         }
@@ -203,6 +212,19 @@ impl WhiteRose {
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
                 }
+                // The snap picker takes the arrows, Enter and Escape; its
+                // own shortcut closes it.
+                if pressed && state.snap.picker.is_some() {
+                    let toggle =
+                        matches!(state.bindings.lookup(Mods::from(mods), sym), Some(Action::SnapPicker(false)));
+                    if toggle {
+                        state.close_picker();
+                    }
+                    if toggle || state.picker_key(sym) {
+                        state.swallowed.push(keycode);
+                        return FilterResult::Intercept(None);
+                    }
+                }
                 // Resize mode takes the arrows (and Escape or Enter ends it).
                 if state.tiling.key_resize && pressed {
                     if let Some(result) = state.resize_mode_key(sym, keycode) {
@@ -242,6 +264,8 @@ impl WhiteRose {
             tracing::debug!(?action, "shortcut");
             self.run_action(action);
         }
+        // SHIFT pressed or let go while dragging shows or hides the zones.
+        self.snap_drag_refresh();
     }
 }
 

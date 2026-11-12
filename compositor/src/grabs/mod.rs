@@ -5,4 +5,4 @@ pub mod resize_grab;
 pub use resize_grab::ResizeSurfaceGrab;
 
 pub mod tile_grab;
-pub use tile_grab::{TileMoveGrab, TileResizeGrab};
+pub use tile_grab::{SnapResizeGrab, TileMoveGrab, TileResizeGrab};

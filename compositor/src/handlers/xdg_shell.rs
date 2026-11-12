@@ -216,7 +216,7 @@ impl WhiteRose {
         }
         let Some(pointer) = self.seat.get_pointer() else { return };
         let Some(initial_window_location) = self.space.element_location(&window) else { return };
-        let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
+        let grab = MoveSurfaceGrab { start_data, window, initial_window_location, unsnapped: false };
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
@@ -232,6 +232,12 @@ impl WhiteRose {
     ) {
         if self.is_tiled(&window) && !Self::maximized_or_fullscreen(&window) {
             self.start_tile_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
+            return;
+        }
+        // A snapped window moves the edges it shares with other snapped
+        // windows (or its own, if it shares none).
+        if self.snap_of(&window).is_some() && !Self::maximized_or_fullscreen(&window) {
+            self.start_snap_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
             return;
         }
         let Some(pointer) = self.seat.get_pointer() else { return };

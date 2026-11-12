@@ -247,6 +247,15 @@ func (w *Window) DoubleClick(q Query) Node {
 	return n
 }
 
+// Hover rests the pointer on the middle of what matches q.
+func (w *Window) Hover(q Query) Node {
+	w.s.t.Helper()
+	n := w.ScrollTo(q)
+	x, y := w.middle(n)
+	w.s.pointer(x, y, "")
+	return n
+}
+
 // RightClick right-clicks it (its menu).
 func (w *Window) RightClick(q Query) Node {
 	w.s.t.Helper()

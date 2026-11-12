@@ -1,0 +1,11 @@
+{
+  "id": "snapping",
+  "name": "Snapping",
+  "description": "Floating windows snapped to edges, corners and each monitor's zones",
+  "icon": "layoutSnap",
+  "category": "desktop",
+  "order": 12.6,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["snap", "snapping", "zones", "zone", "grid", "fancyzones", "halves", "thirds", "quarters", "edge", "corner", "windows", "monitor"]
+}

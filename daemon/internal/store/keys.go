@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
@@ -374,6 +375,25 @@ var Known = map[string]Key{
 		}
 		return nil
 	})},
+	// Floating windows snap to edges, corners and zones.
+	"windows.snap": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Zone grids per monitor (its ID): [x, y, w, h] as fractions of the
+	// area the bar leaves, shown while SHIFT is held during a drag. No grid:
+	// two thirds and a third.
+	"windows.snap.zones": {Default: json.RawMessage(`{}`), Check: into(func(m map[string][][4]float64) error {
+		if len(m) > 32 {
+			return errors.New("at most 32 monitors")
+		}
+		for id, zones := range m {
+			if !config.ValidID(id) {
+				return fmt.Errorf("invalid monitor id %q", id)
+			}
+			if err := checkZones(zones); err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+		}
+		return nil
+	})},
 	// Gaps in pixels: between tiles, and around them. Smart: none with one tile.
 	"windows.gaps.inner": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
 	"windows.gaps.outer": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
@@ -668,6 +688,30 @@ func actionList(list []FilesAction) error {
 		}
 		if a.On != "files" && a.On != "folders" && a.On != "any" {
 			return fmt.Errorf("%q: on must be files, folders or any", a.Name)
+		}
+	}
+	return nil
+}
+
+// checkZones checks a zone grid as the compositor does (layout/snap.rs):
+// 1-16 zones, each inside the area and at least a tenth of it each way,
+// none overlapping.
+func checkZones(zones [][4]float64) error {
+	const eps = 1e-6
+	if len(zones) == 0 || len(zones) > 16 {
+		return errors.New("must have 1-16 zones")
+	}
+	for i, z := range zones {
+		x, y, w, h := z[0], z[1], z[2], z[3]
+		if x < -eps || y < -eps || w < 0.1-eps || h < 0.1-eps || x+w > 1+eps || y+h > 1+eps {
+			return fmt.Errorf("zone %d is outside the area or smaller than a tenth", i+1)
+		}
+		for j, o := range zones[:i] {
+			ow := math.Min(x+w, o[0]+o[2]) - math.Max(x, o[0])
+			oh := math.Min(y+h, o[1]+o[3]) - math.Max(y, o[1])
+			if ow > eps && oh > eps {
+				return fmt.Errorf("zones %d and %d overlap", j+1, i+1)
+			}
 		}
 	}
 	return nil

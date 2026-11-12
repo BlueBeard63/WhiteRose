@@ -7,6 +7,9 @@
 //!
 //! [`TileResizeGrab`]: moves the edges of a tile, and the splits they sit
 //! on, so the tiles across them follow.
+//!
+//! [`SnapResizeGrab`]: the same for snapped floating windows: the snapped
+//! windows with an edge on the same line move with it (snapping.rs).
 
 use smithay::{
     desktop::Window,
@@ -22,7 +25,7 @@ use smithay::{
 
 use super::{move_grab::keep_below, resize_grab::ResizeEdge};
 use crate::{
-    layout::{Dir, Tiling},
+    layout::{snap::EdgeDrag, Dir, Tiling},
     WhiteRose,
 };
 
@@ -213,6 +216,39 @@ impl PointerGrab<WhiteRose> for TileResizeGrab {
             })
             .collect();
         data.resize_tile(&self.snapshot, &self.window, &moves);
+    }
+
+    fn button(&mut self, data: &mut WhiteRose, handle: &mut PointerInnerHandle<'_, WhiteRose>, event: &ButtonEvent) {
+        handle.button(data, event);
+        if !handle.current_pressed().contains(&self.start_data.button) {
+            handle.unset_grab(self, data, event.serial, event.time, true);
+        }
+    }
+
+    pass_through!();
+
+    fn unset(&mut self, _data: &mut WhiteRose) {}
+}
+
+pub struct SnapResizeGrab {
+    pub start_data: PointerGrabStartData<WhiteRose>,
+    pub output: smithay::output::Output,
+    /// Each line being dragged, and where it was when the drag started:
+    /// each motion moves it from there, so it follows the pointer exactly.
+    pub drags: Vec<(EdgeDrag<Window>, f64)>,
+}
+
+impl PointerGrab<WhiteRose> for SnapResizeGrab {
+    fn motion(
+        &mut self,
+        data: &mut WhiteRose,
+        handle: &mut PointerInnerHandle<'_, WhiteRose>,
+        _focus: Option<(WlSurface, Point<f64, Logical>)>,
+        event: &MotionEvent,
+    ) {
+        handle.motion(data, None, event);
+        let delta = event.location - self.start_data.location;
+        data.resize_snapped(&self.output, &mut self.drags, delta);
     }
 
     fn button(&mut self, data: &mut WhiteRose, handle: &mut PointerInnerHandle<'_, WhiteRose>, event: &ButtonEvent) {

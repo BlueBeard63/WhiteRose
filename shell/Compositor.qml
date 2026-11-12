@@ -27,6 +27,8 @@ Singleton {
     // ALT+TAB / SUPER+ALT+TAB, run by the compositor: null when closed, else
     // { mode: "apps"|"windows", items: [{ app_id, windows: [id] }], selected, sub }.
     property var switcher: null
+    // The snap layout picker while it's open (SnapPicker.qml draws it).
+    property var snapPicker: null
     // Clipboard history, newest first:
     // { id, time, kind: "text"|"image"|"files", preview, image, files: [{ path, exists }], available }.
     property var clipboard: []
@@ -129,6 +131,9 @@ Singleton {
         case "switcher":
             root.switcher = msg.state;
             break;
+        case "snap_picker":
+            root.snapPicker = msg.picker;
+            break;
         case "clipboard":
             root.clipboard = msg.entries;
             break;
@@ -172,7 +177,11 @@ Singleton {
         path: root.socketPath
         connected: root.available
         parser: SplitParser { onRead: line => root.handle(line) }
-        onConnectedChanged: if (!connected && root.available) reconnect.start()
+        onConnectedChanged: {
+            if (connected) return;
+            root.snapPicker = null; // (it closed with the compositor)
+            if (root.available) reconnect.start();
+        }
     }
 
     // If the compositor restarts, reconnect after a short pause (not a poll loop:

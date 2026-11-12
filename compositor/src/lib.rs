@@ -27,6 +27,7 @@ pub mod render;
 pub mod screenshot;
 pub mod session_lock;
 pub mod shell_supervisor;
+pub mod snapping;
 pub mod state;
 pub mod switcher;
 pub mod tab_strip;

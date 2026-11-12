@@ -36,6 +36,9 @@ ShellRoot {
     // Each monitor's number and name, when asked from Settings > Displays.
     IdentifyOverlay {}
 
+    // The snap layout picker (SUPER+Z, a drag to the top, a maximize button).
+    SnapPicker {}
+
     // First login: offer the app setup (Settings > Apps) once.
     Connections {
         target: Daemon

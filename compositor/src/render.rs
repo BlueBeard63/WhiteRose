@@ -139,6 +139,19 @@ pub fn output_elements(
                     Kind::Unspecified,
                 )));
             }
+            // A zone grid (SHIFT while dragging), under the zone it'll fill.
+            for (r, id) in &state.snap.grid {
+                if let Some(r) = r.intersection(out) {
+                    let local = Rectangle::new(r.loc - out.loc, r.size);
+                    elements.push(OutputElement::Solid(SolidColorRenderElement::new(
+                        id.clone(),
+                        local.to_physical_precise_round(scale),
+                        state.snap.grid_commit,
+                        crate::snapping::GRID_COLOR,
+                        Kind::Unspecified,
+                    )));
+                }
+            }
             if let Ok(space) = smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0) {
                 elements.extend(space.into_iter().map(OutputElement::Space));
             }

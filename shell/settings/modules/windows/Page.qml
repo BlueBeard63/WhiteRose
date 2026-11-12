@@ -1,6 +1,7 @@
 // Windows (Figma: "Settings - Windows"): how windows are placed. The
 // default layout, a layout per workspace and per monitor (a monitor's wins),
-// and the tiling options. The compositor follows the windows.* settings live.
+// and the tiling options. Snapping has its own page. The compositor follows
+// the windows.* settings live.
 import QtQuick
 import Quickshell.Widgets
 import qs

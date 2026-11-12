@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js and FilesActions.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js and the Snapping page's Zones.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -30,6 +30,7 @@ const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
 const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "command", "quote", "menu", "toolbar"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
+const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "select", "aspect"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -867,6 +868,71 @@ test("files: the tab shown after a close", () => {
     assert.equal(Tabs.afterClose(4, 3, 3), 2, "the shown last one: the one before");
     assert.equal(Tabs.afterClose(4, 0, 2), 1, "one before the shown: shown shifts left");
     assert.equal(Tabs.afterClose(4, 3, 1), 1, "one after: shown stays");
+});
+
+// ---- Zones (Settings > Snapping) ------------------------------------
+test("zone grids are checked as the compositor does", () => {
+    assert.ok(Z.valid(Z.fallback()));
+    assert.ok(Z.valid([[0, 0, 0.4, 1], [0.6, 0, 0.4, 1]]), "gaps are fine");
+    assert.ok(!Z.valid([]));
+    assert.ok(!Z.valid([[0, 0, 0.6, 1], [0.5, 0, 0.5, 1]]), "overlap");
+    assert.ok(!Z.valid([[0.6, 0, 0.5, 1]]), "outside");
+    assert.ok(!Z.valid([[0, 0, 0.05, 1]]), "too small");
+    assert.ok(!Z.valid([[0, 0, 1]]), "not four numbers");
+    assert.ok(!Z.valid(Array.from({ length: 17 }, () => [0, 0, 0.1, 0.1])), "too many");
+});
+test("splitting a zone", () => {
+    const halves = Z.split([[0, 0, 1, 1]], 0, "side");
+    assert.deepEqual(halves, [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]);
+    assert.deepEqual(Z.split(halves, 1, "stacked"), [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]]);
+    // A third split in two: the halves still meet (well within the
+    // compositor's 1e-6).
+    const t = Z.split(Z.fallback(), 1, "side");
+    assert.ok(Math.abs(t[1][0] + t[1][2] - t[2][0]) < 1e-9);
+    assert.ok(Z.valid(t));
+    assert.equal(Z.split([[0, 0, 0.15, 1]], 0, "side"), null, "halves too small");
+    assert.equal(Z.split([[0, 0, 1, 1]], 3, "side"), null, "no such zone");
+});
+test("merging two zones that make a rectangle", () => {
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.ok(Z.canMerge(three, 1, 2));
+    assert.ok(!Z.canMerge(three, 0, 1), "an L shape");
+    assert.deepEqual(Z.merge(three, 2, 1), [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]);
+    assert.deepEqual(Z.merge([[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], 0, 1), [[0, 0, 1, 1]]);
+    assert.equal(Z.merge(three, 0, 1), null);
+});
+test("the lines between zones, once each", () => {
+    const quarters = [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+    const ls = Z.lines(quarters);
+    assert.equal(ls.length, 2, "one upright, one across");
+    assert.deepEqual(ls.map(l => [l.axis, l.at, l.lo, l.hi]), [["x", 0.5, 0, 1], ["y", 0.5, 0, 1]]);
+    assert.deepEqual(Z.lines([[0, 0, 1, 1]]), []);
+});
+test("moving a line moves every zone on it", () => {
+    const quarters = [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+    const moved = Z.moveLine(quarters, 0, "right", 0.3);
+    assert.deepEqual(moved.map(z => [z[0], z[2]]), [[0, 0.3], [0.3, 0.7], [0, 0.3], [0.3, 0.7]]);
+    // Never under a tenth.
+    assert.deepEqual(Z.moveLine([[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], 0, "right", 0.99), [[0, 0, 0.9, 1], [0.9, 0, 0.1, 1]]);
+    // Only zones lined up along the line: the bottom-right one ends before it.
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.deepEqual(Z.moveLine(three, 1, "down", 0.5), [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]]);
+    assert.equal(Z.moveLine(three, 0, "down", 0.5), three, "the area's own edge doesn't move");
+    assert.ok(Z.valid(Z.moveLine(Z.fallback(), 0, "right", 0.123456)));
+});
+test("selecting zones", () => {
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.deepEqual(Z.select(three, [], 1), [1]);
+    assert.deepEqual(Z.select(three, [1], 2), [1, 2], "a zone it merges with joins");
+    assert.deepEqual(Z.select(three, [1], 0), [0], "one it doesn't is chosen instead");
+    assert.deepEqual(Z.select(three, [1, 2], 2), [1]);
+    assert.deepEqual(Z.select(three, [1, 2], 0), [0]);
+});
+test("a monitor's shape below the bar", () => {
+    assert.equal(Z.aspect({ mode: { width: 2880, height: 1612 }, scale: 2, transform: "normal" }, 26), 1440 / 780);
+    assert.equal(Z.aspect({ mode: { width: 1920, height: 1080 }, scale: 1, transform: "90" }, 26), 1080 / 1894, "turned");
+    assert.equal(Z.aspect(null, 26), 16 / 9);
+    assert.equal(Z.aspect({ mode: null }, 26), 16 / 9);
 });
 
 console.log(`${passed} passed, ${failed} failed`);
