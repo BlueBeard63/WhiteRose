@@ -60,6 +60,9 @@ pub enum Action {
     Workspace(u8),
     /// Move the focused window to workspace N (1-based).
     MoveToWorkspace(u8),
+    /// Move the focused window to the workspace before (left, up) or after
+    /// (right, down) this one, and go there with it.
+    MoveToWorkspaceStep(Dir),
     Spawn(String),
     /// A scratchpad's key (its id): start, show, focus or hide it.
     Scratchpad(String),
@@ -329,6 +332,7 @@ impl Def {
             "fullscreen" => Action::ToggleFullscreen,
             "workspace" => Action::Workspace(n),
             "move-to-workspace" => Action::MoveToWorkspace(n),
+            "move-to-workspace-step" => Action::MoveToWorkspaceStep(ARROWS[n as usize].1),
             "volume-up" => Action::Media("volume_up"),
             "volume-down" => Action::Media("volume_down"),
             "volume-mute" => Action::Media("volume_mute"),
@@ -385,6 +389,15 @@ pub const CATALOG: &[Def] = &[
     Def {
         range: Range::Digits,
         ..def("move-to-workspace", "Move window to workspace 1–9", "Workspaces", &["SUPER+SHIFT+1-9"])
+    },
+    Def {
+        range: Range::Arrows,
+        ..def(
+            "move-to-workspace-step",
+            "Move window to the previous / next workspace ←→↑↓",
+            "Workspaces",
+            &["SUPER+ALT+ARROWS"],
+        )
     },
     def("screenshot-region", "Screenshot region", "Shell", &["SUPER+SHIFT+S"]),
     def("screenshot-screen", "Screenshot screen", "Shell", &["PRTSC"]),
@@ -486,10 +499,23 @@ impl Bindings {
     /// nested inside another desktop, which usually keeps SUPER for itself.
     /// The SUPER-tap binding is left alone.
     pub fn remap_logo(mut self, to: Mods) -> Self {
-        for (combo, _) in &mut self.entries {
-            if combo.mods.logo && !combo.is_logo_tap() {
-                combo.mods.logo = false;
-                combo.mods = combo.mods.union(to);
+        // One that would land on another's keys (SUPER+ALT+arrow and
+        // SUPER+arrow both becoming CTRL+ALT+arrow) is left as it was:
+        // out of reach in that mode, rather than taking another's keys.
+        let remapped = |c: &Combo| {
+            let mut c = *c;
+            if c.mods.logo && !c.is_logo_tap() {
+                c.mods.logo = false;
+                c.mods = c.mods.union(to);
+            }
+            c
+        };
+        let new: Vec<Combo> = self.entries.iter().map(|(c, _)| remapped(c)).collect();
+        for i in 0..self.entries.len() {
+            let clash =
+                new.iter().enumerate().any(|(j, n)| j < i && *n == new[i] && self.entries[j].0 != self.entries[i].0);
+            if !clash {
+                self.entries[i].0 = new[i];
             }
         }
         self
@@ -538,6 +564,7 @@ mod tests {
     }
     const SUPER: Mods = Mods { logo: true, alt: false, ctrl: false, shift: false };
     const SUPER_SHIFT: Mods = Mods { logo: true, alt: false, ctrl: false, shift: true };
+    const SUPER_ALT: Mods = Mods { logo: true, alt: true, ctrl: false, shift: false };
     const ALT: Mods = Mods { logo: false, alt: true, ctrl: false, shift: false };
 
     #[test]
@@ -594,6 +621,8 @@ mod tests {
         let cases = [
             (Mods::NONE, keysyms::KEY_Print, Action::ScreenshotScreen),
             (SUPER_SHIFT, keysyms::KEY_s, Action::ScreenshotRegion),
+            (SUPER_ALT, keysyms::KEY_Left, Action::MoveToWorkspaceStep(Dir::Left)),
+            (SUPER_ALT, keysyms::KEY_Down, Action::MoveToWorkspaceStep(Dir::Down)),
             (ALT, keysyms::KEY_Tab, Action::AppSwitcher),
             (SUPER, keysyms::KEY_Tab, Action::WindowSwitcher),
             (SUPER, keysyms::KEY_s, Action::QuickSettings),
@@ -636,6 +665,11 @@ mod tests {
         assert_eq!(b.lookup(ALT, sym(keysyms::KEY_Tab)), Some(&Action::AppSwitcher));
         assert_eq!(b.lookup(Mods::NONE, sym(keysyms::KEY_Print)), Some(&Action::ScreenshotScreen));
         assert_eq!(b.logo_tap(), Some(&Action::AppLauncher));
+        // SUPER+ALT+arrow would land on SUPER+arrow's keys: left as it was.
+        let ctrl_alt = Mods { ctrl: true, alt: true, ..Mods::NONE };
+        assert_eq!(b.lookup(ctrl_alt, sym(keysyms::KEY_Left)), Some(&Action::FocusDirection(Dir::Left)));
+        let super_alt = Mods { logo: true, alt: true, ..Mods::NONE };
+        assert_eq!(b.lookup(super_alt, sym(keysyms::KEY_Left)), Some(&Action::MoveToWorkspaceStep(Dir::Left)));
     }
 
     #[test]

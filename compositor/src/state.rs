@@ -653,6 +653,25 @@ impl WhiteRose {
         }
     }
 
+    /// SUPER+ALT+arrow: the focused window to the workspace before (left,
+    /// up) or after (right, down) this one, and there with it. Nothing at
+    /// the first or last.
+    pub fn move_focused_step(&mut self, dir: crate::layout::Dir) {
+        use crate::layout::Dir;
+        let Some(w) = self.focused_window() else { return };
+        let ws = self.workspaces.active();
+        let to = match dir {
+            Dir::Left | Dir::Up => ws.checked_sub(1),
+            Dir::Right | Dir::Down => Some(ws + 1).filter(|n| *n < self.workspaces.count()),
+        };
+        let Some(to) = to else { return };
+        self.move_focused_to(to);
+        if self.workspaces.workspace_of(&w) == Some(to) {
+            self.switch_workspace(to);
+            self.focus_window(Some(w));
+        }
+    }
+
     pub(crate) fn hide(&mut self, w: &Window) {
         if let Some(loc) = self.space.element_location(w) {
             self.hidden_at.push((w.clone(), loc));
@@ -751,6 +770,7 @@ impl WhiteRose {
             }
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
+            Action::MoveToWorkspaceStep(dir) => self.move_focused_step(dir),
             Action::Quit => self.loop_signal.stop(),
             Action::Restart => {
                 self.exit_code = crate::keybind::RESTART_CODE;

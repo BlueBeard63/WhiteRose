@@ -244,3 +244,48 @@ fn a_monitor_setting_beats_the_workspace_and_tiles_only_that_monitor() {
         });
     });
 }
+
+// SUPER+ALT+arrow: the focused window to the workspace before or after,
+// and there with it; nothing at the first or last.
+#[test]
+fn super_alt_arrows_take_the_window_to_the_next_workspace() {
+    use whiterose_wm::layout::Dir;
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        open(&mut c);
+        open(&mut c);
+        c.queue.roundtrip(&mut c.app).unwrap();
+        ask.run(|s| {
+            let w = all(s)[1].clone();
+            assert_eq!(s.focused_window(), Some(w.clone()));
+            s.run_action(Action::MoveToWorkspaceStep(Dir::Left));
+            assert_eq!(
+                (s.workspaces.active(), s.workspaces.workspace_of(&w)),
+                (0, Some(0)),
+                "the first: nowhere to go"
+            );
+
+            s.run_action(Action::MoveToWorkspaceStep(Dir::Right));
+            assert_eq!(s.workspaces.active(), 1, "went with it");
+            assert_eq!(s.workspaces.workspace_of(&w), Some(1));
+            assert_eq!(s.focused_window(), Some(w.clone()), "still focused");
+            assert_eq!(s.workspaces.workspace_of(&all(s)[0]), Some(0), "the other stayed");
+
+            s.run_action(Action::MoveToWorkspaceStep(Dir::Up));
+            assert_eq!((s.workspaces.active(), s.workspaces.workspace_of(&w)), (0, Some(0)), "up: back");
+
+            let last = s.workspaces.count() - 1;
+            s.run_action(Action::MoveToWorkspace(last as u8 + 1));
+            s.switch_workspace(last);
+            s.focus_window(Some(w.clone()));
+            s.run_action(Action::MoveToWorkspaceStep(Dir::Down));
+            assert_eq!(
+                (s.workspaces.active(), s.workspaces.workspace_of(&w)),
+                (last, Some(last)),
+                "the last: nowhere to go"
+            );
+        });
+    });
+}
