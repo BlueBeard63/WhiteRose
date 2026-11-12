@@ -6,6 +6,9 @@ Item {
     id: root
     property real value: 0
     property real maximum: 1
+    // How far one turn of the wheel moves it.
+    property real step: 0.05
+    property real wheelRest: 0
     property bool dimmed: false
     property string label: parent?.rowTitle ?? ""
     signal moved(real value)
@@ -39,6 +42,15 @@ Item {
         preventStealing: true
         onPressed: m => root.setFrom(m.x - 6)
         onPositionChanged: m => { if (pressed) root.setFrom(m.x - 6) }
-        onWheel: w => root.moved(Math.max(0, Math.min(root.maximum, root.value + (w.angleDelta.y > 0 ? 0.05 : -0.05))))
+        // A step a notch (120); a touchpad's fractions add up until they
+        // make a step on a coarse slider (else rounding would eat them).
+        onWheel: w => {
+            const n = w.angleDelta.y / 120;
+            if (n === 0) return;
+            root.wheelRest += n * root.step;
+            if (root.step > 0.05 && Math.abs(root.wheelRest) < root.step - 1e-9) return;
+            root.moved(Math.max(0, Math.min(root.maximum, root.value + root.wheelRest)));
+            root.wheelRest = 0;
+        }
     }
 }

@@ -292,6 +292,15 @@ var Known = map[string]Key{
 	"touchpad.tapToClick":    {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Shaking the pointer makes it big for a moment (the compositor).
 	"mouse.shakeToFind": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Held, the pointer moves faster (fasterBy times); "" turns it off.
+	// The modifiers still reach apps.
+	"mouse.fasterWith": {Default: json.RawMessage(`"CTRL+SHIFT"`), Check: into(oneOf("", "CTRL+SHIFT", "CTRL+ALT", "SUPER+SHIFT"))},
+	"mouse.fasterBy": {Default: json.RawMessage(`3`), Check: into(func(v float64) error {
+		if v < 1 || v > 8 {
+			return errors.New("must be 1-8")
+		}
+		return nil
+	})},
 	// Keyboard layouts, first is the default: UK English to start with.
 	// An empty list means the system's (/etc/default/keyboard or the X11
 	// keyboard config).

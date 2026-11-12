@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use smithay::reexports::input::{AccelProfile, Device, DeviceCapability};
 
-use crate::state::WhiteRose;
+use crate::{keybind::Mods, state::WhiteRose};
 
 /// One kind of device's settings.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -27,6 +27,10 @@ pub struct PointerSettings {
     pub mouse: DeviceSettings,
     pub touchpad: DeviceSettings,
     pub tap_to_click: bool,
+    /// The modifiers to hold for a faster pointer (None: off), and how much
+    /// faster.
+    pub faster_with: Option<Mods>,
+    pub faster_by: f64,
 }
 
 impl Default for PointerSettings {
@@ -37,6 +41,8 @@ impl Default for PointerSettings {
             mouse: DeviceSettings { natural_scroll: false, speed: 0.0, acceleration: true },
             touchpad: DeviceSettings { natural_scroll: true, speed: 0.0, acceleration: true },
             tap_to_click: true,
+            faster_with: Some(Mods { ctrl: true, shift: true, ..Mods::NONE }),
+            faster_by: 3.0,
         }
     }
 }
@@ -65,6 +71,21 @@ impl PointerSettings {
             "touchpad.speed" => set(&mut self.touchpad.speed, key, value),
             "touchpad.acceleration" => set(&mut self.touchpad.acceleration, key, value),
             "touchpad.tapToClick" => set(&mut self.tap_to_click, key, value),
+            // (Pointer motion only: nothing for libinput to apply.)
+            "mouse.fasterWith" => {
+                self.faster_with = match value.as_str() {
+                    Some("CTRL+SHIFT") => Some(Mods { ctrl: true, shift: true, ..Mods::NONE }),
+                    Some("CTRL+ALT") => Some(Mods { ctrl: true, alt: true, ..Mods::NONE }),
+                    Some("SUPER+SHIFT") => Some(Mods { logo: true, shift: true, ..Mods::NONE }),
+                    _ => None,
+                };
+                return false;
+            }
+            "mouse.fasterBy" => {
+                set(&mut self.faster_by, key, value);
+                self.faster_by = self.faster_by.clamp(1.0, 8.0);
+                return false;
+            }
             _ => false,
         };
         self.mouse.speed = self.mouse.speed.clamp(-1.0, 1.0);
@@ -141,5 +162,15 @@ mod tests {
         assert!(!p.take("mouse.acceleration", &json!("fast")), "unreadable: ignored");
         assert!(p.mouse.acceleration);
         assert!(!p.take("keyboard.repeatRate", &json!(30)));
+        // Not libinput's, so nothing to re-apply; kept in range.
+        assert!(!p.take("mouse.fasterBy", &json!(4)));
+        assert_eq!(p.faster_by, 4.0);
+        p.take("mouse.fasterBy", &json!(50));
+        assert_eq!(p.faster_by, 8.0);
+        assert_eq!(p.faster_with, Some(Mods { ctrl: true, shift: true, ..Mods::NONE }), "Ctrl+Shift to start with");
+        p.take("mouse.fasterWith", &json!("SUPER+SHIFT"));
+        assert_eq!(p.faster_with, Some(Mods { logo: true, shift: true, ..Mods::NONE }));
+        p.take("mouse.fasterWith", &json!(""));
+        assert_eq!(p.faster_with, None, "off");
     }
 }

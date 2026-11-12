@@ -834,6 +834,7 @@ impl WhiteRose {
             Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
             Action::NextTab => self.next_tab(true),
             Action::PreviousTab => self.next_tab(false),
+
             shell => {
                 debug_assert!(shell.is_shell());
                 let name = ipc::action_name(&shell).expect("every shell action has a wire name");

@@ -1,5 +1,7 @@
 // Mouse & Touchpad: scroll direction, pointer speed and acceleration for
-// each, tap to click, and shake to find (the pointer grows when shaken). The compositor applies them through libinput to
+// each, tap to click, shake to find (the pointer grows when shaken), and
+// modifiers to hold for a faster pointer (only while they're held; apps
+// still get them, so their own shortcuts keep working). The compositor applies them through libinput to
 // every mouse and touchpad, including ones plugged in later. (In a window
 // on another desktop, that desktop's own settings apply.)
 import QtQuick
@@ -47,6 +49,38 @@ Column {
             title: "Shake to find"
             subtitle: "Shake the pointer and it grows for a moment, so you can see where it is"
             Toggle { checked: Daemon.setting("mouse.shakeToFind", true); onToggled: on => Daemon.set("mouse.shakeToFind", on) }
+        }
+        SettingRow {
+            id: faster
+            readonly property string keys: Daemon.setting("mouse.fasterWith", "CTRL+SHIFT")
+            title: "Faster while you hold"
+            subtitle: keys === "" ? "Off" : "The pointer moves " + Daemon.setting("mouse.fasterBy", 3) + "× as far while they're held"
+            Choice {
+                value: faster.keys
+                options: [{ label: "Off", value: "" }, { label: "Ctrl + Shift", value: "CTRL+SHIFT" },
+                          { label: "Ctrl + Alt", value: "CTRL+ALT" }, { label: "Super + Shift", value: "SUPER+SHIFT" }]
+                onPicked: v => Daemon.set("mouse.fasterWith", v)
+            }
+        }
+        SettingRow {
+            id: much
+            visible: faster.keys !== ""
+            readonly property real value: Daemon.setting("mouse.fasterBy", 3)
+            property real shown: value
+            onValueChanged: shown = value
+            title: "How much faster"
+            // 1.5× to 5×, in halves: drag, click or scroll.
+            Slider {
+                implicitWidth: 200
+                value: much.shown - 1.5; maximum: 3.5; step: 0.5
+                onMoved: v => { much.shown = Math.round((v + 1.5) * 2) / 2; saveMuch.restart() }
+            }
+            Text {
+                width: 64; horizontalAlignment: Text.AlignRight; anchors.verticalCenter: parent.verticalCenter
+                text: much.shown + "×"
+                color: Theme.muted; font { family: Theme.mono; pointSize: Theme.pt(11.5) }
+            }
+            Timer { id: saveMuch; interval: 250; onTriggered: Daemon.set("mouse.fasterBy", much.shown) }
         }
     }
 

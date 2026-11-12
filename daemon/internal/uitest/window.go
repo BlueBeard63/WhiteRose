@@ -316,6 +316,14 @@ func (w *Window) clickAt(n Node, double bool) {
 	time.Sleep(150 * time.Millisecond)
 }
 
+// Wheel turns the mouse wheel over what matches q: clicks down
+// (negative: up).
+func (w *Window) Wheel(q Query, clicks int) {
+	w.s.t.Helper()
+	x, y := w.middle(w.ScrollTo(q))
+	w.s.scroll(x, y, clicks)
+}
+
 // Text is what the field matching q holds.
 func (w *Window) Text(q Query) string {
 	w.s.t.Helper()

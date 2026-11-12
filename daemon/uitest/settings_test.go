@@ -432,3 +432,16 @@ func TestSettingsMouseAndTouchpad(t *testing.T) {
 		t.Errorf("touchpad.naturalScroll = %s", got)
 	}
 }
+
+// Mouse & Touchpad › Faster while you hold: Ctrl+Shift to start with;
+// another pick is stored, and how much faster follows the wheel (3× up
+// two turns: 4×).
+func TestSettingsFasterPointer(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("mouse")
+	settings.Click(uitest.Named("Faster while you hold").Role("combo box").Described("Ctrl + Shift"))
+	settings.Activate(uitest.Named("Super + Shift"))
+	s.WaitSetting("mouse.fasterWith", "SUPER+SHIFT")
+	settings.Wheel(uitest.Named("How much faster").Role("slider"), -2)
+	s.WaitSetting("mouse.fasterBy", 4)
+}
