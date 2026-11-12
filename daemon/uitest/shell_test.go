@@ -163,21 +163,25 @@ func TestSuperVShowsTheClipboard(t *testing.T) {
 }
 
 // SUPER+SHIFT+N opens the note: written into, saved as it goes; with
-// tasks, Esc shows the checklist, and clicking one ticks it.
+// tasks (written "[]" or "- [ ]" too), Tab shows the checklist, clicking one
+// ticks it, and Tab writes again.
 func TestNoteWritesAndTicksTasks(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	bar := s.Bar()
 	bar.Press("super+shift+n")
-	bar.WaitFor(uitest.Named("Note").Role("text"))
-	bar.Type("Today\n[ ] Call mom\n[ ] Gym")
-	s.WaitSetting("note.text", "Today\n[ ] Call mom\n[ ] Gym")
-	bar.Press("Escape")
+	field := uitest.Named("Note").Role("text")
+	bar.WaitFor(field)
+	bar.Type("Today\n[] Call mom\n- [ ] Gym")
+	s.WaitSetting("note.text", "Today\n[] Call mom\n- [ ] Gym")
+	bar.Press("Tab")
 	task := uitest.Named("Call mom").Role("check box")
 	bar.WaitFor(task)
 	bar.WaitFor(uitest.Named("0 of 2 done"))
 	bar.Click(task)
-	s.WaitSetting("note.text", "Today\n[x] Call mom\n[ ] Gym")
+	s.WaitSetting("note.text", "Today\n[x] Call mom\n- [ ] Gym")
 	bar.WaitFor(uitest.Named("1 of 2 done"))
+	bar.Press("Tab")
+	bar.WaitFor(field)
 }
 
 // The Note module turned off (Settings › Modules): its key opens nothing.

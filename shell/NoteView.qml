@@ -2,8 +2,8 @@
 // module, SUPER+SHIFT+N). One text, kept by whiterosed (`note.text`) and saved as
 // you type: its first line is the title, "[ ]" lines are tasks. With tasks
 // it opens on the checklist (how many are done, a tick each; click one to
-// tick it); typing or Enter writes, Esc goes back to the checklist, or
-// closes. Without tasks it opens writing.
+// tick it); typing or Enter writes, Tab or Esc goes back to the checklist
+// (Esc again closes). Without tasks it opens writing.
 import QtQuick
 import qs
 import "Note.js" as Note
@@ -21,6 +21,7 @@ Item {
     function save() { saver.stop(); if (root.draft !== Daemon.setting("note.text", "")) Daemon.set("note.text", root.draft) }
     Timer { id: saver; interval: 400; onTriggered: root.save() }
     function edit(text) { root.draft = text; saver.restart() }
+    function checklist() { root.writing = false; keys.forceActiveFocus() }
     function write() {
         // (Ticks made in the checklist: the box shows them too.)
         if (area.text !== root.draft) area.text = root.draft;
@@ -64,7 +65,9 @@ Item {
                 Accessible.role: Accessible.EditableText
                 Accessible.name: "Note"
                 onTextChanged: if (text !== root.draft) root.edit(text)
-                Keys.onEscapePressed: { root.save(); if (root.note.tasks > 0) { root.writing = false; keys.forceActiveFocus() } else root.close() }
+                Keys.onEscapePressed: { root.save(); if (root.note.tasks > 0) root.checklist(); else root.close() }
+                // Tab: to the checklist (with tasks), not a tab character.
+                Keys.onTabPressed: e => { if (root.note.tasks > 0) { root.save(); root.checklist() } else e.accepted = false }
             }
         }
     }
@@ -75,6 +78,7 @@ Item {
         focus: !root.writing
         Keys.onEscapePressed: root.close()
         Keys.onReturnPressed: root.write()
+        Keys.onTabPressed: root.write()
         Keys.onEnterPressed: root.write()
         Keys.onPressed: e => { if (e.text.length > 0 && e.text >= " ") { root.write(); e.accepted = true } }
     }

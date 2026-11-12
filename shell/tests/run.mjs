@@ -1119,6 +1119,10 @@ test("the note: a title, lines and tasks", () => {
     assert.equal(n.done, 2);
     assert.deepEqual(Note.parse(""), { title: "", lines: [], tasks: 0, done: 0 });
     assert.equal(Note.parse("[ ] Not a task: the title").tasks, 0, "the first line is always the title");
+    // The ways people write a task.
+    const forms = Note.parse("T\n[] a\n- [ ] b\n* [x] c\n[ ]d");
+    assert.deepEqual(forms.lines.map(l => [l.text, l.done]), [["a", false], ["b", false], ["c", true], ["d", false]]);
+    assert.equal(Note.toggle("T\n- [] a", 1), "T\n- [x] a");
 });
 
 test("the note: ticking tasks and clearing the done ones", () => {
