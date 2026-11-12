@@ -24,6 +24,7 @@ pub mod outputs;
 pub mod protocols;
 pub mod ready;
 pub mod render;
+pub mod rules;
 pub mod screenshot;
 pub mod session_lock;
 pub mod shell_supervisor;
