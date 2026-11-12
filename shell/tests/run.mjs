@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "butto
 const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "dragTo", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
 const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "padShortcut", "newId", "parseLayouts", "searchLayouts"]);
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
+const Note = load("Note.js", ["parse", "toggle", "withoutDone"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
@@ -1105,6 +1106,27 @@ test("a monitor's or a workspace's grid is shown and saved", () => {
     assert.equal(Z.monitorName({ builtin: true }), "Built-in display");
     assert.equal(Z.monitorName({ make: "Dell", model: "U2723", connector: "DP-1" }), "Dell U2723");
     assert.equal(Z.monitorName({ connector: "DP-1" }), "DP-1");
+});
+
+test("the note: a title, lines and tasks", () => {
+    const text = "Today\n[ ] Call mom\n[x] Gym at six\n\nPay rent\n  [X] Bins";
+    const n = Note.parse(text);
+    assert.equal(n.title, "Today");
+    assert.deepEqual(n.lines.map(l => [l.text, l.task, l.done, l.at]), [
+        ["Call mom", true, false, 1], ["Gym at six", true, true, 2], ["Pay rent", false, false, 4], ["Bins", true, true, 5],
+    ], "blank lines left out; [X] is done too");
+    assert.equal(n.tasks, 3);
+    assert.equal(n.done, 2);
+    assert.deepEqual(Note.parse(""), { title: "", lines: [], tasks: 0, done: 0 });
+    assert.equal(Note.parse("[ ] Not a task: the title").tasks, 0, "the first line is always the title");
+});
+
+test("the note: ticking tasks and clearing the done ones", () => {
+    const text = "Today\n[ ] Call mom\n[x] Gym\nPay rent";
+    assert.equal(Note.toggle(text, 1), "Today\n[x] Call mom\n[x] Gym\nPay rent");
+    assert.equal(Note.toggle(text, 2), "Today\n[ ] Call mom\n[ ] Gym\nPay rent");
+    assert.equal(Note.toggle(text, 3), text, "not a task: unchanged");
+    assert.equal(Note.withoutDone(text), "Today\n[ ] Call mom\nPay rent");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

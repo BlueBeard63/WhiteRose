@@ -437,6 +437,9 @@ var Known = map[string]Key{
 		return nil
 	})},
 	// Gaps in pixels: between tiles, and around them. Smart: none with one tile.
+	// The note (the Note module, SUPER+SHIFT+N): one text, its first line the
+	// title, "[ ]" lines tasks.
+	"note.text": {Default: json.RawMessage(`""`), Check: into(func(s string) error { return limit(s, 20000) })},
 	// ALT+TAB: apps with windows on any workspace, or only this one.
 	"windows.appSwitcher.workspaces": {Default: json.RawMessage(`"all"`), Check: into(oneOf("all", "current"))},
 	"windows.gaps.inner":             {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},

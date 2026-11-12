@@ -333,6 +333,7 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
         Action::Media(name) => name,
         Action::Notifications => "notifications",
         Action::Clipboard => "clipboard",
+        Action::Note => "note",
         Action::ScreenshotRegion => "screenshot_region",
         _ => return None,
     })

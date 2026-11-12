@@ -26,6 +26,8 @@ ShellRoot {
             else if (name === "notifications") ShellState.togglePanel("notifications");
             // SUPER+V: the clipboard history, in the island.
             else if (name === "clipboard") ShellState.toggle("clipboard");
+            // SUPER+SHIFT+N: the note, if its module is on (Settings › Modules).
+            else if (name === "note" && !Daemon.setting("settings.modules.disabled", []).includes("note")) ShellState.toggle("note");
             else if (name === "lock") ShellState.lock();
         }
     }

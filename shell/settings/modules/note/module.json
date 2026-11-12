@@ -1,0 +1,11 @@
+{
+  "id": "note",
+  "name": "Note",
+  "description": "A note in the island, with tasks to tick (SUPER+SHIFT+N)",
+  "icon": "file",
+  "category": "desktop",
+  "order": 15.5,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["note", "notes", "tasks", "todo", "to do", "checklist", "list", "scratch"]
+}

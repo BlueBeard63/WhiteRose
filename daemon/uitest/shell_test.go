@@ -161,3 +161,32 @@ func TestSuperVShowsTheClipboard(t *testing.T) {
 	bar.Press("super+v")
 	bar.Gone(tab)
 }
+
+// SUPER+SHIFT+N opens the note: written into, saved as it goes; with
+// tasks, Esc shows the checklist, and clicking one ticks it.
+func TestNoteWritesAndTicksTasks(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	bar.Press("super+shift+n")
+	bar.WaitFor(uitest.Named("Note").Role("text"))
+	bar.Type("Today\n[ ] Call mom\n[ ] Gym")
+	s.WaitSetting("note.text", "Today\n[ ] Call mom\n[ ] Gym")
+	bar.Press("Escape")
+	task := uitest.Named("Call mom").Role("check box")
+	bar.WaitFor(task)
+	bar.WaitFor(uitest.Named("0 of 2 done"))
+	bar.Click(task)
+	s.WaitSetting("note.text", "Today\n[x] Call mom\n[ ] Gym")
+	bar.WaitFor(uitest.Named("1 of 2 done"))
+}
+
+// The Note module turned off (Settings › Modules): its key opens nothing.
+func TestNoteModuleOff(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"settings.modules.disabled": []string{"note"}}})
+	bar := s.Bar()
+	bar.Press("super+shift+n")
+	time.Sleep(time.Second)
+	if _, ok := bar.Lookup(uitest.Named("Note").Role("text")); ok {
+		t.Error("the note opened with its module off")
+	}
+}

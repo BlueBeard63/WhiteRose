@@ -575,6 +575,12 @@ Implemented in `compositor/src/clipboard.rs` (pure logic) and `clipboard_capture
 - `screenshots`
 - `launcher`
 - `switcher`, which the compositor drives while ALT+TAB / SUPER+TAB is held
+- `note` (SUPER+SHIFT+N; the Note module)
+
+SUPER+V opens `clipboard` directly.
+
+- **Features as modules:** an island feature that isn't core is a Settings module like an optional page (`module.json` with `"core": false`, on by default): its page holds its options, and turning it off in Settings › Modules (`settings.modules.disabled`) turns the feature off too (its view doesn't open, its key does nothing). The note is the first; the agenda will be the next.
+- **The note** (`shell/NoteView.qml`, logic in `shell/Note.js`, tested): one text, `note.text` in whiterosed, saved 0.4 s after you stop typing and when the island closes. Its first line is the title; `[ ]` / `[x]` lines are tasks. With tasks it opens on the checklist (Figma "Island v2 — Note · tasks": the title, done/total, a segment a task, a tick each; clicking one ticks it in the text); typing or Enter writes, Esc goes back to the checklist or closes. Without tasks it opens writing. Settings › Note clears the finished tasks or the whole note.
 
 Each view (`*View.qml`) only reports the size it wants. The island animates its outline to that size, fades the old content out and the new content in once the shape has settled, and keeps the bar window tall until the morph ends.
 
