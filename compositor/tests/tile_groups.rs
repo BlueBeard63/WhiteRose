@@ -9,8 +9,8 @@ use serde_json::json;
 use whiterose_wm::{keybind::Action, WhiteRose};
 
 /// The whole area as one grouped tile: the strip, and the window below it.
-const STRIP: (i32, i32, i32, i32) = (8, 34, 1424, 44);
-const UNDER_STRIP: (i32, i32, i32, i32) = (8, 78, 1424, 722);
+const STRIP: (i32, i32, i32, i32) = (8, 34, 1424, 58);
+const UNDER_STRIP: (i32, i32, i32, i32) = (8, 92, 1424, 708);
 
 /// A strip: where, how many tabs, and which is shown.
 type StripSeen = ((i32, i32, i32, i32), usize, usize);
@@ -32,7 +32,7 @@ fn tab(s: &WhiteRose, i: usize) -> (f64, f64) {
 /// The first window dragged onto the top band of the second.
 fn group_them(s: &mut WhiteRose) {
     let preview = super_drag(s, BTN_LEFT, (362.0, 417.0), (1078.0, 40.0));
-    assert_eq!(preview, Some((724, 34, 708, 44)), "the preview is the strip it joins");
+    assert_eq!(preview, Some((724, 34, 708, 58)), "the preview is the strip it joins");
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn dragging_a_tab_out_splits_it_off() {
             assert_eq!(rects(s)[2], Some((724, 421, 708, 379)));
             // The third onto the first's band.
             super_drag(s, BTN_LEFT, (1078.0, 600.0), (362.0, 40.0));
-            assert_eq!(rects(s), vec![None, Some(RIGHT), Some((8, 78, 708, 722))]);
+            assert_eq!(rects(s), vec![None, Some(RIGHT), Some((8, 92, 708, 708))]);
             // The first's tab dragged to the bottom edge of the second: it
             // splits that, and the group (one left) ends.
             let tab = tab(s, 0);

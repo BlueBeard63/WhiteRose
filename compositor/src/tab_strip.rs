@@ -1,5 +1,6 @@
 //! The tab strip above a grouped tile, as a small island (Figma: "Grouping
 //! — tab strip options", C): a thin black band across the top of the tile
+//! (a little below it, clear of the bar's island; its ends rounded)
 //! with the tabs hanging from it in the middle on concave ears, as the
 //! island hangs from the bar. Each tab is its title; the shown one sits on
 //! a lighter pill. Beside the island the strip is see-through.
@@ -43,7 +44,7 @@ impl Strip {
     /// The middle of tab `i` (global coordinates).
     pub fn tab_middle(&self, i: usize) -> Option<Point<f64, Logical>> {
         let (x0, x1) = *layout(self.rect.size.w as f64, &tabs_of(&self.tabs, ICON as u32)).tabs.get(i)?;
-        Some((self.rect.loc.x as f64 + (x0 + x1) / 2.0, self.rect.loc.y as f64 + BAND + ISLAND / 2.0).into())
+        Some((self.rect.loc.x as f64 + (x0 + x1) / 2.0, self.rect.loc.y as f64 + HANG + ISLAND / 2.0).into())
     }
 
     /// The tab under `pos`, if it's on this strip's island.
@@ -53,7 +54,7 @@ impl Strip {
         }
         let l = layout(self.rect.size.w as f64, &tabs_of(&self.tabs, ICON as u32));
         let (x, y) = (pos.x - self.rect.loc.x as f64, pos.y - self.rect.loc.y as f64);
-        if !(BAND..BAND + ISLAND).contains(&y) {
+        if !(HANG..HANG + ISLAND).contains(&y) {
             return None;
         }
         l.tabs.iter().position(|(x0, x1)| (*x0..*x1).contains(&x)).and_then(|i| self.tabs.get(i))
@@ -68,7 +69,13 @@ const TEXT_DIM: [u8; 3] = [0x8E, 0x8E, 0x96];
 /// Sizes in logical pixels: the band, the island under it, the ears, the
 /// island's bottom corners; its padding, a tab's (each side), the gap
 /// between tabs, a tab pill's height and corners; the longest a tab gets.
+/// Room above the band, so it doesn't run into the island hanging from
+/// the bar (it reaches 14 px below the bar, the tiles start 8 px below:
+/// this leaves 8 px between them, as between tiles); the band; where the
+/// island starts (under the band).
+pub const TOP: f64 = 14.0;
 pub const BAND: f64 = 6.0;
+pub const HANG: f64 = TOP + BAND;
 pub const ISLAND: f64 = 30.0;
 const EAR: f64 = 12.0;
 const CORNER: f64 = 14.0;
@@ -177,15 +184,16 @@ fn in_round_rect(x: f64, y: f64, (x0, y0, x1, y1): (f64, f64, f64, f64), top: f6
 /// True if (x, y) (logical) is on the island: the band, the body under
 /// it with round bottom corners, and the ears joining them.
 fn in_island(x: f64, y: f64, w: f64, l: &StripLayout) -> bool {
-    if (0.0..BAND).contains(&y) && (0.0..w).contains(&x) {
+    // (Its ends rounded on top, as in the design.)
+    if in_round_rect(x, y, (0.0, TOP, w, HANG), BAND, 0.0) {
         return true;
     }
     let (bx0, bx1) = (l.island_x, l.island_x + l.island_w);
-    if in_round_rect(x, y, (bx0, BAND, bx1, BAND + ISLAND), 0.0, CORNER) {
+    if in_round_rect(x, y, (bx0, HANG, bx1, HANG + ISLAND), 0.0, CORNER) {
         return true;
     }
     // The ears: under the band, outside a circle in the corner they fill.
-    let ear = |cx: f64| (BAND..BAND + EAR).contains(&y) && (x - cx).powi(2) + (y - (BAND + EAR)).powi(2) >= EAR * EAR;
+    let ear = |cx: f64| (HANG..HANG + EAR).contains(&y) && (x - cx).powi(2) + (y - (HANG + EAR)).powi(2) >= EAR * EAR;
     ((bx0 - EAR)..bx0).contains(&x) && ear(bx0 - EAR) || (bx1..(bx1 + EAR)).contains(&x) && ear(bx1 + EAR)
 }
 
@@ -215,10 +223,10 @@ pub fn draw(w: i32, h: i32, scale: f64, tabs: &[Tab], shown: usize) -> Vec<u8> {
     let mut px = vec![0u8; w * h * 4];
     let lw = w as f64 / scale;
     let l = layout(lw, tabs);
-    let pill_top = BAND + (ISLAND - PILL) / 2.0 - 1.0;
+    let pill_top = HANG + (ISLAND - PILL) / 2.0 - 1.0;
     let pill = l.tabs.get(shown).map(|(x0, x1)| (*x0, pill_top, *x1, pill_top + PILL));
     // Only the rows the island covers need looking at.
-    let rows = (((BAND + ISLAND) * scale).ceil() as usize + 1).min(h);
+    let rows = (((HANG + ISLAND) * scale).ceil() as usize + 1).min(h);
     for y in 0..rows {
         for x in 0..w {
             let i = (y * w + x) * 4;
@@ -409,21 +417,23 @@ mod tests {
     #[test]
     fn the_island_hangs_from_a_band_and_the_rest_is_see_through() {
         let t = titles(&["Terminal", "Files"]);
-        let px = draw(400, 44, 1.0, &t, 1);
-        assert_eq!(px.len(), 400 * 44 * 4);
+        let px = draw(400, 58, 1.0, &t, 1);
+        assert_eq!(px.len(), 400 * 58 * 4);
         let l = layout(400.0, &t);
-        assert_eq!(pixel(&px, 400, 2, 2), bgra(PANEL), "the band, across the tile");
-        assert_eq!(pixel(&px, 400, 2, 20)[3], 0, "beside the island: see-through");
-        assert_eq!(pixel(&px, 400, 2, 40)[3], 0, "under it too");
+        assert_eq!(pixel(&px, 400, 20, 16), bgra(PANEL), "the band, across the tile");
+        assert_eq!(pixel(&px, 400, 20, 8)[3], 0, "below the top, clear of the bar's island");
+        assert_eq!(pixel(&px, 400, 0, 14)[3], 0, "its ends rounded");
+        assert_eq!(pixel(&px, 400, 2, 34)[3], 0, "beside the island: see-through");
+        assert_eq!(pixel(&px, 400, 2, 54)[3], 0, "under it too");
         let mid = (l.island_x + l.island_w / 2.0) as usize;
-        assert_eq!(pixel(&px, 400, (l.tabs[0].0 + 3.0) as usize, 32), bgra(PANEL), "the island");
-        assert_eq!(pixel(&px, 400, (l.tabs[1].1 - 4.0) as usize, 20), bgra(SHOWN), "the shown tab's pill");
-        assert_ne!(pixel(&px, 400, (l.tabs[0].0 + 3.0) as usize, 20), bgra(SHOWN), "only the shown one");
-        assert_eq!(pixel(&px, 400, mid, 41)[3], 0, "the gap before the window");
+        assert_eq!(pixel(&px, 400, (l.tabs[0].0 + 3.0) as usize, 46), bgra(PANEL), "the island");
+        assert_eq!(pixel(&px, 400, (l.tabs[1].1 - 4.0) as usize, 34), bgra(SHOWN), "the shown tab's pill");
+        assert_ne!(pixel(&px, 400, (l.tabs[0].0 + 3.0) as usize, 34), bgra(SHOWN), "only the shown one");
+        assert_eq!(pixel(&px, 400, mid, 55)[3], 0, "the gap before the window");
         // An ear: filled right by the band and the island, empty further out.
         let ex = l.island_x as usize - 1;
-        assert!(pixel(&px, 400, ex, 7)[3] > 200, "the ear meets the band");
-        assert_eq!(pixel(&px, 400, ex - 10, 16)[3], 0, "and curves away");
+        assert!(pixel(&px, 400, ex, 21)[3] > 200, "the ear meets the band");
+        assert_eq!(pixel(&px, 400, ex - 10, 30)[3], 0, "and curves away");
     }
 
     #[test]
@@ -433,7 +443,7 @@ mod tests {
         let l = layout(600.0, &t);
         let w = text_width("Pictures — Files", FONT_SIZE as f32) as f64;
         assert!(l.tabs[0].1 - l.tabs[0].0 - 2.0 * TAB_PAD >= w + 1.0, "room for it all");
-        let (a, b) = (draw(600, 44, 1.0, &t, 0), draw(600, 44, 1.0, &titles(&["Pictures — Fil…"]), 0));
+        let (a, b) = (draw(600, 58, 1.0, &t, 0), draw(600, 58, 1.0, &titles(&["Pictures — Fil…"]), 0));
         assert_ne!(a, b);
     }
 
@@ -441,10 +451,10 @@ mod tests {
     fn titles_are_drawn_in_their_tab_and_cut_short() {
         let long = "A very long window title that cannot possibly fit in a tab".to_string();
         let t = vec![Tab { title: long, icon: None }, Tab { title: "B".into(), icon: None }];
-        let px = draw(400, 44, 1.0, &t, 1);
+        let px = draw(400, 58, 1.0, &t, 1);
         let l = layout(400.0, &t);
         let bright =
-            |x0: f64, x1: f64| (8..34).any(|y| (x0 as usize..x1 as usize).any(|x| pixel(&px, 400, x, y)[1] > 0x60));
+            |x0: f64, x1: f64| (22..48).any(|y| (x0 as usize..x1 as usize).any(|x| pixel(&px, 400, x, y)[1] > 0x60));
         assert!(bright(l.tabs[0].0 + TAB_PAD, l.tabs[0].1 - TAB_PAD), "the title shows");
         assert!(!bright(l.tabs[0].1 - TAB_PAD + 1.0, l.tabs[1].0), "and stops at its tab's padding");
     }
@@ -460,11 +470,11 @@ mod tests {
         let with = vec![Tab { title: "Terminal".into(), icon: Some(red) }];
         let (a, b) = (layout(400.0, &plain), layout(400.0, &with));
         assert_eq!((b.tabs[0].1 - b.tabs[0].0) - (a.tabs[0].1 - a.tabs[0].0), ICON + ICON_GAP, "room for it");
-        let px = draw(400, 44, 1.0, &with, 0);
-        let (x, y) = ((b.tabs[0].0 + TAB_PAD + 8.0) as usize, (BAND + ISLAND / 2.0) as usize);
+        let px = draw(400, 58, 1.0, &with, 0);
+        let (x, y) = ((b.tabs[0].0 + TAB_PAD + 8.0) as usize, (HANG + ISLAND / 2.0) as usize);
         assert_eq!(pixel(&px, 400, x, y), [0, 0, 255, 255], "drawn at the tab's start");
         // Not shown: fainter.
-        let px = draw(400, 44, 1.0, &[with[0].clone(), Tab { title: "B".into(), icon: None }], 1);
+        let px = draw(400, 58, 1.0, &[with[0].clone(), Tab { title: "B".into(), icon: None }], 1);
         let b = layout(400.0, &[with[0].clone(), Tab { title: "B".into(), icon: None }]);
         let p = pixel(&px, 400, (b.tabs[0].0 + TAB_PAD + 8.0) as usize, y);
         assert!(p[2] < 255 && p[2] > 150, "{p:?}");
@@ -473,9 +483,9 @@ mod tests {
     #[test]
     fn sharp_at_other_scales() {
         let t = titles(&["Terminal"]);
-        let px = draw(800, 88, 2.0, &t, 0);
-        assert_eq!(px.len(), 800 * 88 * 4);
-        assert_eq!(pixel(&px, 800, 4, 4), bgra(PANEL));
-        assert_eq!(pixel(&px, 800, 4, 40)[3], 0);
+        let px = draw(800, 116, 2.0, &t, 0);
+        assert_eq!(px.len(), 800 * 116 * 4);
+        assert_eq!(pixel(&px, 800, 40, 34), bgra(PANEL), "the band, at twice the pixels");
+        assert_eq!(pixel(&px, 800, 4, 56)[3], 0);
     }
 }
