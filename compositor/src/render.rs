@@ -123,7 +123,7 @@ pub fn output_elements(
                         renderer,
                         loc.to_physical_precise_round(scale),
                         Scale::from(scale),
-                        1.0,
+                        state.window_alpha(window),
                     )
                     .into_iter()
                     .map(OutputElement::Surface),
@@ -197,20 +197,22 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
         }
         let Some(at) = state.space.element_location(w) else { continue };
         let loc = at - w.geometry().loc - out.loc;
+        // (A rule's opacity, focused or not.)
+        let alpha = state.window_alpha(w);
         match state.clip_of(w) {
             None => elements.extend(
                 w.render_elements::<WaylandSurfaceRenderElement<_>>(
                     renderer,
                     loc.to_physical_precise_round(scale),
                     Scale::from(scale),
-                    1.0,
+                    alpha,
                 )
                 .into_iter()
                 .map(OutputElement::Surface),
             ),
             Some(clip) => {
                 let crop = Rectangle::new(clip.loc - out.loc, clip.size).to_physical_precise_round(scale);
-                clipped_window(renderer, w, loc.to_physical_precise_round(scale), scale, crop, elements);
+                clipped_window(renderer, w, loc.to_physical_precise_round(scale), scale, alpha, crop, elements);
             }
         }
     }
@@ -220,12 +222,14 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
 
 /// A tiled window's elements, front to back: its popups whole (a menu may
 /// reach past the tile), then its own surfaces cut to `crop` (the tile, in
-/// the output's physical pixels). As `Window::render_elements` otherwise.
+/// the output's physical pixels), at `alpha`. As `Window::render_elements`
+/// otherwise.
 fn clipped_window(
     renderer: &mut GlesRenderer,
     w: &Window,
     location: Point<i32, Physical>,
     scale: f64,
+    alpha: f32,
     crop: Rectangle<i32, Physical>,
     elements: &mut Vec<OutputElement>,
 ) {
@@ -239,7 +243,7 @@ fn clipped_window(
                 popup.wl_surface(),
                 location + at,
                 Scale::from(scale),
-                1.0,
+                alpha,
                 Kind::Unspecified,
             )
             .into_iter()
@@ -252,7 +256,7 @@ fn clipped_window(
             surface,
             location,
             Scale::from(scale),
-            1.0,
+            alpha,
             Kind::Unspecified,
         )
         .into_iter()

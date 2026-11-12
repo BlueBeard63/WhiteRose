@@ -11,6 +11,8 @@ Item {
     property string subtitle
     property bool divider: true
     property bool dimmed: false
+    // Rose for a problem with what's typed in the row.
+    property color subtitleColor: Theme.muted
     default property alias control: controls.data
     width: parent?.width ?? 0
     // Side by side needs room for the controls and a readable title.
@@ -43,7 +45,7 @@ Item {
             visible: root.subtitle !== ""
             text: root.subtitle
             wrapMode: Text.Wrap
-            color: Theme.muted
+            color: root.subtitleColor
             font { family: Theme.font; pointSize: Theme.pt(11.5) }
         }
     }

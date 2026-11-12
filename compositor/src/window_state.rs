@@ -111,8 +111,10 @@ impl WhiteRose {
         if already && self.output_of(w).as_ref() == Some(&o) {
             return;
         }
-        // One fullscreen window per output.
-        if let Some(prev) = self.fullscreen_on(&o).filter(|p| *p != w).cloned() {
+        // One fullscreen window per output (of those showing: a window a
+        // rule opens on another workspace leaves this one be).
+        let showing = self.workspaces.workspace_of(w) == Some(self.workspaces.active());
+        if let Some(prev) = self.fullscreen_on(&o).filter(|p| showing && *p != w).cloned() {
             self.unfullscreen(&prev);
         }
         self.remember_floating(w);

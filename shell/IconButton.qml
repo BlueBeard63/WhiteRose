@@ -9,7 +9,13 @@ Rectangle {
     property color fill: Theme.surface1
     property color hoverFill: Theme.surface2
     readonly property bool hovered: mouse.containsMouse
+    // Its name (screen readers, tests); without one it isn't announced.
+    property string label
     signal clicked()
+    Accessible.role: Accessible.Button
+    Accessible.name: root.label
+    Accessible.ignored: root.label === ""
+    Accessible.onPressAction: root.clicked()
     width: 32; height: 32; radius: width / 2
     color: mouse.containsMouse ? hoverFill : fill
     Behavior on color { ColorAnimation { duration: Theme.fastAnim } }

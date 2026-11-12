@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js and the Snapping page's Zones.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect"]);
+const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "zoneCount", "offers"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -371,6 +372,90 @@ test("logical size follows scale and rotation", () => {
 test("labels: saved, else Built-in or the model", () => {
     const draft = D.draftFrom([laptop, dell], { monitor: [{ id: dell.id, label: "Desk left" }] });
     assert.deepEqual(draft.map(d => d.label), ["Built-in", "Desk left"]);
+});
+
+// ---- Window rules (Rules.js) ---------------------------------------------
+test("rules: an app id becomes an exact pattern and back", () => {
+    assert.equal(R.exactly("org.gnome.Ptyxis"), "^org\\.gnome\\.Ptyxis$");
+    assert.equal(R.exactApp(R.exactly("org.gnome.Ptyxis")), "org.gnome.Ptyxis");
+    assert.equal(R.exactApp(R.exactly("a+b(c)")), "a+b(c)");
+    assert.equal(R.exactApp("^firefox"), "", "not anchored at both ends");
+    assert.equal(R.exactApp("^fire.*$"), "", "a wildcard isn't one app");
+    assert.equal(R.exactApp(undefined), "");
+});
+test("rules: patterns the compositor can't use are refused", () => {
+    assert.equal(R.patternError(""), "");
+    assert.equal(R.patternError("^code(-oss)?$"), "");
+    assert.notEqual(R.patternError("("), "");
+    assert.notEqual(R.patternError("a(?=b)"), "", "no lookahead in Rust's regex");
+    assert.notEqual(R.patternError("(?<!x)y"), "");
+    assert.notEqual(R.patternError("(a)\\1"), "", "no backreferences");
+    assert.equal(R.complete({ app: "a" }), true);
+    assert.equal(R.complete({ title: "b", workspace: 2 }), true);
+    assert.equal(R.complete({}), false, "it needs a pattern");
+    assert.equal(R.complete({ app: "(" }), false);
+});
+test("rules: sizes and positions are pixels or percentages", () => {
+    assert.equal(R.parseLength("900", 1), 900);
+    assert.equal(R.parseLength(" 60 % ", 1), "60%");
+    assert.equal(R.parseLength("12.5%", 1), "12.5%");
+    assert.equal(R.parseLength("0", 1), null, "a size is at least 1px");
+    assert.equal(R.parseLength("0", 0), 0, "a position can be 0");
+    assert.equal(R.parseLength("120%", 0), null);
+    assert.equal(R.parseLength("-5", 0), null);
+    assert.equal(R.parseLength("1.5", 0), null, "whole pixels");
+    assert.equal(R.parseLength("wide", 0), null);
+    assert.equal(R.isPair([900, "60%"]), true);
+    assert.equal(R.isPair({ length: 2, 0: 1, 1: 2 }), true, "a Qt list counts too");
+    assert.equal(R.isPair("ab"), false);
+    assert.equal(R.isPair([1]), false);
+    assert.equal(R.isPair(undefined), false);
+    assert.equal(R.lengthText(undefined), "");
+    assert.equal(R.lengthText("60%"), "60%");
+});
+test("rules: editing, moving and deleting", () => {
+    const rules = [{ app: "a" }, { app: "b", workspace: 2 }, { app: "c" }];
+    assert.deepEqual(R.set(rules, 1, "float", true)[1], { app: "b", workspace: 2, float: true });
+    assert.deepEqual(R.set(rules, 1, "workspace", null)[1], { app: "b" });
+    assert.deepEqual(rules[1], { app: "b", workspace: 2 }, "not changed in place");
+    assert.deepEqual(R.move(rules, 0, 1).map(r => r.app), ["b", "a", "c"]);
+    assert.deepEqual(R.move(rules, 0, -1).map(r => r.app), ["a", "b", "c"], "the first stays first");
+    assert.deepEqual(R.move(rules, 2, 1).map(r => r.app), ["a", "b", "c"]);
+    assert.deepEqual(R.remove(rules, 1).map(r => r.app), ["a", "c"]);
+});
+test("rules: the header names a rule and says what it does", () => {
+    assert.equal(R.name({ app: "^org\\.gnome\\.Ptyxis$" }), "org.gnome.Ptyxis");
+    assert.equal(R.name({ app: "^code" }), "^code");
+    assert.equal(R.name({ title: "^Picture-in-Picture$" }), "^Picture-in-Picture$");
+    assert.equal(R.name({}), "New rule");
+    assert.equal(
+        R.summary({ app: "a", workspace: 3, float: true, size: [900, "60%"], position: "centre" }, 1),
+        "1 · Workspace 3 · Floats · 900 × 60% · Centred");
+    assert.equal(R.summary({ app: "a", title: "^x", float: false, position: [0, "5%"], fullscreen: true }, 2),
+        "2 · Title ^x · Tiles · At 0, 5% · Full screen");
+    assert.equal(R.summary({ app: "a", monitor: "edid:1", maximized: true }, 3, id => "Dell"), "3 · On Dell · Maximised");
+    assert.equal(R.summary({ app: "a" }, 4), "4 · Does nothing yet");
+    assert.equal(R.summary({ title: "^PiP$", opacity: [1, 0.85], onTop: true }, 6), "6 · Opacity 100% / 85% · On top");
+    assert.equal(R.percent(0.849), "85%");
+    assert.equal(R.summary({ app: "a", zone: 2 }, 7), "7 · Zone 2");
+    assert.equal(R.zoneCount({}, {}), 2, "the default grid");
+    assert.equal(R.zoneCount({ "edid:1": [[0, 0, 1, 1]] }, { "2": { "edid:1": [[0, 0, 0.25, 1], [0.25, 0, 0.25, 1], [0.5, 0, 0.5, 1]] } }), 3);
+    assert.equal(R.zoneCount(undefined, undefined, 5), 5, "a rule's own zone is offered");
+    assert.match(R.summary({}, 5), /^5 · Not saved/);
+    assert.equal(R.tiling({}), "");
+    assert.equal(R.position({ position: "center" }), "centre");
+    assert.equal(R.opens({ maximized: true, fullscreen: true }), "fullscreen");
+});
+test("rules: open windows are offered once per app id", () => {
+    const windows = [
+        { app_id: "firefox", title: "Mozilla Firefox", workspace: 1 },
+        { app_id: "firefox", title: "Private", workspace: 2 },
+        { app_id: null, title: "no id", workspace: 1 },
+        { app_id: "org.gnome.Ptyxis", title: "~", workspace: 2 },
+    ];
+    const offers = R.offers(windows, [{ app: R.exactly("org.gnome.Ptyxis") }]);
+    assert.deepEqual(offers.map(o => [o.app, o.title, o.has]), [["firefox", "Mozilla Firefox", false], ["org.gnome.Ptyxis", "~", true]]);
+    assert.deepEqual(R.offers(undefined, undefined), []);
 });
 
 test("snapping: side by side and aligned, only within reach", () => {

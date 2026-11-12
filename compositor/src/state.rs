@@ -87,6 +87,8 @@ pub struct WhiteRose {
     pub tiling: crate::tiling::TilingState,
     /// Snapped floating windows (see snapping.rs).
     pub snap: crate::snapping::SnapState,
+    /// `windows.rules`: applied as windows open (window_rules.rs).
+    pub rules: crate::rules::Rules,
     /// Output and usable area last used to fit maximized/fullscreen windows.
     /// PrtSc pressed: capture on the next frame.
     pub screenshot_pending: bool,
@@ -296,6 +298,7 @@ impl WhiteRose {
             idle: Default::default(),
             idle_inhibit_state,
             clipboard_history_on: true,
+            rules: Default::default(),
             cursor_shape_state,
             vt_switch: None,
             session_lock_state,

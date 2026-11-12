@@ -430,10 +430,122 @@ var Known = map[string]Key{
 	"windows.master.side": {Default: json.RawMessage(`"left"`), Check: into(oneOf("left", "right", "top", "bottom"))},
 	// Dwindle: which way new tiles split (auto: by the tile's shape).
 	"windows.dwindle.split": {Default: json.RawMessage(`"auto"`), Check: into(oneOf("auto", "horizontal", "vertical"))},
+	// Window rules, in order: what to do with a window when it opens,
+	// matched by app id and/or title (regular expressions). Every rule that
+	// matches applies; for the same action the later rule wins.
+	"windows.rules": {Default: json.RawMessage(`[]`), Check: into(checkWindowRules)},
 }
 
 // The window layouts (windows.layout and its overrides).
 var layouts = []string{"floating", "dwindle", "master"}
+
+// WindowRule is one of windows.rules. Sizes and positions are pixels or
+// "N%" of the monitor's usable area; Position may also be "centre".
+type WindowRule struct {
+	App        string            `json:"app,omitempty"`
+	Title      string            `json:"title,omitempty"`
+	Workspace  *int              `json:"workspace,omitempty"`
+	Monitor    string            `json:"monitor,omitempty"`
+	Float      *bool             `json:"float,omitempty"`
+	Size       []json.RawMessage `json:"size,omitempty"`
+	Position   json.RawMessage   `json:"position,omitempty"`
+	Maximized  *bool             `json:"maximized,omitempty"`
+	Fullscreen *bool             `json:"fullscreen,omitempty"`
+	Opacity    []float64         `json:"opacity,omitempty"`
+	OnTop      *bool             `json:"onTop,omitempty"`
+	Zone       *int              `json:"zone,omitempty"`
+}
+
+func checkWindowRules(rules []WindowRule) error {
+	if len(rules) > 200 {
+		return errors.New("at most 200 rules")
+	}
+	for i, r := range rules {
+		if err := checkWindowRule(r); err != nil {
+			return fmt.Errorf("rule %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+func checkWindowRule(r WindowRule) error {
+	if r.App == "" && r.Title == "" {
+		return errors.New("needs an app id or a title")
+	}
+	for _, p := range []string{r.App, r.Title} {
+		if len(p) > 500 {
+			return errors.New("pattern too long")
+		}
+		if _, err := regexp.Compile(p); err != nil {
+			return err
+		}
+	}
+	if r.Workspace != nil && (*r.Workspace < 1 || *r.Workspace > 9) {
+		return errors.New("workspace must be 1-9")
+	}
+	if r.Zone != nil && (*r.Zone < 1 || *r.Zone > 64) {
+		return errors.New("zone must be 1-64")
+	}
+	if r.Size != nil {
+		if len(r.Size) != 2 {
+			return errors.New("size is [width, height]")
+		}
+		for _, l := range r.Size {
+			if err := checkRuleLength(l, 1); err != nil {
+				return fmt.Errorf("size: %w", err)
+			}
+		}
+	}
+	if r.Position != nil {
+		var s string
+		var xy []json.RawMessage
+		switch {
+		case json.Unmarshal(r.Position, &s) == nil:
+			if s != "centre" && s != "center" {
+				return errors.New(`position is [x, y] or "centre"`)
+			}
+		case json.Unmarshal(r.Position, &xy) == nil && len(xy) == 2:
+			for _, l := range xy {
+				if err := checkRuleLength(l, 0); err != nil {
+					return fmt.Errorf("position: %w", err)
+				}
+			}
+		default:
+			return errors.New(`position is [x, y] or "centre"`)
+		}
+	}
+	if r.Opacity != nil {
+		if len(r.Opacity) != 2 {
+			return errors.New("opacity is [focused, unfocused]")
+		}
+		for _, o := range r.Opacity {
+			if o < 0.1 || o > 1 {
+				return errors.New("opacity must be 0.1-1")
+			}
+		}
+	}
+	return nil
+}
+
+// checkRuleLength: whole pixels (at least min) or "N%" (0-100).
+func checkRuleLength(raw json.RawMessage, min int) error {
+	var px int
+	if json.Unmarshal(raw, &px) == nil {
+		if px < min || px > 100000 {
+			return fmt.Errorf("must be at least %d px", min)
+		}
+		return nil
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		if n, ok := strings.CutSuffix(strings.TrimSpace(s), "%"); ok {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil && f >= 0 && f <= 100 {
+				return nil
+			}
+		}
+	}
+	return errors.New(`must be pixels or "N%"`)
+}
 
 func pixels(lo, hi int) func(int) error {
 	return func(v int) error {

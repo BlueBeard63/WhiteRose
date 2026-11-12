@@ -119,6 +119,7 @@ func TestValidation(t *testing.T) {
 		"windows.master.side":           `"middle"`,
 		"windows.dwindle.split":         `"diagonal"`,
 		"windows.snap.zones.workspaces": `{"10":{"builtin":[[0,0,1,1]]}}`,
+		"windows.rules":                 `[{"workspace":2}]`,
 		"nope.unknown":                  `1`,
 		"Bad Key":                       `1`,
 		"module.x":                      `{not json`,
@@ -174,6 +175,40 @@ func TestValidation(t *testing.T) {
 	}
 	if err := s.Set("module.big", json.RawMessage(`"`+strings.Repeat("x", MaxValue)+`"`)); err == nil {
 		t.Error("oversized value accepted")
+	}
+}
+
+func TestWindowRules(t *testing.T) {
+	s, _ := open(t)
+	for _, v := range []string{
+		`[{"workspace":2}]`,
+		`[{"app":"","title":""}]`,
+		`[{"app":"("}]`,
+		`[{"app":"a","workspace":10}]`,
+		`[{"app":"a","size":[0,"50%"]}]`,
+		`[{"app":"a","size":[400]}]`,
+		`[{"app":"a","position":"middle"}]`,
+		`[{"app":"a","position":[10,"120%"]}]`,
+		`[{"app":"a","opacity":[1]}]`,
+		`[{"app":"a","opacity":[0,1]}]`,
+		`[{"app":"a","float":"yes"}]`,
+		`[{"app":"a","zone":0}]`,
+		`[{"app":"a","blur":true}]`,
+		`{"app":"a"}`,
+	} {
+		if err := s.Set("windows.rules", json.RawMessage(v)); err == nil {
+			t.Errorf("windows.rules = %s was accepted", v)
+		}
+	}
+	for _, v := range []string{
+		`[]`,
+		`[{"app":"^org\\.gnome\\.Ptyxis$","workspace":3,"float":true,"size":[900,"60%"],"position":"centre"}]`,
+		`[{"title":"^Picture-in-Picture$","onTop":true,"opacity":[1,0.85],"position":[0,"5%"]}]`,
+		`[{"app":"a","monitor":"edid:0123456789ab","maximized":true,"fullscreen":false,"zone":2}]`,
+	} {
+		if err := s.Set("windows.rules", json.RawMessage(v)); err != nil {
+			t.Errorf("windows.rules = %s refused: %v", v, err)
+		}
 	}
 }
 

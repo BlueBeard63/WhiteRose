@@ -34,12 +34,10 @@ impl XdgShellHandler for WhiteRose {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let window = Window::new_wayland_window(surface);
-        // It opens on the output under the pointer, and must be visible
-        // there, so leave fullscreen on that output.
+        // It opens on the output under the pointer. Its first commit applies
+        // the window rules, which may move it, then leaves fullscreen on the
+        // output it ends up on (window_rules.rs).
         let output = self.pointer_output();
-        if let Some(fs) = output.as_ref().and_then(|o| self.fullscreen_on(o)).cloned() {
-            self.unfullscreen(&fs);
-        }
         // Cascade new windows so they don't stack exactly on top of each other.
         // On a tiled workspace this is where it floats if it's untiled later;
         // its first commit gives it a tile (tiling.rs).
