@@ -30,6 +30,7 @@ pub mod scratchpad;
 pub mod scratchpad_windows;
 pub mod screenshot;
 pub mod session_lock;
+pub mod shake;
 pub mod shell_supervisor;
 pub mod snapping;
 pub mod state;

@@ -647,9 +647,10 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
     let scale = output.current_scale().fractional_scale();
     let geo = state.space.output_geometry(&output);
     let pointer = state.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
+    let grow = state.shake.factor(crate::shake::now_ms());
     let front = match geo {
         Some(g) if g.to_f64().contains(pointer) => {
-            b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale)
+            b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale, grow)
         }
         _ => Vec::new(),
     };
@@ -670,6 +671,19 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
     };
     s.pending = queued;
     let refresh = s.mode.vrefresh().max(1);
+    // Shake to find: a frame each refresh while the pointer is bigger than
+    // usual (on a timer: a still, big pointer damages nothing, so frames
+    // alone wouldn't come).
+    if state.shake.animating() && !std::mem::replace(&mut state.shake.tick_armed, true) {
+        let _ = state.loop_handle.insert_source(
+            Timer::from_duration(Duration::from_micros(1_000_000 / refresh as u64)),
+            |_, _, state| {
+                state.shake.tick_armed = false;
+                state.schedule_redraw();
+                TimeoutAction::Drop
+            },
+        );
+    }
     let arm_callbacks = !queued && !std::mem::replace(&mut s.callbacks_armed, true);
     if queued {
         s.callbacks_armed = false;
@@ -681,7 +695,7 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
         state.screenshot_pending = false;
         let pointer = match geo {
             Some(g) if g.to_f64().contains(pointer) => {
-                b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale)
+                b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale, 1.0)
             }
             _ => Vec::new(),
         };

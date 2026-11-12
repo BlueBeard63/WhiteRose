@@ -76,11 +76,16 @@ impl WhiteRose {
         self.activity();
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        let from = pointer.current_location();
         let under = self.surface_under(pos);
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
         pointer.frame(self);
         if !pointer.is_grabbed() {
             self.picker_pointer(pos);
+            // (Dragging something is never a shake.)
+            if self.draws_cursor {
+                self.shake.motion(pos.x - from.x, pos.y - from.y, crate::shake::now_ms());
+            }
         }
         // The drag icon follows the pointer, and so does a pointer we draw.
         if self.dnd_icon.is_some() || self.draws_cursor {
@@ -109,6 +114,9 @@ impl WhiteRose {
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         let serial = SERIAL_COUNTER.next_serial();
         let button_state = state;
+        if button_state == ButtonState::Pressed {
+            self.shake.reset();
+        }
 
         if button_state == ButtonState::Pressed && self.is_locked() {
             self.focus_lock_surface();

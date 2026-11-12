@@ -1,5 +1,5 @@
 // Mouse & Touchpad: scroll direction, pointer speed and acceleration for
-// each, and tap to click. The compositor applies them through libinput to
+// each, tap to click, and shake to find (the pointer grows when shaken). The compositor applies them through libinput to
 // every mouse and touchpad, including ones plugged in later. (In a window
 // on another desktop, that desktop's own settings apply.)
 import QtQuick
@@ -37,6 +37,16 @@ Column {
             title: "Acceleration"
             subtitle: "Faster movements carry the pointer further"
             Toggle { checked: Daemon.setting("touchpad.acceleration", true); onToggled: on => Daemon.set("touchpad.acceleration", on) }
+        }
+    }
+
+    Section { text: "Pointer" }
+    Card {
+        SettingRow {
+            divider: false
+            title: "Shake to find"
+            subtitle: "Shake the pointer and it grows for a moment, so you can see where it is"
+            Toggle { checked: Daemon.setting("mouse.shakeToFind", true); onToggled: on => Daemon.set("mouse.shakeToFind", on) }
         }
     }
 

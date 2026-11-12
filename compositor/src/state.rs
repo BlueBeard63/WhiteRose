@@ -149,6 +149,8 @@ pub struct WhiteRose {
     /// Mice and touchpads (pointer.rs), and the libinput devices they apply to.
     pub pointer: crate::pointer::PointerSettings,
     pub input_devices: Vec<smithay::reexports::input::Device>,
+    /// Shake to find (shake.rs): how big the pointer is drawn.
+    pub shake: crate::shake::Shake,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
     pub shortcuts_paused: Option<u64>,
     /// The cursor theme and size we draw with (DRM), passed on to apps.
@@ -301,6 +303,7 @@ impl WhiteRose {
             },
             pointer: Default::default(),
             input_devices: Vec::new(),
+            shake: Default::default(),
             shortcuts_paused: None,
             idle: Default::default(),
             idle_inhibit_state,

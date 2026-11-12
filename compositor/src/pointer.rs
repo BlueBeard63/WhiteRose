@@ -108,6 +108,10 @@ impl WhiteRose {
 
     /// Takes a mouse or touchpad setting, applying it to every device.
     pub fn pointer_setting(&mut self, key: &str, value: &Value) {
+        if key == "mouse.shakeToFind" {
+            self.shake.enabled = value.as_bool().unwrap_or(true);
+            return;
+        }
         if self.pointer.take(key, value) {
             let settings = self.pointer;
             for d in &mut self.input_devices {

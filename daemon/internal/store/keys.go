@@ -290,6 +290,8 @@ var Known = map[string]Key{
 	"touchpad.speed":         {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},
 	"touchpad.acceleration":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"touchpad.tapToClick":    {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Shaking the pointer makes it big for a moment (the compositor).
+	"mouse.shakeToFind": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Keyboard layouts, first is the default: UK English to start with.
 	// An empty list means the system's (/etc/default/keyboard or the X11
 	// keyboard config).
