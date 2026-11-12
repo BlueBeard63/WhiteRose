@@ -31,7 +31,7 @@ const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
 const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect"]);
-const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "summary", "offers"]);
+const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "offers"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -435,6 +435,8 @@ test("rules: the header names a rule and says what it does", () => {
         "2 · Title ^x · Tiles · At 0, 5% · Full screen");
     assert.equal(R.summary({ app: "a", monitor: "edid:1", maximized: true }, 3, id => "Dell"), "3 · On Dell · Maximised");
     assert.equal(R.summary({ app: "a" }, 4), "4 · Does nothing yet");
+    assert.equal(R.summary({ title: "^PiP$", opacity: [1, 0.85], onTop: true }, 6), "6 · Opacity 100% / 85% · On top");
+    assert.equal(R.percent(0.849), "85%");
     assert.match(R.summary({}, 5), /^5 · Not saved/);
     assert.equal(R.tiling({}), "");
     assert.equal(R.position({ position: "center" }), "centre");

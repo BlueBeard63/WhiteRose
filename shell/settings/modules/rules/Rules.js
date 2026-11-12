@@ -103,6 +103,11 @@ function opens(r) {
     return r?.fullscreen ? "fullscreen" : r?.maximized ? "maximized" : "";
 }
 
+// 0.85 → "85%".
+function percent(f) {
+    return Math.round(Number(f) * 100) + "%";
+}
+
 // One line saying what a rule does, after its number (1-based `n`).
 // `monitorName`: a monitor id to the name shown.
 function summary(r, n, monitorName) {
@@ -118,6 +123,8 @@ function summary(r, n, monitorName) {
     if (p === "at") does.push("At " + r.position[0] + ", " + r.position[1]);
     const o = opens(r);
     if (o) does.push(o === "fullscreen" ? "Full screen" : "Maximised");
+    if (isPair(r.opacity)) does.push("Opacity " + percent(r.opacity[0]) + " / " + percent(r.opacity[1]));
+    if (r.onTop) does.push("On top");
     if (does.length === 0) does.push("Does nothing yet");
     return [String(n)].concat(r.app && r.title ? ["Title " + r.title] : [], does).join(" · ");
 }

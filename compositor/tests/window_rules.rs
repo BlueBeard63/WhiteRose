@@ -192,3 +192,58 @@ fn a_fullscreen_window_stays_when_a_rule_opens_one_elsewhere() {
         });
     });
 }
+
+#[test]
+fn a_rule_sets_a_windows_opacity_focused_and_not() {
+    let mut h = Headless::new(true);
+    rules(&mut h.state, json!([{"app": "term", "opacity": [0.9, 0.6]}]));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open_with(&mut c, |t| t.set_app_id("term".into()));
+        c.attach_buffer(&a, 400, 300);
+        ask.run(|s| {
+            let term = by_app(s, "term");
+            assert_eq!(s.window_alpha(&term), 0.9, "focused");
+        });
+        let (b, _tb) = open_with(&mut c, |t| t.set_app_id("other".into()));
+        c.attach_buffer(&b, 400, 300);
+        ask.run(|s| {
+            assert_eq!(s.window_alpha(&by_app(s, "term")), 0.6, "another window has the keyboard");
+            assert_eq!(s.window_alpha(&by_app(s, "other")), 1.0, "no rule: solid");
+            let term = by_app(s, "term");
+            s.focus_window(Some(term.clone()));
+            assert_eq!(s.window_alpha(&term), 0.9);
+        });
+    });
+}
+
+#[test]
+fn a_rule_keeps_a_window_above_the_others() {
+    let mut h = Headless::new(true);
+    rules(&mut h.state, json!([{"title": "^Picture-in-Picture$", "onTop": true}]));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open_with(&mut c, |t| t.set_app_id("browser".into()));
+        c.attach_buffer(&a, 400, 300);
+        let (p, _tp) = open_with(&mut c, |t| {
+            t.set_app_id("browser".into());
+            t.set_title("Picture-in-Picture".into());
+        });
+        c.attach_buffer(&p, 300, 170);
+        let (b, _tb) = open_with(&mut c, |t| t.set_app_id("editor".into()));
+        c.attach_buffer(&b, 400, 300);
+        ask.run(|s| {
+            // Bottom to top.
+            let order = |s: &WhiteRose| {
+                s.space.elements().map(|w| whiterose_wm::ipc::toplevel_ids(w).1.unwrap_or_default()).collect::<Vec<_>>()
+            };
+            assert_eq!(order(s).last().map(String::as_str), Some("Picture-in-Picture"), "above a newer window");
+            let browser = all(s).remove(0);
+            s.focus_window(Some(browser));
+            assert_eq!(order(s).last().map(String::as_str), Some("Picture-in-Picture"), "above a focused one");
+            assert_eq!(focused_app(s).as_deref(), Some("browser"), "but it doesn't take the keyboard");
+        });
+    });
+}

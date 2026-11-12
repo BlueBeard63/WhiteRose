@@ -254,4 +254,67 @@ Card {
             onPicked: v => card.patched({ maximized: v === "maximized" || null, fullscreen: v === "fullscreen" || null })
         }
     }
+
+    // ---- Open: how it looks
+    SettingRow {
+        id: opacityRow
+        visible: card.open
+        readonly property bool on: R.isPair(card.rule.opacity)
+        title: "Opacity"
+        subtitle: "How see-through it is · 100% is solid"
+        Toggle {
+            checked: opacityRow.on
+            onToggled: on => card.patched({ opacity: on ? [1, 0.85] : null })
+        }
+    }
+    Repeater {
+        model: [{ title: "When focused", i: 0 }, { title: "When not focused", i: 1 }]
+        delegate: SettingRow {
+            id: levelRow
+            required property var modelData
+            visible: card.open && opacityRow.on
+            readonly property real saved: opacityRow.on ? Number(card.rule.opacity[modelData.i]) : 1
+            // While it's dragged (until saved): what it shows.
+            property real dragged: -1
+            readonly property real level: dragged >= 0 ? dragged : saved
+            title: modelData.title
+            Slider {
+                implicitWidth: 180
+                // 10%-100%.
+                value: levelRow.level - 0.1
+                maximum: 0.9
+                onMoved: v => {
+                    levelRow.dragged = Math.round((v + 0.1) * 20) / 20;
+                    levelSave.restart();
+                }
+            }
+            Text {
+                width: 48
+                horizontalAlignment: Text.AlignRight
+                anchors.verticalCenter: parent.verticalCenter
+                text: R.percent(levelRow.level)
+                color: Theme.muted
+                font { family: Theme.mono; pointSize: Theme.pt(11.5) }
+            }
+            Timer {
+                id: levelSave
+                interval: 250
+                onTriggered: {
+                    const both = [Number(card.rule.opacity[0]), Number(card.rule.opacity[1])];
+                    both[levelRow.modelData.i] = levelRow.dragged;
+                    levelRow.dragged = -1;
+                    card.patched({ opacity: both });
+                }
+            }
+        }
+    }
+    SettingRow {
+        visible: card.open
+        title: "Always on top"
+        subtitle: "Above the other windows on its workspace"
+        Toggle {
+            checked: card.rule.onTop === true
+            onToggled: on => card.patched({ onTop: on || null })
+        }
+    }
 }

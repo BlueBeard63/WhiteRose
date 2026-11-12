@@ -4,7 +4,9 @@
 //! sets them before its first commit), so rules run on its first commit
 //! (`window_committed`), before it's tiled and before it has drawn: the app
 //! draws its first frame where and how big the rules say.
-//! They run once; editing the rules doesn't move open windows.
+//! They run once; editing the rules doesn't move open windows. What they
+//! say about its look (opacity, always on top) stays with the window for
+//! its life.
 
 use std::cell::RefCell;
 
@@ -17,6 +19,14 @@ use crate::{
     rules::{Actions, Rules},
     state::WhiteRose,
 };
+
+/// A window's look from its rules, kept in its user data for its life.
+#[derive(Debug, Clone, Copy)]
+struct Look {
+    /// (focused, unfocused).
+    opacity: Option<(f32, f32)>,
+    on_top: bool,
+}
 
 /// A rule's position still to apply: it needs the window's size, which is
 /// known once it has drawn. Kept in the window's user data.
@@ -88,11 +98,35 @@ impl WhiteRose {
             let next = self.workspaces.focused().cloned();
             self.focus_window(next);
         }
+        // Its look, for its life. Above the others now if it's on top (it
+        // was raised when it was created, before the rules were known).
+        if a.opacity.is_some() || a.on_top == Some(true) {
+            w.user_data().insert_if_missing(|| Look { opacity: a.opacity, on_top: a.on_top == Some(true) });
+            self.restack();
+        }
+
         // Its first configure went out when it was created (focusing it);
         // this one carries what the rules changed, before it draws.
         if let Some(t) = w.toplevel() {
             t.send_pending_configure();
         }
+    }
+
+    /// How opaque to draw `w` (1: solid), by its rules and whether it has
+    /// the keyboard.
+    pub fn window_alpha(&self, w: &Window) -> f32 {
+        let Some((focused, unfocused)) = w.user_data().get::<Look>().and_then(|l| l.opacity) else { return 1.0 };
+        let has_focus = self.keyboard_focus().zip(w.toplevel()).is_some_and(|(f, t)| &f == t.wl_surface());
+        if has_focus {
+            focused
+        } else {
+            unfocused
+        }
+    }
+
+    /// Whether a rule keeps `w` above the other windows.
+    pub fn on_top(w: &Window) -> bool {
+        w.user_data().get::<Look>().is_some_and(|l| l.on_top)
     }
 
     fn rules_for(&self, w: &Window) -> Actions {

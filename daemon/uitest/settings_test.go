@@ -266,8 +266,8 @@ func TestSettingsEditZonesOnScreen(t *testing.T) {
 }
 
 // Settings › Window rules: a rule added from an open window matches its app
-// id exactly and opens for editing; what's picked there is saved, and
-// deleting the rule saves none.
+// id exactly and opens for editing; what's picked there (workspace, float,
+// opacity, on top) is saved, and deleting the rule saves none.
 func TestSettingsAddARuleFromAnOpenWindow(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	dir := filepath.Join(s.Home, "ruled")
@@ -306,6 +306,19 @@ func TestSettingsAddARuleFromAnOpenWindow(t *testing.T) {
 		t.Fatalf("the workspace and float weren't saved: %s", s.Setting("windows.rules"))
 	}
 
-	settings.Click(uitest.Named("Delete rule 1").Role("push button"))
+	settings.Click(uitest.Named("Opacity").Role("check box"))
+	settings.ScrollTo(uitest.Named("Always on top").Role("check box"))
+	settings.Click(uitest.Named("Always on top").Role("check box"))
+	settings.WaitFor(uitest.Named("When not focused").Role("slider"))
+	if !uitest.WaitUntil(func() bool {
+		v := s.Setting("windows.rules")
+		return strings.Contains(v, `"opacity":[1,0.85]`) && strings.Contains(v, `"onTop":true`)
+	}) {
+		t.Fatalf("the opacity and on top weren't saved: %s", s.Setting("windows.rules"))
+	}
+
+	// (Scrolled back up just far enough, its header can sit under the
+	// window's top strip: press it by its action, not a click.)
+	settings.Activate(uitest.Named("Delete rule 1").Role("push button"))
 	s.WaitSetting("windows.rules", []any{})
 }
