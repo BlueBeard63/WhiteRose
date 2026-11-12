@@ -234,8 +234,12 @@ impl WhiteRose {
             self.start_tile_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
             return;
         }
-        // A snap ends where a window is resized by hand.
-        self.end_snap(&window);
+        // A snapped window moves the edges it shares with other snapped
+        // windows (or its own, if it shares none).
+        if self.snap_of(&window).is_some() && !Self::maximized_or_fullscreen(&window) {
+            self.start_snap_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
+            return;
+        }
         let Some(pointer) = self.seat.get_pointer() else { return };
         let Some(loc) = self.space.element_location(&window) else { return };
         let Some(surface) = window.toplevel().cloned() else { return };

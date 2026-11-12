@@ -8,18 +8,24 @@
 //! or snapping it back gives that size back. Maximize, fullscreen and
 //! minimise keep the snap; moving it to another workspace, or the workspace
 //! starting to tile, ends it.
+//!
+//! Resizing a snapped window (its border, SUPER+right-drag, or the gap
+//! between snapped windows) moves the line it shares with the snapped
+//! windows beside it, so they resize together.
 
 use smithay::{
     desktop::Window,
+    input::pointer::{Focus, GrabStartData},
     output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState,
-    utils::{Logical, Point, Rectangle},
+    utils::{Logical, Point, Rectangle, Serial},
 };
 
 use crate::{
+    grabs::SnapResizeGrab,
     layout::{
-        snap::{self, KeyState, KeyStep, Open, Target, Zone},
-        Dir, Layout, Rect,
+        snap::{self, EdgeDrag, KeyState, KeyStep, Open, Target, Zone},
+        Axis, Dir, Layout, Rect,
     },
     state::WhiteRose,
     tiling::TILED,
@@ -322,5 +328,101 @@ impl WhiteRose {
             KeyStep::Nothing => {}
         }
         true
+    }
+}
+
+/// Resizing snapped windows together (grabs/tile_grab.rs).
+impl WhiteRose {
+    /// The snapped windows showing on `o`, with their zones.
+    fn snapped_on(&self, o: &Output) -> Vec<(Window, Zone)> {
+        self.snap
+            .snapped
+            .iter()
+            .filter(|s| s.output == *o && self.space.element_location(&s.window).is_some())
+            .map(|s| (s.window.clone(), s.zone))
+            .collect()
+    }
+
+    /// Starts moving the edges `edges` of snapped window `w`, and the
+    /// snapped windows' edges on the same lines. Edges on the area's border
+    /// don't move; if none can, nothing happens.
+    pub fn start_snap_resize(
+        &mut self,
+        w: &Window,
+        edges: Vec<Dir>,
+        start_data: GrabStartData<WhiteRose>,
+        serial: Serial,
+    ) {
+        let Some(o) = self.snap_of(w).map(|s| s.output.clone()) else { return };
+        let snapped = self.snapped_on(&o);
+        let drags: Vec<(EdgeDrag<Window>, f64)> = edges
+            .into_iter()
+            .filter_map(|d| EdgeDrag::new(&snapped, w, d))
+            .map(|d| {
+                let line = d.line;
+                (d, line)
+            })
+            .collect();
+        if drags.is_empty() {
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        let grab = SnapResizeGrab { start_data, output: o, drags };
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
+    /// Moves each dragged line by the pointer's `delta` from where it
+    /// started, and refits the snapped windows on it.
+    pub fn resize_snapped(&mut self, o: &Output, drags: &mut [(EdgeDrag<Window>, f64)], delta: Point<f64, Logical>) {
+        let c = self.usable_area_on(o);
+        let c = to_rect(c).shrink(self.tiling.settings.gaps.outer.max(0));
+        let mut zones = self.snapped_on(o);
+        for (d, start) in drags.iter_mut() {
+            let moved = match d.axis {
+                Axis::Horizontal => delta.x / c.w.max(1) as f64,
+                Axis::Vertical => delta.y / c.h.max(1) as f64,
+            };
+            d.drag(&mut zones, *start + moved);
+        }
+        for (w, zone) in zones {
+            if let Some(s) = self.snap.snapped.iter_mut().find(|s| s.window == w) {
+                if !s.zone.same_as(&zone) {
+                    s.zone = zone;
+                    self.place_snapped(&w);
+                }
+            }
+        }
+        self.schedule_redraw();
+    }
+
+    /// The snapped window edges at `pos`, when it's in the gap beside a
+    /// snapped window (on no window): that window, and which of its edges.
+    pub fn snap_gap_at(&self, pos: Point<f64, Logical>) -> Option<(Window, Vec<Dir>)> {
+        let o = self.output_at(pos)?;
+        let p = pos.to_i32_round::<i32>();
+        // Within half the gap of a window (and a few pixels more, so thin
+        // gaps can be caught too).
+        let reach = self.tiling.settings.gaps.inner / 2 + 4;
+        let snapped = self.snapped_on(&o);
+        self.snap.snapped.iter().filter(|s| s.output == o && !Self::maximized_or_fullscreen(&s.window)).find_map(|s| {
+            self.space.element_location(&s.window)?;
+            let r = to_rect(self.zone_rect(&s.zone, &o));
+            let grown = Rect::new(r.x - reach, r.y - reach, r.w + 2 * reach, r.h + 2 * reach);
+            if !to_rectangle(grown).contains(p) || to_rectangle(r).contains(p) {
+                return None;
+            }
+            let edges: Vec<Dir> = [
+                (p.x < r.x, Dir::Left),
+                (p.x >= r.right(), Dir::Right),
+                (p.y < r.y, Dir::Up),
+                (p.y >= r.bottom(), Dir::Down),
+            ]
+            .into_iter()
+            // Only edges that can move: not the area's border.
+            .filter(|(beyond, d)| *beyond && EdgeDrag::new(&snapped, &s.window, *d).is_some())
+            .map(|(_, d)| d)
+            .collect();
+            (!edges.is_empty()).then(|| (s.window.clone(), edges))
+        })
     }
 }

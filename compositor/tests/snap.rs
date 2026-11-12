@@ -249,3 +249,133 @@ fn arrows_carry_on_to_the_next_monitor_and_its_edge_doesnt_snap() {
         assert_eq!(where_(s).map(|r| (r.2, r.3)), Some((400, 300)), "the other side: its own size");
     });
 }
+
+/// A bar and two 400x300 windows snapped to the halves (by keys), then
+/// drawn at their halves' size so the pointer finds them.
+fn two_halves(h: &mut Headless, test: impl FnOnce(&mut WhiteRose) + Send + 'static) {
+    h.drive(move |conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open(&mut c);
+        c.attach_buffer(&a, 400, 300);
+        ask.run(|s| arrow(s, KEY_LEFT));
+        let (b, _tb) = open(&mut c);
+        c.attach_buffer(&b, 400, 300);
+        ask.run(|s| arrow(s, KEY_RIGHT));
+        c.attach_buffer(&a, LEFT.2, LEFT.3);
+        c.attach_buffer(&b, RIGHT.2, RIGHT.3);
+        ask.run(move |s| {
+            assert_eq!(rects(s), vec![Some(LEFT), Some(RIGHT)]);
+            test(s);
+        });
+    });
+}
+
+fn all_snapped(s: &WhiteRose) -> bool {
+    all(s).iter().all(|w| s.snap_of(w).is_some())
+}
+
+#[test]
+fn dragging_the_gap_between_halves_resizes_both() {
+    let mut h = Headless::new(true);
+    two_halves(&mut h, |s| {
+        drag(s, BTN_LEFT, (720.0, 400.0), (820.0, 400.0));
+        assert_eq!(rects(s), vec![Some((8, 34, 808, 766)), Some((824, 34, 608, 766))]);
+        assert!(all_snapped(s), "they stay snapped");
+        // Refits keep the new split.
+        s.retile();
+        assert_eq!(rects(s), vec![Some((8, 34, 808, 766)), Some((824, 34, 608, 766))]);
+    });
+}
+
+#[test]
+fn super_right_drag_moves_the_shared_edge_too() {
+    let mut h = Headless::new(true);
+    two_halves(&mut h, |s| {
+        // Nearest the lower-right corner: the bottom is the area's border
+        // and stays; the right edge is shared.
+        super_drag(s, BTN_RIGHT, (600.0, 600.0), (700.0, 650.0));
+        assert_eq!(rects(s), vec![Some((8, 34, 808, 766)), Some((824, 34, 608, 766))]);
+    });
+}
+
+#[test]
+fn no_window_gets_smaller_than_a_tenth() {
+    let mut h = Headless::new(true);
+    two_halves(&mut h, |s| {
+        drag(s, BTN_LEFT, (720.0, 400.0), (1439.0, 400.0));
+        assert_eq!(rects(s), vec![Some((8, 34, 1278, 766)), Some((1294, 34, 138, 766))]);
+    });
+}
+
+#[test]
+fn the_middle_of_four_quarters_moves_all_four() {
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let mut keep = Vec::new();
+        for keys in [[KEY_LEFT, KEY_UP], [KEY_RIGHT, KEY_UP], [KEY_LEFT, KEY_DOWN], [KEY_RIGHT, KEY_DOWN]] {
+            let (w, t) = open(&mut c);
+            c.attach_buffer(&w, 400, 300);
+            ask.run(move |s| {
+                arrow(s, keys[0]);
+                arrow(s, keys[1]);
+            });
+            keep.push((w, t));
+        }
+        ask.run(|s| {
+            assert_eq!(rects(s)[0], Some(TOP_LEFT));
+            assert_eq!(rects(s)[3], Some((724, 421, 708, 379)));
+            // The upright line, between the top two.
+            drag(s, BTN_LEFT, (720.0, 200.0), (620.0, 200.0));
+            assert_eq!(
+                rects(s),
+                vec![
+                    Some((8, 34, 608, 379)),
+                    Some((624, 34, 808, 379)),
+                    Some((8, 421, 608, 379)),
+                    Some((624, 421, 808, 379)),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+fn a_lone_half_resizes_and_stays_snapped() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        arrow(s, KEY_LEFT);
+        drag(s, BTN_LEFT, (720.0, 400.0), (920.0, 400.0));
+        assert_eq!(where_(s), Some((8, 34, 908, 766)));
+        assert!(all_snapped(s));
+        // The outer gap at the screen's edge moves nothing.
+        drag(s, BTN_LEFT, (4.0, 400.0), (300.0, 400.0));
+        assert_eq!(where_(s), Some((8, 34, 908, 766)));
+    });
+}
+
+#[test]
+fn windows_on_other_workspaces_dont_follow() {
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open(&mut c);
+        c.attach_buffer(&a, 400, 300);
+        ask.run(|s| {
+            arrow(s, KEY_LEFT);
+            s.switch_workspace(1);
+        });
+        let (b, _tb) = open(&mut c);
+        c.attach_buffer(&b, 400, 300);
+        ask.run(|s| {
+            arrow(s, KEY_RIGHT);
+            drag(s, BTN_LEFT, (720.0, 400.0), (620.0, 400.0));
+            assert_eq!(rects(s)[1], Some((624, 34, 808, 766)));
+            s.switch_workspace(0);
+            assert_eq!(rects(s)[0], Some(LEFT), "the hidden half kept its size");
+        });
+    });
+}
