@@ -4,7 +4,13 @@ GO       ?= go
 CARGO    ?= cargo
 DAEMON   := daemon
 WM       := compositor
-FUZZTIME ?= 20s
+# Fuzzing runs a fixed number of inputs, not a time: a time limit can end
+# while Go is still handling a new input and report "context deadline
+# exceeded" as a failure. Each count is about 20 s on CI's 4 cores (much
+# less on a bigger machine). FUZZTIME=30s (or 5000000x) sets all three.
+FUZZ_EDID   ?= 2000000x
+FUZZ_UEVENT ?= 2000000x
+FUZZ_ICAL   ?= 1000000x
 
 .PHONY: release-key release release-notes changelog ui-test shots dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
 
@@ -23,9 +29,9 @@ race:
 	cd $(DAEMON) && $(GO) test -race -count=1 ./...
 
 fuzz:
-	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/edid
-	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/uevent
-	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/ical
+	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(or $(FUZZTIME),$(FUZZ_EDID)) ./internal/edid
+	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(or $(FUZZTIME),$(FUZZ_UEVENT)) ./internal/uevent
+	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(or $(FUZZTIME),$(FUZZ_ICAL)) ./internal/ical
 
 cover:
 	cd $(DAEMON) && $(GO) test -coverprofile=coverage.out ./... && $(GO) tool cover -html=coverage.out -o coverage.html
