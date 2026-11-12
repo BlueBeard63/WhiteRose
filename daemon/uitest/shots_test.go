@@ -113,9 +113,12 @@ var unsafeName = regexp.MustCompile(`[^A-Za-z0-9]+`)
 
 // Every page of Settings at its current size, and a contact sheet of them.
 func shootPages(t *testing.T, s *uitest.Session, settings *uitest.Window, out, size string) {
+	// (Narrow, the rail and the hidden sidebar both list the pages: once each.)
 	var tabs []string
+	seen := map[string]bool{}
 	for _, n := range settings.Nodes() {
-		if n.Role == "page tab" {
+		if n.Role == "page tab" && !seen[n.Name] {
+			seen[n.Name] = true
 			tabs = append(tabs, n.Name)
 		}
 	}

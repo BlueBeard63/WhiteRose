@@ -52,13 +52,15 @@ Column {
     }
 
     // ---- you ------------------------------------------------------------------------
+    // Narrow (a tiled window): the buttons go under the name.
+    readonly property bool narrow: width < 560
     Card {
         visible: page.me !== null
         Item {
-            width: parent.width; height: 104
+            width: parent.width; height: page.narrow ? 104 + myButtons.height + 4 : 104
             Avatar {
                 id: myAvatar
-                x: 20; anchors.verticalCenter: parent.verticalCenter
+                x: 20; y: 20
                 size: 64
                 user: page.me
                 // Hover: change the picture.
@@ -72,7 +74,7 @@ Column {
                 MouseArea { id: avatarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pictureDialog.open() }
             }
             Column {
-                anchors { left: myAvatar.right; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                anchors { left: myAvatar.right; leftMargin: 18; verticalCenter: myAvatar.verticalCenter }
                 spacing: 4
                 // The name: click to edit, Enter saves.
                 Item {
@@ -104,7 +106,9 @@ Column {
                 }
             }
             Row {
-                anchors { right: parent.right; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                id: myButtons
+                x: page.narrow ? 20 : parent.width - 18 - width
+                y: page.narrow ? 104 - 8 : Math.round((104 - height) / 2)
                 spacing: 8
                 Button { text: "Fingerprints"; icon: "fingerprint"; onClicked: SettingsState.open("users/fingerprints") }
                 Button { text: "Change password"; icon: "lock"; onClicked: passwordDialog.openFor(page.me) }

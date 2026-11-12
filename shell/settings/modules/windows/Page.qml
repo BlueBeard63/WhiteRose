@@ -42,7 +42,9 @@ Column {
 
     // ---- the default layout ---------------------------------------------------------
     Section { text: "Layout" }
-    Row {
+    // Three cards across where there's room, else two, else one.
+    readonly property int cardColumns: width >= 3 * 150 + 24 ? 3 : width >= 2 * 150 + 12 ? 2 : 1
+    Flow {
         width: parent.width
         spacing: 12
         Repeater {
@@ -63,7 +65,7 @@ Column {
                 Accessible.checkable: true
                 Accessible.checked: on
                 Accessible.onPressAction: Daemon.set("windows.layout", modelData.id)
-                width: (page.width - 24) / 3
+                width: (page.width - 12 * (page.cardColumns - 1)) / page.cardColumns
                 height: 176
                 radius: 16
                 color: Theme.surface1
@@ -145,14 +147,15 @@ Column {
                 id: grid
                 x: 14; y: 6
                 width: parent.width - 28
-                columns: 3
+                // Three across, fewer where narrow.
+                columns: width >= 3 * 170 + 56 ? 3 : width >= 2 * 170 + 28 ? 2 : 1
                 columnSpacing: 28
                 Repeater {
                     model: 9
                     delegate: Item {
                         required property int index
                         readonly property string n: String(index + 1)
-                        width: (grid.width - 2 * grid.columnSpacing) / 3
+                        width: (grid.width - (grid.columns - 1) * grid.columnSpacing) / grid.columns
                         height: 44
                         Text {
                             anchors.verticalCenter: parent.verticalCenter

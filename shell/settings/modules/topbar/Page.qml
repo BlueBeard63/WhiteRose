@@ -26,6 +26,7 @@ Column {
             anchors { left: parent.left; right: parent.right; margins: 9; verticalCenter: parent.verticalCenter }
             height: 26; radius: 8
             color: Theme.bg
+            clip: true
             Row {
                 anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
                 spacing: 8
@@ -53,7 +54,8 @@ Column {
                     }
                 }
                 Row {
-                    visible: page.on("bar.media")
+                    // (Left out where the preview is too narrow for it.)
+                    visible: page.on("bar.media") && mock.width >= 440
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
                     Row {

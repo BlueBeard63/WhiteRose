@@ -163,3 +163,35 @@ func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 		t.Fatalf("not in the lower left zone of a %dx%d screen: %v", screen[2], screen[3], g)
 	}
 }
+
+// Narrow (a half-screen tile): the sidebar is an icon rail; Menu slides the
+// full sidebar over the page, and picking a page there opens it and slides
+// the sidebar away. Every control on screen still has a name.
+func TestSettingsNarrowRailOpensTheSidebarOverThePage(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"windows.layout": "master", "windows.master.ratio": 0.5}})
+	settings := s.Settings("windows")
+	settings.WaitFor(uitest.Named("Windows").Role("page tab"))
+	dir := filepath.Join(s.Home, "beside")
+	os.MkdirAll(dir, 0o755)
+	s.Open(filesBinary(s)+" "+dir, "beside — Files")
+	screen := s.Layer("whiterose-wallpaper").Geometry()
+	if !uitest.WaitUntil(func() bool { return settings.Geometry()[2] < screen[2]*2/3 }) {
+		t.Fatalf("Settings isn't a half tile: %v on %v", settings.Geometry(), screen)
+	}
+	searchBox := uitest.Named("Search settings").Role("text")
+	menu := uitest.Named("Menu").Role("push button")
+	settings.WaitFor(menu)
+	if n, ok := settings.Find(searchBox); ok && n.Showing() {
+		t.Fatal("the sidebar's search box shows before Menu opened it")
+	}
+	settings.Click(menu)
+	settings.WaitFor(searchBox)
+	settings.Activate(uitest.Named("Snapping").Role("page tab"))
+	settings.WaitFor(uitest.Named("Stacked").Role("radio button"))
+	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(searchBox); return !ok || !n.Showing() }) {
+		t.Error("picking a page didn't slide the sidebar away")
+	}
+	for _, n := range uitest.Unnamed(settings.LaidOut()) {
+		t.Errorf("narrow: a %s with no name at %d,%d (%dx%d)", n.Role, n.X, n.Y, n.W, n.H)
+	}
+}

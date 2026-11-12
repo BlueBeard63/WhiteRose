@@ -1,5 +1,7 @@
 // The Settings window (Figma: "Settings - …"): a sidebar of pages, grouped
-// System / Desktop / Personal, a search box, and the open page. Every page
+// System / Desktop / Personal, a search box, and the open page. Narrower
+// than 900px (a tile, Figma: "Settings - narrow · …") the sidebar becomes
+// an icon rail, and its menu button slides the full sidebar over the page. Every page
 // is a module (a folder with module.json and Page.qml, built in under
 // settings/modules or installed in ~/.local/share/whiterose/modules); only
 // the open page is loaded.
@@ -33,6 +35,25 @@ FloatingWindow {
         { id: "personal", label: "Personal" },
     ]
 
+    // ---- narrow: the rail, and the sidebar over the page --------------------------
+    readonly property bool narrow: width < 900
+    property bool drawerOpen: false
+    onNarrowChanged: drawerOpen = false
+    function openDrawer(searching) {
+        win.drawerOpen = true;
+        if (searching) search.forceActiveFocus();
+    }
+    Connections {
+        target: SettingsState
+        // Picking a page closes the sidebar over it.
+        function onPageChanged() { win.drawerOpen = false }
+        function onSubChanged() { win.drawerOpen = false }
+    }
+    // The page's padding: less where it's narrow.
+    readonly property int pad: scroller.width < 560 ? 16 : 28
+    // Where the page starts: right of the sidebar, or of the rail.
+    readonly property Item navEdge: narrow ? rail : sidebar
+
     // ---- layout ----------------------------------------------------------------
     // Rounded and frameless (Figma): the app draws its own window.
     ClippingRectangle {
@@ -44,6 +65,23 @@ FloatingWindow {
         width: 250
         height: parent.height
         color: Theme.sidebar
+        // Narrow: over the page while open, out of sight (and out of the
+        // accessibility tree) while not.
+        x: !win.narrow || win.drawerOpen ? 0 : -width
+        visible: !win.narrow || win.drawerOpen || slide.running
+        z: win.narrow ? 20 : 0
+        Behavior on x { NumberAnimation { id: slide; duration: Theme.fastAnim; easing.type: Easing.OutCubic } }
+        // Its shadow over the page.
+        Rectangle {
+            visible: win.narrow
+            anchors { left: parent.right; top: parent.top; bottom: parent.bottom }
+            width: 18
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.35) }
+                GradientStop { position: 1; color: "transparent" }
+            }
+        }
 
         // The window's title, in the strip that moves it.
         Text {
@@ -169,6 +207,118 @@ FloatingWindow {
         }
     }
 
+    // Narrow: the page dims behind the sidebar; a click there closes it.
+    Rectangle {
+        anchors.fill: parent
+        z: 19
+        visible: win.narrow && (win.drawerOpen || slide.running)
+        color: Qt.rgba(0, 0, 0, win.drawerOpen ? 0.45 : 0)
+        Behavior on color { ColorAnimation { duration: Theme.fastAnim } }
+        MouseArea { anchors.fill: parent; onClicked: win.drawerOpen = false }
+    }
+
+    // Narrow: the rail (Figma: Settings/Rail): the sidebar's pages as icons,
+    // named for screen readers and tests; Menu slides the sidebar over the
+    // page, Search does so with the search box focused.
+    Rectangle {
+        id: rail
+        visible: win.narrow
+        width: visible ? 64 : 0
+        height: parent.height
+        color: Theme.sidebar
+        MouseArea {
+            width: parent.width; height: 40
+            onPressed: win.startSystemMove()
+            onDoubleClicked: win.maximized = !win.maximized
+        }
+        Column {
+            id: railTop
+            x: 12; y: 40
+            spacing: 2
+            RailButton { icon: "panelLeft"; label: "Menu"; onActivated: win.openDrawer(false) }
+            RailButton { icon: "search"; label: "Search settings"; onActivated: win.openDrawer(true) }
+        }
+        Flickable {
+            anchors { top: railTop.bottom; topMargin: 6; bottom: railFooter.top; bottomMargin: 6; left: parent.left; right: parent.right }
+            contentHeight: railCol.height
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            Column {
+                id: railCol
+                x: 12
+                spacing: 2
+                Repeater {
+                    model: win.groups
+                    delegate: Column {
+                        id: railGroup
+                        required property var modelData
+                        required property int index
+                        readonly property var items: SettingsState.enabled.filter(m => m.category === modelData.id)
+                        visible: items.length > 0
+                        spacing: 2
+                        // Between groups: a short line, where the labels were.
+                        Item {
+                            visible: railGroup.index > 0
+                            width: 40; height: 9
+                            Rectangle { x: 8; y: 4; width: 24; height: 1; color: Theme.surface1 }
+                        }
+                        Repeater {
+                            model: railGroup.items
+                            delegate: RailButton {
+                                required property var modelData
+                                icon: modelData.icon
+                                label: modelData.name
+                                tab: true
+                                on: SettingsState.page === modelData.id
+                                onActivated: SettingsState.open(modelData.id)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Column {
+            id: railFooter
+            x: 12
+            anchors { bottom: parent.bottom; bottomMargin: 12 }
+            spacing: 2
+            Item {
+                width: 40; height: 9
+                Rectangle { x: 8; y: 4; width: 24; height: 1; color: Theme.surface1 }
+            }
+            Repeater {
+                model: SettingsState.enabled.filter(m => m.category === "footer")
+                delegate: RailButton {
+                    required property var modelData
+                    icon: modelData.icon
+                    label: modelData.name
+                    tab: true
+                    on: SettingsState.page === modelData.id
+                    onActivated: SettingsState.open(modelData.id)
+                }
+            }
+        }
+    }
+
+    component RailButton: Rectangle {
+        id: rb
+        property string icon
+        property string label
+        // A page (a tab), or one of the rail's own buttons.
+        property bool tab: false
+        property bool on: false
+        signal activated()
+        Accessible.role: tab ? Accessible.PageTab : Accessible.Button
+        Accessible.name: label
+        Accessible.selected: on
+        Accessible.onPressAction: rb.activated()
+        width: 40; height: tab ? 30 : 34
+        radius: 9
+        color: on ? Theme.surface2 : rbMouse.containsMouse ? Theme.surface1 : "transparent"
+        Icon { anchors.centerIn: parent; name: rb.icon; size: 16; color: rb.on ? Theme.rose : Theme.muted }
+        MouseArea { id: rbMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: rb.activated() }
+    }
+
     component NavItem: Rectangle {
         id: nav
         property var module
@@ -229,22 +379,22 @@ FloatingWindow {
     // A question asked in place (Dialog with strip): across the top of the page.
     Column {
         id: stripHost
-        anchors { left: sidebar.right; leftMargin: 28; right: parent.right; rightMargin: 28; top: parent.top; topMargin: 40 }
+        anchors { left: win.navEdge.right; leftMargin: win.pad; right: parent.right; rightMargin: win.pad; top: parent.top; topMargin: 40 }
         Component.onCompleted: SettingsState.stripHost = stripHost
     }
     Flickable {
         id: scroller
         // Starts below the window buttons, so the page scrolls away under
         // that strip instead of under the buttons.
-        anchors { left: sidebar.right; right: parent.right; top: SettingsState.asking?.strip && SettingsState.asking?.isOpen ? stripHost.bottom : parent.top; topMargin: SettingsState.asking?.strip && SettingsState.asking?.isOpen ? 4 : 36; bottom: footerBar.visible ? footerBar.top : parent.bottom }
+        anchors { left: win.navEdge.right; right: parent.right; top: SettingsState.asking?.strip && SettingsState.asking?.isOpen ? stripHost.bottom : parent.top; topMargin: SettingsState.asking?.strip && SettingsState.asking?.isOpen ? 4 : 36; bottom: footerBar.visible ? footerBar.top : parent.bottom }
         contentHeight: pageLoader.height + 50
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         Loader {
             id: pageLoader
             // (The page area starts below the window buttons.)
-            x: 28; y: 14
-            width: scroller.width - 56
+            x: win.pad; y: 14
+            width: scroller.width - 2 * win.pad
             source: SettingsState.current ? "file://" + SettingsState.current.dir + "/" + (SettingsState.currentSub?.file ?? "Page.qml") : ""
             onSourceChanged: scroller.contentY = 0
             onStatusChanged: if (status === Loader.Error) console.warn("settings: page failed to load:", source)
@@ -253,11 +403,11 @@ FloatingWindow {
     Rectangle {
         id: footerBar
         visible: (pageLoader.item?.footer ?? null) !== null
-        anchors { left: sidebar.right; right: parent.right; bottom: parent.bottom }
+        anchors { left: win.navEdge.right; right: parent.right; bottom: parent.bottom }
         height: visible ? 54 : 0
         color: Theme.bg
         Loader {
-            anchors { fill: parent; leftMargin: 28; rightMargin: 28 }
+            anchors { fill: parent; leftMargin: win.pad; rightMargin: win.pad }
             sourceComponent: pageLoader.item?.footer ?? null
         }
     }
@@ -266,7 +416,7 @@ FloatingWindow {
     // page over this one, with ‹ back.
     Item {
         id: sheetHost
-        anchors { left: sidebar.right; right: parent.right; top: parent.top; topMargin: 36; bottom: parent.bottom }
+        anchors { left: win.navEdge.right; right: parent.right; top: parent.top; topMargin: 36; bottom: parent.bottom }
         z: 5
         Component.onCompleted: SettingsState.sheetHost = sheetHost
     }
@@ -274,7 +424,7 @@ FloatingWindow {
     // Window buttons, top right: minimise, maximise (restore), close.
     // The strip beside them moves the window; double-click maximises.
     MouseArea {
-        anchors { left: sidebar.right; right: windowButtons.left; top: parent.top }
+        anchors { left: win.navEdge.right; right: windowButtons.left; top: parent.top }
         height: 24
         onPressed: win.startSystemMove()
         onDoubleClicked: win.maximized = !win.maximized
@@ -308,8 +458,9 @@ FloatingWindow {
 
     }
 
-    // "/" anywhere jumps to search.
-    Shortcut { sequence: "/"; onActivated: search.forceActiveFocus() }
+    // "/" anywhere jumps to search (narrow: in the sidebar, slid over).
+    Shortcut { sequence: "/"; onActivated: win.narrow ? win.openDrawer(true) : search.forceActiveFocus() }
+    Shortcut { sequence: "Escape"; enabled: win.drawerOpen; onActivated: win.drawerOpen = false }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
     Shortcut { sequence: "Ctrl+W"; onActivated: Qt.quit() }
 

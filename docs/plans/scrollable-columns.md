@@ -273,3 +273,23 @@ Settings and zone-editor work added to this branch, before the docs commit:
   Components › "Bar Icons — 16px", Bar/*; the Top Bar component uses
   them). Do Not Disturb shows the moon: a solid bell can't show a slash
   through it in one colour. `Trigger` now centres its row on whole pixels.
+
+## Settings at narrow widths (2026-11-12)
+
+- Figma: `Settings/Rail` (Components) and the frames "Settings - narrow ·
+  half (Windows)", "· third (Snapping)" and "· menu open".
+- Below 900px the sidebar becomes a 64px icon rail (each page a named tab;
+  Menu and Search slide the full sidebar over the page, over a dim scrim;
+  picking a page, the scrim or Escape closes it; "/" opens it searching).
+  The page's side padding drops to 16px under 560px.
+- `SettingRow` and `PageHeader` stack by themselves where their controls
+  don't fit beside the title (controls under the title; header buttons under
+  the description, which wraps). Pages with their own grids reflow: Windows
+  (cards 3/2/1, workspaces 3/2/1 columns), Power (chart under the charge,
+  modes one per row), Modules (figures one per row, descriptions cut short
+  before the switch), Users (buttons under the name), Displays (ID under the
+  name), Keyboard (filters wrap under the search box), Top Bar (preview
+  leaves out the music), Apps, Bluetooth, Appearance (Wallpaper is a
+  SettingRow now).
+- `TestQuickSettingsOpensSettings` never failed in the shell: the harness's
+  ScrollTo read the bar layer's size once, before the panel had grown it.

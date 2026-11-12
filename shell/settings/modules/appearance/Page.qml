@@ -132,21 +132,9 @@ Column {
     // ---- wallpaper -------------------------------------------------------------------
     Component.onCompleted: Wallpaper.refresh()
     Card {
-        Item {
-            width: parent.width; height: 62
-            Column {
-                x: 14; anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
-                Text { text: "Wallpaper"; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(13); weight: Font.Medium } }
-                Text {
-                    text: Wallpaper.rotateMinutes > 0 ? W.rotationText(Wallpaper.rotateMinutes).replace(/^c/, "C") : "Pick one, or add a folder of images"
-                    color: Theme.muted
-                    font { family: Theme.font; pointSize: Theme.pt(11.5) }
-                }
-            }
-            Row {
-                anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-                spacing: 8
+        SettingRow {
+            title: "Wallpaper"
+            subtitle: Wallpaper.rotateMinutes > 0 ? W.rotationText(Wallpaper.rotateMinutes).replace(/^c/, "C") : "Pick one, or add a folder of images"
                 Choice {
                     value: Wallpaper.rotateMinutes
                     options: [
@@ -156,7 +144,6 @@ Column {
                     onPicked: v => Daemon.set("wallpaper.rotateMinutes", v)
                 }
                 Button { text: "Add folder"; icon: "plus"; onClicked: folderDialog.open() }
-            }
         }
         // The folders, removable.
         Flow {
