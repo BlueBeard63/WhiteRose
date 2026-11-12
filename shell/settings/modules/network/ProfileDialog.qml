@@ -79,6 +79,10 @@ Dialog {
                 required property var modelData
                 readonly property bool on: dlg.tab === modelData[0]
                 spacing: 6
+                Accessible.role: Accessible.PageTab
+                Accessible.name: modelData[1]
+                Accessible.selected: on
+                Accessible.onPressAction: dlg.tab = modelData[0]
                 Text {
                     text: modelData[1]
                     color: parent.on ? Theme.text : Theme.muted
