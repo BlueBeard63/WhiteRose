@@ -411,6 +411,9 @@ func (l *logBuffer) Write(p []byte) (int, error) {
 // Log is everything the session (compositor, shell, apps) has printed so far.
 func (s *Session) Log() string { return stripANSI(s.log.String()) }
 
+// Bus is the session's D-Bus address (its own, never the person's).
+func (s *Session) Bus() string { return s.busAddr }
+
 func (l *logBuffer) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()

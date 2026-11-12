@@ -45,6 +45,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdCheckConfig(args[1:], stdout, stderr)
 	case "serve":
 		return cmdServe(args[1:], stdout, stderr)
+	case "portal":
+		return cmdPortal(args[1:], stdout, stderr)
 	case "settings":
 		return cmdSettings(args[1:], stdout, stderr)
 	case "brightness":
@@ -82,6 +84,7 @@ commands:
   monitors       list connected monitors and their stable IDs
   check-config   validate a displays.toml file
   serve          run the daemon (settings database, system state, calendars, weather)
+  portal         the desktop portal's file chooser (Files as every app's Open / Save)
   settings       list | get KEY | set KEY JSON | reset KEY
   brightness     set <percent>: change the screen backlight (through logind)
   airplane       on|off: block or unblock every radio

@@ -119,15 +119,76 @@ pub fn matches(filter: &Filter, name: &str, mime: &str) -> bool {
     })
 }
 
-/// `*` and `?` globs.
+/// One piece of a glob.
+enum Tok {
+    Star,
+    Any,
+    Char(char),
+    /// `[abc]`, `[a-z]`; `[!…]` or `[^…]`: none of them.
+    Class(Vec<(char, char)>, bool),
+}
+
+fn tokens(p: &str) -> Vec<Tok> {
+    let c: Vec<char> = p.chars().collect();
+    let mut out = vec![];
+    let mut i = 0;
+    while i < c.len() {
+        match c[i] {
+            '*' => out.push(Tok::Star),
+            '?' => out.push(Tok::Any),
+            '[' => {
+                let mut j = i + 1;
+                let not = j < c.len() && (c[j] == '!' || c[j] == '^');
+                if not {
+                    j += 1;
+                }
+                let start = j;
+                // (A `]` first is one of the set.)
+                while j < c.len() && (c[j] != ']' || j == start) {
+                    j += 1;
+                }
+                if j >= c.len() {
+                    out.push(Tok::Char('['));
+                } else {
+                    let set = &c[start..j];
+                    let mut ranges = vec![];
+                    let mut k = 0;
+                    while k < set.len() {
+                        if k + 2 < set.len() && set[k + 1] == '-' {
+                            ranges.push((set[k], set[k + 2]));
+                            k += 3;
+                        } else {
+                            ranges.push((set[k], set[k]));
+                            k += 1;
+                        }
+                    }
+                    out.push(Tok::Class(ranges, not));
+                    i = j;
+                }
+            }
+            ch => out.push(Tok::Char(ch)),
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `*`, `?` and `[…]` globs, as GTK apps give them (`*.[pP][nN][gG]`).
 fn glob(p: &str, s: &str) -> bool {
-    let (p, s): (Vec<char>, Vec<char>) = (p.chars().collect(), s.chars().collect());
+    let p = tokens(p);
+    let s: Vec<char> = s.chars().collect();
+    let one = |t: &Tok, ch: char| match t {
+        Tok::Any => true,
+        Tok::Char(c) => *c == ch,
+        Tok::Class(r, not) => r.iter().any(|(a, b)| (*a..=*b).contains(&ch)) != *not,
+        Tok::Star => false,
+    };
     let (mut pi, mut si, mut star, mut mark) = (0, 0, None, 0);
     while si < s.len() {
-        if pi < p.len() && (p[pi] == '?' || p[pi] == s[si]) {
+        if pi < p.len() && one(&p[pi], s[si]) {
             pi += 1;
             si += 1;
-        } else if pi < p.len() && p[pi] == '*' {
+        } else if pi < p.len() && matches!(p[pi], Tok::Star) {
             star = Some(pi);
             mark = si;
             pi += 1;
@@ -139,7 +200,7 @@ fn glob(p: &str, s: &str) -> bool {
             return false;
         }
     }
-    p[pi..].iter().all(|c| *c == '*')
+    p[pi..].iter().all(|t| matches!(t, Tok::Star))
 }
 
 #[cfg(test)]
