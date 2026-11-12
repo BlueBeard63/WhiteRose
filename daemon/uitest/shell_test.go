@@ -194,3 +194,52 @@ func TestNoteModuleOff(t *testing.T) {
 		t.Error("the note opened with its module off")
 	}
 }
+
+// agenda seeds a calendar with an event on now (from ten minutes ago, for
+// an hour), and returns what its subtitle says ("now · until 22:05").
+func agenda(t *testing.T, more map[string]any) (*uitest.Session, string) {
+	t.Helper()
+	now := time.Now()
+	if now.Hour() == 23 {
+		t.Skip("the event would run past midnight")
+	}
+	start := now.Add(-10 * time.Minute).Truncate(time.Minute)
+	end := start.Add(time.Hour)
+	f := func(t time.Time) string { return t.Format("20060102T150405") }
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:review@test\r\nDTSTART:" + f(start) +
+		"\r\nDTEND:" + f(end) + "\r\nSUMMARY:Design review\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	path := filepath.Join(t.TempDir(), "work.ics")
+	os.WriteFile(path, []byte(ics), 0o644)
+	settings := map[string]any{"calendar.sources": []map[string]string{{"name": "Work", "path": path}}}
+	for k, v := range more {
+		settings[k] = v
+	}
+	return uitest.Start(t, uitest.Options{Shell: true, Settings: settings}), "now · until " + end.Format("15:04") + " · Work"
+}
+
+// The clock opens today's agenda (the event on now, until when);
+// "Month" opens the month; SUPER+A opens the agenda too.
+func TestClockOpensTheAgenda(t *testing.T) {
+	s, when := agenda(t, nil)
+	bar := s.Bar()
+	bar.Click(uitest.Named("Clock").Role("push button"))
+	bar.WaitFor(uitest.Named("Design review"))
+	bar.WaitFor(uitest.Named(when))
+	bar.Click(uitest.Named("Month").Role("push button"))
+	bar.WaitFor(uitest.Named("Next month").Role("push button"))
+	bar.Press("Escape")
+	bar.Gone(uitest.Named("Next month").Role("push button"))
+	bar.Press("super+a")
+	bar.WaitFor(uitest.Named("Design review"))
+}
+
+// The Agenda module off: the clock opens the month, as before.
+func TestClockOpensTheMonthWithTheAgendaOff(t *testing.T) {
+	s, _ := agenda(t, map[string]any{"settings.modules.disabled": []string{"agenda"}})
+	bar := s.Bar()
+	bar.Click(uitest.Named("Clock").Role("push button"))
+	bar.WaitFor(uitest.Named("Next month").Role("push button"))
+	if _, ok := bar.Lookup(uitest.Named("Design review")); ok {
+		t.Error("the agenda opened with its module off")
+	}
+}

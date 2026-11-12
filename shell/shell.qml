@@ -28,6 +28,8 @@ ShellRoot {
             else if (name === "clipboard") ShellState.toggle("clipboard");
             // SUPER+SHIFT+N: the note, if its module is on (Settings › Modules).
             else if (name === "note" && !Daemon.setting("settings.modules.disabled", []).includes("note")) ShellState.toggle("note");
+            // SUPER+A: the agenda, if its module is on.
+            else if (name === "agenda" && !Daemon.setting("settings.modules.disabled", []).includes("agenda")) ShellState.toggle("agenda");
             else if (name === "lock") ShellState.lock();
         }
     }

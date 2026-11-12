@@ -1,0 +1,11 @@
+{
+  "id": "agenda",
+  "name": "Agenda",
+  "description": "Today's next event and the day, from the clock or SUPER+A",
+  "icon": "calendar",
+  "category": "desktop",
+  "order": 15.4,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["agenda", "today", "next", "event", "events", "day", "schedule", "timeline", "clock"]
+}
