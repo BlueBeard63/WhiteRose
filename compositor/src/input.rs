@@ -145,7 +145,9 @@ impl WhiteRose {
                 }
             } else {
                 let clicked = self.window_under(at).map(|(w, _)| w.clone());
-                if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
+                // An X11 menu or tooltip takes the click, not the focus.
+                if clicked.as_ref().is_some_and(crate::xwayland::unmanaged) {
+                } else if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
                     // Click-to-focus; clicking the background clears focus.
                     self.focus_window(clicked);
                 }

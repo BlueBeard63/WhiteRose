@@ -45,5 +45,6 @@ pub mod window_rules;
 pub mod window_state;
 pub mod winit;
 pub mod workspace;
+pub mod xwayland;
 
 pub use state::WhiteRose;

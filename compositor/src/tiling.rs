@@ -352,7 +352,10 @@ impl WhiteRose {
         // Tiles, then floating windows, then those a rule keeps on top,
         // then scratchpads; each keeps its order.
         let band = |w: &Window| {
-            if self.scratchpads.is_pad(w) {
+            // X11 menus and tooltips: over everything.
+            if crate::xwayland::unmanaged(w) {
+                4
+            } else if self.scratchpads.is_pad(w) {
                 3
             } else if self.is_tiled(w) && !Self::maximized_or_fullscreen(w) {
                 0

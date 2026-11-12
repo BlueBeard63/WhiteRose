@@ -80,6 +80,9 @@ func (s *Session) typeText(text string) {
 	time.Sleep(100 * time.Millisecond)
 }
 
+// Press presses a key combination ("super+q") with no window in mind.
+func (s *Session) Press(combo string) { s.t.Helper(); s.press(combo) }
+
 func (s *Session) press(combo string) {
 	s.t.Helper()
 	var codes []int

@@ -92,6 +92,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     tracing::info!(socket = ?state.socket_name, main_mod, nested, "WhiteRose is running");
 
+    // X11 apps: Xwayland, and DISPLAY set before the daemon and shell start.
+    state.start_xwayland(&event_loop.handle());
+
     // Display settings and the rest come from whiterosed (retried until it's up).
     state.connect_daemon();
     // The daemon first: the shell connects to it (and retries until it's up).

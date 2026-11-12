@@ -542,13 +542,26 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 
 ## Vendored Smithay
 
-`compositor/vendor/smithay` is Smithay 0.7.0 plus two patches, used through `[patch.crates-io]`.
+`compositor/vendor/smithay` is Smithay 0.7.0 plus three patches, used through `[patch.crates-io]`.
 
 - **`smithay-layer-unmap-after-destroy.patch`:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell. Test: `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client`.
 - **`smithay-session-lock.patch`:**
   - **Unlock disconnect:** the same bug for lock surfaces disconnected the shell on every unlock. Test: `hiding_a_former_lock_surface_after_unlock_does_not_kill_the_client`.
   - **New hooks:** `lock_cancelled` (a lock destroyed before it was confirmed now ends the lock instead of leaving the screen locked forever) and `unlock_requested` (lets the compositor ignore an unlock from a lock that a newer one replaced). Tests: in `tests/session_lock.rs`.
+- **`smithay-x11-focus.patch`:** `X11Surface::give_focus`, the X11 half of keyboard focus (X input focus, or `WM_TAKE_FOCUS`), split out of its `KeyboardTarget::enter`. Our seat focuses an X11 window's `wl_surface` (as for any window), so the compositor calls this itself when it focuses one. Test: `daemon/uitest/xwayland_test.go`.
 - **Removing them:** drop the vendored copy once upstream ships these fixes.
+
+---
+
+## XWayland
+
+Implemented in `compositor/src/xwayland.rs`, with `win.rs` as the one way the rest of the compositor talks to a window of either kind. Plan: `docs/plans/xwayland.md`.
+
+- **Started with the compositor** (for now; on demand is step 5): `Xwayland -rootless`, and `DISPLAY` set before the daemon and shell start, so everything they launch inherits it. Without Xwayland installed, X11 apps just don't open.
+- **Managed X11 windows** open as Wayland ones do: under the pointer, cascaded, on this workspace, focused. WM_CLASS (its class, else instance) is the app id, `_NET_WM_NAME` the title. Transient-for windows and dialog, utility, toolbar and splash types float.
+- **Place and size together:** X11 must be told where a window is. Its next size and states are kept with it, and after each batch of events `sync_x11` configures any X11 window whose rectangle (where the compositor has it, the size it's told) differs from what X has.
+- **Override-redirect windows** (menus, tooltips) are unmanaged: drawn where they ask, above everything, never in a workspace, never focused by a click.
+- **Not yet:** clipboard and drag and drop between X11 and Wayland (step 4).
 
 ---
 

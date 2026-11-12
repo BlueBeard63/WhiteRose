@@ -3,6 +3,13 @@
 //! Everything outside the shell handlers goes through this rather than a
 //! window's Wayland toplevel, so an X11 window (XWayland) can answer too
 //! (docs/plans/xwayland.md).
+//!
+//! An X11 window has no "pending, then configure": its next size and states
+//! are kept with it (`X11Next`), `configure` marks them to send, and the
+//! compositor sends them with its place after each batch of events
+//! (`xwayland.rs`, `sync_x11`), as X11 wants both together.
+
+use std::cell::RefCell;
 
 use smithay::{
     desktop::Window,
@@ -15,6 +22,7 @@ use smithay::{
         compositor::with_states,
         shell::xdg::{SurfaceCachedState, XdgToplevelSurfaceData},
     },
+    xwayland::xwm::WmWindowType,
 };
 
 /// The states a window is told that the compositor changes.
@@ -30,10 +38,16 @@ const KNOWN: [ToplevelState; 8] = [
 ];
 
 /// A window's next size and states, to change in one go (`WinExt::pend`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct Pending {
     pub size: Option<Size<i32, Logical>>,
     states: Vec<ToplevelState>,
+}
+
+impl PartialEq for Pending {
+    fn eq(&self, o: &Self) -> bool {
+        self.size == o.size && self.states.len() == o.states.len() && self.states.iter().all(|s| o.states.contains(s))
+    }
 }
 
 impl Pending {
@@ -50,9 +64,30 @@ impl Pending {
     }
 }
 
-/// Whether `w` is an X11 window (XWayland). None yet: step 2.
-pub fn is_x11(_w: &Window) -> bool {
-    false
+/// Whether `w` is an X11 window (XWayland).
+pub fn is_x11(w: &Window) -> bool {
+    w.x11_surface().is_some()
+}
+
+/// An X11 window's next size and states, and whether they're to be sent.
+#[derive(Debug, Default)]
+pub struct X11Next(pub RefCell<(Pending, bool)>);
+
+fn x11_next<R>(w: &Window, f: impl FnOnce(&mut (Pending, bool)) -> R) -> R {
+    let next = w.user_data().get_or_insert(X11Next::default);
+    let mut n = next.0.borrow_mut();
+    f(&mut n)
+}
+
+/// An X11 window's next size and states if they're to be sent (and from
+/// now on they're not), for `sync_x11`; else None.
+pub fn take_x11_next(w: &Window) -> Option<Pending> {
+    x11_next(w, |n| std::mem::take(&mut n.1).then(|| n.0.clone()))
+}
+
+/// The size an X11 window's been told (None: its own).
+pub fn x11_size(w: &Window) -> Option<Size<i32, Logical>> {
+    x11_next(w, |n| n.0.size)
 }
 
 pub trait WinExt {
@@ -81,10 +116,19 @@ pub trait WinExt {
 
 impl WinExt for Window {
     fn surface(&self) -> Option<WlSurface> {
+        if let Some(x) = self.x11_surface() {
+            return x.wl_surface();
+        }
         self.toplevel().map(|t| t.wl_surface().clone())
     }
 
     fn ids(&self) -> (Option<String>, Option<String>) {
+        if let Some(x) = self.x11_surface() {
+            // WM_CLASS's class ("Spotify"), else its instance, as the app id.
+            let app =
+                Some(x.class()).filter(|c| !c.is_empty()).or_else(|| Some(x.instance()).filter(|i| !i.is_empty()));
+            return (app, Some(x.title()).filter(|t| !t.is_empty()));
+        }
         let Some(t) = self.toplevel() else { return (None, None) };
         with_states(t.wl_surface(), |states| {
             states
@@ -99,10 +143,20 @@ impl WinExt for Window {
     }
 
     fn is_child(&self) -> bool {
+        if let Some(x) = self.x11_surface() {
+            return x.is_transient_for().is_some()
+                || matches!(
+                    x.window_type(),
+                    Some(WmWindowType::Dialog | WmWindowType::Utility | WmWindowType::Toolbar | WmWindowType::Splash)
+                );
+        }
         self.toplevel().is_some_and(|t| t.parent().is_some())
     }
 
     fn size_limits(&self) -> (Size<i32, Logical>, Size<i32, Logical>) {
+        if let Some(x) = self.x11_surface() {
+            return (x.min_size().unwrap_or_default(), x.max_size().unwrap_or_default());
+        }
         let Some(t) = self.toplevel() else { return Default::default() };
         with_states(t.wl_surface(), |s| {
             let mut cached = s.cached_state.get::<SurfaceCachedState>();
@@ -112,14 +166,27 @@ impl WinExt for Window {
     }
 
     fn pending_size(&self) -> Option<Size<i32, Logical>> {
+        if is_x11(self) {
+            return x11_size(self);
+        }
         self.toplevel().and_then(|t| t.with_pending_state(|s| s.size))
     }
 
     fn has(&self, state: ToplevelState) -> bool {
+        if is_x11(self) {
+            return x11_next(self, |n| n.0.contains(state));
+        }
         self.toplevel().is_some_and(|t| t.with_pending_state(|s| s.states.contains(state)))
     }
 
     fn pend(&self, f: impl FnOnce(&mut Pending)) -> bool {
+        if is_x11(self) {
+            return x11_next(self, |n| {
+                let before = n.0.clone();
+                f(&mut n.0);
+                n.0 != before
+            });
+        }
         let Some(t) = self.toplevel() else { return false };
         t.with_pending_state(|s| {
             let before =
@@ -139,18 +206,29 @@ impl WinExt for Window {
     }
 
     fn configure(&self) {
+        if is_x11(self) {
+            x11_next(self, |n| n.1 = true);
+            return;
+        }
         if let Some(t) = self.toplevel() {
             t.send_pending_configure();
         }
     }
 
     fn close(&self) {
+        if let Some(x) = self.x11_surface() {
+            let _ = x.close();
+            return;
+        }
         if let Some(t) = self.toplevel() {
             t.send_close();
         }
     }
 
     fn pid(&self, dh: &DisplayHandle) -> Option<u32> {
+        if let Some(x) = self.x11_surface() {
+            return x.pid();
+        }
         let client = self.toplevel()?.wl_surface().client()?;
         let creds = client.get_credentials(dh).ok()?;
         u32::try_from(creds.pid).ok()

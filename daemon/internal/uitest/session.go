@@ -350,6 +350,28 @@ func (s *Session) window(title string) (windowInfo, bool) {
 	return windowInfo{}, false
 }
 
+// Toplevel is what the compositor says of the window titled `title`: its
+// app id, whether it has the focus, and whether it's there at all.
+func (s *Session) Toplevel(title string) (appID string, focused bool, ok bool) {
+	w, ok := s.window(title)
+	if !ok {
+		return "", false, false
+	}
+	if w.AppID != nil {
+		appID = *w.AppID
+	}
+	return appID, w.Focused, true
+}
+
+// WindowGeometry is where the window titled `title` is (x, y, w, h).
+func (s *Session) WindowGeometry(title string) ([4]int, bool) {
+	w, ok := s.window(title)
+	if !ok || w.Geometry == nil {
+		return [4]int{}, false
+	}
+	return *w.Geometry, true
+}
+
 // HasWindow says whether a window titled `title` is in the compositor's
 // window list now (a scratchpad's isn't).
 func (s *Session) HasWindow(title string) bool {
