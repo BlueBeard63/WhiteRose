@@ -1,6 +1,9 @@
 # Plan: scratchpads (v0.3)
 
-**Status: in progress** (2026-11-12): commits 1–4 written.
+**Status: done** (2026-11-12), in five commits on this branch; what was
+built is described in ARCHITECTURE.md, "Scratchpads". The answers and
+design below are what it was built from; where it ended up differently is
+under "As built".
 
 Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
 "Scratchpads" (0.3 · Layouts), the last 0.3 part.
@@ -22,7 +25,7 @@ Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
   on the monitor you're working on, over the active workspace, and
   switching workspace leaves it shown.
 
-## Decided while planning (say if any is wrong)
+## Decided while planning
 
 - **The key:** not running → start it (it shows when its window opens);
   hidden → show and focus; shown but not focused → focus it; shown and
@@ -84,6 +87,10 @@ Branch: `v0.3/scratchpads` (off `v0.3-release`). Roadmap item:
   `--gtk-single-instance=false`, one for Ptyxis `--standalone` (both
   hand new windows to a running copy otherwise). A new pad starts as the
   `apps.terminal` setting (Ptyxis if unset) with SUPER+` if free.
+- **Not done:** pads don't start at login (the first key press starts
+  one); apps that always hand windows to a running copy and have no
+  flag against it (GNOME Terminal's server, say) can't be scratchpads;
+  a pad's dialogs open on the workspace like any window.
 - **Figma:** "Settings - Scratchpads" (117:5999) with its note,
   `Icon/scratchpad` and `Nav/Scratchpads` in the sidebar component.
 

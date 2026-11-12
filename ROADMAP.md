@@ -147,11 +147,11 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 <details>
-<summary><b>Scratchpads</b>: Drop-down apps toggled with a key, like a terminal that slides down. <sub>· Hyprland, niri</sub></summary>
+<summary>✅ <b>Scratchpads</b>: Drop-down apps toggled with a key, like a terminal that slides down. <sub>· Hyprland, niri</sub></summary>
 
-- A scratchpad is an app + a key + a size/position; the key shows, hides or starts it.
-- Animates from the island; stays above other windows; per-monitor.
-- Several scratchpads (terminal, notes, music).
+- A scratchpad is an app, a key, a size and a place (under the island or centred); the key starts, shows, focuses or hides it. The window it is is the one its key started, so your other windows of that app stay ordinary.
+- Slides down from the island and back up; stays above other windows, fullscreen ones too; follows you across workspaces and monitors; can hide when it loses focus.
+- Several scratchpads (terminal, notes, music), edited in place in Settings › Scratchpads; their keys show on the Keyboard page too.
 
 </details>
 
