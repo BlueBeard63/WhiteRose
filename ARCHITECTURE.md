@@ -413,6 +413,26 @@ Figma frames: `Snap Picker - SUPER + Z`, `Snap Picker - Maximize button`, `Setti
   - Every change is saved as it's made. `Zones.js` holds the grid logic (splitting, merging, moving lines, drawing, deleting) and is tested by `node shell/tests/run.mjs`.
 - **An app's smallest size wins:** a zone smaller than a window's minimum size (420x300 for WhiteRose's own apps) is asked for, but the app keeps its own size.
 
+## Window rules
+
+Figma frames: `Settings - Window rules` (and scrolled to the end). Plan and decisions: `docs/plans/window-rules.md`.
+
+- **What a rule is:** `windows.rules`, a list in order. Each rule matches by `app` (app id) and/or `title`, both regular expressions that match anywhere unless anchored, and sets any of:
+  - Placement: `workspace` (1–9), `monitor` (a monitor id, as in `displays`), `float` (`true` floats it, `false` tiles it if it can be tiled), `size` and `position` (pixels or `"N%"` of the usable area; `position` may be `"centre"`), `maximized`, `fullscreen`.
+  - Look: `opacity` (`[focused, unfocused]`, 0.1–1) and `onTop`.
+  - `zone`: a snap zone to open in, numbered as on the Snapping page.
+- **Every match applies:** the rules are walked in order and each match is folded into one set of actions, a later rule winning for what it sets (`compositor/src/rules.rs`, pure and unit-tested). A rule with no pattern, or one that doesn't compile, is skipped with a warning in the log; the daemon refuses to save one (`checkWindowRules`, which compiles patterns with Go's RE2, nearly the syntax of Rust's `regex`).
+- **When:** once, on a window's first commit (`window_committed` → `apply_rules` in `window_rules.rs`). That is the first moment its app id and title are known, and it hasn't drawn yet, so the app's first frame is already where and how big the rules say. Editing the rules doesn't move open windows.
+- **Placement:**
+  - Its first configure went out when it was created (focusing it), so `apply_rules` ends by sending one with what the rules changed.
+  - A size is sent in that configure. A position needs the window's size, so it's applied on the commit that brings its first buffer (`place_by_rule`). Both apply only to windows that float; a tile ignores them.
+  - Opening on another workspace is quiet: that workspace doesn't come into view, focus stays where it was, and the window isn't told it's focused.
+  - A fullscreen window on the output a new window opens on leaves fullscreen so the new window is seen, unless a rule sent the new one to another workspace (this moved from `new_toplevel` to the first commit, after the rules).
+  - A maximized or fullscreen rule has no size of its own to go back to yet: restored, the app picks its size, at the cascade.
+- **A zone** snaps the window as if it were dropped there (`snap_window`): the grid of its monitor and workspace, floating workspaces only, not fixed-size windows. It refits like any snapped window, and dragged out it gets the rule's size back. A zone the grid doesn't have is ignored; a zone wins over a position.
+- **Look:** kept on the window for its life (`Look` in its user data). Opacity is the alpha its surfaces and popups are drawn with (`window_alpha`), focused or not by who has the keyboard; Smithay damages an element when its alpha changes, and a translucent one reports no opaque region, so what's behind is still drawn. Window previews and screenshots of a window stay solid. On top: `restack` keeps three bands, tiles, then floating windows, then windows a rule keeps on top, each in its own order; fullscreen windows and the bar's top layers are still above.
+- **Settings › Window rules** (`shell/settings/modules/rules/`): each rule is a card whose header names it (the app id, when its pattern is one app exactly) and sums up what it does; it opens to edit in place, a row per action. Move up and down (order matters), delete. Adding offers a blank rule or the open windows, one per app id, which fills in that app id escaped and anchored. Only complete rules are saved: a new rule stays on the page until it has a pattern, and a pattern that doesn't compile shows why under its row. `Rules.js` holds the logic and is tested by `node shell/tests/run.mjs`.
+
 ## Keyboard and shortcuts
 
 Figma frame: `Settings - Keyboard & Shortcuts`.

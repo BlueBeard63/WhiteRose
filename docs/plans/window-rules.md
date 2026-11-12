@@ -1,6 +1,9 @@
 # Plan: window rules (v0.3)
 
-**Status: in progress** (2026-11-12).
+**Status: done** (2026-11-12), in six commits on this branch; what was
+built is described in ARCHITECTURE.md, "Window rules". The answers and
+design below are what it was built from; where it ended up differently is
+under "As built".
 
 Branch: `v0.3/window-rules` (off `v0.3-release`). Roadmap item: "Window
 rules" (0.3 · Layouts). Scratchpads come next, on their own branch.
@@ -27,6 +30,25 @@ rules" (0.3 · Layouts). Scratchpads come next, on their own branch.
   workspace doesn't come into view, and focus stays where it was.
 - **Picking an open window in Settings fills its app id only:** titles
   change, so the title is left for the user to add.
+
+## As built
+
+- **Settings › Window rules is its own page**, next to Windows and
+  Snapping (`shell/settings/modules/rules/`), not a section of Windows.
+- **The daemon checks `windows.rules` too** (`checkWindowRules`): patterns
+  compile, values in range, no unknown fields. So Settings saves only
+  complete rules; a new rule stays on the page until it has a pattern.
+- **A window's first configure goes out before its first commit** (when
+  it's created and focused), so the rules' changes go in a second one,
+  still before it draws.
+- **Leaving fullscreen for a new window** moved from `new_toplevel` to the
+  first commit, after the rules, so a window a rule sends elsewhere leaves
+  the fullscreen one be.
+- **`"float": false`** only undoes an earlier rule's `true`: a window that
+  can tile already does.
+- **Not done:** a maximized or fullscreen rule doesn't give the window a
+  size to go back to (restored, the app picks its own); the Figma frames
+  don't show a pattern error.
 
 ## How things are today (read before starting)
 

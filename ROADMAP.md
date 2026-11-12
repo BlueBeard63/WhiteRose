@@ -138,11 +138,11 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 <details>
-<summary><b>Window rules</b>: Per-app rules: workspace, monitor, size, floating, opacity, always on top, no blur. <sub>· Hyprland, KDE</sub></summary>
+<summary>✅ <b>Window rules</b>: Per-app rules: workspace, monitor, size, floating, opacity, always on top. <sub>· Hyprland, KDE</sub></summary>
 
-- Match by app id, title (regex), initial class; first match wins, or merge.
-- Actions: workspace, monitor, float/tile, size/position, opacity, always on top, no blur, no animations, fullscreen.
-- Edited in Settings › Windows › Rules, stored in the settings database; a 'new rule from this window' action.
+- Match by app id and the title it opens with (regular expressions); every rule that matches applies, and a later one wins.
+- Actions: workspace (opened quietly), monitor, float/tile, size and position (or centred), maximized, fullscreen, a snap zone, opacity (focused and not), always on top. Blur and animations come with 0.5.
+- Rules apply when a window opens. Edited in place in Settings › Window rules, stored in the settings database; a new rule can start from any open window.
 
 </details>
 
