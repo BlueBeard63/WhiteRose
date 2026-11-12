@@ -437,9 +437,11 @@ var Known = map[string]Key{
 		return nil
 	})},
 	// Gaps in pixels: between tiles, and around them. Smart: none with one tile.
-	"windows.gaps.inner": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
-	"windows.gaps.outer": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
-	"windows.gaps.smart": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// ALT+TAB: apps with windows on any workspace, or only this one.
+	"windows.appSwitcher.workspaces": {Default: json.RawMessage(`"all"`), Check: into(oneOf("all", "current"))},
+	"windows.gaps.inner":             {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.outer":             {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.smart":             {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	// Master layout: the master tile's share of the area, and its side.
 	"windows.master.ratio": {Default: json.RawMessage(`0.55`), Check: into(func(v float64) error {
 		if v < 0.1 || v > 0.9 {

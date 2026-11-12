@@ -135,3 +135,41 @@ fn keys_typed_while_switching_do_not_reach_the_app() {
     key(s, ALT, false);
     assert!(s.swallowed.is_empty(), "every swallowed press had its release swallowed too");
 }
+
+// windows.appSwitcher.workspaces "current": ALT+TAB lists only the apps
+// with windows on this workspace; SUPER+TAB still lists every window.
+#[test]
+fn alt_tab_can_list_only_this_workspaces_apps() {
+    let mut h = Headless::new(true);
+    three_windows(&mut h);
+    let s = &mut h.state;
+    // The browser goes to workspace 2.
+    let browser = s
+        .workspaces
+        .mru()
+        .iter()
+        .find(|w| whiterose_wm::ipc::toplevel_ids(w).1.as_deref() == Some("browser"))
+        .cloned()
+        .unwrap();
+    s.workspaces.move_to(&browser, 1);
+
+    key(s, ALT, true);
+    tap(s, TAB);
+    assert_eq!(s.switcher.as_ref().unwrap().0.items.len(), 2, "all workspaces, to start with");
+    tap(s, ESC);
+    key(s, ALT, false);
+
+    s.switcher_setting("windows.appSwitcher.workspaces", &serde_json::json!("current"));
+    key(s, ALT, true);
+    tap(s, TAB);
+    let items: Vec<String> = s.switcher.as_ref().unwrap().0.items.iter().map(|i| i.app_id.clone()).collect();
+    assert_eq!(items, vec!["term"], "only this workspace's");
+    tap(s, ESC);
+    key(s, ALT, false);
+
+    key(s, SUPER, true);
+    tap(s, TAB);
+    assert_eq!(s.switcher.as_ref().unwrap().0.items.len(), 3, "SUPER+TAB: every window");
+    tap(s, ESC);
+    key(s, SUPER, false);
+}

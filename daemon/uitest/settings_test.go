@@ -469,3 +469,13 @@ func TestSettingsPicksWithFiles(t *testing.T) {
 	picker.Click(uitest.Named("Open").Role("push button"))
 	s.WaitSetting("wallpaper.files", []any{"~/Pictures/dunes.png"})
 }
+
+// Windows › Switching: ALT+TAB can list only this workspace's apps.
+// (Picked by its action: the page's end is reached past the gap and
+// master sliders, which take the wheel the harness scrolls with.)
+func TestSettingsAltTabThisWorkspace(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("windows")
+	settings.Activate(uitest.Named("This workspace").Role("radio button"))
+	s.WaitSetting("windows.appSwitcher.workspaces", "current")
+}

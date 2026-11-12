@@ -7,5 +7,5 @@
   "order": 12.5,
   "version": "1.0.0",
   "core": true,
-  "keywords": ["windows", "tiling", "tile", "tiled", "layout", "floating", "dwindle", "master", "stack", "gaps", "gap", "split", "workspace", "monitor", "groups", "tabs"]
+  "keywords": ["windows", "tiling", "tile", "tiled", "layout", "floating", "dwindle", "master", "stack", "gaps", "gap", "split", "workspace", "monitor", "groups", "tabs", "alt+tab", "alt tab", "switcher", "switch apps"]
 }

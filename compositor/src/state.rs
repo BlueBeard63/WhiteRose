@@ -103,6 +103,9 @@ pub struct WhiteRose {
     next_window_id: u64,
     /// The open switcher and the modifiers that keep it open (released = commit).
     pub switcher: Option<(crate::switcher::Switcher, crate::keybind::Mods)>,
+    /// ALT+TAB lists only the active workspace's apps
+    /// (`windows.appSwitcher.workspaces` "current"); SUPER+TAB always all.
+    pub app_switcher_current_only: bool,
     /// Modifiers of the shortcut that triggered the current action.
     pub shortcut_mods: crate::keybind::Mods,
     /// Per output: (whole, usable) rectangles last used to fit them.
@@ -267,6 +270,7 @@ impl WhiteRose {
             fitted_to: Vec::new(),
             next_window_id: 1,
             switcher: None,
+            app_switcher_current_only: false,
             shortcut_mods: crate::keybind::Mods::NONE,
             screenshot_pending: false,
             screenshot_shot: Default::default(),
@@ -879,10 +883,22 @@ impl ClientData for ClientState {
 }
 
 impl WhiteRose {
-    fn switcher_mru(&self) -> Vec<(u64, String)> {
+    /// `windows.appSwitcher.workspaces`: "current" or "all" (the default).
+    pub fn switcher_setting(&mut self, key: &str, value: &serde_json::Value) {
+        if key == "windows.appSwitcher.workspaces" {
+            self.app_switcher_current_only = value.as_str() == Some("current");
+        }
+    }
+
+    /// The windows a switcher offers, most recent first: ALT+TAB's only
+    /// on this workspace if the setting says so.
+    fn switcher_mru(&self, mode: crate::switcher::Mode) -> Vec<(u64, String)> {
+        let here = self.workspaces.active();
+        let only_here = mode == crate::switcher::Mode::Apps && self.app_switcher_current_only;
         self.workspaces
             .mru()
             .iter()
+            .filter(|w| !only_here || self.workspaces.workspace_of(w) == Some(here))
             .map(|w| (self.window_id(w), crate::ipc::toplevel_ids(w).0.unwrap_or_default()))
             .collect()
     }
@@ -893,7 +909,7 @@ impl WhiteRose {
         }
         // Held modifiers keep it open; Shift only changes direction.
         let held = crate::keybind::Mods { shift: false, ..self.shortcut_mods };
-        if let Some(s) = crate::switcher::Switcher::open(mode, &self.switcher_mru()) {
+        if let Some(s) = crate::switcher::Switcher::open(mode, &self.switcher_mru(mode)) {
             self.switcher = Some((s, held));
             self.switcher_sync();
         }
