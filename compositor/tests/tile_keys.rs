@@ -45,7 +45,12 @@ fn super_t_cycles_the_workspace_layout_and_saves_it() {
             press(s, &[SUPER, T]);
             assert_eq!(rects(s), vec![Some(LEFT), Some(RIGHT)]);
             assert_eq!(s.tiling.settings.workspaces.get(&0), Some(&Layout::Dwindle), "saved for the workspace");
+            // No whiterosed in this test: the save waits for it, the latest
+            // value per setting.
             press(s, &[SUPER, T]);
+            let waiting =
+                serde_json::json!({"op": "set", "key": "windows.layout.workspaces", "value": {"1": "master"}});
+            assert_eq!(s.daemon_waiting, vec![waiting]);
             // Master: 55% of the 1416px left after the gap.
             assert_eq!(rects(s), vec![Some((8, 34, 779, 766)), Some((795, 34, 637, 766))]);
             press(s, &[SUPER, T]);

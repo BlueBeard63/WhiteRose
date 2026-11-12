@@ -78,8 +78,9 @@ pub enum Action {
     /// The next keyboard layout (SUPER+SPACE).
     NextLayout,
     /// The next window layout (floating, dwindle, master) for this
-    /// workspace, saved as its setting (SUPER+T).
-    NextWindowLayout,
+    /// workspace, saved as its setting: on the output named (the bar's
+    /// button), else where you're working (SUPER+T).
+    NextWindowLayout(Option<String>),
     /// Take the focused window out of the tiles, or put it back.
     ToggleFloating,
     /// Focus the window beside the focused one.
@@ -332,7 +333,7 @@ impl Def {
             "play-pause" => Action::Media("media_play_pause"),
             "next-track" => Action::Media("media_next"),
             "previous-track" => Action::Media("media_previous"),
-            "window-layout" => Action::NextWindowLayout,
+            "window-layout" => Action::NextWindowLayout(None),
             "toggle-floating" => Action::ToggleFloating,
             "focus-direction" => Action::FocusDirection(ARROWS[n as usize].1),
             "move-direction" => Action::MoveDirection(ARROWS[n as usize].1),
@@ -702,7 +703,7 @@ mod tests {
     fn the_default_tiling_keys() {
         let b = Bindings::defaults("true");
         let key = |m, k| b.lookup(m, sym(k)).cloned();
-        assert_eq!(key(SUPER, keysyms::KEY_t), Some(Action::NextWindowLayout));
+        assert_eq!(key(SUPER, keysyms::KEY_t), Some(Action::NextWindowLayout(None)));
         assert_eq!(key(SUPER_SHIFT, keysyms::KEY_space), Some(Action::ToggleFloating));
         assert_eq!(key(SUPER, keysyms::KEY_Left), Some(Action::FocusDirection(Dir::Left)));
         assert_eq!(key(SUPER_SHIFT, keysyms::KEY_Down), Some(Action::MoveDirection(Dir::Down)));

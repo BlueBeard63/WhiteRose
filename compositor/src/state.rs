@@ -50,6 +50,8 @@ pub struct WhiteRose {
     pub daemon_socket: std::path::PathBuf,
     /// Connection to whiterosed (None while it's not running).
     pub daemon: Option<std::os::unix::net::UnixStream>,
+    /// Requests made while it wasn't connected, sent when it connects.
+    pub daemon_waiting: Vec<serde_json::Value>,
     /// Display settings: the saved layout, and one being tried out.
     pub displays: crate::display_config::Displays,
     pub display_trial: Option<crate::daemon_client::Trial>,
@@ -223,6 +225,7 @@ impl WhiteRose {
             start_time: std::time::Instant::now(),
             daemon_socket,
             daemon: None,
+            daemon_waiting: Vec::new(),
             displays: Default::default(),
             display_trial: None,
             display_profile: None,
@@ -737,7 +740,7 @@ impl WhiteRose {
                     self.toggle_fullscreen(&w);
                 }
             }
-            Action::NextWindowLayout => self.next_window_layout(),
+            Action::NextWindowLayout(output) => self.next_window_layout(output.as_deref()),
             Action::ToggleFloating => self.toggle_floating(),
             Action::FocusDirection(d) => self.focus_direction(d),
             Action::MoveDirection(d) => self.move_direction(d),

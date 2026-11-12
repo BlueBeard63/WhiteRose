@@ -38,6 +38,12 @@ Item {
         chevL: "m15 18-6-6 6-6",
         chevDown: "m6 9 6 6 6-6",
         chevUp: "m18 15-6-6-6 6",
+        // Window layouts (the bar's layout button). Floating is Lucide's
+        // "copy", master its "layout-panel-left"; dwindle is drawn the same
+        // way: a half, a quarter, two eighths.
+        layoutFloating: "M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
+        layoutDwindle: "M4 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M14 3h6a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1z M13.5 13h2a.5 .5 0 0 1 .5 .5v7a.5 .5 0 0 1 -.5 .5h-2a.5 .5 0 0 1 -.5 -.5v-7a.5 .5 0 0 1 .5 -.5z M18.5 13h2a.5 .5 0 0 1 .5 .5v7a.5 .5 0 0 1 -.5 .5h-2a.5 .5 0 0 1 -.5 -.5v-7a.5 .5 0 0 1 .5 -.5z",
+        layoutMaster: "M4 3h5a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-5a1 1 0 0 1 1 -1z M15 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1v-5a1 1 0 0 1 1 -1z",
         plus: "M5 12h14 M12 5v14",
         minus: "M5 12h14",
         eye: "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0 M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6",

@@ -53,6 +53,23 @@ PanelWindow {
             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 6
             Workspaces { id: workspaces; anchors.verticalCenter: parent.verticalCenter; visible: Daemon.setting("bar.workspaces", true) }
+            // This screen's window layout; a click moves to the next (SUPER+T).
+            Trigger {
+                id: layoutButton
+                readonly property string layout: Compositor.windowLayouts[root.modelData?.name ?? ""] ?? "floating"
+                label: "Layout"
+                shows: layout.charAt(0).toUpperCase() + layout.slice(1)
+                anchors.verticalCenter: parent.verticalCenter
+                visible: workspaces.visible
+                implicitWidth: 24
+                onClicked: Compositor.nextWindowLayout(root.modelData?.name ?? "")
+                Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    size: 13
+                    color: layoutButton.layout === "floating" ? Theme.muted : Theme.text
+                    name: layoutButton.layout === "dwindle" ? "layoutDwindle" : layoutButton.layout === "master" ? "layoutMaster" : "layoutFloating"
+                }
+            }
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1; height: 12

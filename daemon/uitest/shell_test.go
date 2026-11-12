@@ -55,3 +55,21 @@ func TestLauncherCalculates(t *testing.T) {
 	bar.Press("Escape")
 	bar.Gone(search)
 }
+
+// The bar's layout button shows this workspace's window layout; clicking
+// it moves to the next one (as SUPER+T) and saves it for the workspace.
+func TestBarLayoutButtonCyclesTheLayout(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	button := uitest.Named("Layout").Role("push button")
+	bar.WaitFor(button.Described("Floating"))
+	bar.Click(button)
+	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "dwindle"})
+	bar.WaitFor(button.Described("Dwindle"))
+	bar.Click(button)
+	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "master"})
+	bar.WaitFor(button.Described("Master"))
+	bar.Click(button)
+	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "floating"})
+	bar.WaitFor(button.Described("Floating"))
+}

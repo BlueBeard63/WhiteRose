@@ -387,13 +387,15 @@ impl WhiteRose {
         *s != before
     }
 
-    /// Applies changed `windows.*` settings to every tree, and re-tiles.
+    /// Applies changed `windows.*` settings to every tree, re-tiles, and
+    /// tells the bars.
     pub fn apply_layout_settings(&mut self) {
         let settings = self.tiling.settings.clone();
         for s in &mut self.tiling.sets {
             s.tiling.apply_settings(&settings);
         }
         self.retile();
+        self.ipc_sync();
     }
 }
 
@@ -651,13 +653,15 @@ impl WhiteRose {
         }
     }
 
-    /// SUPER+T: the next layout for what's on screen where you're working
-    /// (the focused window's output, else the pointer's). It changes the
-    /// workspace's layout, or the monitor's if that monitor has its own,
-    /// and saves it.
-    pub fn next_window_layout(&mut self) {
+    /// SUPER+T and the bar's layout button: the next layout on the output
+    /// named (a bar's screen), else where you're working (the focused
+    /// window's output, else the pointer's). It changes the workspace's
+    /// layout, or the monitor's if that monitor has its own, and saves it.
+    pub fn next_window_layout(&mut self, output: Option<&str>) {
         let ws = self.workspaces.active();
-        let output = self.focused_window().and_then(|w| self.output_of(&w)).or_else(|| self.pointer_output());
+        let named = output.and_then(|n| self.space.outputs().find(|o| o.name() == n).cloned());
+        let output =
+            named.or_else(|| self.focused_window().and_then(|w| self.output_of(&w))).or_else(|| self.pointer_output());
         let Some(o) = output else { return };
         let next = self.layout_of(ws, &o).next();
         let id = outputs::info(&o).id;
