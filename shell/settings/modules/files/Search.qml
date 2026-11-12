@@ -3,7 +3,6 @@
 // background, at the lowest priority (`whiterose-files --index`): when
 // asked, when what's indexed changes, and hourly when plugged in.
 import QtQuick
-import QtQuick.Dialogs
 import Quickshell
 import qs
 import qs.settings
@@ -103,12 +102,13 @@ Column {
         }
     }
 
-    FolderDialog {
+    FilePicker {
         id: folderDialog
         title: "A folder to leave out of the index"
-        currentFolder: "file://" + page.home
-        onAccepted: {
-            const path = W.tildify(decodeURIComponent(String(selectedFolder).replace(/^file:\/\//, "")), page.home);
+        folder: page.home
+        folders: true
+        onPicked: picked => {
+            const path = W.tildify(picked, page.home);
             if (!page.exclude.includes(path)) Daemon.set("files.indexExclude", page.exclude.concat([path]));
         }
     }

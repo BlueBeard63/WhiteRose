@@ -2,7 +2,6 @@
 // wallpaper, font and text size. Everything applies live across the shell
 // (Theme.qml and Background.qml follow these settings).
 import QtQuick
-import QtQuick.Dialogs
 import Quickshell
 import Quickshell.Widgets
 import qs
@@ -232,29 +231,31 @@ Column {
             Rectangle {
                 width: 78; height: 78; radius: 12
                 color: addMouse.containsMouse ? Theme.grip : Theme.surface2
+                Accessible.role: Accessible.Button
+                Accessible.name: "Add a wallpaper"
+                Accessible.onPressAction: fileDialog.open()
                 Icon { anchors.centerIn: parent; name: "plus"; size: 16; color: Theme.muted }
                 MouseArea { id: addMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: fileDialog.open() }
             }
         }
     }
 
-    FolderDialog {
+    FilePicker {
         id: folderDialog
         title: "Add a wallpaper folder"
-        currentFolder: "file://" + page.home + "/Pictures"
-        onAccepted: {
-            const path = decodeURIComponent(String(selectedFolder).replace(/^file:\/\//, ""));
+        folder: page.home + "/Pictures"
+        folders: true
+        onPicked: path => {
             const tilded = W.tildify(path, page.home);
             if (!Wallpaper.folders.includes(tilded) && !Wallpaper.folders.includes(path)) Daemon.set("wallpaper.folders", Wallpaper.folders.concat([tilded]));
         }
     }
-    FileDialog {
+    FilePicker {
         id: fileDialog
         title: "Choose a wallpaper"
-        currentFolder: "file://" + page.home + "/Pictures"
-        nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.avif *.bmp)"]
-        onAccepted: {
-            const path = decodeURIComponent(String(selectedFile).replace(/^file:\/\//, ""));
+        folder: page.home + "/Pictures"
+        filters: [{ name: "Images", patterns: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.avif", "*.bmp"] }]
+        onPicked: path => {
             const tilded = W.tildify(path, page.home);
             if (!Wallpaper.files.includes(tilded)) Daemon.set("wallpaper.files", Wallpaper.files.concat([tilded]));
             Wallpaper.set(path);

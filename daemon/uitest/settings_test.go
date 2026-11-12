@@ -445,3 +445,27 @@ func TestSettingsFasterPointer(t *testing.T) {
 	settings.Wheel(uitest.Named("How much faster").Role("slider"), -2)
 	s.WaitSetting("mouse.fasterBy", 4)
 }
+
+// Settings chooses files and folders with Files' picker: a folder left out
+// of the search index, and a wallpaper image.
+func TestSettingsPicksWithFiles(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	pics := filepath.Join(s.Home, "Pictures")
+	os.WriteFile(filepath.Join(pics, "dunes.png"), []byte("x"), 0o644)
+
+	settings := s.Settings("files/search")
+	settings.Click(uitest.Named("Leave a folder out…").Role("push button"))
+	picker := s.WaitWindow("A folder to leave out of the index — Files")
+	picker.Press("ctrl+2")
+	picker.Click(uitest.Named("Documents").Role("list item"))
+	picker.Click(uitest.Named("Choose folder").Role("push button"))
+	s.WaitSetting("files.indexExclude", []any{"~/Documents"})
+
+	settings = s.Settings("appearance")
+	settings.Click(uitest.Named("Add a wallpaper").Role("push button"))
+	picker = s.WaitWindow("Choose a wallpaper — Files")
+	picker.Press("ctrl+2")
+	picker.Click(uitest.Named("dunes.png").Role("list item"))
+	picker.Click(uitest.Named("Open").Role("push button"))
+	s.WaitSetting("wallpaper.files", []any{"~/Pictures/dunes.png"})
+}
