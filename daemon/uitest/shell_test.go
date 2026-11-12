@@ -72,9 +72,6 @@ func TestBarLayoutButtonCyclesTheLayout(t *testing.T) {
 	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "master"})
 	bar.WaitFor(button.Described("Master"))
 	bar.Click(button)
-	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "scrolling"})
-	bar.WaitFor(button.Described("Scrolling"))
-	bar.Click(button)
 	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "floating"})
 	bar.WaitFor(button.Described("Floating"))
 }

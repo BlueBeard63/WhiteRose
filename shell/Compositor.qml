@@ -17,7 +17,7 @@ Singleton {
     property int workspaceCount: 9
     property var occupiedWorkspaces: []
     // The active workspace's window layout on each screen, by screen name:
-    // "floating", "dwindle", "master" or "scrolling".
+    // "floating", "dwindle" or "master".
     property var windowLayouts: ({})
     property string focusedAppId: ""
     property string focusedTitle: ""

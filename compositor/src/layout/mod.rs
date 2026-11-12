@@ -9,7 +9,6 @@
 mod dwindle;
 mod group;
 mod master;
-pub mod scroll;
 pub mod snap;
 
 use std::collections::HashMap;
@@ -17,7 +16,6 @@ use std::collections::HashMap;
 pub use dwindle::Dwindle;
 pub use group::{Groups, TAB_STRIP};
 pub use master::{Master, Side};
-pub use scroll::{Center, Scroll};
 
 /// How a workspace places its windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -29,12 +27,10 @@ pub enum Layout {
     Dwindle,
     /// One large master tile and a stack of the rest.
     Master,
-    /// A strip of columns that scrolls sideways (`scroll.rs`).
-    Scrolling,
 }
 
 impl Layout {
-    pub const ALL: [Layout; 4] = [Layout::Floating, Layout::Dwindle, Layout::Master, Layout::Scrolling];
+    pub const ALL: [Layout; 3] = [Layout::Floating, Layout::Dwindle, Layout::Master];
 
     /// The name used in settings and IPC.
     pub fn as_str(self) -> &'static str {
@@ -42,7 +38,6 @@ impl Layout {
             Layout::Floating => "floating",
             Layout::Dwindle => "dwindle",
             Layout::Master => "master",
-            Layout::Scrolling => "scrolling",
         }
     }
 
@@ -242,8 +237,6 @@ pub struct Settings {
     pub master_side: Side,
     /// Dwindle's split direction: None picks it from each tile's shape.
     pub dwindle_split: Option<Axis>,
-    /// When the scrolling strip centres the focused column.
-    pub scroll_center: Center,
     /// Floating windows snap to edges, corners and zones (`snap.rs`).
     pub snap: bool,
     /// Zone grids per monitor (EDID-based id); valid ones only.
@@ -260,7 +253,6 @@ impl Default for Settings {
             master_ratio: 0.55,
             master_side: Side::Left,
             dwindle_split: None,
-            scroll_center: Center::default(),
             snap: true,
             snap_zones: HashMap::new(),
         }
@@ -280,7 +272,6 @@ impl Settings {
 pub enum Tiling<W> {
     Dwindle(Dwindle<W>),
     Master(Master<W>),
-    Scroll(Scroll<W>),
 }
 
 impl<W: Clone + PartialEq> Tiling<W> {
@@ -303,15 +294,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
                 }
                 Some(Tiling::Master(m))
             }
-            Layout::Scrolling => {
-                // One column each, left to right.
-                let mut s = Scroll::new(settings.scroll_center);
-                for w in windows {
-                    let last = s.windows().last().cloned();
-                    s.insert(w, last.as_ref());
-                }
-                Some(Tiling::Scroll(s))
-            }
         }
     }
 
@@ -319,7 +301,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(_) => Layout::Dwindle,
             Tiling::Master(_) => Layout::Master,
-            Tiling::Scroll(_) => Layout::Scrolling,
         }
     }
 
@@ -331,17 +312,15 @@ impl<W: Clone + PartialEq> Tiling<W> {
                 m.ratio = clamp_ratio(settings.master_ratio);
                 m.side = settings.master_side;
             }
-            Tiling::Scroll(s) => s.center = settings.scroll_center,
         }
     }
 
     /// The tiled windows in reading order (dwindle: tree order; master:
-    /// master first; scrolling: column by column), which also seeds a new layout when cycling.
+    /// master first), which also seeds a new layout when cycling.
     pub fn windows(&self) -> Vec<W> {
         match self {
             Tiling::Dwindle(d) => d.windows(),
             Tiling::Master(m) => m.windows().to_vec(),
-            Tiling::Scroll(s) => s.windows(),
         }
     }
 
@@ -349,7 +328,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.len(),
             Tiling::Master(m) => m.windows().len(),
-            Tiling::Scroll(s) => s.len(),
         }
     }
 
@@ -361,13 +339,11 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.contains(w),
             Tiling::Master(m) => m.windows().contains(w),
-            Tiling::Scroll(s) => s.contains(w),
         }
     }
 
     /// Adds a window next to `focused` (dwindle splits that tile; master
-    /// puts it after it in the stack; scrolling opens a column right of
-    /// its column). Ignored if already tiled.
+    /// puts it after it in the stack). Ignored if already tiled.
     pub fn insert(&mut self, w: W, focused: Option<&W>) {
         if self.contains(&w) {
             return;
@@ -375,7 +351,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.insert(w, focused),
             Tiling::Master(m) => m.insert(w, focused),
-            Tiling::Scroll(s) => s.insert(w, focused),
         }
     }
 
@@ -389,7 +364,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.insert_at(w, target, side),
             Tiling::Master(m) => m.insert_at(w, target, side),
-            Tiling::Scroll(s) => s.insert_at(w, target, side),
         }
     }
 
@@ -399,7 +373,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.remove(w),
             Tiling::Master(m) => m.remove(w),
-            Tiling::Scroll(s) => s.remove(w),
         }
     }
 
@@ -411,7 +384,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.swap(a, b),
             Tiling::Master(m) => m.swap(a, b),
-            Tiling::Scroll(s) => s.swap(a, b),
         }
         true
     }
@@ -425,18 +397,15 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.replace(old, new),
             Tiling::Master(m) => m.replace(old, new),
-            Tiling::Scroll(s) => s.replace(old, new),
         }
         true
     }
 
-    /// Every tile's rectangle within `area` (scrolling: some are outside
-    /// it, scrolled off screen).
+    /// Every tile's rectangle within `area`.
     pub fn arrange(&self, area: Rect, gaps: &Gaps) -> Vec<(W, Rect)> {
         match self {
             Tiling::Dwindle(d) => d.arrange(area, gaps),
             Tiling::Master(m) => m.arrange(area, gaps),
-            Tiling::Scroll(s) => s.arrange(area, gaps),
         }
     }
 
@@ -445,12 +414,8 @@ impl<W: Clone + PartialEq> Tiling<W> {
         neighbour(&self.arrange(area, gaps), w, dir)
     }
 
-    /// Swaps `w` with its neighbour in direction `dir` (scrolling: left and
-    /// right move its whole column). False if it has none.
+    /// Swaps `w` with its neighbour in direction `dir`. False if it has none.
     pub fn move_dir(&mut self, w: &W, dir: Dir, area: Rect, gaps: &Gaps) -> bool {
-        if let Tiling::Scroll(s) = self {
-            return s.move_dir(w, dir);
-        }
         match self.neighbour(w, dir, area, gaps) {
             Some(n) => self.swap(w, &n),
             None => false,
@@ -464,7 +429,6 @@ impl<W: Clone + PartialEq> Tiling<W> {
         match self {
             Tiling::Dwindle(d) => d.resize_edge(w, edge, delta, area, gaps),
             Tiling::Master(m) => m.resize_edge(w, edge, delta, area, gaps),
-            Tiling::Scroll(s) => s.resize_edge(w, edge, delta, area, gaps),
         }
     }
 
@@ -480,21 +444,21 @@ impl<W: Clone + PartialEq> Tiling<W> {
     }
 
     /// Dwindle: flips the direction of the split `w` sits in. False for
-    /// the other layouts, or a lone tile.
+    /// master, or a lone tile.
     pub fn toggle_split(&mut self, w: &W, area: Rect, gaps: &Gaps) -> bool {
         match self {
             Tiling::Dwindle(d) => d.toggle_split(w, area, gaps),
-            Tiling::Master(_) | Tiling::Scroll(_) => false,
+            Tiling::Master(_) => false,
         }
     }
 
     /// Master: makes `w` the master (the old master takes its place); on
     /// the master itself, swaps it with the top of the stack. False for
-    /// the other layouts, or nothing to swap with.
+    /// dwindle, or nothing to swap with.
     pub fn make_master(&mut self, w: &W) -> bool {
         match self {
             Tiling::Master(m) => m.make_master(w),
-            Tiling::Dwindle(_) | Tiling::Scroll(_) => false,
+            Tiling::Dwindle(_) => false,
         }
     }
 }
@@ -594,8 +558,7 @@ mod tests {
         assert_eq!(Layout::parse("spiral"), None);
         assert_eq!(Layout::Floating.next(), Layout::Dwindle);
         assert_eq!(Layout::Dwindle.next(), Layout::Master);
-        assert_eq!(Layout::Master.next(), Layout::Scrolling);
-        assert_eq!(Layout::Scrolling.next(), Layout::Floating);
+        assert_eq!(Layout::Master.next(), Layout::Floating);
     }
 
     #[test]
@@ -609,22 +572,6 @@ mod tests {
         assert_eq!(s.layout_for(0, Some("DEL-1")), Layout::Floating);
         assert_eq!(s.layout_for(0, Some("LG-2")), Layout::Master);
         assert_eq!(s.layout_for(0, None), Layout::Master, "unknown monitor id");
-    }
-
-    #[test]
-    fn scrolling_tiles_one_column_each_and_moves_whole_columns() {
-        let settings = Settings { scroll_center: Center::Never, ..Settings::default() };
-        let mut t = Tiling::new(Layout::Scrolling, &settings, [1, 2, 3]).unwrap();
-        assert_eq!(t.layout(), Layout::Scrolling);
-        assert_eq!(Layout::Scrolling.as_str(), "scrolling");
-        let tiles = t.arrange(AREA, &NO_GAPS);
-        assert_eq!(tiles[2], (3, Rect::new(1000, 0, 500, 600)), "off the right edge");
-        assert!(t.move_dir(&3, Dir::Left, AREA, &NO_GAPS));
-        assert_eq!(t.windows(), vec![1, 3, 2]);
-        assert!(!t.toggle_split(&1, AREA, &NO_GAPS));
-        assert!(!t.make_master(&2));
-        t.apply_settings(&Settings { scroll_center: Center::Always, ..settings });
-        assert!(matches!(&t, Tiling::Scroll(s) if s.center == Center::Always));
     }
 
     #[test]

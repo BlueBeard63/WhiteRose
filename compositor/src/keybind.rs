@@ -103,15 +103,6 @@ pub enum Action {
     /// The snap layout picker: for the focused window (SUPER+Z), or the
     /// window under the pointer (true: a WhiteRose app's maximize button).
     SnapPicker(bool),
-    /// Scrolling: the focused column's next preset width (1/3, 1/2, 2/3).
-    ColumnWidth,
-    /// Scrolling: the focused column fills the screen, or goes back.
-    FullWidth,
-    /// Scrolling: pull the next column's top window into the focused
-    /// column, under the focused window.
-    ColumnPull,
-    /// Scrolling: push the focused window out into a column of its own.
-    ColumnPush,
     /// Show the next (or previous) tab of the focused group.
     NextTab,
     PreviousTab,
@@ -354,10 +345,6 @@ impl Def {
             "make-master" => Action::MakeMaster,
             "toggle-group" => Action::ToggleGroup,
             "snap-picker" => Action::SnapPicker(false),
-            "column-width" => Action::ColumnWidth,
-            "full-width" => Action::FullWidth,
-            "column-pull" => Action::ColumnPull,
-            "column-push" => Action::ColumnPush,
             "next-tab" => Action::NextTab,
             "previous-tab" => Action::PreviousTab,
             other => unreachable!("catalog id {other} has no action"),
@@ -390,10 +377,6 @@ pub const CATALOG: &[Def] = &[
     def("make-master", "Make master (master)", "Windows", &["SUPER+M"]),
     def("toggle-group", "Group or ungroup window", "Windows", &["SUPER+G"]),
     def("snap-picker", "Snap layouts", "Windows", &["SUPER+Z"]),
-    def("column-width", "Column width (scrolling)", "Windows", &["SUPER+W"]),
-    def("full-width", "Full-width column (scrolling)", "Windows", &["SUPER+SHIFT+W"]),
-    def("column-pull", "Pull window into column (scrolling)", "Windows", &["SUPER+BRACKETLEFT"]),
-    def("column-push", "Push window out of column (scrolling)", "Windows", &["SUPER+BRACKETRIGHT"]),
     def("next-tab", "Next tab", "Windows", &["SUPER+PERIOD"]),
     def("previous-tab", "Previous tab", "Windows", &["SUPER+COMMA"]),
     Def { range: Range::Digits, ..def("workspace", "Switch to workspace 1–9", "Workspaces", &["SUPER+1-9"]) },

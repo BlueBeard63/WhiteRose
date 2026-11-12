@@ -408,13 +408,10 @@ var Known = map[string]Key{
 	"windows.master.side": {Default: json.RawMessage(`"left"`), Check: into(oneOf("left", "right", "top", "bottom"))},
 	// Dwindle: which way new tiles split (auto: by the tile's shape).
 	"windows.dwindle.split": {Default: json.RawMessage(`"auto"`), Check: into(oneOf("auto", "horizontal", "vertical"))},
-	// Scrolling: when moving the focus centres its column (overflow: only
-	// when it won't fit on screen beside the one focused before).
-	"windows.scroll.center": {Default: json.RawMessage(`"overflow"`), Check: into(oneOf("never", "overflow", "always"))},
 }
 
 // The window layouts (windows.layout and its overrides).
-var layouts = []string{"floating", "dwindle", "master", "scrolling"}
+var layouts = []string{"floating", "dwindle", "master"}
 
 func pixels(lo, hi int) func(int) error {
 	return func(v int) error {

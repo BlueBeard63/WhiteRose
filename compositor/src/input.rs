@@ -18,7 +18,6 @@ use crate::{
     grabs::tile_grab::nearest_corner,
     keybind::{is_logo_key, Action, Mods},
     state::WhiteRose,
-    tiling::StripScroll,
 };
 
 impl WhiteRose {
@@ -60,16 +59,6 @@ impl WhiteRose {
                     }
                 }
                 let pointer = self.seat.get_pointer().expect("seat has a pointer");
-                // SUPER over a strip scrolls the strip instead of the app.
-                if self.super_held() && !pointer.is_grabbed() {
-                    let how = match (event.amount_v120(Axis::Horizontal), event.amount_v120(Axis::Vertical)) {
-                        (None, None) => StripScroll::Pixels(amount(Axis::Horizontal) + amount(Axis::Vertical)),
-                        (h, v) => StripScroll::V120((h.unwrap_or(0.0) + v.unwrap_or(0.0)) as i32),
-                    };
-                    if self.scroll_strip(pointer.current_location(), how) {
-                        return;
-                    }
-                }
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
@@ -130,7 +119,7 @@ impl WhiteRose {
                     keyboard.set_focus(self, Some(layer.wl_surface().clone()), serial);
                 }
             } else {
-                let clicked = self.window_under(at).map(|(w, _)| w.clone());
+                let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
                 if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
                     // Click-to-focus; clicking the background clears focus.
                     self.focus_window(clicked);

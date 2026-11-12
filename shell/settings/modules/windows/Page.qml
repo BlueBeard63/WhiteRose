@@ -19,7 +19,6 @@ Column {
         { label: "Floating", value: "floating" },
         { label: "Dwindle", value: "dwindle" },
         { label: "Master", value: "master" },
-        { label: "Scrolling", value: "scrolling" },
     ]
 
     // Sets (or, for "", clears) one entry of a layout map setting.
@@ -53,8 +52,6 @@ Column {
                 { id: "dwindle", name: "Dwindle", say: "Each new window splits the last",
                   wins: [[0, 0, 0.49, 1], [0.51, 0, 0.49, 0.48], [0.51, 0.52, 0.235, 0.48], [0.765, 0.52, 0.235, 0.48]] },
                 { id: "master", name: "Master", say: "One large, the rest stacked", wins: [[0, 0, 0.55, 1], [0.57, 0, 0.43, 0.48], [0.57, 0.52, 0.43, 0.48]] },
-                // Half-wide columns running off both sides of the screen.
-                { id: "scrolling", name: "Scrolling", say: "Columns you scroll through", wins: [[-0.3, 0, 0.48, 1], [0.22, 0, 0.48, 1], [0.74, 0, 0.48, 1]] },
             ]
             delegate: Rectangle {
                 id: card
@@ -66,7 +63,7 @@ Column {
                 Accessible.checkable: true
                 Accessible.checked: on
                 Accessible.onPressAction: Daemon.set("windows.layout", modelData.id)
-                width: (page.width - 36) / 4
+                width: (page.width - 24) / 3
                 height: 176
                 radius: 16
                 color: Theme.surface1
@@ -88,7 +85,6 @@ Column {
                     Item {
                         id: area
                         x: 8; y: 24; width: parent.width - 16; height: parent.height - 32
-                        clip: true // scrolling's columns run off the screen
                         Repeater {
                             model: card.modelData.wins
                             delegate: Rectangle {
@@ -260,15 +256,6 @@ Column {
                 value: Daemon.setting("windows.dwindle.split", "auto")
                 options: [{ label: "By shape", value: "auto" }, { label: "Side by side", value: "horizontal" }, { label: "Stacked", value: "vertical" }]
                 onPicked: v => Daemon.set("windows.dwindle.split", v)
-            }
-        }
-        SettingRow {
-            title: "Centre the focused column"
-            subtitle: "Scrolling layout"
-            Segmented {
-                value: Daemon.setting("windows.scroll.center", "overflow")
-                options: [{ label: "Never", value: "never" }, { label: "When needed", value: "overflow" }, { label: "Always", value: "always" }]
-                onPicked: v => Daemon.set("windows.scroll.center", v)
             }
         }
     }
