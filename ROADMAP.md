@@ -94,7 +94,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 
 ## 0.3 · Layouts
 
-**Next up.** How windows are arranged: four models, one global choice with overrides.
+**In progress.** How windows are arranged: four models, one global choice with overrides.
 
 <details>
 <summary>✅ <b>Click-and-check tests</b>: Tests that use WhiteRose like a person would, without guessing where things are on screen. <sub>· Qt Test, Playwright</sub></summary>
