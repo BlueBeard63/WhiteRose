@@ -312,7 +312,7 @@ FloatingWindow {
         Accessible.name: label
         Accessible.selected: on
         Accessible.onPressAction: rb.activated()
-        width: 40; height: tab ? 30 : 34
+        width: 40; height: tab ? 28 : 34
         radius: 9
         color: on ? Theme.surface2 : rbMouse.containsMouse ? Theme.surface1 : "transparent"
         Icon { anchors.centerIn: parent; name: rb.icon; size: 16; color: rb.on ? Theme.rose : Theme.muted }

@@ -159,9 +159,70 @@ function moveLine(zones, i, dir, to) {
     return normalize(out);
 }
 
-// The editor's tools: Resize drags the lines between zones; the others act
-// on the zone clicked. The tool stays picked until another is.
-const TOOLS = ["resize", "side", "stacked", "merge"];
+// The editor's tools: Resize drags the lines between zones; Draw drags out
+// a new zone over empty space; the others act on the zone clicked. The tool
+// stays picked until another is.
+const TOOLS = ["resize", "side", "stacked", "merge", "draw", "delete"];
+
+// The grid less zone `i`, leaving empty space where it was (a window
+// dropped there with SHIFT just floats). null for the last zone.
+function remove(zones, i) {
+    if (!zones[i] || zones.length <= 1) return null;
+    return zones.filter((_, k) => k !== i);
+}
+
+// The zone holding the point (x, y) (fractions), or -1 in empty space.
+function zoneAt(zones, x, y) {
+    return zones.findIndex(z => x > z[0] + EPS && x < z[0] + z[2] - EPS && y > z[1] + EPS && y < z[1] + z[3] - EPS);
+}
+
+// Drawn edges land on 24ths of the area, or on another zone's edge within
+// SNAP of them (so zones line up and share lines Resize can move).
+const GRID = 24;
+const SNAP = 0.02;
+function snapTo(v, edges) {
+    let best = Math.round(v * GRID) / GRID, near = SNAP;
+    for (const e of edges) {
+        if (Math.abs(e - v) <= near) { best = e; near = Math.abs(e - v); }
+    }
+    return Math.min(1, Math.max(0, best));
+}
+
+// The zone drawn by dragging from (x0, y0), which must be in empty space, to
+// (x1, y1): edges snapped, and stopped at the zones around it instead of
+// overlapping them. { zone: [x, y, w, h], ok }: ok when it's at least a
+// tenth each way and there's room for another zone. null if the drag
+// started inside a zone.
+function draw(zones, x0, y0, x1, y1) {
+    if (zoneAt(zones, x0, y0) >= 0) return null;
+    const xs = [0, 1], ys = [0, 1];
+    for (const z of zones) { xs.push(z[0], z[0] + z[2]); ys.push(z[1], z[1] + z[3]); }
+    let l = snapTo(Math.min(x0, x1), xs), rt = snapTo(Math.max(x0, x1), xs);
+    let t = snapTo(Math.min(y0, y1), ys), b = snapTo(Math.max(y0, y1), ys);
+    // Each zone it runs into cuts it back to that zone's near edge, on the
+    // side away from where the drag started.
+    for (let changed = true; changed;) {
+        changed = false;
+        for (const z of zones) {
+            const zr = z[0] + z[2], zb = z[1] + z[3];
+            if (Math.min(rt, zr) - Math.max(l, z[0]) <= EPS || Math.min(b, zb) - Math.max(t, z[1]) <= EPS) continue;
+            if (z[0] >= x0 - EPS) rt = z[0];
+            else if (zr <= x0 + EPS) l = zr;
+            else if (z[1] >= y0 - EPS) b = z[1];
+            else t = zb;
+            changed = true;
+        }
+    }
+    const zone = [r(l), r(t), r(rt - l), r(b - t)];
+    const ok = zone[2] >= MIN - EPS && zone[3] >= MIN - EPS && zones.length < MAX_ZONES;
+    return { zone, ok };
+}
+
+// The grid with `zone` added, or null if the compositor wouldn't take it.
+function add(zones, zone) {
+    const out = normalize(zones.concat([zone]));
+    return valid(out) ? out : null;
+}
 
 // What clicking zone `i` with `tool` does, given the zone Merge has picked
 // first (`picked`, or -1): { zones: the new grid, or null for no change,
@@ -170,6 +231,7 @@ const TOOLS = ["resize", "side", "stacked", "merge"];
 // with it (another zone is picked instead; the same one again unpicks it).
 function click(zones, tool, picked, i) {
     if (tool === "side" || tool === "stacked") return { zones: split(zones, i, tool), picked: -1 };
+    if (tool === "delete") return { zones: remove(zones, i), picked: -1 };
     if (tool !== "merge") return { zones: null, picked: -1 };
     if (picked === i) return { zones: null, picked: -1 };
     if (picked >= 0 && canMerge(zones, picked, i)) return { zones: merge(zones, picked, i), picked: -1 };

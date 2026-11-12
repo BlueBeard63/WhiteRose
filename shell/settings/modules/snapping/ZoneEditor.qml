@@ -2,8 +2,9 @@
 // with the tool picked in the monitor's header (it stays picked): Resize
 // drags the lines between zones; Side by side and Stacked split the zone
 // clicked (hovering shows where); Merge joins two zones clicked one after
-// the other. Every change is saved as it's made; only grids the compositor
-// takes are saved (Zones.js).
+// the other; Draw drags out a new zone over empty space; Delete takes the
+// zone clicked away (never the last). Every change is saved as it's made;
+// only grids the compositor takes are saved (Zones.js).
 import QtQuick
 import qs
 import qs.settings
@@ -39,7 +40,12 @@ Item {
         if (r.zones) commit(r.zones);
     }
     // What a click on a zone does now, for screen readers.
-    readonly property string action: ({ side: "Split side by side", stacked: "Split stacked", merge: picked < 0 ? "Pick to merge" : "Merge" })[tool] ?? ""
+    readonly property string action: ({ side: "Split side by side", stacked: "Split stacked", merge: picked < 0 ? "Pick to merge" : "Merge", delete: "Delete" })[tool] ?? ""
+    // Draw: where the drag started (fractions), and the zone it makes so far.
+    property var drawFrom: null
+    property var drawing: null
+    // Red: a zone being deleted, or one drawn that won't fit.
+    readonly property color danger: Qt.rgba(0.77, 0.17, 0.11, 0.45)
 
     readonly property int gap: 4
     readonly property int bar: 7
@@ -66,6 +72,33 @@ Item {
             x: ed.gap; y: ed.bar + ed.gap
             width: ed.areaW; height: ed.areaH
 
+            // Draw: press in empty space and drag (the zones don't take
+            // clicks with this tool, so presses on them land here too and
+            // draw nothing).
+            MouseArea {
+                anchors.fill: parent
+                enabled: ed.tool === "draw"
+                preventStealing: true
+                cursorShape: Qt.CrossCursor
+                function at(mouse) { return [Math.min(1, Math.max(0, mouse.x / width)), Math.min(1, Math.max(0, mouse.y / height))] }
+                onPressed: mouse => {
+                    const p = at(mouse);
+                    ed.drawFrom = Z.zoneAt(ed.zones, p[0], p[1]) < 0 ? p : null;
+                    ed.drawing = ed.drawFrom ? Z.draw(ed.zones, p[0], p[1], p[0], p[1]) : null;
+                }
+                onPositionChanged: mouse => {
+                    if (!ed.drawFrom) return;
+                    const p = at(mouse);
+                    ed.drawing = Z.draw(ed.zones, ed.drawFrom[0], ed.drawFrom[1], p[0], p[1]);
+                }
+                onReleased: {
+                    const d = ed.drawing;
+                    ed.drawFrom = null;
+                    ed.drawing = null;
+                    if (d?.ok) ed.commit(Z.add(ed.zones, d.zone));
+                }
+            }
+
             Repeater {
                 model: ed.zones
                 delegate: Rectangle {
@@ -74,7 +107,9 @@ Item {
                     required property int index
                     readonly property bool first: ed.picked === index
                     // Merge, a zone picked: only the ones it merges with respond.
-                    readonly property bool takes: ed.tool !== "resize" && (ed.tool !== "merge" || ed.picked < 0 || first || Z.canMerge(ed.zones, ed.picked, index))
+                    readonly property bool takes: ed.tool !== "resize" && ed.tool !== "draw"
+                        && (ed.tool !== "delete" || ed.zones.length > 1)
+                        && (ed.tool !== "merge" || ed.picked < 0 || first || Z.canMerge(ed.zones, ed.picked, index))
                     readonly property bool hot: zoneMouse.containsMouse && takes
                     readonly property bool splitting: hot && (ed.tool === "side" || ed.tool === "stacked")
                     // Half the gap off each side that meets another zone.
@@ -84,7 +119,9 @@ Item {
                     readonly property real y1: (modelData[1] + modelData[3]) * area.height - (modelData[1] + modelData[3] < 1 - 1e-6 ? ed.gap / 2 : 0)
                     x: x0; y: y0; width: x1 - x0; height: y1 - y0
                     radius: 6
-                    color: first ? Qt.rgba(Theme.rose.r, Theme.rose.g, Theme.rose.b, 0.35) : hot ? Theme.grip : Theme.surface2
+                    color: first ? Qt.rgba(Theme.rose.r, Theme.rose.g, Theme.rose.b, 0.35)
+                        : hot && ed.tool === "delete" ? ed.danger
+                        : hot ? Theme.grip : Theme.surface2
                     border { width: first ? 1.5 : 0; color: Theme.pearl }
                     Accessible.role: Accessible.Button
                     Accessible.name: "Zone " + (index + 1)
@@ -114,12 +151,23 @@ Item {
                     MouseArea {
                         id: zoneMouse
                         anchors.fill: parent
-                        enabled: ed.tool !== "resize"
+                        enabled: ed.tool !== "resize" && ed.tool !== "draw"
                         hoverEnabled: true
                         cursorShape: zone.takes ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: if (zone.takes) ed.clickZone(zone.index)
                     }
                 }
+            }
+
+            // The zone being drawn: rose, or red if it won't fit.
+            Rectangle {
+                visible: ed.drawing !== null
+                readonly property var drawn: ed.drawing?.zone ?? [0, 0, 0, 0]
+                x: drawn[0] * area.width; y: drawn[1] * area.height
+                width: drawn[2] * area.width; height: drawn[3] * area.height
+                radius: 6
+                color: ed.drawing?.ok ? Qt.rgba(Theme.rose.r, Theme.rose.g, Theme.rose.b, 0.3) : ed.danger
+                border { width: 1.5; color: ed.drawing?.ok ? Theme.pearl : Qt.rgba(0.77, 0.17, 0.11, 1) }
             }
 
             // The lines between zones: drag to move (with every zone on it).

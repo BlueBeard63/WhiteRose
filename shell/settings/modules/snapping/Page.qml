@@ -57,7 +57,15 @@ Column {
                     // The editor's tool (it stays picked).
                     Segmented {
                         value: editor.tool
-                        options: [{ label: "Resize", value: "resize" }, { label: "Side by side", value: "side" }, { label: "Stacked", value: "stacked" }, { label: "Merge", value: "merge" }]
+                        iconOnly: true
+                        options: [
+                            { label: "Resize", value: "resize", icon: "move" },
+                            { label: "Side by side", value: "side", icon: "columns2" },
+                            { label: "Stacked", value: "stacked", icon: "rows2" },
+                            { label: "Merge", value: "merge", icon: "merge" },
+                            { label: "Draw", value: "draw", icon: "squarePlus" },
+                            { label: "Delete", value: "delete", icon: "trash" },
+                        ]
                         onPicked: v => editor.tool = v
                     }
                     Button {

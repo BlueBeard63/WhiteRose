@@ -195,3 +195,29 @@ func TestSettingsNarrowRailOpensTheSidebarOverThePage(t *testing.T) {
 		t.Errorf("narrow: a %s with no name at %d,%d (%dx%d)", n.Role, n.X, n.Y, n.W, n.H)
 	}
 }
+
+// Settings › Snapping: Delete takes the default grid's second zone away
+// (empty space is allowed), and Draw drags a new zone over that space: its
+// edges snap to the zone beside it and to the screen's edges, so it fills
+// the right third again.
+func TestSettingsDeleteAndDrawAZone(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	settings := s.Settings("snapping")
+	settings.Click(uitest.Named("Maximise").Role("push button"))
+	settings.Click(uitest.Named("Delete").Role("radio button"))
+	settings.Click(uitest.Named("Zone 2").Role("push button").Described("Delete"))
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), "[[0,0,0.6667,1]]") }) {
+		t.Fatalf("zone 2 wasn't deleted: %s", s.Setting("windows.snap.zones"))
+	}
+	settings.Click(uitest.Named("Draw").Role("radio button"))
+	z1 := settings.WaitFor(uitest.Named("Zone 1").Role("push button"))
+	g := settings.Geometry()
+	// The editor's area: zone 1 is its left two thirds (less half a gap).
+	area := float64(z1.W+2) / 0.6667
+	left, top := float64(g[0]+z1.X), float64(g[1]+z1.Y)
+	s.Drag(left+area*0.677, top+float64(z1.H)*0.01, left+area*0.99, top+float64(z1.H)*0.99)
+	want := "[[0,0,0.6667,1],[0.6667,0,0.3333,1]]"
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.snap.zones"), want) }) {
+		t.Fatalf("the drawn zone isn't the right third: %s", s.Setting("windows.snap.zones"))
+	}
+}
