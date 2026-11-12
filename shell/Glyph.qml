@@ -2,9 +2,8 @@
 // a 16px grid, drawn 1:1 so their straight edges land on whole pixels at
 // scale 1 and 2. (The Lucide outlines in Icon.qml are drawn from 24px and
 // shrunk, which goes soft at the bar's size.) Each glyph has a fill, parts
-// drawn dim (the bands a weak signal doesn't reach, the scrolling strip's
-// cut-off columns) and 2px lines; keep the item on whole pixels too, e.g.
-// y: Math.round((parent.height - height) / 2).
+// drawn dim (the bands a weak signal doesn't reach) and 2px lines. Keep
+// the item on whole pixels too, e.g. y: Math.round((parent.height - height) / 2).
 import QtQuick
 import QtQuick.Shapes
 
@@ -33,7 +32,6 @@ Item {
         layoutFloating: { fill: "M2 2H9A1 1 0 0 1 10 3V5H5A1 1 0 0 0 4 6V9H2A1 1 0 0 1 1 8V3A1 1 0 0 1 2 2ZM6 6H14A1 1 0 0 1 15 7V13A1 1 0 0 1 14 14H6A1 1 0 0 1 5 13V7A1 1 0 0 1 6 6Z" },
         layoutDwindle: { fill: "M2 2H6A1 1 0 0 1 7 3V13A1 1 0 0 1 6 14H2A1 1 0 0 1 1 13V3A1 1 0 0 1 2 2ZM9 2H14A1 1 0 0 1 15 3V6A1 1 0 0 1 14 7H9A1 1 0 0 1 8 6V3A1 1 0 0 1 9 2ZM9 8H10A1 1 0 0 1 11 9V13A1 1 0 0 1 10 14H9A1 1 0 0 1 8 13V9A1 1 0 0 1 9 8ZM13 8H14A1 1 0 0 1 15 9V13A1 1 0 0 1 14 14H13A1 1 0 0 1 12 13V9A1 1 0 0 1 13 8Z" },
         layoutMaster: { fill: "M2 2H8A1 1 0 0 1 9 3V13A1 1 0 0 1 8 14H2A1 1 0 0 1 1 13V3A1 1 0 0 1 2 2ZM11 2H14A1 1 0 0 1 15 3V6A1 1 0 0 1 14 7H11A1 1 0 0 1 10 6V3A1 1 0 0 1 11 2ZM11 8H14A1 1 0 0 1 15 9V13A1 1 0 0 1 14 14H11A1 1 0 0 1 10 13V9A1 1 0 0 1 11 8Z" },
-        layoutScrolling: { dim: "M0 2H3A1 1 0 0 1 4 3V13A1 1 0 0 1 3 14H0ZM16 2H13A1 1 0 0 0 12 3V13A1 1 0 0 0 13 14H16Z", fill: "M6 2H10A1 1 0 0 1 11 3V13A1 1 0 0 1 10 14H6A1 1 0 0 1 5 13V3A1 1 0 0 1 6 2Z" },
     })
 
     Shape {

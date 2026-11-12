@@ -126,43 +126,6 @@ func TestSettingsWorkspaceLayoutTilesItsWindows(t *testing.T) {
 	s.WaitSetting("windows.layout.workspaces", map[string]any{})
 }
 
-// Windows: Scrolling for workspace 1 makes a strip of half-wide columns.
-// Settings and three Files windows are four columns: the newest is in view
-// and the first has scrolled off the left. SUPER+W makes the focused column
-// two thirds wide, and the strip keeps it in view.
-func TestSettingsScrollingKeepsTheNewestColumnInView(t *testing.T) {
-	s := uitest.Start(t, uitest.Options{Shell: true})
-	settings := s.Settings("windows")
-	settings.Click(uitest.Named("Workspace 1").Role("combo box"))
-	settings.WaitFor(uitest.Named("Scrolling").Role("menu item"))
-	settings.Activate(uitest.Named("Scrolling").Role("menu item"))
-	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "scrolling"})
-	var wins []*uitest.Window
-	for _, name := range []string{"one", "two", "three"} {
-		dir := filepath.Join(s.Home, name)
-		os.MkdirAll(dir, 0o755)
-		wins = append(wins, s.Open(filesBinary(s)+" "+dir, name+" — Files"))
-	}
-	screen := s.Bar().Geometry()
-	first, newest := wins[0], wins[2]
-	var a, c [4]int
-	strip := uitest.WaitUntil(func() bool {
-		a, c = first.Geometry(), newest.Geometry()
-		return a[0]+a[2] <= 0 && c[0] >= 0 && c[0]+c[2] <= screen[2] && abs(2*c[2]-screen[2]) < 60
-	})
-	if !strip {
-		t.Fatalf("on a %dpx screen, the first column %v isn't off the left or the newest %v isn't a half in view", screen[2], a, c)
-	}
-	newest.Press("super+w")
-	wider := uitest.WaitUntil(func() bool {
-		c = newest.Geometry()
-		return abs(3*c[2]-2*screen[2]) < 60 && c[0] >= 0 && c[0]+c[2] <= screen[2]
-	})
-	if !wider {
-		t.Fatalf("SUPER+W: not two thirds of a %dpx screen and in view: %v", screen[2], c)
-	}
-}
-
 // Settings › Snapping: with the Stacked tool, click a monitor's first zone
 // (two thirds) to split it (saved as that monitor's grid), then
 // SUPER+SHIFT-drag a window onto the lower half: it fills it. (A zone narrower than the window's

@@ -67,33 +67,11 @@ pub struct TilingState {
     /// The visible groups' tab strips, and their drawn pictures.
     pub strips: Vec<Strip>,
     pub strip_images: StripImages,
-    /// SUPER+wheel: high-resolution wheel steps not yet a whole click.
-    pub wheel_v120: i32,
-    /// SUPER+touchpad: the fraction of a pixel not scrolled yet.
-    pub scroll_rest: f64,
-    /// A dragged tile held near a strip's edge: that output's strip
-    /// scrolls that way (-1 left, 1 right) while it stays there, at that
-    /// pointer position (kept here: the tick can't ask the pointer, which
-    /// is locked while a grab handles motion).
-    pub edge_scroll: Option<(Output, i32, Point<f64, Logical>)>,
-    /// Whether the edge-scroll timer is running.
-    pub edge_timer: bool,
+    /// Each tiled window's tile as last placed: it's drawn and takes the
+    /// pointer only there, so an app that won't shrink to its tile (a
+    /// minimum size) is cut off instead of covering its neighbours.
+    pub placed: Vec<(Window, Rectangle<i32, Logical>)>,
 }
-
-/// How SUPER with a wheel or touchpad scrolls a strip.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum StripScroll {
-    /// A wheel, in 120ths of a click: a whole click scrolls one column.
-    V120(i32),
-    /// A touchpad (or a smooth wheel): pixels, 1:1.
-    Pixels(f64),
-}
-
-/// How near a strip's left or right edge a dragged tile scrolls it.
-const EDGE_ZONE: f64 = 32.0;
-/// How far it scrolls each tick, and how often.
-const EDGE_STEP: i32 = 24;
-const EDGE_TICK: std::time::Duration = std::time::Duration::from_millis(16);
 
 /// The drop preview: a translucent rectangle (global coordinates).
 #[derive(Debug)]
@@ -186,6 +164,7 @@ impl WhiteRose {
 
         let mut tiled: Vec<Window> = Vec::new();
         let mut strips: Vec<Strip> = Vec::new();
+        let mut placed: Vec<(Window, Rectangle<i32, Logical>)> = Vec::new();
         for o in &outputs {
             let layout = self.layout_of(ws, o);
             let set = self.tiling.sets.iter().position(|s| s.workspace == ws && s.output == *o);
@@ -236,13 +215,6 @@ impl WhiteRose {
                 let tiling = &self.tiling.sets[i].tiling;
                 let next_to = self.workspaces.mru().iter().find(|m| *m != w && tiling.contains(m)).cloned();
                 self.tiling.sets[i].tiling.insert(w.clone(), next_to.as_ref());
-                // A new window has focus already (it got it when it was
-                // created): a strip scrolls to show it.
-                if self.workspaces.focused() == Some(w) {
-                    if let Tiling::Scroll(strip) = &mut self.tiling.sets[i].tiling {
-                        strip.ensure_visible(w, next_to.as_ref(), area, &self.tiling.settings.gaps);
-                    }
-                }
             }
             for (w, r) in self.tiling.sets[i].tiling.arrange(area, &self.tiling.settings.gaps) {
                 let mut r = to_rectangle(r);
@@ -256,11 +228,13 @@ impl WhiteRose {
                 }
                 if !Self::maximized_or_fullscreen(&w) {
                     self.place(&w, r);
+                    placed.push((w.clone(), r));
                 }
                 tiled.push(w);
             }
         }
         self.tiling.strips = strips;
+        self.tiling.placed = placed;
 
         // A group whose tile is gone (the workspace floats now) ends: its
         // hidden tabs come back, and they all float where they were.
@@ -432,9 +406,6 @@ impl WhiteRose {
                     value.as_f64().unwrap_or(defaults.master_ratio).clamp(layout::MIN_RATIO, layout::MAX_RATIO)
             }
             "windows.master.side" => s.master_side = value.as_str().and_then(Side::parse).unwrap_or_default(),
-            "windows.scroll.center" => {
-                s.scroll_center = value.as_str().and_then(layout::Center::parse).unwrap_or_default()
-            }
             "windows.dwindle.split" => {
                 s.dwindle_split = match value.as_str() {
                     Some("horizontal") => Some(Axis::Horizontal),
@@ -459,127 +430,18 @@ impl WhiteRose {
     }
 }
 
-/// Scrolling strips: keeping the focus in view, and the windows scrolled
-/// off screen.
-///
-/// Windows scrolled off screen stay mapped (being mapped is what "on the
-/// visible workspace" means everywhere else), past their output's edge. Each
-/// one is clipped to its own output: it's drawn there only, takes the
-/// pointer only there, and gets frame callbacks only while some of it shows,
-/// so a window scrolled out of sight stops drawing.
+/// Tiled windows are cut to their tiles: an app that won't shrink to its
+/// tile (a minimum size) is drawn, hit-tested and given frame callbacks only
+/// within it, so it never covers its neighbours. Its popups stay whole.
 impl WhiteRose {
-    /// Scrolls `w`'s strip to show it, now that it has the focus (`previous`
-    /// had it before). True if the view moved; the windows are placed again.
-    pub(crate) fn scroll_to(&mut self, w: &Window, previous: Option<&Window>) -> bool {
-        let Some(i) = self.tiling.sets.iter().position(|s| s.tiling.contains(w)) else { return false };
-        let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
-        let gaps = self.tiling.settings.gaps;
-        let Tiling::Scroll(strip) = &mut self.tiling.sets[i].tiling else { return false };
-        if !strip.ensure_visible(w, previous, area, &gaps) {
-            return false;
-        }
-        self.retile();
-        true
-    }
-
-    /// The visible workspace's strip under `pos`, as a set index.
-    fn strip_at(&self, pos: Point<f64, Logical>) -> Option<usize> {
-        self.tiled_area_at(pos).filter(|i| matches!(self.tiling.sets[*i].tiling, Tiling::Scroll(_)))
-    }
-
-    /// SUPER with a wheel or touchpad over a strip scrolls it. True if a
-    /// strip was there: the app under the pointer doesn't get the scroll,
-    /// even at the strip's end.
-    pub fn scroll_strip(&mut self, pos: Point<f64, Logical>, how: StripScroll) -> bool {
-        let Some(i) = self.strip_at(pos) else { return false };
-        let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
-        let gaps = self.tiling.settings.gaps;
-        let t = &mut self.tiling;
-        let Tiling::Scroll(strip) = &mut t.sets[i].tiling else { return false };
-        let moved = match how {
-            StripScroll::V120(v) => {
-                t.wheel_v120 += v;
-                let clicks = t.wheel_v120 / 120;
-                t.wheel_v120 %= 120;
-                strip.scroll_columns(clicks, area, &gaps)
-            }
-            StripScroll::Pixels(px) => {
-                let total = t.scroll_rest + px;
-                t.scroll_rest = total.fract();
-                strip.scroll_by(total.trunc() as i32, area, &gaps)
-            }
-        };
-        if moved {
-            self.retile();
-        }
-        true
-    }
-
-    /// A dragged tile moved to `pos`: near a strip's left or right edge,
-    /// the strip starts scrolling that way, and keeps on while it's held
-    /// there (`edge_scroll_tick`).
-    pub fn drag_near_edge(&mut self, pos: Point<f64, Logical>) {
-        self.tiling.edge_scroll = self.strip_at(pos).and_then(|i| {
-            let o = self.tiling.sets[i].output.clone();
-            let a = self.usable_area_on(&o).to_f64();
-            if pos.x < a.loc.x + EDGE_ZONE {
-                Some((o, -1, pos))
-            } else if pos.x >= a.loc.x + a.size.w - EDGE_ZONE {
-                Some((o, 1, pos))
-            } else {
-                None
-            }
-        });
-        if self.tiling.edge_scroll.is_some() && !self.tiling.edge_timer {
-            self.tiling.edge_timer = true;
-            self.edge_scroll_tick();
-            let timer = smithay::reexports::calloop::timer::Timer::from_duration(EDGE_TICK);
-            let inserted = self.loop_handle.insert_source(timer, |_, _, state| {
-                if state.edge_scroll_tick() {
-                    smithay::reexports::calloop::timer::TimeoutAction::ToDuration(EDGE_TICK)
-                } else {
-                    smithay::reexports::calloop::timer::TimeoutAction::Drop
-                }
-            });
-            if inserted.is_err() {
-                self.tiling.edge_timer = false;
-            }
-        }
-    }
-
-    /// One step of a held edge scroll; false once the tile left the edge
-    /// or was dropped (the timer stops).
-    pub fn edge_scroll_tick(&mut self) -> bool {
-        let (Some((o, dir, pos)), Some(w)) = (self.tiling.edge_scroll.clone(), self.tiling.dragging.clone()) else {
-            self.tiling.edge_scroll = None;
-            self.tiling.edge_timer = false;
-            return false;
-        };
-        let ws = self.workspaces.active();
-        let Some(i) = self.tiling.sets.iter().position(|s| s.workspace == ws && s.output == o) else {
-            self.tiling.edge_timer = false;
-            return false;
-        };
-        let area = to_rect(self.usable_area_on(&o));
-        let gaps = self.tiling.settings.gaps;
-        if let Tiling::Scroll(strip) = &mut self.tiling.sets[i].tiling {
-            if strip.scroll_by(dir * EDGE_STEP, area, &gaps) {
-                self.retile();
-                self.show_drop_preview(&w, pos);
-            }
-        }
-        true
-    }
-
-    /// The part of the screen a strip window may show on: its own output.
-    /// None for every other window (including a tile being dragged, which
-    /// follows the pointer across outputs).
+    /// The part of the screen a tiled window may show on: its tile. Its
+    /// popups aren't clipped. None for floating windows, maximized and
+    /// fullscreen ones, and a tile being dragged (it follows the pointer).
     pub fn clip_of(&self, w: &Window) -> Option<Rectangle<i32, Logical>> {
-        if self.tiling.dragging.as_ref() == Some(w) {
+        if self.tiling.dragging.as_ref() == Some(w) || Self::maximized_or_fullscreen(w) {
             return None;
         }
-        let set = self.tiling.sets.iter().find(|s| matches!(s.tiling, Tiling::Scroll(_)) && s.tiling.contains(w))?;
-        self.space.output_geometry(&set.output)
+        self.tiling.placed.iter().find(|(p, _)| p == w).map(|(_, tile)| *tile)
     }
 
     /// Whether `output` shows any of `w` (always, for an unclipped window).
@@ -587,7 +449,7 @@ impl WhiteRose {
         match self.clip_of(w) {
             None => true,
             Some(clip) => {
-                self.space.output_geometry(output) == Some(clip)
+                self.space.output_geometry(output).is_some_and(|o| o.overlaps(clip))
                     && self.space.element_bbox(w).is_some_and(|b| b.overlaps(clip))
             }
         }
@@ -656,7 +518,6 @@ impl WhiteRose {
     /// The drag ended (dropped, or the grab was taken away).
     pub fn end_tile_drag(&mut self) {
         self.tiling.dragging = None;
-        self.tiling.edge_scroll = None;
         self.set_preview(None);
     }
 
@@ -804,17 +665,10 @@ impl WhiteRose {
         let reach = self.tiling.settings.gaps.inner / 2 + 4;
         let area = to_rect(self.usable_area_on(&self.tiling.sets[i].output));
         let gaps = self.tiling.settings.gaps;
-        // In a strip, a column's left edge isn't on a split: the gap there
-        // resizes the column on its left (its right edge).
-        let strip = matches!(self.tiling.sets[i].tiling, Tiling::Scroll(_));
         tiles.iter().find_map(|(w, r)| {
             let grown = Rect::new(r.x - reach, r.y - reach, r.w + 2 * reach, r.h + 2 * reach);
             if !to_rectangle(grown).contains(p) {
                 return None;
-            }
-            if strip && p.x < r.x {
-                let left = layout::neighbour(&tiles, w, Dir::Left)?;
-                return Some((left, vec![Dir::Right]));
             }
             let mut edges = Vec::new();
             for (beyond, edge) in [
@@ -847,27 +701,13 @@ impl WhiteRose {
     }
 
     /// Changes the focused tile's tiles with `f` (given the window, its
-    /// area and the gaps), and re-tiles if it did something. A strip then
-    /// scrolls to keep the focused window in view.
+    /// area and the gaps), and re-tiles if it did something.
     fn change_tiles(&mut self, f: impl FnOnce(&mut Tiling<Window>, &Window, Rect, &layout::Gaps) -> bool) {
         let Some((w, i, area)) = self.focused_tile() else { return };
         let gaps = self.tiling.settings.gaps;
-        let tiling = &mut self.tiling.sets[i].tiling;
-        if f(tiling, &w, area, &gaps) {
-            if let Tiling::Scroll(strip) = tiling {
-                strip.ensure_visible(&w, None, area, &gaps);
-            }
+        if f(&mut self.tiling.sets[i].tiling, &w, area, &gaps) {
             self.retile();
         }
-    }
-
-    /// Changes the focused window's strip with `f` (the column keys); does
-    /// nothing on other layouts.
-    pub fn change_strip(&mut self, f: impl FnOnce(&mut layout::Scroll<Window>, &Window) -> bool) {
-        self.change_tiles(|t, w, _, _| match t {
-            Tiling::Scroll(s) => f(s, w),
-            _ => false,
-        });
     }
 
     /// SUPER+T and the bar's layout button: the next layout on the output
@@ -911,21 +751,11 @@ impl WhiteRose {
     }
 
     /// SUPER+arrow: focuses the window beside the focused one (tiled or
-    /// not, on any output). In a strip, that's the next column (scrolled
-    /// off screen or not) or the window above or below; past the strip's
-    /// end, whatever is beside it on screen.
+    /// not, on any output).
     pub fn focus_direction(&mut self, dir: Dir) {
         let Some(w) = self.focused_window() else { return };
-        if let Some((_, i, area)) = self.focused_tile() {
-            let tiling = &self.tiling.sets[i].tiling;
-            if matches!(tiling, Tiling::Scroll(_)) {
-                if let Some(n) = tiling.neighbour(&w, dir, area, &self.tiling.settings.gaps) {
-                    self.focus_window(Some(n));
-                    return;
-                }
-            }
-        }
-        // Strip windows count only where they show on their output.
+        // Tiled windows count where their tiles are, even if the app draws
+        // bigger.
         let windows: Vec<(Window, Rect)> = self
             .space
             .elements()

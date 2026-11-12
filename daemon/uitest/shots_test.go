@@ -51,7 +51,7 @@ func shootBar(t *testing.T, out string, scale int) {
 	h := 26
 	at := fmt.Sprintf("@%dx", scale)
 	save(t, filepath.Join(out, "bar", "right"+at+".png"), s.Capture(g[2]-300, 0, 300, h))
-	for _, layout := range []string{"Floating", "Dwindle", "Master", "Scrolling"} {
+	for _, layout := range []string{"Floating", "Dwindle", "Master"} {
 		bar.WaitFor(button.Described(layout))
 		time.Sleep(200 * time.Millisecond)
 		save(t, filepath.Join(out, "bar", "left-"+layout+at+".png"), s.Capture(0, 0, 300, h))
@@ -63,40 +63,50 @@ func shootBar(t *testing.T, out string, scale int) {
 	save(t, filepath.Join(out, "bar", "quick-settings"+at+".png"), s.Capture(screen[2]/2, 0, screen[2]/2, screen[3]))
 }
 
-// Settings as a column of a scrolling workspace: half wide on its own;
-// SUPER+W makes it two thirds, then a third; SUPER+[ pulls a Files window
-// in below it (half height), and SUPER+W again makes that a half.
+// Settings as a master-layout tile, one session per size: the master
+// beside a Files window at a third, a half and two thirds of the screen;
+// and in the stack between two Files windows for half height (the stack
+// is the rest of the width).
 func shootSettings(t *testing.T, out string) {
-	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"windows.layout": "scrolling"}})
-	settings := s.Settings("")
-	settings.WaitFor(uitest.Named("Apps").Role("page tab"))
-	screen := s.Layer("whiterose-wallpaper").Geometry()
-	wide := func(frac float64) func([4]int) bool {
-		return func(g [4]int) bool { return abs(g[2]-int(float64(screen[2])*frac)) < 40 }
+	for _, size := range []struct {
+		name  string
+		ratio float64 // the master's share
+		short bool    // Settings in the stack, half height
+		frac  float64 // Settings' share of the width
+	}{
+		{"third", 0.3333, false, 1.0 / 3},
+		{"half", 0.5, false, 0.5},
+		{"two-thirds", 0.6667, false, 2.0 / 3},
+		{"third-short", 0.6667, true, 1.0 / 3},
+		{"half-short", 0.5, true, 0.5},
+	} {
+		t.Run(size.name, func(t *testing.T) {
+			s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{
+				"windows.layout": "master", "windows.master.ratio": size.ratio,
+			}})
+			files := func(name string) {
+				dir := filepath.Join(s.Home, name)
+				os.MkdirAll(dir, 0o755)
+				s.Open(filesBinary(s)+" "+dir, name+" — Files")
+			}
+			// The first window is the master; the next go into the stack.
+			if size.short {
+				files("master")
+			}
+			settings := s.Settings("")
+			settings.WaitFor(uitest.Named("Apps").Role("page tab"))
+			files("other")
+			screen := s.Layer("whiterose-wallpaper").Geometry()
+			ok := func(g [4]int) bool {
+				wide := abs(g[2]-int(float64(screen[2])*size.frac)) < 40
+				return wide && (!size.short || g[3] < screen[3]/2)
+			}
+			if !uitest.WaitUntil(func() bool { return ok(settings.Geometry()) }) {
+				t.Fatalf("Settings is %v on a %dx%d screen", settings.Geometry(), screen[2], screen[3])
+			}
+			shootPages(t, s, settings, out, size.name)
+		})
 	}
-	sized := func(name string, ok func([4]int) bool) {
-		if !uitest.WaitUntil(func() bool { return ok(settings.Geometry()) }) {
-			t.Fatalf("%s: Settings is %v on a %dx%d screen", name, settings.Geometry(), screen[2], screen[3])
-		}
-		shootPages(t, s, settings, out, name)
-	}
-	sized("half", wide(0.5))
-	settings.Press("super+w")
-	sized("two-thirds", wide(2.0/3))
-	settings.Press("super+w")
-	sized("third", wide(1.0/3))
-
-	dir := filepath.Join(s.Home, "short")
-	os.MkdirAll(dir, 0o755)
-	s.Open(filesBinary(s)+" "+dir, "short — Files")
-	settings.Press("super+left")
-	settings.Press("super+[")
-	short := func(frac float64) func([4]int) bool {
-		return func(g [4]int) bool { return wide(frac)(g) && g[3] < screen[3]/2 }
-	}
-	sized("third-short", short(1.0/3))
-	settings.Press("super+w")
-	sized("half-short", short(0.5))
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9]+`)

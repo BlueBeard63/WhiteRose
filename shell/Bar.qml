@@ -66,7 +66,7 @@ PanelWindow {
                 Glyph {
                     y: Math.round((parent.height - height) / 2)
                     color: layoutButton.layout === "floating" ? Theme.muted : Theme.text
-                    name: ({ dwindle: "layoutDwindle", master: "layoutMaster", scrolling: "layoutScrolling" })[layoutButton.layout] ?? "layoutFloating"
+                    name: ({ dwindle: "layoutDwindle", master: "layoutMaster" })[layoutButton.layout] ?? "layoutFloating"
                 }
             }
             Rectangle {

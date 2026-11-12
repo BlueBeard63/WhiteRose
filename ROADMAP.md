@@ -14,7 +14,7 @@ Each feature lists where the idea comes from: Windows, Hyprland, niri, GNOME, KD
 |---|---|---|---|
 | ✅ | [**0.1**](#01--foundations) | Foundations | What WhiteRose is today. |
 | ✅ | [**0.2**](#02--files) | Files | Online drives, network shares, and no dialogs. |
-| 🔨 | [**0.3**](#03--layouts) | Layouts | How windows are arranged: four models, one global choice with overrides. |
+| 🔨 | [**0.3**](#03--layouts) | Layouts | How windows are arranged: three models, one global choice with overrides. |
 | 🗓️ | [**0.4**](#04--overview--gestures) | Overview & gestures | Seeing everything at once, and moving around with gestures. |
 | 🗓️ | [**0.5**](#05--look--feel) | Look & feel | Making it yours, and making every app match. |
 | 🗓️ | [**0.6**](#06--login) | Login | WhiteRose from the first frame: its own display manager. |
@@ -94,7 +94,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 
 ## 0.3 · Layouts
 
-**In progress.** How windows are arranged: four models, one global choice with overrides.
+**In progress.** How windows are arranged: three models, one global choice with overrides.
 
 <details>
 <summary>✅ <b>Click-and-check tests</b>: Tests that use WhiteRose like a person would, without guessing where things are on screen. <sub>· Qt Test, Playwright</sub></summary>
@@ -138,15 +138,6 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 <details>
-<summary><b>Scrollable columns</b>: An endless strip of columns per workspace that you scroll through. <sub>· niri</sub></summary>
-
-- niri model: each workspace is a horizontal strip of columns; new windows open to the right of the focused one.
-- Column widths (1/3, 1/2, 2/3, full), stacking windows in a column, centring the focused column.
-- Scroll with keys, touchpad or mouse wheel on the strip.
-
-</details>
-
-<details>
 <summary><b>Window rules</b>: Per-app rules: workspace, monitor, size, floating, opacity, always on top, no blur. <sub>· Hyprland, KDE</sub></summary>
 
 - Match by app id, title (regex), initial class; first match wins, or merge.
@@ -173,7 +164,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 <summary><b>Overview, your choice</b>: A GNOME-style overview or a niri-style zoom-out, chosen in Settings. <sub>· GNOME, niri</sub></summary>
 
 - GNOME-style: SUPER shows every window and workspace zoomed out, with search on top.
-- niri-style: zoom out on the scrolling strip / workspaces; drag windows between them.
+- niri-style: zoom out on the workspaces; drag windows between them.
 - Settings › Windows › Overview picks the style (or off); both are compositor-rendered, live.
 
 </details>

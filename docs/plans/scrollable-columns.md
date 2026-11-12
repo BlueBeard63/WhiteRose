@@ -1,6 +1,11 @@
 # Plan: scrollable columns (v0.3)
 
-**Status: planned** (2026-11-12).
+**Status: dropped** (2026-11-12). The scrolling layout was built (commits
+1-5 here) and then removed: the user doesn't expect to use it, so it left
+the roadmap. What stays from this branch: tiled windows cut to their tiles
+(an app that won't shrink to its tile no longer covers its neighbours), the
+Snapping tools, `make shots`, and the bar's solid glyphs; their decisions
+are recorded below, with the scrolling design kept as a record.
 
 Branch: `v0.3/scrollable-columns` (off `v0.3-release`). Roadmap item:
 "Scrollable columns" (0.3 · Layouts). Window rules and scratchpads come
