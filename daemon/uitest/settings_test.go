@@ -221,3 +221,26 @@ func TestSettingsDeleteAndDrawAZone(t *testing.T) {
 		t.Fatalf("the drawn zone isn't the right third: %s", s.Setting("windows.snap.zones"))
 	}
 }
+
+// Settings › Snapping: "Zones for" Workspace 1 edits that workspace's own
+// grid (it starts as the monitor's): deleting a zone saves it there and
+// leaves the monitor's grid alone; Reset takes the workspace back to it.
+func TestSettingsWorkspaceHasItsOwnZones(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	settings := s.Settings("snapping")
+	settings.Click(uitest.Named("Maximise").Role("push button"))
+	settings.Click(uitest.Named("Zones for").Role("combo box"))
+	settings.WaitFor(uitest.Named("Workspace 1").Role("menu item"))
+	settings.Activate(uitest.Named("Workspace 1").Role("menu item"))
+	settings.Click(uitest.Named("Delete").Role("radio button"))
+	settings.Click(uitest.Named("Zone 2").Role("push button").Described("Delete"))
+	own := func() string { return s.Setting("windows.snap.zones.workspaces") }
+	if !uitest.WaitUntil(func() bool { return strings.Contains(own(), `{"1":{`) && strings.Contains(own(), "[[0,0,0.6667,1]]") }) {
+		t.Fatalf("not saved as workspace 1's own: %s", own())
+	}
+	if g := s.Setting("windows.snap.zones"); g != "" && g != "{}" {
+		t.Errorf("the monitor's grid changed: %s", g)
+	}
+	settings.Click(uitest.Named("Reset").Role("push button"))
+	s.WaitSetting("windows.snap.zones.workspaces", map[string]any{})
+}

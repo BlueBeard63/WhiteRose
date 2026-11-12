@@ -400,6 +400,25 @@ impl WhiteRose {
                     })
                     .collect()
             }
+            "windows.snap.zones.workspaces" => {
+                s.snap_zones_workspaces = value
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(ws, grids)| {
+                        let ws = ws.parse::<usize>().ok()?.checked_sub(1)?;
+                        let grids = grids
+                            .as_object()?
+                            .iter()
+                            .filter_map(|(id, grid)| {
+                                let raw: Vec<[f64; 4]> = serde_json::from_value(grid.clone()).ok()?;
+                                Some((id.clone(), layout::snap::validate_grid(&raw)?))
+                            })
+                            .collect();
+                        Some((ws, grids))
+                    })
+                    .collect()
+            }
             "windows.gaps.smart" => s.gaps.smart = value.as_bool().unwrap_or(defaults.gaps.smart),
             "windows.master.ratio" => {
                 s.master_ratio =

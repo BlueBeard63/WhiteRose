@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"whiterose/daemon/internal/config"
@@ -390,6 +391,27 @@ var Known = map[string]Key{
 			}
 			if err := checkZones(zones); err != nil {
 				return fmt.Errorf("%s: %w", id, err)
+			}
+		}
+		return nil
+	})},
+	// A workspace's own zone grid on a monitor, instead of the monitor's:
+	// {"<workspace 1-9>": {"<monitor id>": [[x, y, w, h], ...]}}.
+	"windows.snap.zones.workspaces": {Default: json.RawMessage(`{}`), Check: into(func(m map[string]map[string][][4]float64) error {
+		for ws, grids := range m {
+			if n, err := strconv.Atoi(ws); err != nil || n < 1 || n > 9 || ws != strconv.Itoa(n) {
+				return fmt.Errorf("invalid workspace %q (1-9)", ws)
+			}
+			if len(grids) > 32 {
+				return fmt.Errorf("workspace %s: at most 32 monitors", ws)
+			}
+			for id, zones := range grids {
+				if !config.ValidID(id) {
+					return fmt.Errorf("workspace %s: invalid monitor id %q", ws, id)
+				}
+				if err := checkZones(zones); err != nil {
+					return fmt.Errorf("workspace %s, %s: %w", ws, id, err)
+				}
 			}
 		}
 		return nil
