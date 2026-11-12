@@ -246,6 +246,8 @@ impl WhiteRose {
             tracing::debug!(?action, "shortcut");
             self.run_action(action);
         }
+        // SHIFT pressed or let go while dragging shows or hides the zones.
+        self.snap_drag_refresh();
     }
 }
 

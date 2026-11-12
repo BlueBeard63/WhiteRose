@@ -12,8 +12,13 @@
 //! Resizing a snapped window (its border, SUPER+right-drag, or the gap
 //! between snapped windows) moves the line it shares with the snapped
 //! windows beside it, so they resize together.
+//!
+//! Holding SHIFT while dragging shows the monitor's zone grid
+//! (`windows.snap.zones`, else two thirds and a third) instead, and the
+//! window drops into the zone under the pointer.
 
 use smithay::{
+    backend::renderer::{element::Id, utils::CommitCounter},
     desktop::Window,
     input::pointer::{Focus, GrabStartData},
     output::Output,
@@ -27,6 +32,7 @@ use crate::{
         snap::{self, EdgeDrag, KeyState, KeyStep, Open, Target, Zone},
         Axis, Dir, Layout, Rect,
     },
+    outputs,
     state::WhiteRose,
     tiling::TILED,
 };
@@ -44,9 +50,19 @@ pub struct Snapped {
 #[derive(Debug, Default)]
 pub struct SnapState {
     pub snapped: Vec<Snapped>,
+    /// The floating window being dragged, and where the pointer is.
+    pub dragging: Option<(Window, Point<f64, Logical>)>,
     /// What the window being dragged snaps to if it's dropped now.
     pub drag_target: Option<(Output, Target)>,
+    /// The zone grid shown while SHIFT is held (global coordinates).
+    pub grid: Vec<(Rectangle<i32, Logical>, Id)>,
+    /// Bumped when the grid changes, so the renderer redraws it.
+    pub grid_commit: CommitCounter,
 }
+
+/// The accent rose (#E8A3AE) at 12%, premultiplied: the zones not under
+/// the pointer (the one under it gets the drop preview on top).
+pub const GRID_COLOR: [f32; 4] = [0.910 * 0.12, 0.639 * 0.12, 0.682 * 0.12, 0.12];
 
 fn to_rect(r: Rectangle<i32, Logical>) -> Rect {
     Rect::new(r.loc.x, r.loc.y, r.size.w, r.size.h)
@@ -231,8 +247,34 @@ impl WhiteRose {
         snap::edge_target(to_rect(og), self.open_sides(og, pos), pos.x, pos.y).map(|t| (o, t))
     }
 
+    /// The zone grid of output `o`: its own, else two thirds and a third.
+    fn grid_of(&self, o: &Output) -> Vec<Zone> {
+        let id = outputs::info(o).id;
+        self.tiling.settings.snap_zones.get(&id).cloned().unwrap_or_else(snap::default_grid)
+    }
+
+    /// Shows `rects` as the zone grid (none hides it).
+    fn show_grid(&mut self, rects: Vec<Rectangle<i32, Logical>>) {
+        if self.snap.grid.iter().map(|(r, _)| *r).eq(rects.iter().copied()) {
+            return;
+        }
+        self.snap.grid = rects.into_iter().map(|r| (r, Id::new())).collect();
+        self.snap.grid_commit.increment();
+        self.schedule_redraw();
+    }
+
+    fn shift_held(&self) -> bool {
+        self.seat.get_keyboard().is_some_and(|k| k.modifier_state().shift)
+    }
+
     /// The dragged window moved: shows what it snaps to, if anything.
     pub fn snap_drag_motion(&mut self, w: &Window, pos: Point<f64, Logical>) {
+        self.snap.dragging = Some((w.clone(), pos));
+        if self.shift_held() {
+            self.zone_drag_motion(w, pos);
+            return;
+        }
+        self.show_grid(Vec::new());
         let target = self.snap_target_at(w, pos);
         let preview = target.as_ref().map(|(o, t)| match t {
             Target::Zone(z) => self.zone_rect(z, o),
@@ -244,9 +286,35 @@ impl WhiteRose {
         self.set_preview(preview);
     }
 
+    /// With SHIFT held: the zone grid of the output under the pointer, and
+    /// the zone under it.
+    fn zone_drag_motion(&mut self, w: &Window, pos: Point<f64, Logical>) {
+        let Some(o) = self.output_at(pos).filter(|o| self.can_snap(w, o)) else {
+            self.snap.drag_target = None;
+            self.show_grid(Vec::new());
+            self.set_preview(None);
+            return;
+        };
+        let grid = self.grid_of(&o);
+        let rects: Vec<_> = grid.iter().map(|z| self.zone_rect(z, &o)).collect();
+        let under = snap::zone_at(&grid, to_rect(self.usable_area_on(&o)), pos.x, pos.y);
+        self.set_preview(under.map(|i| rects[i]));
+        self.snap.drag_target = under.map(|i| (o, Target::Zone(grid[i])));
+        self.show_grid(rects);
+    }
+
+    /// SHIFT went down or up: the drag shows or hides the zones.
+    pub fn snap_drag_refresh(&mut self) {
+        if let Some((w, pos)) = self.snap.dragging.clone() {
+            self.snap_drag_motion(&w, pos);
+        }
+    }
+
     /// The window dragged from `from` was dropped: snaps it to what was
     /// shown.
     pub fn snap_drop(&mut self, w: &Window, from: Point<i32, Logical>) {
+        self.snap.dragging = None;
+        self.show_grid(Vec::new());
         let Some((o, target)) = self.snap.drag_target.take() else { return };
         self.set_preview(None);
         match target {
@@ -257,6 +325,8 @@ impl WhiteRose {
 
     /// The drag ended without a drop (the grab was taken away).
     pub fn snap_drag_end(&mut self) {
+        self.snap.dragging = None;
+        self.show_grid(Vec::new());
         if self.snap.drag_target.take().is_some() {
             self.set_preview(None);
         }

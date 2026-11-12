@@ -239,6 +239,8 @@ pub struct Settings {
     pub dwindle_split: Option<Axis>,
     /// Floating windows snap to edges, corners and zones (`snap.rs`).
     pub snap: bool,
+    /// Zone grids per monitor (EDID-based id); valid ones only.
+    pub snap_zones: HashMap<String, Vec<snap::Zone>>,
 }
 
 impl Default for Settings {
@@ -252,6 +254,7 @@ impl Default for Settings {
             master_side: Side::Left,
             dwindle_split: None,
             snap: true,
+            snap_zones: HashMap::new(),
         }
     }
 }

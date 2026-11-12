@@ -379,3 +379,103 @@ fn windows_on_other_workspaces_dont_follow() {
         });
     });
 }
+
+/// The default grid's two zones: two thirds and a third.
+const TWO_THIRDS: (i32, i32, i32, i32) = (8, 34, 945, 766);
+const LAST_THIRD: (i32, i32, i32, i32) = (961, 34, 471, 766);
+
+fn shift(s: &mut WhiteRose, down: bool) {
+    s.on_key(Keycode::new(SHIFT), if down { KeyState::Pressed } else { KeyState::Released }, 0);
+}
+
+fn grid(s: &WhiteRose) -> Vec<(i32, i32, i32, i32)> {
+    s.snap.grid.iter().map(|(r, _)| (r.loc.x, r.loc.y, r.size.w, r.size.h)).collect()
+}
+
+/// Names the test output, so it can have its own grid.
+fn name_output(h: &Headless) {
+    let o = h.output.as_ref().unwrap();
+    whiterose_wm::outputs::set_info(
+        o,
+        whiterose_wm::outputs::OutputInfo { id: "connector:TEST-1".into(), ..Default::default() },
+    );
+}
+
+#[test]
+fn shift_drag_drops_into_the_default_zones() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        shift(s, true);
+        let preview = super_drag(s, BTN_LEFT, (100.0, 100.0), (1200.0, 400.0));
+        shift(s, false);
+        assert_eq!(preview, Some(LAST_THIRD), "the zone under the pointer");
+        assert_eq!(where_(s), Some(LAST_THIRD));
+        assert!(s.snap.grid.is_empty(), "the grid goes when it's dropped");
+
+        // Zones replace the edges while SHIFT is held: the left edge is in
+        // the two-thirds zone, not the left half.
+        shift(s, true);
+        super_drag(s, BTN_LEFT, (1000.0, 100.0), (0.0, 400.0));
+        shift(s, false);
+        assert_eq!(where_(s), Some(TWO_THIRDS));
+    });
+}
+
+#[test]
+fn shift_shows_and_hides_the_zones_mid_drag() {
+    let mut h = Headless::new(true);
+    one_window(&mut h, |s| {
+        super_key(s, true);
+        s.on_pointer_motion((100.0, 100.0).into(), 1);
+        s.on_pointer_button(BTN_LEFT, smithay::backend::input::ButtonState::Pressed, 2);
+        s.on_pointer_motion((1200.0, 400.0).into(), 3);
+        assert_eq!(s.tiling.preview.rect, None);
+        assert!(grid(s).is_empty());
+        shift(s, true);
+        assert_eq!(grid(s), vec![TWO_THIRDS, LAST_THIRD]);
+        assert!(s.tiling.preview.rect.is_some());
+        shift(s, false);
+        assert!(grid(s).is_empty());
+        assert_eq!(s.tiling.preview.rect, None);
+        s.on_pointer_button(BTN_LEFT, smithay::backend::input::ButtonState::Released, 4);
+        super_key(s, false);
+        assert!(s.snap_of(&the_window(s)).is_none());
+    });
+}
+
+#[test]
+fn a_monitor_uses_its_own_grid() {
+    let mut h = Headless::new(true);
+    name_output(&h);
+    set(
+        &mut h.state,
+        "windows.snap.zones",
+        json!({"connector:TEST-1": [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 1, 0.5]]}),
+    );
+    one_window(&mut h, |s| {
+        shift(s, true);
+        let preview = super_drag(s, BTN_LEFT, (100.0, 100.0), (300.0, 600.0));
+        shift(s, false);
+        assert_eq!(preview, Some((8, 421, 1424, 379)), "the bottom zone");
+        assert_eq!(where_(s), Some((8, 421, 1424, 379)));
+    });
+}
+
+#[test]
+fn a_gap_in_the_grid_drops_nowhere_and_bad_grids_are_ignored() {
+    let mut h = Headless::new(true);
+    name_output(&h);
+    set(&mut h.state, "windows.snap.zones", json!({"connector:TEST-1": [[0, 0, 0.4, 1], [0.6, 0, 0.4, 1]]}));
+    one_window(&mut h, |s| {
+        shift(s, true);
+        let preview = super_drag(s, BTN_LEFT, (100.0, 100.0), (720.0, 400.0));
+        assert_eq!(preview, None);
+        assert!(s.snap_of(&the_window(s)).is_none());
+        // Overlapping zones: the default grid instead.
+        set(s, "windows.snap.zones", json!({"connector:TEST-1": [[0, 0, 0.6, 1], [0.5, 0, 0.5, 1]]}));
+        // (The first drag left it at (668, 374).)
+        let preview = super_drag(s, BTN_LEFT, (700.0, 400.0), (1200.0, 400.0));
+        shift(s, false);
+        assert_eq!(preview, Some(LAST_THIRD));
+    });
+}

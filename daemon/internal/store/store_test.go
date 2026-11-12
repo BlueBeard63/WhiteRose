@@ -162,6 +162,8 @@ func TestValidation(t *testing.T) {
 		"windows.master.ratio":      `0.6`,
 		"windows.master.side":       `"bottom"`,
 		"windows.dwindle.split":     `"vertical"`,
+		"windows.snap":              `false`,
+		"windows.snap.zones":        `{"builtin":[[0,0,0.25,1],[0.25,0,0.5,1],[0.75,0,0.25,1]]}`,
 	}
 	for k, v := range good {
 		if err := s.Set(k, json.RawMessage(v)); err != nil {
@@ -285,5 +287,26 @@ func TestSecretsPreferTheKeyringAndMoveThere(t *testing.T) {
 	}
 	if NewSecretID() == NewSecretID() {
 		t.Fatal("secret ids must be unique")
+	}
+}
+
+func TestSnapZoneGridsAreChecked(t *testing.T) {
+	s, _ := open(t)
+	for _, v := range []string{
+		`{"builtin":[]}`, // no zones
+		`{"builtin":[[0,0,0.6,1],[0.5,0,0.5,1]]}`,        // overlap
+		`{"builtin":[[0.6,0,0.5,1]]}`,                    // outside
+		`{"builtin":[[0,0,0.05,1]]}`,                     // too small
+		`{"builtin":[[0,0,1]]}`,                          // not four numbers
+		`{"DP 1!":[[0,0,1,1]]}`,                          // not a monitor id
+		`{"builtin":[[0,0,0.5,1],[0.5,0,0.5,1]],"x":[]}`, // one bad grid
+	} {
+		if err := s.Set("windows.snap.zones", json.RawMessage(v)); err == nil {
+			t.Errorf("%s was accepted", v)
+		}
+	}
+	// Gaps in a grid are fine.
+	if err := s.Set("windows.snap.zones", json.RawMessage(`{"builtin":[[0,0,0.4,1],[0.6,0,0.4,1]]}`)); err != nil {
+		t.Error(err)
 	}
 }

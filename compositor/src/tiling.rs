@@ -382,6 +382,17 @@ impl WhiteRose {
             "windows.gaps.inner" => s.gaps.inner = px(value, defaults.gaps.inner),
             "windows.gaps.outer" => s.gaps.outer = px(value, defaults.gaps.outer),
             "windows.snap" => s.snap = value.as_bool().unwrap_or(defaults.snap),
+            "windows.snap.zones" => {
+                s.snap_zones = value
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(id, grid)| {
+                        let raw: Vec<[f64; 4]> = serde_json::from_value(grid.clone()).ok()?;
+                        Some((id.clone(), layout::snap::validate_grid(&raw)?))
+                    })
+                    .collect()
+            }
             "windows.gaps.smart" => s.gaps.smart = value.as_bool().unwrap_or(defaults.gaps.smart),
             "windows.master.ratio" => {
                 s.master_ratio =
