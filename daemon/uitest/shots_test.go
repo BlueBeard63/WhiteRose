@@ -29,6 +29,7 @@ func TestShots(t *testing.T) {
 	// (Scale 1 only: a scale seeded in "displays" doesn't reach the
 	// headless output yet.)
 	t.Run("bar", func(t *testing.T) { shootBar(t, out, 1) })
+	t.Run("zones on screen", func(t *testing.T) { shootZonesOnScreen(t, out) })
 	t.Run("settings", func(t *testing.T) { shootSettings(t, out) })
 }
 
@@ -107,6 +108,17 @@ func shootSettings(t *testing.T, out string) {
 			shootPages(t, s, settings, out, size.name)
 		})
 	}
+}
+
+// The zone editor over the whole screen, opened from Settings › Snapping.
+func shootZonesOnScreen(t *testing.T, out string) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	settings := s.Settings("snapping")
+	settings.Click(uitest.Named("Edit on screen").Role("push button"))
+	s.Layer("whiterose-zone-editor").WaitFor(uitest.Named("Done").Role("push button"))
+	time.Sleep(500 * time.Millisecond)
+	screen := s.Layer("whiterose-wallpaper").Geometry()
+	save(t, filepath.Join(out, "zones-on-screen.png"), s.Capture(0, 0, screen[2], screen[3]))
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9]+`)

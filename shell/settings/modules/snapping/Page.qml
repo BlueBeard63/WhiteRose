@@ -5,6 +5,7 @@
 // (the monitor's), or one workspace's own. The compositor follows
 // windows.snap, windows.snap.zones and windows.snap.zones.workspaces live.
 import QtQuick
+import Quickshell
 import qs
 import qs.settings
 import "Zones.js" as Z
@@ -68,6 +69,8 @@ Column {
                 readonly property var workspaceOwn: forWs ? page.workspaceGrids?.[forWs]?.[monitor] ?? null : null
                 // What Reset clears and edits save to: the workspace's own, or the monitor's.
                 readonly property var own: forWs ? workspaceOwn : monitorOwn
+                // The grid shown (and edited from): a workspace without its own shows the monitor's.
+                readonly property var shown: forWs ? workspaceOwn ?? monitorOwn : monitorOwn
                 function save(zones) {
                     if (forWs) page.setWorkspace(forWs, monitor, zones);
                     else page.setIn("windows.snap.zones", page.grids, monitor, zones);
@@ -94,14 +97,7 @@ Column {
                     Segmented {
                         value: editor.tool
                         iconOnly: true
-                        options: [
-                            { label: "Resize", value: "resize", icon: "move" },
-                            { label: "Side by side", value: "side", icon: "columns2" },
-                            { label: "Stacked", value: "stacked", icon: "rows2" },
-                            { label: "Merge", value: "merge", icon: "merge" },
-                            { label: "Draw", value: "draw", icon: "squarePlus" },
-                            { label: "Delete", value: "delete", icon: "trash" },
-                        ]
+                        options: Z.toolOptions()
                         onPicked: v => editor.tool = v
                     }
                     Button {
@@ -110,12 +106,44 @@ Column {
                         onClicked: zonesFor.save("")
                     }
                 }
-                ZoneEditor {
-                    id: editor
-                    // A workspace without its own shows (and starts from) the monitor's.
-                    saved: zonesFor.forWs ? zonesFor.workspaceOwn ?? zonesFor.monitorOwn : zonesFor.monitorOwn
-                    ratio: Z.aspect(zonesFor.modelData, Theme.barHeight)
-                    onSave: zones => zonesFor.save(zones)
+                // The editor, and "Edit on screen" beside it (under it where narrow).
+                Item {
+                    readonly property bool beside: editor.screenRight + 20 + onScreenSlot.width + 18 <= width
+                    width: parent.width
+                    height: editor.implicitHeight + (beside ? 0 : onScreenSlot.height + 8)
+                    ZoneEditor {
+                        id: editor
+                        // A workspace without its own shows (and starts from) the monitor's.
+                        saved: zonesFor.shown
+                        ratio: Z.aspect(zonesFor.modelData, Theme.barHeight)
+                        onSave: zones => zonesFor.save(zones)
+                    }
+                    // (In its own slot: a Button centres itself on its parent.)
+                    Item {
+                        id: onScreenSlot
+                        x: parent.beside ? editor.screenRight + 20 : 18
+                        y: parent.beside ? 4 : editor.implicitHeight - 8
+                        width: onScreenButton.width; height: onScreenButton.height
+                        Button {
+                            id: onScreenButton
+                            text: "Edit on screen"
+                            icon: "monitor"
+                            onClicked: onScreen.active = true
+                        }
+                    }
+                }
+                LazyLoader {
+                    id: onScreen
+                    active: false
+                    ZonesOnScreen {
+                        monitor: zonesFor.modelData
+                        title: page.monitorName(zonesFor.modelData)
+                        whose: zonesFor.forWs ? "Workspace " + zonesFor.forWs : "All workspaces"
+                        saved: zonesFor.shown
+                        Component.onCompleted: tool = editor.tool
+                        onSave: zones => zonesFor.save(zones)
+                        onDone: onScreen.active = false
+                    }
                 }
             }
         }

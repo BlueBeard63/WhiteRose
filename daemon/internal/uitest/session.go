@@ -369,6 +369,12 @@ func (s *Session) layer(namespace string) (layerInfo, bool) {
 	return layerInfo{}, false
 }
 
+// HasLayer says whether a layer surface with this namespace is on screen.
+func (s *Session) HasLayer(namespace string) bool {
+	_, ok := s.layer(namespace)
+	return ok
+}
+
 func (s *Session) layerNames() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

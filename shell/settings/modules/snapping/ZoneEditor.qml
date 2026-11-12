@@ -47,25 +47,31 @@ Item {
     // Red: a zone being deleted, or one drawn that won't fit.
     readonly property color danger: Qt.rgba(0.77, 0.17, 0.11, 0.45)
 
-    readonly property int gap: 4
-    readonly property int bar: 7
+    // Full: the zones at their real size over the whole item (the editor on
+    // screen, ZonesOnScreen.qml), translucent over the desktop; otherwise a
+    // small monitor with its bar.
+    property bool full: false
+    readonly property int gap: full ? 16 : 4
+    readonly property int bar: full ? 0 : 7
     // The area below the bar: as wide as fits (up to 472), no taller than 260.
-    readonly property real areaW: Math.max(120, Math.min(472, width - 36 - 2 * gap, 260 * ratio))
-    readonly property real areaH: areaW / ratio
+    readonly property real areaW: full ? width - 2 * gap : Math.max(120, Math.min(472, width - 36 - 2 * gap, 260 * ratio))
+    readonly property real areaH: full ? height - 2 * gap : areaW / ratio
 
     width: parent?.width ?? 0
     implicitHeight: screen.height + 22
+    // Where the small monitor ends (things can go beside it).
+    readonly property real screenRight: screen.x + screen.width
 
     Rectangle {
         id: screen
-        x: 18; y: 4
+        x: ed.full ? 0 : 18; y: ed.full ? 0 : 4
         width: ed.areaW + 2 * ed.gap
         height: ed.areaH + ed.bar + 2 * ed.gap
-        radius: 10
-        color: "#0F0F0F"
-        border { width: 1; color: Theme.surface2 }
+        radius: ed.full ? 0 : 10
+        color: ed.full ? "transparent" : "#0F0F0F"
+        border { width: ed.full ? 0 : 1; color: Theme.surface2 }
         clip: true
-        Rectangle { width: parent.width; height: ed.bar; color: "#08080A" }
+        Rectangle { visible: !ed.full; width: parent.width; height: ed.bar; color: "#08080A" }
 
         Item {
             id: area
@@ -118,11 +124,12 @@ Item {
                     readonly property real x1: (modelData[0] + modelData[2]) * area.width - (modelData[0] + modelData[2] < 1 - 1e-6 ? ed.gap / 2 : 0)
                     readonly property real y1: (modelData[1] + modelData[3]) * area.height - (modelData[1] + modelData[3] < 1 - 1e-6 ? ed.gap / 2 : 0)
                     x: x0; y: y0; width: x1 - x0; height: y1 - y0
-                    radius: 6
+                    radius: ed.full ? 16 : 6
+                    readonly property color plain: hot ? Theme.grip : Theme.surface2
                     color: first ? Qt.rgba(Theme.rose.r, Theme.rose.g, Theme.rose.b, 0.35)
                         : hot && ed.tool === "delete" ? ed.danger
-                        : hot ? Theme.grip : Theme.surface2
-                    border { width: first ? 1.5 : 0; color: Theme.pearl }
+                        : Qt.rgba(plain.r, plain.g, plain.b, ed.full ? (hot ? 0.75 : 0.5) : 1)
+                    border { width: first ? 1.5 : ed.full ? 1 : 0; color: first ? Theme.pearl : Qt.rgba(1, 1, 1, 0.22) }
                     Accessible.role: Accessible.Button
                     Accessible.name: "Zone " + (index + 1)
                     Accessible.description: takes ? ed.action : ""
@@ -134,7 +141,7 @@ Item {
                         anchors.verticalCenterOffset: zone.splitting && ed.tool === "stacked" ? -zone.height / 4 : 0
                         text: zone.index + 1
                         color: zone.first || zone.hot ? Theme.text : Theme.muted
-                        font { family: Theme.mono; pointSize: Theme.pt(11) }
+                        font { family: Theme.mono; pointSize: Theme.pt(ed.full ? 26 : 11) }
                     }
                     // Where Side by side or Stacked would split it.
                     Rectangle {

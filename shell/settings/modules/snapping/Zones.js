@@ -164,6 +164,18 @@ function moveLine(zones, i, dir, to) {
 // stays picked until another is.
 const TOOLS = ["resize", "side", "stacked", "merge", "draw", "delete"];
 
+// The tools as Settings shows them (icons, named), in Settings and on screen.
+function toolOptions() {
+    return [
+        { label: "Resize", value: "resize", icon: "move" },
+        { label: "Side by side", value: "side", icon: "columns2" },
+        { label: "Stacked", value: "stacked", icon: "rows2" },
+        { label: "Merge", value: "merge", icon: "merge" },
+        { label: "Draw", value: "draw", icon: "squarePlus" },
+        { label: "Delete", value: "delete", icon: "trash" },
+    ];
+}
+
 // The grid less zone `i`, leaving empty space where it was (a window
 // dropped there with SHIFT just floats). null for the last zone.
 function remove(zones, i) {
