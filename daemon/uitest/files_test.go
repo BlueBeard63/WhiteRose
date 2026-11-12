@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,4 +131,73 @@ func TestIndexCarriesOnWhenFilesCloses(t *testing.T) {
 	files = files.Retitled("Search — Files")
 	files.Click(uitest.Named("Home").Role("radio button"))
 	files.WaitFor(uitest.Named("Index again").Role("push button"))
+}
+
+// pick runs `whiterose-files --choose args` in the session and returns a
+// wait for what it printed and its exit code.
+func pick(t *testing.T, s *uitest.Session, args string) func() (string, string) {
+	out := filepath.Join(s.Home, fmt.Sprintf("pick-%d", time.Now().UnixNano()))
+	script := out + ".sh"
+	os.WriteFile(script, []byte(fmt.Sprintf("%s --choose %s > %s.out; echo $? > %s.code\n", filesBinary(s), args, out, out)), 0o755)
+	s.Spawn("sh " + script)
+	return func() (string, string) {
+		for range 100 {
+			if code, err := os.ReadFile(out + ".code"); err == nil {
+				printed, _ := os.ReadFile(out + ".out")
+				return string(printed), strings.TrimSpace(string(code))
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Fatal("the picker didn't finish")
+		return "", ""
+	}
+}
+
+// The picker: only what the filter allows is offered; Open prints the
+// chosen file; a folder can be chosen; saving over a file asks first;
+// Cancel prints nothing and exits 1.
+func TestFilesPicker(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	dir := filepath.Join(s.Home, "Pictures")
+	os.MkdirAll(filepath.Join(dir, "trip"), 0o755)
+	for _, n := range []string{"a.png", "notes.txt"} {
+		os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644)
+	}
+
+	done := pick(t, s, "--title 'Choose a picture' --in "+dir+" --filter 'Images:*.png *.jpg'")
+	w := s.WaitWindow("Choose a picture — Files")
+	w.Press("ctrl+2")
+	w.WaitFor(uitest.Named("a.png").Role("list item"))
+	w.WaitFor(uitest.Named("trip").Role("list item"))
+	if _, ok := w.Lookup(uitest.Named("notes.txt").Role("list item")); ok {
+		t.Error("notes.txt is offered for a picture")
+	}
+	w.Click(uitest.Named("a.png").Role("list item"))
+	w.Click(uitest.Named("Open").Role("push button"))
+	if out, code := done(); code != "0" || out != filepath.Join(dir, "a.png")+"\n" {
+		t.Errorf("open: printed %q, exit %s", out, code)
+	}
+
+	done = pick(t, s, "--folder --in "+dir)
+	w = s.WaitWindow("Choose a folder — Files")
+	w.Click(uitest.Named("Choose folder").Role("push button"))
+	if out, code := done(); code != "0" || out != dir+"\n" {
+		t.Errorf("folder: printed %q, exit %s", out, code)
+	}
+
+	done = pick(t, s, "--save notes.txt --in "+dir+" --json")
+	w = s.WaitWindow("Save as — Files")
+	w.Click(uitest.Named("Save").Role("push button"))
+	w.WaitFor(uitest.Named("Replace").Role("push button"))
+	w.Click(uitest.Named("Replace").Role("push button"))
+	if out, code := done(); code != "0" || out != `["`+filepath.Join(dir, "notes.txt")+`"]`+"\n" {
+		t.Errorf("save: printed %q, exit %s", out, code)
+	}
+
+	done = pick(t, s, "--in "+dir)
+	w = s.WaitWindow("Choose a file — Files")
+	w.Click(uitest.Named("Cancel").Role("push button"))
+	if out, code := done(); code != "1" || out != "" {
+		t.Errorf("cancel: printed %q, exit %s", out, code)
+	}
 }

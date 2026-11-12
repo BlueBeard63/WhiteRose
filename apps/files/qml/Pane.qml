@@ -118,9 +118,17 @@ FocusScope {
     readonly property bool grouped: pane.group !== "" && !pane.searching && !pane.special
         && ["grid", "list", "cards"].includes(pane.mode)
     function fold(label) { const f = Object.assign({}, pane.folded); f[label] = !f[label]; pane.folded = f }
-    readonly property var filtered: pane.searching ? pane.results
+    readonly property var filtered: pane.chosen(pane.searching ? pane.results
         : pane.filter === "" ? pane.entries
-        : pane.entries.filter(e => e.name.toLowerCase().includes(pane.filter.toLowerCase()))
+        : pane.entries.filter(e => e.name.toLowerCase().includes(pane.filter.toLowerCase())))
+    // A picker (Session.choose): only what can be chosen, and folders to go
+    // into (only folders, choosing one).
+    function chosen(list) {
+        const c = Session.choose;
+        if (!c) return list;
+        const f = Session.chooseFilter;
+        return list.filter(e => e.dir || (c.mode !== "folder" && Fs.chooseMatches(f, e.name, e.mime ?? "")));
+    }
     readonly property var listed: pane.grouped
         ? Arrange.arrange(pane.filtered, pane.group, false, Date.now())
         : pane.filtered

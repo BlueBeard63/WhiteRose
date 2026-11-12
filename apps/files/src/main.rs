@@ -6,6 +6,7 @@ extern crate whiterose_kit;
 mod apps;
 mod archive;
 mod bulk_rename;
+mod choose;
 mod cleanup;
 mod cli;
 mod cloudremotes;
@@ -54,11 +55,18 @@ fn main() {
             &mut std::io::stdout().lock(),
             &mut std::io::stderr(),
         )),
+        // A picker (choose.rs): bad options are said before any window.
+        Some("--choose") => {
+            if let Err(e) = choose::parse(&args[1..]) {
+                eprintln!("whiterose-files --choose: {e}");
+                std::process::exit(2);
+            }
+        }
         // The search index, made in the background (indexer.rs).
         Some("--index") => std::process::exit(indexer::main()),
         Some("--help") | Some("-h") => {
             println!(
-                "whiterose-files [FOLDER…]   open folders in Files\nwhiterose-files --index      make the search index again (in the background)\n{}",
+                "whiterose-files [FOLDER…]   open folders in Files\nwhiterose-files --index      make the search index again (in the background)\nwhiterose-files --choose [--folder | --save NAME] [--multiple] [--in DIR] [--title TEXT] [--filter \"NAME:PATTERNS\"]… [--json]\n                             pick files (prints their paths; exit 1 if cancelled)\n{}",
                 cli::HELP
             );
             return;

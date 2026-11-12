@@ -27,7 +27,7 @@ import "FilesActions.js" as Actions
 
 AppWindow {
     id: win
-    title: current ? current.title + " — Files" : "Files"
+    title: Session.choose ? Session.choose.title + " — Files" : current ? current.title + " — Files" : "Files"
     visible: true
     width: 1040; height: 680
 
@@ -159,6 +159,8 @@ AppWindow {
         win.show(Math.min(w.current ?? 0, win.tabs.length - 1));
     }
     onClosing: {
+        // A picker closed: nothing chosen.
+        if (Session.choose) Fs.chooseDone("null");
         Session.remove(win);
         // Windows made later go away for good; the first one is the engine's.
         if (win.initial) Qt.callLater(() => win.destroy());
@@ -1264,6 +1266,8 @@ AppWindow {
 
     // ---- opening files: programs ask first ---------------------------------------------
     function openFile(entry) {
+        // A picker: opening a file is choosing it (saving: its name).
+        if (Session.choose) { chooseStrip.openEntry(entry); return }
         // Inside an archive: taken out into a cache first (an archive in
         // an archive opens as a folder too). Programs from there count as
         // untrusted (run.rs).
@@ -1479,6 +1483,8 @@ AppWindow {
     Column {
         id: asks
         anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom }
+        // A picker (`--choose`): what's wanted, and the answer.
+        ChooseStrip { id: chooseStrip; width: parent.width; pane: win.current }
         // Name for a rename, a new folder or a new file (or a workspace): asked
         // in a strip above the files.
         Strip {

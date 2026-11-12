@@ -97,6 +97,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Docker/Podman container file browsing (Advanced) — Drives › Containers › Files: a running container's folders, and anything copied out to a folder you choose
 - [x] Container lifecycle operations and Compose management (Advanced) — start, stop, restart, pause, remove (asked); grouped by Compose project with Up / Down / its folder; logs and a shell in your terminal
 - [x] Command-line launcher and file search (Next) — `whiterose-files FOLDER…` opens them; `whiterose-files --find [--in DIR | --everywhere] [--inside TEXT] [--type …] [--changed …] [--case] [--regex] [--json] WORDS` prints matches from the same search (exit 1 when none)
+- [x] Files as the file picker — `whiterose-files --choose [--folder | --save NAME] [--multiple] [--in DIR] [--title TEXT] [--filter "NAME:PATTERNS"]… [--json]`: a Files window with a strip above the files (title, kind of file, the name to save as, Cancel / Open · Choose folder · Save); only matching files shown; opening a file chooses it; saving over one asks first; prints the paths (exit 1 if cancelled). Settings uses it, and whiterosed's FileChooser portal makes it every app's
 
 ## 8. Cloud, remote & network
 - [x] Local drives and removable media (MVP) — plugged-in drives listed, a click mounts (udisks), eject unmounts and powers off

@@ -12,6 +12,11 @@ import WhiteRose.Files
 QtObject {
     id: session
     property bool owner: false
+    // A picker (`--choose`): what's wanted ({mode: open | folder | save,
+    // multiple, folder, title, name, filters: [{name, patterns}]}), else
+    // null; and the filter shown (its number).
+    readonly property var choose: JSON.parse(Fs.choosing())
+    property int chooseFilter: 0
     // Hidden files shown, everywhere.
     // ---- settings (whiterosed, Settings › Files): followed as they change -----
     // A setting's value, or `fallback` if it isn't there (no daemon).
@@ -188,6 +193,9 @@ QtObject {
 
     // Starts the first window; returns its tabs ({tabs, current}).
     function start() {
+        // A picker: where it was asked to start (or home); it leaves your
+        // tabs and the index alone.
+        if (session.choose) return { tabs: [{ path: session.choose.folder ? Fs.resolve(session.choose.folder) : "" }], current: 0 };
         // The search index, made or freshened in the background.
         Search.keepFresh(session.setting("files.reindex", 0));
         const args = JSON.parse(Fs.arguments());
