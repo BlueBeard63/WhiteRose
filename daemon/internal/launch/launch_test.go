@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -282,5 +283,53 @@ exit 3
 	}
 	if b, _ := os.ReadFile(filepath.Join(c.Home, "n")); strings.TrimSpace(string(b)) != "2" {
 		t.Errorf("ran %s times", b)
+	}
+}
+
+// The session's output goes to session.log; the session before is kept as
+// session.1.log (the one that crashed, after a crash).
+func TestSessionLog(t *testing.T) {
+	c := setup(t)
+	version(t, c.Root, "0.5.0", comesUp+`n=$(cat "$HOME/n" 2>/dev/null || echo 0); echo $((n+1)) > "$HOME/n"
+echo "session $n says hello" >&2
+[ "$n" = 0 ] && exit 42
+exit 0
+`)
+	if code, err := Run(c); err != nil || code != 0 {
+		t.Fatalf("%d %v", code, err)
+	}
+	now, _ := os.ReadFile(SessionLog(c.StateHome))
+	before, _ := os.ReadFile(SessionLogBefore(c.StateHome))
+	if !strings.HasPrefix(string(now), "WhiteRose 0.5.0, session started ") || !strings.Contains(string(now), "session 1 says hello") {
+		t.Errorf("session.log:\n%s", now)
+	}
+	if !strings.Contains(string(before), "session 0 says hello") || strings.Contains(string(before), "session 1") {
+		t.Errorf("session.1.log:\n%s", before)
+	}
+	if fi, _ := os.Stat(SessionLog(c.StateHome)); fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v", fi.Mode())
+	}
+}
+
+// Past its limit the log keeps its newer half, from a line start.
+func TestSessionLogCap(t *testing.T) {
+	state := t.TempDir()
+	l, err := openSessionLog(state, "0.5.0", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 200 {
+		fmt.Fprintf(l, "line %03d\n", i)
+	}
+	l.Close()
+	b, _ := os.ReadFile(SessionLog(state))
+	s := string(b)
+	if len(b) > 1000 || !strings.HasPrefix(s, "(older lines dropped") || !strings.HasSuffix(s, "line 199\n") || strings.Contains(s, "line 000") {
+		t.Errorf("%d bytes:\n%s", len(b), s)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(s), "\n")[1:] {
+		if !strings.HasPrefix(line, "line ") || len(line) != 8 {
+			t.Errorf("cut line %q", line)
+		}
 	}
 }

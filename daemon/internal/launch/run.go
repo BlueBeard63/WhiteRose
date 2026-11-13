@@ -36,6 +36,7 @@ type Config struct {
 	Ready   time.Duration // all pieces ready within this (20 s)
 	Survive time.Duration // and still running at this (60 s)
 	Stop    time.Duration // between asking to stop and making it (5 s)
+	LogMax  int64         // the session log's size limit (0: LogMax)
 
 	Logf func(format string, args ...any)
 }
@@ -117,7 +118,18 @@ func (c Config) start(plan Plan, stateFile string) (int, error) {
 	// Its own process group: stopping it stops the daemon and shell too.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	tail := &tailWriter{max: 200}
-	cmd.Stderr = io.MultiWriter(os.Stderr, tail)
+	out := []io.Writer{os.Stderr, tail}
+	max := c.LogMax
+	if max == 0 {
+		max = LogMax
+	}
+	if log, err := openSessionLog(c.StateHome, plan.Version, max); err == nil {
+		defer log.Close()
+		out = append(out, log)
+	} else {
+		c.logf("session log: %v", err)
+	}
+	cmd.Stderr = io.MultiWriter(out...)
 	c.logf("starting %s%s", plan.Version, map[bool]string{true: " (trying it)"}[plan.Trial])
 	if err := cmd.Start(); err != nil {
 		if plan.Trial {
