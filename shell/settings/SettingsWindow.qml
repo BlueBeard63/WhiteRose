@@ -463,6 +463,10 @@ FloatingWindow {
     Shortcut { sequence: "Escape"; enabled: win.drawerOpen; onActivated: win.drawerOpen = false }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
     Shortcut { sequence: "Ctrl+W"; onActivated: Qt.quit() }
+    // Closed from outside (SUPER+Q, the dock, the switcher): QuickShell only
+    // hides the window, so quit too. A process left without a window would
+    // make bin/whiterose-settings think Settings is still open.
+    onVisibleChanged: if (!visible) Qt.quit()
 
     // ---- resizing from the edges (not while maximised), as in the apps' AppWindow ----
     component Edge: MouseArea {

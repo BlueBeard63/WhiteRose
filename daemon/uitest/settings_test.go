@@ -88,6 +88,28 @@ func TestSettingsCloses(t *testing.T) {
 	settings.Closed()
 }
 
+// Closed from outside (SUPER+Q), Settings quits, so opening it again (from
+// the launcher) brings a window back instead of finding a windowless one.
+func TestSettingsOpensAgainAfterSuperQ(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("")
+	settings.Press("super+q")
+	settings.Closed()
+	s.Settings("")
+}
+
+// Opening Settings while it's open behind another window brings it forward.
+func TestSettingsOpenedAgainComesForward(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	s.Settings("")
+	dir := t.TempDir()
+	s.Open(filesBinary(s)+" "+dir, filepath.Base(dir)+" - Files")
+	s.Spawn(filepath.Join(s.Repo, "shell/bin/whiterose-settings"))
+	if !uitest.WaitUntil(func() bool { _, focused, _ := s.Toplevel("Settings"); return focused }) {
+		t.Error("Settings didn't come forward")
+	}
+}
+
 // On a new install Settings opens by itself on Apps (the app setup).
 func TestFirstRunOffersTheAppSetup(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true, FirstRun: true})
