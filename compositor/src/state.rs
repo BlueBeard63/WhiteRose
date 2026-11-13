@@ -766,12 +766,42 @@ impl WhiteRose {
         match cmd.spawn() {
             Ok(child) => {
                 tracing::info!(app_id, ?argv, scoped = crate::app_scope::available(), protected, "spawned");
-                Some(child.id())
+                let pid = child.id();
+                self.reap_on_exit(child);
+                Some(pid)
             }
             Err(err) => {
                 tracing::warn!(app_id, ?argv, %err, "failed to spawn");
                 None
             }
+        }
+    }
+
+    /// Collects `child`'s exit status when it ends, so an app that's closed
+    /// (or a launcher script that hands off and exits) doesn't stay behind
+    /// as a zombie. Its pidfd wakes the loop once, at exit: no polling, and
+    /// no SIGCHLD handler to take other waits' children.
+    fn reap_on_exit(&self, mut child: std::process::Child) {
+        use std::os::fd::{FromRawFd, OwnedFd};
+        // SAFETY: pidfd_open takes a pid and flags, and returns a new fd
+        // (ours to own) or -1.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, child.id() as libc::pid_t, 0) };
+        if fd < 0 {
+            // No pidfds (Linux before 5.3): a thread waits instead.
+            std::thread::spawn(move || child.wait());
+            return;
+        }
+        // SAFETY: fd is the pidfd just opened, owned by nothing else.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd as i32) };
+        let mut child = Some(child);
+        let source = Generic::new(fd, Interest::READ, Mode::Level);
+        if let Err(err) = self.loop_handle.insert_source(source, move |_, _, _| {
+            if let Some(mut c) = child.take() {
+                let _ = c.wait();
+            }
+            Ok(PostAction::Remove)
+        }) {
+            tracing::warn!(err = %err.error, "couldn't watch a started app for its exit");
         }
     }
 

@@ -436,7 +436,7 @@ FloatingWindow {
             model: [
                 { icon: "minus", label: "Minimise", run: () => win.minimized = true },
                 { icon: win.maximized ? "restore" : "square", label: win.maximized ? "Restore" : "Maximise", run: () => win.maximized = !win.maximized },
-                { icon: "x", label: "Close", close: true, run: () => Qt.quit() },
+                { icon: "x", label: "Close", close: true, run: () => win.quit() },
             ]
             delegate: Rectangle {
                 required property var modelData
@@ -461,12 +461,25 @@ FloatingWindow {
     // "/" anywhere jumps to search (narrow: in the sidebar, slid over).
     Shortcut { sequence: "/"; onActivated: win.narrow ? win.openDrawer(true) : search.forceActiveFocus() }
     Shortcut { sequence: "Escape"; enabled: win.drawerOpen; onActivated: win.drawerOpen = false }
-    Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
-    Shortcut { sequence: "Ctrl+W"; onActivated: Qt.quit() }
+    Shortcut { sequence: "Ctrl+Q"; onActivated: win.quit() }
+    Shortcut { sequence: "Ctrl+W"; onActivated: win.quit() }
     // Closed from outside (SUPER+Q, the dock, the switcher): QuickShell only
     // hides the window, so quit too. A process left without a window would
     // make bin/whiterose-settings think Settings is still open.
-    onVisibleChanged: if (!visible) Qt.quit()
+    onVisibleChanged: if (!visible) win.quit()
+
+    // Quits Settings. Qt.quit() takes the window down, but its exit only
+    // leaves the innermost event loop (a nested one, from a picker or a
+    // blocking call, swallows it), leaving a process with no window. So a
+    // detached backstop ends the process if it's still Settings in 3s.
+    property bool quitting: false
+    function quit() {
+        if (quitting) return;
+        quitting = true;
+        Quickshell.execDetached(["sh", "-c", "sleep 3; grep -qa settings.qml /proc/$1/cmdline 2>/dev/null && kill $1",
+            "sh", String(Quickshell.processId)]);
+        Qt.quit();
+    }
 
     // ---- resizing from the edges (not while maximised), as in the apps' AppWindow ----
     component Edge: MouseArea {

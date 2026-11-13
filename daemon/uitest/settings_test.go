@@ -39,32 +39,12 @@ func TestSettingsSecondsShowInTheBarClock(t *testing.T) {
 func TestSettingsEveryControlHasAName(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("")
-	// The window can be in the tree before its items are (a slow machine).
-	settings.WaitFor(uitest.Named("Apps").Role("page tab"))
-	seen := map[string]bool{}
 	var problems []string
-	for {
-		var next *uitest.Node
-		for _, n := range settings.LaidOut() {
-			if n.Role == "page tab" && !seen[n.Name] {
-				next = &n
-				break
-			}
-		}
-		if next == nil {
-			break
-		}
-		seen[next.Name] = true
-		tab := uitest.Named(next.Name).Role("page tab")
-		settings.Activate(tab)
-		if !uitest.WaitUntil(func() bool { n, _ := settings.Lookup(tab); return n.Selected() }) {
-			problems = append(problems, fmt.Sprintf("%s: its tab didn't open", next.Name))
-			continue
-		}
+	seen := eachPage(t, settings, func(name string) {
 		for _, n := range uitest.Unnamed(settings.LaidOut()) {
-			problems = append(problems, fmt.Sprintf("%s: a %s with no name at %d,%d (%dx%d)", next.Name, n.Role, n.X, n.Y, n.W, n.H))
+			problems = append(problems, fmt.Sprintf("%s: a %s with no name at %d,%d (%dx%d)", name, n.Role, n.X, n.Y, n.W, n.H))
 		}
-	}
+	})
 	if len(seen) < 15 {
 		t.Errorf("only %d pages: %v", len(seen), seen)
 	}
@@ -80,12 +60,64 @@ func TestSettingsEveryControlHasAName(t *testing.T) {
 	}
 }
 
+// eachPage opens every page in Settings' sidebar in turn and calls `visit`
+// on it; the pages it opened.
+func eachPage(t *testing.T, settings *uitest.Window, visit func(name string)) map[string]bool {
+	t.Helper()
+	// The window can be in the tree before its items are (a slow machine).
+	settings.WaitFor(uitest.Named("Apps").Role("page tab"))
+	seen := map[string]bool{}
+	for {
+		var next *uitest.Node
+		for _, n := range settings.LaidOut() {
+			if n.Role == "page tab" && !seen[n.Name] {
+				next = &n
+				break
+			}
+		}
+		if next == nil {
+			return seen
+		}
+		seen[next.Name] = true
+		tab := uitest.Named(next.Name).Role("page tab")
+		settings.Activate(tab)
+		if !uitest.WaitUntil(func() bool { n, _ := settings.Lookup(tab); return n.Selected() }) {
+			t.Errorf("%s: its tab didn't open", next.Name)
+			continue
+		}
+		visit(next.Name)
+	}
+}
+
+// After every page has been open (and started what it watches), the
+// Close button still quits Settings, not just hides it.
+func TestSettingsQuitsAfterEveryPage(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("")
+	if s.Running("settings.qml") == 0 {
+		t.Fatal("can't find Settings' process")
+	}
+	eachPage(t, settings, func(string) {})
+	settings.Click(uitest.Named("Close").Role("push button"))
+	settings.Closed()
+	settingsQuits(t, s)
+}
+
 // The window's own Close button closes Settings.
 func TestSettingsCloses(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("")
 	settings.Click(uitest.Named("Close").Role("push button"))
 	settings.Closed()
+	settingsQuits(t, s)
+}
+
+// settingsQuits fails the test if Settings' process outlives its window.
+func settingsQuits(t *testing.T, s *uitest.Session) {
+	t.Helper()
+	if !uitest.WaitUntil(func() bool { return s.Running("settings.qml") == 0 }) {
+		t.Error("Settings' window closed but its process is still running")
+	}
 }
 
 // Closed from outside (SUPER+Q), Settings quits, so opening it again (from
@@ -95,6 +127,7 @@ func TestSettingsOpensAgainAfterSuperQ(t *testing.T) {
 	settings := s.Settings("")
 	settings.Press("super+q")
 	settings.Closed()
+	settingsQuits(t, s)
 	s.Settings("")
 }
 
@@ -107,6 +140,11 @@ func TestSettingsOpenedAgainComesForward(t *testing.T) {
 	s.Spawn(filepath.Join(s.Repo, "shell/bin/whiterose-settings"))
 	if !uitest.WaitUntil(func() bool { _, focused, _ := s.Toplevel("Settings"); return focused }) {
 		t.Error("Settings didn't come forward")
+	}
+	// The second whiterose-settings handed off and exited: the compositor
+	// collects it rather than leaving it a zombie.
+	if !uitest.WaitUntil(func() bool { return s.Zombies() == 0 }) {
+		t.Errorf("%d zombie processes left in the session", s.Zombies())
 	}
 }
 
