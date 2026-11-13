@@ -105,6 +105,25 @@ func TestDecide(t *testing.T) {
 	if p.Version != "0.5.0" || !p.Trial || s.Pending != "0.5.0" {
 		t.Errorf("pending gone: %+v %+v", p, s)
 	}
+	// A newer one installed while another is pending: the newer one is tried
+	// instead, from its first try.
+	three := append(both, "0.5.1")
+	p, s, _ = Decide(State{Current: "0.4.2", Pending: "0.5.0"}, three, newer)
+	if !p.Trial || p.Version != "0.5.1" || p.Fallback != "0.4.2" || s.Pending != "0.5.1" || s.Attempts != 1 {
+		t.Errorf("newer than pending: %+v %+v", p, s)
+	}
+	// ...also when the pending one has failed out (no more tries): the newer
+	// one is tried and the old failure isn't asked about any more.
+	p, s, _ = Decide(State{Current: "0.4.2", Pending: "0.5.0", Attempts: Tries, Failed: "0.5.0", Reason: "crashed"}, three, newer)
+	if !p.Trial || p.Version != "0.5.1" || s.Failed != "" || s.Reason != "" {
+		t.Errorf("newer than failed: %+v %+v", p, s)
+	}
+	// A pending one that's newest stays mid-try.
+	p, s, _ = Decide(State{Current: "0.4.2", Pending: "0.5.0", Attempts: 1}, both, newer)
+	if !p.Trial || p.Version != "0.5.0" || s.Attempts != 2 {
+		t.Errorf("pending newest: %+v %+v", p, s)
+	}
+
 	// An older one is never "pending".
 	p, _, _ = Decide(State{Current: "0.5.0"}, both, newer)
 	if p.Trial || p.Version != "0.5.0" {

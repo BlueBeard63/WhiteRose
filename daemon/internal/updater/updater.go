@@ -136,6 +136,7 @@ type View struct {
 	Release   *ReleaseView `json:"release"`
 	Previous  string       `json:"previous"`
 	RolledTo  string       `json:"rolled_to"` // rolled back: this from the next start
+	Waiting   string       `json:"waiting"`   // a newer version installed, started (and checked) at the next start
 	Rollback  bool         `json:"auto_rollback"`
 	Snapshot  int64        `json:"snapshot"`
 	Launcher  bool         `json:"launcher"`
@@ -179,6 +180,12 @@ func (m *Manager) status() View {
 	}
 	if st.Current != "" && st.Current != m.Running && slices.Contains(installed, st.Current) {
 		v.RolledTo = st.Current
+	}
+	// Installed but not running yet (by the Updates page, apt / dnf, or a
+	// release's install.sh): what the launcher would start next.
+	if plan, _, err := launch.Decide(st, installed, update.Newer); err == nil && v.RolledTo == "" &&
+		m.Running != "" && update.Newer(plan.Version, m.Running) {
+		v.Waiting = plan.Version
 	}
 	if st.Failed != "" {
 		v.Failure = &Failure{Version: st.Failed, Reason: st.Reason, Attempts: st.Attempts, Tries: launch.Tries,

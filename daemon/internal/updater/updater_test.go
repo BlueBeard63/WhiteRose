@@ -178,6 +178,33 @@ func TestInstallRefusesTamperedDownload(t *testing.T) {
 	}
 }
 
+// A newer version installed outside the page (install.sh, apt): shown as
+// waiting for the next start, even when the release check knows nothing newer.
+func TestWaiting(t *testing.T) {
+	m, _ := setup(t, "0.4.1")
+	f := launch.StateFile(m.State)
+	launch.Save(f, launch.State{Current: "0.4.1"})
+	if v := m.Status(); v.Waiting != "" {
+		t.Errorf("nothing newer: %+v", v)
+	}
+	installVersion(t, m.Root, "0.4.2")
+	installVersion(t, m.Root, "0.4.3")
+	// A stale pending one: the newest is what starts.
+	launch.Save(f, launch.State{Current: "0.4.1", Pending: "0.4.2"})
+	if v := m.Status(); v.Waiting != "0.4.3" {
+		t.Errorf("waiting: %+v", v)
+	}
+	// Not when you chose to stay off it.
+	launch.Save(f, launch.State{Current: "0.4.1", Skip: "0.4.3"})
+	if v := m.Status(); v.Waiting != "" {
+		t.Errorf("skipped: %+v", v)
+	}
+	// Looking doesn't change the state.
+	if st := launch.Load(f); st.Pending != "" || st.Attempts != 0 {
+		t.Errorf("state changed: %+v", st)
+	}
+}
+
 func TestRollbackAndPrompt(t *testing.T) {
 	m, _ := setup(t, "0.5.0")
 	installVersion(t, m.Root, "0.4.2")

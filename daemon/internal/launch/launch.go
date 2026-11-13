@@ -142,9 +142,16 @@ func Decide(s State, installed []string, newer func(a, b string) bool) (Plan, St
 		s.Pending, s.Attempts = "", 0
 	}
 	// A newer one installed (the Updates page, or apt / dnf): to try, unless
-	// it already failed, or you chose to stay on (or roll back from) it.
-	if s.Pending == "" && newer(newest, s.Current) && newest != s.Failed && newest != s.Skip {
+	// it already failed, or you chose to stay on (or roll back from) it. It
+	// replaces a pending one it's newer than (that one may be the reason a
+	// fix came out), and a failure of an older one is no longer worth asking
+	// about.
+	if newer(newest, s.Current) && newest != s.Failed && newest != s.Skip &&
+		(s.Pending == "" || newer(newest, s.Pending)) {
 		s.Pending, s.Attempts = newest, 0
+		if s.Failed != "" && newer(newest, s.Failed) {
+			s.Failed, s.Reason = "", ""
+		}
 	}
 	if s.Pending != "" && s.NoRollback {
 		// No health check: it's the one from now on.
