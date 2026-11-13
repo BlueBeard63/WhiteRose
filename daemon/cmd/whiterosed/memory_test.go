@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,8 +97,14 @@ func TestMemoryWarns(t *testing.T) {
 		t.Errorf("named after Not now: %v", got)
 	}
 	st, _ := ops["memory_status"](reqName(""))
-	if s := st.(map[string]any); s["level"] != "tight" {
+	s := st.(map[string]any)
+	if s["level"] != "tight" || s["total"].(int64) != 16<<30 {
 		t.Errorf("%v", s)
+	}
+	b, _ := json.Marshal(s["apps"])
+	if !strings.Contains(string(b), `"id":"org.gnome.Ptyxis","bytes":12582912000,"growing":false,"suspect":false,"kept":"terminal"`) ||
+		!strings.Contains(string(b), `"id":"firefox","bytes":9437184000,"growing":false,"suspect":true,"kept":""`) {
+		t.Errorf("%s", b)
 	}
 }
 

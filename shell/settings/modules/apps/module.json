@@ -7,5 +7,9 @@
   "order": 6,
   "version": "1.0.0",
   "core": true,
-  "keywords": ["apps", "install", "software", "setup", "ghostty", "vscode", "code", "thunderbird", "bitwarden", "libreoffice", "vlc", "calculator", "zapzap", "discord", "signal", "zsh", "oh my zsh", "git", "github"]
+  "keywords": ["apps", "install", "software", "setup", "ghostty", "vscode", "code", "thunderbird", "bitwarden", "libreoffice", "vlc", "calculator", "zapzap", "discord", "signal", "zsh", "oh my zsh", "git", "github"],
+  "pages": [
+    { "id": "memory", "name": "Memory", "icon": "gauge", "file": "Memory.qml",
+      "keywords": ["memory", "ram", "out of memory", "oom", "leak", "memory leak", "close apps", "keep running", "protected", "frozen", "slow"] }
+  ]
 }

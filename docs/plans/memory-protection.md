@@ -1,7 +1,11 @@
 # Plan: running out of memory without losing the session
 
-**Status: planned** (2026-11-13), after [bug reports](bug-reports.md),
-whose crash snapshots it uses.
+**Status: done** (2026-11-13), in five commits on this branch, after
+[bug reports](bug-reports.md), whose crash records it uses. Where it ended
+up differently: the Settings page is Apps › Memory, without a window-menu
+"Keep running" (WhiteRose has no window menu yet); and two switches for
+trying it out, WHITEROSE_MEMORY_LEVEL=tight|critical and
+WHITEROSE_APP_SLICE (a made-up app.slice, so nothing real is touched).
 
 ## Where it stands
 

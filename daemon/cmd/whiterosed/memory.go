@@ -55,6 +55,8 @@ type memWatch struct {
 	snoozed  map[string]time.Time // Not now: not named again until
 	warned   map[string]time.Time // last named
 	lastRead time.Time
+	avail    int64
+	total    int64
 	wake     chan struct{}
 	// The warning showing (nil: none): a shell that connects, or restarts,
 	// asks for it (memory_warning).
@@ -106,6 +108,17 @@ func init() {
 }
 
 var appSliceOverride string
+
+// kept: why app id is kept running: "terminal", "list" or "".
+func (m *memWatch) kept(id string) string {
+	switch {
+	case memwatch.Protected(id, nil, m.terminal):
+		return "terminal"
+	case m.protected(id):
+		return "list"
+	}
+	return ""
+}
 
 func (m *memWatch) protected(id string) bool {
 	var list []string
@@ -190,7 +203,7 @@ func (m *memWatch) check() {
 
 	m.mu.Lock()
 	m.tr.Add(now, apps)
-	m.apps, m.lastRead = apps, now
+	m.apps, m.lastRead, m.avail, m.total = apps, now, avail, total
 	m.level = memwatch.Judge(psi, avail, total)
 	// (Trying it out: WHITEROSE_MEMORY_LEVEL=tight acts as if memory were
 	// tight, with the real apps and their real sizes.)
@@ -437,15 +450,24 @@ func (m *memWatch) ops() map[string]func(server.Request) (any, error) {
 			defer m.mu.Unlock()
 			type row struct {
 				memwatch.App
-				Growing   bool `json:"growing"`
-				Protected bool `json:"protected"`
-				Suspect   bool `json:"suspect"`
+				Growing bool `json:"growing"`
+				Suspect bool `json:"suspect"`
+				// Why it's kept running: "terminal", "list" (memory.protected) or "".
+				Kept string `json:"kept"`
 			}
 			rows := []row{}
 			for _, a := range m.apps {
-				rows = append(rows, row{App: a, Growing: m.tr.Growing(a.Unit), Protected: m.protected(a.ID), Suspect: m.raised[a.Unit]})
+				rows = append(rows, row{App: a, Growing: m.tr.Growing(a.Unit), Suspect: m.raised[a.Unit], Kept: m.kept(a.ID)})
 			}
-			return map[string]any{"level": m.level.String(), "apps": rows, "read": m.lastRead.UnixMilli()}, nil
+			// What the watcher closed by itself, newest first.
+			closed := []map[string]any{}
+			for _, r := range crash.List(m.state) {
+				if r.What == crash.Memory {
+					closed = append(closed, map[string]any{"id": r.ID, "app": r.App, "time": r.Time})
+				}
+			}
+			return map[string]any{"level": m.level.String(), "apps": rows, "read": m.lastRead.UnixMilli(),
+				"available": m.avail, "total": m.total, "closed": closed, "terminal": m.terminal}, nil
 		},
 	}
 }
