@@ -1,0 +1,287 @@
+--- a/src/wayland/selection/data_device/dnd_grab.rs
++++ b/src/wayland/selection/data_device/dnd_grab.rs
+@@ -45,6 +45,9 @@ pub struct DnDGrab<D: SeatHandler> {
+     icon: Option<WlSurface>,
+     origin: WlSurface,
+     seat: Seat<D>,
++    /// WhiteRose patch: `current_focus` is a surface the compositor carries
++    /// the drag to itself (`ClientDndGrabHandler::dnd_foreign`).
++    foreign: bool,
+ }
+ 
+ impl<D: SeatHandler + 'static> fmt::Debug for DnDGrab<D> {
+@@ -84,6 +87,7 @@ impl<D: SeatHandler> DnDGrab<D> {
+             origin,
+             icon,
+             seat,
++            foreign: false,
+         }
+     }
+ 
+@@ -106,6 +110,7 @@ impl<D: SeatHandler> DnDGrab<D> {
+             origin,
+             icon,
+             seat,
++            foreign: false,
+         }
+     }
+ }
+@@ -118,11 +123,31 @@ where
+ {
+     fn update_focus<F: WaylandFocus>(
+         &mut self,
++        data: &mut D,
+         focus: Option<(F, Point<f64, Logical>)>,
+         location: Point<f64, Logical>,
+         serial: Serial,
+         time: u32,
+     ) {
++        // WhiteRose patch: a surface the compositor carries the drag to itself.
++        let surface = focus.as_ref().and_then(|(s, _)| s.wl_surface().map(|s| s.into_owned()));
++        if self.foreign && surface.as_ref() != self.current_focus.as_ref() {
++            self.foreign = false;
++            self.current_focus = None;
++            ClientDndGrabHandler::dnd_foreign_leave(data, self.seat.clone());
++        }
++        if let (Some(source), Some(surface)) = (self.data_source.clone(), surface) {
++            if self.foreign || (self.current_focus.as_ref() != Some(&surface) && data.dnd_foreign(&surface)) {
++                if !self.foreign {
++                    // Leaving a Wayland surface for it.
++                    self.update_focus::<F>(data, None, location, serial, time);
++                    self.foreign = true;
++                    self.current_focus = Some(surface.clone());
++                }
++                ClientDndGrabHandler::dnd_foreign_motion(data, &surface, location, &source, self.seat.clone());
++                return;
++            }
++        }
+         let seat_data = self
+             .seat
+             .user_data()
+@@ -225,6 +250,21 @@ where
+     }
+ 
+     fn drop(&mut self, data: &mut D) {
++        // WhiteRose patch: dropped on a surface the compositor carries it to.
++        if self.foreign {
++            self.foreign = false;
++            if let Some(source) = self.data_source.clone() {
++                let validated = ClientDndGrabHandler::dnd_foreign_drop(data, &source, self.seat.clone());
++                if !validated {
++                    source.cancelled();
++                } else if source.version() >= wl_data_source::EVT_DND_DROP_PERFORMED_SINCE {
++                    source.dnd_drop_performed();
++                }
++                ClientDndGrabHandler::dropped(data, self.current_focus.clone(), validated, self.seat.clone());
++            }
++            self.icon = None;
++            return;
++        }
+         // the user dropped, proceed to the drop
+         let seat_data = self
+             .seat
+@@ -294,7 +334,7 @@ where
+         // While the grab is active, no client has pointer focus
+         handle.motion(data, None, event);
+ 
+-        self.update_focus(focus, event.location, event.serial, event.time);
++        self.update_focus(data, focus, event.location, event.serial, event.time);
+     }
+ 
+     fn relative_motion(
+@@ -438,7 +478,7 @@ where
+ 
+     fn motion(
+         &mut self,
+-        _data: &mut D,
++        data: &mut D,
+         _handle: &mut crate::input::touch::TouchInnerHandle<'_, D>,
+         focus: Option<(<D as SeatHandler>::TouchFocus, Point<f64, Logical>)>,
+         event: &crate::input::touch::MotionEvent,
+@@ -448,7 +488,7 @@ where
+             return;
+         }
+ 
+-        self.update_focus(focus, event.location, SERIAL_COUNTER.next_serial(), event.time);
++        self.update_focus(data, focus, event.location, SERIAL_COUNTER.next_serial(), event.time);
+     }
+ 
+     fn frame(
+diff --git a/src/wayland/selection/data_device/mod.rs b/src/wayland/selection/data_device/mod.rs
+index 4a7ff74..d5001bb 100644
+--- a/src/wayland/selection/data_device/mod.rs
++++ b/src/wayland/selection/data_device/mod.rs
+@@ -145,6 +145,35 @@ pub trait ClientDndGrabHandler: SeatHandler + Sized {
+     ///   was cancelled or otherwise not successful.
+     /// * `seat` - The seat on which the DnD action was finished.
+     fn dropped(&mut self, target: Option<WlSurface>, validated: bool, seat: Seat<Self>) {}
++
++    /// WhiteRose patch: whether the compositor itself carries drags over
++    /// `surface` to its client (an X11 window: the compositor speaks XDND to
++    /// it), instead of a wl_data_device offer.
++    fn dnd_foreign(&mut self, surface: &WlSurface) -> bool {
++        false
++    }
++
++    /// WhiteRose patch: a drag of `source` is over the foreign `surface`, the
++    /// pointer at `location` (global).
++    fn dnd_foreign_motion(
++        &mut self,
++        surface: &WlSurface,
++        location: crate::utils::Point<f64, crate::utils::Logical>,
++        source: &WlDataSource,
++        seat: Seat<Self>,
++    ) {
++    }
++
++    /// WhiteRose patch: the drag left the foreign surface.
++    fn dnd_foreign_leave(&mut self, seat: Seat<Self>) {}
++
++    /// WhiteRose patch: dropped on the foreign surface; whether it takes the
++    /// drop. If it does, the source has been told `dnd_drop_performed`, and
++    /// the compositor tells it `dnd_finished` (or `cancelled`) when the
++    /// target is done.
++    fn dnd_foreign_drop(&mut self, source: &WlDataSource, seat: Seat<Self>) -> bool {
++        false
++    }
+ }
+ 
+ /// Event generated by the interactions of clients with a server initiated drag'n'drop
+--- a/src/wayland/selection/data_device/mod.rs
++++ b/src/wayland/selection/data_device/mod.rs
+@@ -440,6 +440,34 @@ pub fn start_dnd<D>(
+     }
+ }
+ 
++/// WhiteRose patch: as `start_dnd` with a pointer, for a drag that began in
++/// a client that drags by itself (an X11 app, through Xwayland): the pointer
++/// stays with the surface the press began on (`pointer_start_data.focus`),
++/// so it still sees the motion and the release, while other clients' surfaces
++/// get the compositor's offer.
++pub fn start_dnd_keeping_focus<D>(
++    dh: &DisplayHandle,
++    seat: &Seat<D>,
++    data: &mut D,
++    serial: Serial,
++    pointer_start_data: PointerGrabStartData<D>,
++    metadata: SourceMetadata,
++) where
++    D: SeatHandler + DataDeviceHandler + 'static,
++    <D as SeatHandler>::PointerFocus: WaylandFocus,
++{
++    seat.user_data()
++        .insert_if_missing(|| RefCell::new(SeatData::<D::SelectionUserData>::new()));
++    if let Some(pointer) = seat.get_pointer() {
++        pointer.set_grab(
++            data,
++            server_dnd_grab::ServerDnDGrab::new_pointer_keeping_focus(dh, pointer_start_data, metadata, seat.clone()),
++            serial,
++            Focus::Keep,
++        );
++    }
++}
++
+ mod handlers {
+     use std::cell::RefCell;
+ 
+diff --git a/src/wayland/selection/data_device/server_dnd_grab.rs b/src/wayland/selection/data_device/server_dnd_grab.rs
+index 4a618bd..10172f2 100644
+--- a/src/wayland/selection/data_device/server_dnd_grab.rs
++++ b/src/wayland/selection/data_device/server_dnd_grab.rs
+@@ -44,6 +44,12 @@ pub struct ServerDnDGrab<D: SeatHandler> {
+     pending_offers: Vec<wl_data_offer::WlDataOffer>,
+     offer_data: Option<Arc<Mutex<ServerDndOfferData>>>,
+     seat: Seat<D>,
++    /// WhiteRose patch: the pointer stays with the surface the press began on
++    /// (an X11 app dragging, through Xwayland: it must still see the motion
++    /// and the release to drop), and that surface's client gets no offers.
++    keep_focus: bool,
++    /// WhiteRose patch: the surface the press began on, when keeping focus.
++    origin: Option<WlSurface>,
+ }
+ 
+ impl<D: SeatHandler + 'static> fmt::Debug for ServerDnDGrab<D> {
+@@ -62,6 +68,25 @@ impl<D: SeatHandler + 'static> fmt::Debug for ServerDnDGrab<D> {
+ }
+ 
+ impl<D: SeatHandler> ServerDnDGrab<D> {
++    /// WhiteRose patch: as `new_pointer`, the pointer staying with the
++    /// surface the press began on (`start_data.focus`).
++    pub(crate) fn new_pointer_keeping_focus(
++        dh: &DisplayHandle,
++        start_data: PointerGrabStartData<D>,
++        metadata: super::SourceMetadata,
++        seat: Seat<D>,
++    ) -> Self
++    where
++        <D as SeatHandler>::PointerFocus: WaylandFocus,
++    {
++        let origin = start_data.focus.as_ref().and_then(|(f, _)| f.wl_surface().map(|s| s.into_owned()));
++        Self {
++            keep_focus: true,
++            origin,
++            ..Self::new_pointer(dh, start_data, metadata, seat)
++        }
++    }
++
+     pub(crate) fn new_pointer(
+         dh: &DisplayHandle,
+         start_data: PointerGrabStartData<D>,
+@@ -77,6 +102,8 @@ impl<D: SeatHandler> ServerDnDGrab<D> {
+             pending_offers: Vec::with_capacity(1),
+             offer_data: None,
+             seat,
++            keep_focus: false,
++            origin: None,
+         }
+     }
+ 
+@@ -95,6 +122,8 @@ impl<D: SeatHandler> ServerDnDGrab<D> {
+             pending_offers: Vec::with_capacity(1),
+             offer_data: None,
+             seat,
++            keep_focus: false,
++            origin: None,
+         }
+     }
+ }
+@@ -112,6 +141,12 @@ where
+         serial: Serial,
+         time: u32,
+     ) {
++        // WhiteRose patch: the surface the drag came from (its client) takes
++        // no offers; it's dragging itself.
++        let focus = focus.filter(|(f, _)| {
++            !self.keep_focus
++                || !matches!((f.wl_surface(), &self.origin), (Some(s), Some(o)) if s.id().same_client_as(&o.id()))
++        });
+         let seat_data = self
+             .seat
+             .user_data()
+@@ -262,7 +297,13 @@ where
+         let time = event.time;
+ 
+         // While the grab is active, no client has pointer focus
+-        handle.motion(data, None, event);
++        // (WhiteRose patch: unless it keeps the one the press began on).
++        let keep = if self.keep_focus {
++            self.pointer_start_data.as_ref().and_then(|s| s.focus.clone())
++        } else {
++            None
++        };
++        handle.motion(data, keep, event);
+ 
+         self.update_focus(focus, location, serial, time);
+     }
+@@ -281,6 +322,11 @@ where
+         let serial = event.serial;
+         let time = event.time;
+ 
++        // WhiteRose patch: the surface that keeps the pointer sees its buttons
++        // (an X11 app drops when it sees the release).
++        if self.keep_focus {
++            handle.button(data, event);
++        }
+         if handle.current_pressed().is_empty() {
+             // the user dropped, proceed to the drop
+             handle.unset_grab(self, data, serial, time, true);

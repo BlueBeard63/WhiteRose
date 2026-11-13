@@ -1,6 +1,6 @@
 // Date and time (Figma: Trigger/Clock); click for the calendar. SystemClock
 // with minute precision wakes once a minute; only showing seconds (Settings >
-// Top Bar) makes it tick every second.
+// Top bar) makes it tick every second.
 import QtQuick
 import Quickshell
 

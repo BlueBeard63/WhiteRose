@@ -16,6 +16,7 @@ use smithay::{
 };
 
 use crate::state::WhiteRose;
+use crate::win::WinExt;
 
 const VERSION: u32 = 3;
 
@@ -73,7 +74,7 @@ impl ForeignToplevelState {
 impl WhiteRose {
     fn toplevel_info(&self, w: &Window, focused: Option<&Window>) -> ToplevelInfo {
         let (app_id, title) = crate::ipc::toplevel_ids(w);
-        let has = |s: ToplevelState| w.toplevel().is_some_and(|t| t.with_pending_state(|p| p.states.contains(s)));
+        let has = |s: ToplevelState| w.has(s);
         ToplevelInfo {
             title: title.unwrap_or_default(),
             app_id: app_id.unwrap_or_default(),
@@ -232,9 +233,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, u64> for WhiteRose {
         match request {
             Request::Activate { .. } => state.activate_window(&w),
             Request::Close => {
-                if let Some(t) = w.toplevel() {
-                    t.send_close();
-                }
+                w.close();
             }
             Request::SetMaximized => state.maximize(&w),
             Request::UnsetMaximized => state.unmaximize(&w),

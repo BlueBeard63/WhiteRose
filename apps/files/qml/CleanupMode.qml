@@ -1,8 +1,8 @@
 // Clean up ("cleanup:"): what takes room under a folder (home, a drive, or
-// the folder you came from), to move to the Trash or delete. Three looks,
+// the folder you came from), to move to the trash or delete. Three looks,
 // each started when asked (they read a lot): the largest files, duplicates
 // (same contents), and build caches and downloaded dependencies (made
-// again when needed). Largest and duplicates go to the Trash by default:
+// again when needed). Largest and duplicates go to the trash by default:
 // nothing's gone until it's emptied.
 import QtQuick
 import QtQuick.Controls.Basic
@@ -254,7 +254,7 @@ Item {
             // Caches are made again when needed: trashing them frees nothing.
             Button {
                 visible: page.kind !== "caches"
-                text: "Move to Trash"; kind: "primary"
+                text: "Move to trash"; kind: "primary"
                 enabled: page.chosen.length > 0
                 onClicked: page.act("trash")
             }

@@ -1,4 +1,4 @@
-// Keyboard & Shortcuts logic, free of QML so it can be tested
+// Keyboard & shortcuts logic, free of QML so it can be tested
 // (shell/tests/run.mjs).
 //
 // Shortcuts are strings the compositor parses: modifiers then one key,

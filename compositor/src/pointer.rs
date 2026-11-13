@@ -1,4 +1,4 @@
-//! Mice and touchpads (Settings › Mouse & Touchpad): scroll direction,
+//! Mice and touchpads (Settings › Mouse & touchpad): scroll direction,
 //! speed, acceleration and tap to click, each for mice and touchpads
 //! separately, applied through libinput to every device when it's plugged
 //! in and again when a setting changes. Only the real-hardware backend has

@@ -179,7 +179,7 @@ fn check_grab(seat: &Seat<WhiteRose>, surface: &WlSurface, serial: Serial) -> Op
 /// Should be called on `WlSurface::commit`
 pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: &WlSurface) {
     // Handle toplevel commits.
-    if let Some(window) = space.elements().find(|w| w.toplevel().unwrap().wl_surface() == surface).cloned() {
+    if let Some(window) = space.elements().find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface)).cloned() {
         let initial_configure_sent = with_states(surface, |states| {
             states.data_map.get::<XdgToplevelSurfaceData>().unwrap().lock().unwrap().initial_configure_sent
         });
@@ -255,7 +255,7 @@ impl WhiteRose {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             return;
         };
-        let Some(window) = self.space.elements().find(|w| w.toplevel().unwrap().wl_surface() == &root) else {
+        let Some(window) = self.space.elements().find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == &root)) else {
             return;
         };
 

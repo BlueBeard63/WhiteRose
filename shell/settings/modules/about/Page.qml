@@ -35,7 +35,7 @@ Column {
     PageHeader { title: "About"; subtitle: page.host }
 
     Card {
-        SettingRow { title: "Computer"; divider: false; Text { text: page.model || "—"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }
+        SettingRow { title: "Computer"; divider: false; Text { text: page.model || "Unknown"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }
         SettingRow { title: "Processor"; Text { text: page.cpu + (page.cores ? " · " + page.cores + " threads" : ""); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }
         SettingRow { title: "Memory"; Text { text: (page.memKb / 1048576).toFixed(1) + " GB"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }
     }

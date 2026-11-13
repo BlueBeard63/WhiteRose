@@ -12,6 +12,7 @@
 //! -> {"cmd":"spawn","command":"ptyxis --standalone"}
 //! ```
 
+use crate::win::WinExt;
 use std::{
     io::{ErrorKind, Read, Write},
     os::unix::net::{UnixListener, UnixStream},
@@ -94,7 +95,7 @@ pub enum Event {
         capabilities: crate::outputs::Capabilities,
         trial_until: Option<u64>,
     },
-    /// Every shortcut and its keys (Keyboard & Shortcuts page).
+    /// Every shortcut and its keys (Keyboard & shortcuts page).
     Shortcuts {
         shortcuts: Vec<crate::keyboard::ShortcutView>,
     },
@@ -238,13 +239,13 @@ pub enum Request {
     },
     /// Send the window list (with where each window is) now.
     WindowsList,
-    /// Night Light from the quick settings: warm the screen to `temperature` K.
+    /// Night light from the quick settings: warm the screen to `temperature` K.
     NightLight {
         on: bool,
         #[serde(default = "neutral")]
         temperature: u32,
     },
-    /// End the session (Log Out).
+    /// End the session (Log out).
     Quit,
     /// Start the session again (whiterose-launch), e.g. to switch to an update.
     Restart,
@@ -751,23 +752,7 @@ impl WhiteRose {
     }
 
     pub fn focus_event(&self) -> Event {
-        use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
-        let (app_id, title) = self
-            .focused_window()
-            .and_then(|w| w.toplevel().cloned())
-            .map(|t| {
-                with_states(t.wl_surface(), |states| {
-                    states
-                        .data_map
-                        .get::<XdgToplevelSurfaceData>()
-                        .map(|d| {
-                            let d = d.lock().unwrap();
-                            (d.app_id.clone(), d.title.clone())
-                        })
-                        .unwrap_or_default()
-                })
-            })
-            .unwrap_or_default();
+        let (app_id, title) = self.focused_window().map(|w| w.ids()).unwrap_or_default();
         Event::Focus { app_id, title }
     }
 
@@ -827,23 +812,9 @@ pub fn island_covered(
     windows.iter().any(|w| w.overlaps(zone))
 }
 
-/// A toplevel's (app_id, title).
+/// A window's (app_id, title).
 pub fn toplevel_ids(w: &smithay::desktop::Window) -> (Option<String>, Option<String>) {
-    use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
-    w.toplevel()
-        .map(|t| {
-            with_states(t.wl_surface(), |states| {
-                states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()
-                    .map(|d| {
-                        let d = d.lock().unwrap();
-                        (d.app_id.clone(), d.title.clone())
-                    })
-                    .unwrap_or_default()
-            })
-        })
-        .unwrap_or_default()
+    w.ids()
 }
 
 #[cfg(test)]

@@ -10,13 +10,41 @@ use std::{
     time::Duration,
 };
 
-use smithay::wayland::selection::data_device::{request_data_device_client_selection, set_data_device_selection};
+use smithay::wayland::selection::{
+    data_device::{
+        current_data_device_selection_userdata, request_data_device_client_selection, set_data_device_selection,
+    },
+    SelectionTarget,
+};
 
 use crate::{
     clipboard::{self, Choice, Content},
     ipc,
     state::WhiteRose,
 };
+
+/// What's behind a clipboard offer the compositor makes itself.
+#[derive(Debug, Clone)]
+pub enum Offer {
+    /// Its own data (a screenshot, a history entry pasted back): each mime
+    /// type's bytes.
+    Data(Arc<Vec<(String, Vec<u8>)>>),
+    /// An X11 app's copy, read from it through Xwayland when pasted.
+    X11,
+}
+
+/// Writes `data`'s bytes for `mime` (else its first type's) to `fd`, on a
+/// thread: the reader may be slow and the pipe small.
+pub fn write_offer(data: Arc<Vec<(String, Vec<u8>)>>, mime: String, fd: OwnedFd) {
+    std::thread::spawn(move || {
+        use std::io::Write;
+        let bytes = data.iter().find(|(m, _)| *m == mime).or(data.first()).map(|(_, b)| b.as_slice()).unwrap_or(&[]);
+        let mut f = std::fs::File::from(fd);
+        if let Err(e) = f.write_all(bytes) {
+            tracing::debug!(%e, "clipboard reader went away");
+        }
+    });
+}
 
 /// Result of reading one selection, sent back to the main loop.
 pub struct Captured(pub Option<Content>);
@@ -88,7 +116,7 @@ impl WhiteRose {
         if reader.set_read_timeout(Some(READ_TIMEOUT)).is_err() {
             return;
         }
-        if request_data_device_client_selection(&self.seat, choice.mime().to_string(), OwnedFd::from(writer)).is_err() {
+        if !self.read_clipboard(choice.mime().to_string(), OwnedFd::from(writer)) {
             return;
         }
         // The owning app only starts writing once it receives the request.
@@ -100,6 +128,38 @@ impl WhiteRose {
             let content = read_capped(reader, choice.limit()).and_then(|d| to_content(&choice, &d, &images));
             let _ = tx.send(Captured(content));
         });
+    }
+
+    /// Puts the compositor's own data on the clipboard (a screenshot, a
+    /// history entry), for Wayland and X11 apps alike.
+    pub fn offer_clipboard(&mut self, payloads: Vec<(String, Vec<u8>)>) {
+        let mimes: Vec<String> = payloads.iter().map(|(m, _)| m.clone()).collect();
+        set_data_device_selection(&self.display_handle, &self.seat, mimes.clone(), Offer::Data(Arc::new(payloads)));
+        self.xwayland.clipboard = Some(mimes.clone());
+        if let Some(wm) = self.xwayland.wm.as_mut() {
+            let _ = wm.new_selection(SelectionTarget::Clipboard, Some(mimes));
+        }
+    }
+
+    /// Has the clipboard's owner (a Wayland app, an X11 app, or the
+    /// compositor) write it as `mime` to `fd`; false if there's nothing to
+    /// read.
+    pub fn read_clipboard(&mut self, mime: String, fd: OwnedFd) -> bool {
+        let offer = current_data_device_selection_userdata(&self.seat).map(|o| o.clone());
+        match offer {
+            Some(Offer::Data(data)) => {
+                write_offer(data, mime, fd);
+                true
+            }
+            Some(Offer::X11) => {
+                let handle = self.loop_handle.clone();
+                self.xwayland
+                    .wm
+                    .as_mut()
+                    .is_some_and(|wm| wm.send_selection(SelectionTarget::Clipboard, mime, fd, handle).is_ok())
+            }
+            None => request_data_device_client_selection(&self.seat, mime, fd).is_ok(),
+        }
     }
 
     /// Main-loop side of a finished capture.
@@ -148,8 +208,7 @@ impl WhiteRose {
             self.clipboard_sync();
             return;
         };
-        let mimes = payloads.iter().map(|(m, _)| m.clone()).collect();
-        set_data_device_selection(&self.display_handle, &self.seat, mimes, Arc::new(payloads));
+        self.offer_clipboard(payloads);
         self.clipboard.touch(id, now());
         self.after_clipboard_change(Vec::new());
     }
@@ -207,12 +266,7 @@ impl WhiteRose {
         }
         let Ok(png) = std::fs::read(path) else { return };
         let png = Arc::new(png);
-        set_data_device_selection(
-            &self.display_handle,
-            &self.seat,
-            vec!["image/png".into()],
-            Arc::new(vec![("image/png".to_string(), png.as_ref().clone())]),
-        );
+        self.offer_clipboard(vec![("image/png".to_string(), png.as_ref().clone())]);
         self.clipboard_add_screenshot(png);
     }
 

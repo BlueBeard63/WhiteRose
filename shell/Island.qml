@@ -158,20 +158,29 @@ Item {
         // clipped to the outline, except one with room below it (the dock's
         // window previews hang there).
         Item {
-            x: shape.bodyX
-            width: shape.bodyWidth
+            id: viewArea
+            // A view that bleeds may also draw into the left ear: the clip
+            // reaches into it, the views stay where they are.
+            readonly property real bleed: root.shown?.bleed ? shape.bodyX : 0
+            x: shape.bodyX - bleed
+            width: shape.bodyWidth + bleed
             readonly property bool hangs: (root.shown?.overhang ?? 0) > 0
             height: hangs ? root.height + 400 : shape.bodyHeight
             clip: !hangs
-            Repeater {
-                model: ShellState.islandViews
-                delegate: View {
-                    id: viewLoader
-                    required property string modelData
-                    name: modelData
-                    source: Quickshell.shellDir + "/island/" + modelData + ".qml"
-                    Component.onCompleted: { const l = Object.assign({}, root.loaders); l[modelData] = viewLoader; root.loaders = l }
-                    Component.onDestruction: { const l = Object.assign({}, root.loaders); delete l[modelData]; root.loaders = l }
+            Item {
+                x: viewArea.bleed
+                width: shape.bodyWidth
+                height: parent.height
+                Repeater {
+                    model: ShellState.islandViews
+                    delegate: View {
+                        id: viewLoader
+                        required property string modelData
+                        name: modelData
+                        source: Quickshell.shellDir + "/island/" + modelData + ".qml"
+                        Component.onCompleted: { const l = Object.assign({}, root.loaders); l[modelData] = viewLoader; root.loaders = l }
+                        Component.onDestruction: { const l = Object.assign({}, root.loaders); delete l[modelData]; root.loaders = l }
+                    }
                 }
             }
         }

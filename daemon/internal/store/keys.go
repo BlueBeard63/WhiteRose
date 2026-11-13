@@ -81,7 +81,7 @@ var Known = map[string]Key{
 	"launcher.commands":     {Default: json.RawMessage(`[]`), Check: into(maxLen[string](50))},
 	"launcher.calculations": {Default: json.RawMessage(`[]`), Check: into(maxLen[Calculation](20))},
 	"quick.doNotDisturb":    {Default: json.RawMessage(`false`), Check: into[bool](nil)},
-	// Unix ms when Night Light turns itself off; 0 = off.
+	// Unix ms when Night light turns itself off; 0 = off.
 	"quick.nightLight.until": {Default: json.RawMessage(`0`), Check: into(func(v float64) error {
 		if v < 0 {
 			return errors.New("must be 0 or a time")
@@ -281,7 +281,7 @@ var Known = map[string]Key{
 	"update.check":             {Default: json.RawMessage(`"daily"`), Check: into(oneOf("daily", "weekly", "manual"))},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"privacy.recentFiles":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
-	// Mice and touchpads (Settings › Mouse & Touchpad; the compositor
+	// Mice and touchpads (Settings › Mouse & touchpad; the compositor
 	// applies them through libinput). Speed is libinput's, -1 to 1.
 	"mouse.naturalScroll":    {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"mouse.speed":            {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},

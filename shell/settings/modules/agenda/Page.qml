@@ -15,7 +15,7 @@ Column {
         SettingRow {
             divider: false
             title: "Calendars"
-            subtitle: "The agenda shows the events of the calendars in Calendar & Weather"
+            subtitle: "The agenda shows the events of the calendars in Calendar & weather"
             Button { text: "Open"; onClicked: SettingsState.open("calendar") }
         }
     }

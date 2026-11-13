@@ -82,7 +82,7 @@ pub enum Action {
     FocusApp(String),
     /// Delete a screenshot this compositor saved (requested by the shell).
     DeleteScreenshot(String),
-    /// Night Light on/off and its warmth (from the shell's quick settings).
+    /// Night light on/off and its warmth (from the shell's quick settings).
     NightLight(crate::night_light::NightLight),
     /// Clipboard and screenshot-tray requests from the shell.
     Shell(ShellRequest),
@@ -317,7 +317,7 @@ pub struct CustomShortcut {
 }
 
 /// One built-in shortcut: a stable id (the settings key), what it's called
-/// and grouped under on the Keyboard & Shortcuts page, and its default keys.
+/// and grouped under on the Keyboard & shortcuts page, and its default keys.
 #[derive(Debug, Clone, Copy)]
 pub struct Def {
     pub id: &'static str,
@@ -454,7 +454,7 @@ impl Bindings {
         Bindings { entries }
     }
 
-    /// WhiteRose's default shortcuts (see the Keyboard & Shortcuts design).
+    /// WhiteRose's default shortcuts (see the Keyboard & shortcuts design).
     pub fn defaults(terminal: &str) -> Self {
         Bindings::build(terminal, &Default::default(), &[]).0
     }

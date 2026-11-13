@@ -11,7 +11,7 @@
 //!   target; nothing is removed.
 //! - **mirror** (one way): the target ends up exactly like the source:
 //!   anything different is replaced, and what's only in the target goes to
-//!   the Trash (nothing is deleted for good).
+//!   the trash (nothing is deleted for good).
 //! - **two-way**: each side gets what's new or newer on the other; files
 //!   that differ with no way to tell which is newer are left alone and
 //!   listed.
@@ -241,7 +241,7 @@ pub struct Plan {
     pub to_right: Vec<String>,
     /// Relative paths copied right → left.
     pub to_left: Vec<String>,
-    /// Relative paths in the right folder moved to the Trash.
+    /// Relative paths in the right folder moved to the trash.
     pub trash_right: Vec<String>,
     pub trash_left: Vec<String>,
     /// Left alone: different, and nothing says which to keep.

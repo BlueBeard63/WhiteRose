@@ -1,6 +1,7 @@
 // Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
+import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
@@ -208,12 +209,12 @@ test("user name and initials", () => {
 test("notification age", () => {
     assert.deepEqual([0, 59, 120, 3599, 3600, 86399, 86400 * 3].map(N.ago), ["now", "now", "2m", "59m", "1h", "23h", "3d"]);
 });
-test("popups respect the panel and Do Not Disturb", () => {
+test("popups respect the panel and Do not disturb", () => {
     assert.equal(N.shouldPopup(1, false, false), true);
     assert.equal(N.shouldPopup(1, false, true), false, "already visible in the open panel");
-    assert.equal(N.shouldPopup(1, true, false), false, "Do Not Disturb");
+    assert.equal(N.shouldPopup(1, true, false), false, "Do not disturb");
     assert.equal(N.shouldPopup(0, true, false), false);
-    assert.equal(N.shouldPopup(2, true, false), true, "critical gets through Do Not Disturb");
+    assert.equal(N.shouldPopup(2, true, false), true, "critical gets through Do not disturb");
     assert.equal(N.shouldPopup(1, false, false, true), false, "a muted app doesn't pop up");
     assert.equal(N.shouldPopup(2, false, false, true), true, "unless it's critical");
 });
@@ -553,7 +554,7 @@ test("Files' menus: entries left out, separators tidied, your actions applied", 
     for (const list of [Act.menu, Act.toolbar]) assert.equal(new Set(list.map(x => x.id)).size, list.length);
 });
 
-// ---- Keys (Keyboard & Shortcuts) -------------------------------------------
+// ---- Keys (Keyboard & shortcuts) -------------------------------------------
 const views = [
     { id: "launcher", keys: ["SUPER"], defaults: ["SUPER"] },
     { id: "fullscreen", keys: ["SUPER+F"], defaults: ["SUPER+F"] },
@@ -777,7 +778,7 @@ test("updates page text", () => {
     assert.deepEqual(Up.badge({ state: "ready", pending: true }), ["Ready to apply", "ready"]);
     assert.deepEqual(Up.badge(null), ["", "plain"]);
     assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: true }), /session restarts/);
-    assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: false }), /log out/);
+    assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: false }), /log out/i);
     assert.match(Up.note({ state: "downloaded" }, { running: "0.4.2" }), /beside 0.4.2/);
     assert.equal(Up.fraction({ progress: [25, 100] }), 0.25);
     assert.equal(Up.fraction({ progress: [0, 0] }), 0);
@@ -788,7 +789,7 @@ test("files: dragging out of archives", () => {
     const u = Drops.uris([a, "/home/me/x y.txt"]);
     assert.equal(u, "archive:/home/me/My%20Trip.zip!/photos/a%20b.jpg\r\nfile:///home/me/x%20y.txt\r\n");
     assert.deepEqual(Drops.paths(u.trim().split("\r\n")), [a, "/home/me/x y.txt"]);
-    // Out of an archive: always copied, never into an archive or the Trash.
+    // Out of an archive: always copied, never into an archive or the trash.
     assert.deepEqual(Drops.plan([a], "/home/me/Desktop", false, true, true), { kind: "copy", paths: [a] });
     assert.equal(Drops.plan([a], "trash:", false, false, false), null);
     assert.equal(Drops.plan(["/home/me/x"], "archive:/t.zip!/", false, false, false), null);
@@ -1167,6 +1168,45 @@ test("the agenda: the day as a line", () => {
     assert.deepEqual(b.map(x => [Math.round(x.x0 * 12), Math.round(x.x1 * 12), x.next, x.past]), [[7, 8, true, false]]);
     // An early start and a late finish widen it.
     assert.deepEqual(Ag.span([{ title: "Flight", start: at(6, 30), end: at(7, 30) }, { title: "Late", start: at(21), end: at(22, 15) }], now), { from: 6, to: 23 });
+});
+
+// ---------------------------------------------------------------- UI text
+// Every string in the shell's and the apps' QML and JS reads as plain text
+// (the copy rules in ARCHITECTURE.md, "UI text"): no em dashes, no filler,
+// no buzzwords, no apologies, no exclamation marks. (Title Case can't be
+// told from proper nouns by a script: that's for review.)
+test("UI text follows the copy rules", () => {
+    const { readdirSync, statSync } = fs;
+    const roots = [join(here, ".."), join(here, "..", "..", "apps")];
+    const files = [];
+    const walk = dir => {
+        for (const name of readdirSync(dir)) {
+            if (name === "tests" || name === "target" || name === "node_modules" || name.startsWith(".")) continue;
+            const path = join(dir, name);
+            if (statSync(path).isDirectory()) walk(path);
+            else if (/\.(qml|js)$/.test(name) || name === "module.json") files.push(path);
+        }
+    };
+    roots.forEach(walk);
+    const rules = [
+        [/—/, "an em dash"],
+        [/\b(please|kindly|in order to|feel free)\b/i, "filler"],
+        [/\b(delve|seamless\w*|empower\w*|elevate\w*|streamline\w*|robust|intuitive|magic(al)?|journey|ecosystem)\b/i, "a buzzword"],
+        [/^\s*(oops|uh oh|sorry|unfortunately)\b/i, "an apology"],
+        [/[A-Za-z)]!(\s|$)/, "an exclamation mark"],
+    ];
+    const problems = [];
+    for (const file of files) {
+        readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+            if (/^\s*(\/\/|\*|import )/.test(line)) return;
+            for (const [, text] of line.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+                for (const [re, what] of rules) {
+                    if (re.test(text)) problems.push(`${file.replace(join(here, "..", ".."), "")}:${i + 1} has ${what}: ${text}`);
+                }
+            }
+        });
+    }
+    assert.deepEqual(problems, []);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

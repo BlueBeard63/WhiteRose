@@ -1,6 +1,6 @@
 // Quick settings toggles owned by the shell, kept in the settings database:
-// - Do Not Disturb (quick.doNotDisturb): the notification server holds popups.
-// - Night Light (quick.nightLight.until / .temperature): the compositor warms
+// - Do not disturb (quick.doNotDisturb): the notification server holds popups.
+// - Night light (quick.nightLight.until / .temperature): the compositor warms
 //   the screen; it switches itself off at the next 07:00.
 pragma Singleton
 import QtQuick
@@ -22,7 +22,7 @@ Singleton {
         Daemon.set("quick.nightLight.until", on ? QS.nightLightUntil(now) : 0);
     }
 
-    // Re-evaluated when Night Light is due to end (and on toggles).
+    // Re-evaluated when Night light is due to end (and on toggles).
     property real now: Date.now()
     Timer {
         running: root.nightLightUntil > 0
@@ -30,7 +30,7 @@ Singleton {
         onTriggered: root.now = Date.now()
     }
 
-    // The compositor applies Night Light; tell it now and whenever it reconnects.
+    // The compositor applies Night light; tell it now and whenever it reconnects.
     onNightLightChanged: Compositor.nightLight(nightLight, nightLightTemperature)
     onNightLightTemperatureChanged: if (nightLight) Compositor.nightLight(true, nightLightTemperature)
     Connections {

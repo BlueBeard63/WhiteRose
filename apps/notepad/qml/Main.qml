@@ -12,7 +12,7 @@ import WhiteRose.Notepad
 
 AppWindow {
     id: win
-    title: current ? current.title + (current.dirty ? " •" : "") + " — Notepad" : "Notepad"
+    title: current ? current.title + (current.dirty ? " •" : "") + " - Notepad" : "Notepad"
     visible: true
     width: 960; height: 680
 

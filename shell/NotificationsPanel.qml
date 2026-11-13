@@ -1,7 +1,7 @@
 // Notifications (Figma: "Desktop - Notifications"): hangs from the right end
 // of the bar like quick settings. Opened from the bell or SUPER+N. Lists every
 // notification not yet dismissed, newest first; Clear all; the bell-off button
-// toggles Do Not Disturb.
+// toggles Do not disturb.
 import QtQuick
 import Quickshell
 
@@ -86,7 +86,7 @@ SidePanel {
         height: 48
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
-        text: QuickState.doNotDisturb ? "Do Not Disturb is on" : "No notifications"
+        text: QuickState.doNotDisturb ? "Do not disturb is on" : "No notifications"
         color: Theme.faint
         font { family: Theme.font; pointSize: Theme.pt(13) }
     }

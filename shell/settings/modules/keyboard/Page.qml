@@ -1,4 +1,4 @@
-// Keyboard & Shortcuts (Figma: "Settings - Keyboard & Shortcuts"): layouts
+// Keyboard & shortcuts (Figma: "Settings - Keyboard & shortcuts"): layouts
 // (SUPER+SPACE switches), key repeat, and every shortcut, each bound to an
 // action so anything can be remapped. Your own shortcuts run a command.
 //
@@ -121,8 +121,8 @@ Column {
 
     // ---- header -----------------------------------------------------------------
     PageHeader {
-        title: "Keyboard & Shortcuts"
-        subtitle: "Shortcuts are bound to actions, so anything can be remapped."
+        title: "Keyboard & shortcuts"
+        subtitle: "Every shortcut is tied to an action, so you can change any of them."
         Button { text: "Add shortcut"; icon: "plus"; onClicked: customDialog.openFor(null) }
     }
 
@@ -294,7 +294,7 @@ Column {
                         width: parent.width; elide: Text.ElideRight
                         readonly property bool warn: row.rec && (page.clash !== null || page.recordError !== "")
                         text: row.rec && page.recordError ? page.recordError
-                            : row.rec && page.clash ? K.spoken(page.captured) + " is used by “" + page.clash.name + "” — saving will replace it"
+                            : row.rec && page.clash ? K.spoken(page.captured) + " is used by “" + page.clash.name + "”. Saving replaces it."
                             : row.modelData.command ? row.modelData.command
                             : row.modelData.group + (row.changed ? " · changed" : "")
                         color: warn ? Theme.rose : Theme.muted
@@ -335,7 +335,7 @@ Column {
                     Text {
                         visible: row.rec
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.captured ? "enter to save · esc to cancel" : "esc to cancel"
+                        text: page.captured ? "Enter to save · Esc to cancel" : "Esc to cancel"
                         color: Theme.faint
                         font { family: Theme.font; pointSize: Theme.pt(10.5) }
                     }

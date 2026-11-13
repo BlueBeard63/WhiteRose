@@ -15,6 +15,7 @@
 //! a floating one). Dialogs and fixed-size windows always float, above the
 //! tiles. Maximized and fullscreen windows keep their place in the tree.
 
+use crate::win::WinExt;
 use serde_json::Value;
 use smithay::{
     backend::renderer::utils::CommitCounter,
@@ -23,7 +24,6 @@ use smithay::{
     output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState,
     utils::{Logical, Point, Rectangle, Serial},
-    wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
 
 use crate::{
@@ -130,8 +130,10 @@ impl WhiteRose {
     /// fixed-size, and not taken out of the tiles. Unknown until its first
     /// commit.
     pub(crate) fn tileable(&self, w: &Window) -> bool {
-        let Some(t) = w.toplevel() else { return false };
-        if w.user_data().get::<Committed>().is_none() || t.parent().is_some() || self.tiling.floating.contains(w) {
+        if w.toplevel().is_none() && !crate::win::is_x11(w) {
+            return false;
+        }
+        if w.user_data().get::<Committed>().is_none() || w.is_child() || self.tiling.floating.contains(w) {
             return false;
         }
         !Self::fixed_size(w)
@@ -139,12 +141,7 @@ impl WhiteRose {
 
     /// Whether a window has one size only (its minimum is its maximum).
     pub(crate) fn fixed_size(w: &Window) -> bool {
-        let Some(t) = w.toplevel() else { return false };
-        let (min, max) = with_states(t.wl_surface(), |s| {
-            let mut cached = s.cached_state.get::<SurfaceCachedState>();
-            let c = cached.current();
-            (c.min_size, c.max_size)
-        });
+        let (min, max) = w.size_limits();
         min == max && min.w > 0 && min.h > 0
     }
 
@@ -307,17 +304,16 @@ impl WhiteRose {
 
     /// Gives a window its tile (a dragged one gets it when it's dropped).
     fn place(&mut self, w: &Window, r: Rectangle<i32, Logical>) {
-        let Some(t) = w.toplevel() else { return };
         if self.tiling.dragging.as_ref() == Some(w) {
             return;
         }
-        t.with_pending_state(|s| {
+        w.pend(|s| {
             s.size = Some(r.size);
             for state in TILED {
-                s.states.set(state);
+                s.set(state);
             }
         });
-        t.send_pending_configure();
+        w.configure();
         if self.space.element_location(w) != Some(r.loc) {
             self.space.map_element(w.clone(), r.loc, false);
         }
@@ -325,8 +321,7 @@ impl WhiteRose {
 
     /// Puts a window back where it floated, at its old size.
     fn float_again(&mut self, w: &Window, rect: Rectangle<i32, Logical>) {
-        let Some(t) = w.toplevel() else { return };
-        // (Read before with_pending_state below: it holds the same lock.)
+        // (Read before pend below: it holds the same lock.)
         let filling = Self::maximized_or_fullscreen(w);
         if filling {
             // It stays maximized; restoring it later goes back here.
@@ -334,16 +329,16 @@ impl WhiteRose {
                 *r = rect;
             }
         }
-        t.with_pending_state(|s| {
+        w.pend(|s| {
             for state in TILED {
-                s.states.unset(state);
+                s.unset(state);
             }
             if !filling {
                 // A window tiled before it ever drew lets the client choose.
                 s.size = Some(rect.size).filter(|sz| sz.w > 0 && sz.h > 0);
             }
         });
-        t.send_pending_configure();
+        w.configure();
         if !filling {
             self.space.map_element(w.clone(), rect.loc, false);
         }
@@ -357,7 +352,10 @@ impl WhiteRose {
         // Tiles, then floating windows, then those a rule keeps on top,
         // then scratchpads; each keeps its order.
         let band = |w: &Window| {
-            if self.scratchpads.is_pad(w) {
+            // X11 menus and tooltips: over everything.
+            if crate::xwayland::unmanaged(w) {
+                4
+            } else if self.scratchpads.is_pad(w) {
                 3
             } else if self.is_tiled(w) && !Self::maximized_or_fullscreen(w) {
                 0
@@ -656,14 +654,12 @@ impl WhiteRose {
         if !self.tiling.floating.contains(w) {
             self.tiling.floating.push(w.clone());
         }
-        if let Some(t) = w.toplevel() {
-            t.with_pending_state(|s| {
-                for state in TILED {
-                    s.states.unset(state);
-                }
-            });
-            t.send_pending_configure();
-        }
+        w.pend(|s| {
+            for state in TILED {
+                s.unset(state);
+            }
+        });
+        w.configure();
         self.retile();
     }
 
@@ -854,14 +850,13 @@ impl WhiteRose {
             return;
         }
         let Some(w) = self.focused_window().filter(|w| !Self::maximized_or_fullscreen(w)) else { return };
-        let Some(t) = w.toplevel() else { return };
         let mut size = w.geometry().size;
         match dir.axis() {
             Axis::Horizontal => size.w = (size.w + delta).max(KEY_STEP),
             Axis::Vertical => size.h = (size.h + delta).max(KEY_STEP),
         }
-        t.with_pending_state(|s| s.size = Some(size));
-        t.send_pending_configure();
+        w.pend(|s| s.size = Some(size));
+        w.configure();
     }
 
     /// SUPER+J (dwindle): flips the split the focused tile is in.

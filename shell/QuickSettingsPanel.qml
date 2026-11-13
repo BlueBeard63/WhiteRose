@@ -2,7 +2,7 @@
 // of the bar. Opened from the status cluster or SUPER+S. Wi-Fi, Bluetooth,
 // volume and battery come from QuickShell's services (NetworkManager, BlueZ,
 // PipeWire, UPower); brightness and airplane mode from whiterosed; Night
-// Light from the compositor; Do Not Disturb belongs to the shell.
+// Light from the compositor; Do not disturb belongs to the shell.
 import QtQuick
 import Quickshell
 import Quickshell.Bluetooth
@@ -149,14 +149,14 @@ SidePanel {
         }
         QsTile {
             icon: "bellOff"
-            title: "Do Not Disturb"
+            title: "Do not disturb"
             active: QuickState.doNotDisturb
             subtitle: active ? "On" : "Off"
             onClicked: QuickState.setDoNotDisturb(!active)
         }
         QsTile {
             icon: "moon"
-            title: "Night Light"
+            title: "Night light"
             active: QuickState.nightLight
             subtitle: active ? "Until " + Qt.formatTime(new Date(QuickState.nightLightUntil), "HH:mm") : "Off"
             onClicked: QuickState.setNightLight(!active)
@@ -164,7 +164,7 @@ SidePanel {
         QsTile {
             visible: System.radios > 0
             icon: "plane"
-            title: "Airplane Mode"
+            title: "Airplane mode"
             active: System.airplane
             subtitle: active ? "On" : "Off"
             onClicked: System.setAirplane(!active)
@@ -172,7 +172,7 @@ SidePanel {
         QsTile {
             visible: PowerProfiles !== null
             icon: PowerProfiles.profile === PowerProfile.PowerSaver ? "leaf" : "zap"
-            title: "Power Mode"
+            title: "Power mode"
             active: PowerProfiles.profile !== PowerProfile.Balanced
             subtitle: QS.profileName(PowerProfiles.profile)
             onClicked: PowerProfiles.profile = QS.nextProfile(PowerProfiles.profile, PowerProfiles.hasPerformanceProfile)
@@ -187,7 +187,7 @@ SidePanel {
             onClicked: { ShellState.closePanel(); ShellState.lock(); Quickshell.execDetached(["systemctl", "suspend"]) }
         }
         QsTile {
-            icon: "logOut"; title: "Log Out"
+            icon: "logOut"; title: "Log out"
             onClicked: Compositor.quit()
         }
         QsTile {
@@ -195,7 +195,7 @@ SidePanel {
             onClicked: Quickshell.execDetached(["systemctl", "reboot"])
         }
         QsTile {
-            icon: "power"; title: "Power Off"; active: true
+            icon: "power"; title: "Power off"; active: true
             onClicked: Quickshell.execDetached(["systemctl", "poweroff"])
         }
     }

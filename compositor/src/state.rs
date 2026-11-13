@@ -1,5 +1,6 @@
 //! Compositor state. Structure follows Smithay's smallvil example (MIT).
 
+use crate::win::WinExt;
 use std::{ffi::OsString, process::Command, sync::Arc};
 
 use smithay::{
@@ -178,12 +179,15 @@ pub struct WhiteRose {
     pub clipboard_dir: std::path::PathBuf,
     pub clipboard_tx: smithay::reexports::calloop::channel::Sender<crate::clipboard_capture::Captured>,
     pub popups: PopupManager,
+    /// XWayland: X11 apps (xwayland.rs).
+    pub xwayland: crate::xwayland::XState,
     pub seat: Seat<Self>,
 }
 
 impl WhiteRose {
     pub fn new(event_loop: &mut EventLoop<'static, Self>, display: Display<Self>, bindings: Bindings) -> Self {
         let dh = display.handle();
+        let xwayland = crate::xwayland::XState::new(&dh);
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
@@ -329,6 +333,7 @@ impl WhiteRose {
             clipboard_dir,
             clipboard_tx,
             popups: PopupManager::default(),
+            xwayland,
             seat,
         }
     }
@@ -369,6 +374,7 @@ impl WhiteRose {
     /// client request wait until some client happens to send one, so clicks
     /// and animation frames arrive late or seemingly at random.
     pub fn after_dispatch(&mut self) {
+        self.sync_x11();
         let _ = self.display_handle.flush_clients();
     }
 
@@ -525,7 +531,7 @@ impl WhiteRose {
         self.space
             .elements()
             .chain(self.hidden_at.iter().map(|(w, _)| w))
-            .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface))
+            .find(|w| w.surface().as_ref() == Some(surface))
             .cloned()
     }
 
@@ -556,12 +562,14 @@ impl WhiteRose {
         }
         for w in self.space.elements() {
             w.set_activated(Some(w) == window.as_ref());
-            if let Some(t) = w.toplevel() {
-                t.send_pending_configure();
-            }
+            w.configure();
         }
-        let surface = window.and_then(|w| w.toplevel().map(|t| t.wl_surface().clone()));
+        let surface = window.as_ref().and_then(|w| w.surface());
         keyboard.set_focus(self, surface, serial);
+        // An X11 window takes X's focus too.
+        if let Some(w) = window.as_ref().filter(|w| crate::win::is_x11(w)) {
+            self.x11_focus(w);
+        }
         self.schedule_redraw();
         self.ipc_sync();
     }
@@ -772,8 +780,8 @@ impl WhiteRose {
             }
             Action::Scratchpad(id) => self.scratchpad_key(&id),
             Action::CloseWindow => {
-                if let Some(t) = self.focused_window().and_then(|w| w.toplevel().cloned()) {
-                    t.send_close();
+                if let Some(w) = self.focused_window() {
+                    w.close();
                 }
             }
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),

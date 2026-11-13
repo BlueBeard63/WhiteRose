@@ -11,22 +11,22 @@ FocusScope {
     id: root
     required property var pane
     readonly property real now: Date.now()
-    // In the Trash and in search results the last column says where things are.
+    // In the trash and in search results the last column says where things are.
     readonly property bool located: root.pane.inTrash || root.pane.searching
     readonly property bool renamingNow: Object.keys(root.pane.renaming).length > 0
     // Every column there can be after Name: what it's called, how wide, what
     // it shows, and what sorting by it means ("": it can't sort).
     readonly property var all: ({
-        size: { label: "Size", w: 90, sort: "size", value: e => !e.dir ? F.size(e.size) : root.pane.sizes[e.path] ? F.size(root.pane.sizes[e.path].bytes) : root.pane.wantsSizes && !e.link ? "…" : "—" },
+        size: { label: "Size", w: 90, sort: "size", value: e => !e.dir ? F.size(e.size) : root.pane.sizes[e.path] ? F.size(root.pane.sizes[e.path].bytes) : root.pane.wantsSizes && !e.link ? "…" : "" },
         modified: { label: root.pane.inTrash ? "Deleted" : "Modified", w: 150, sort: "modified", value: e => F.date(e.modified, root.now) },
-        created: { label: "Created", w: 150, sort: "created", value: e => e.created ? F.date(e.created, root.now) : "—" },
+        created: { label: "Created", w: 150, sort: "created", value: e => e.created ? F.date(e.created, root.now) : "" },
         kind: { label: "Kind", w: 110, sort: "kind", value: e => F.kind(e.mime) },
         // Coloured dots and names.
         tags: { label: "Tags", w: 160, sort: "", rich: true,
                 value: e => (e.tags ?? []).map(t => '<font color="' + Session.tagColour(t) + '">●</font>&nbsp;' + t.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("&nbsp;&nbsp;") },
         where: { label: root.pane.inTrash ? "From" : "Folder", w: 220, sort: "", value: e => String(e.origin ?? e.folder ?? "").replace(Fs.home(), "~") },
     })
-    // The columns shown (the Trash and search: their own), widths as set,
+    // The columns shown (the trash and search: their own), widths as set,
     // dropped from the end while the name would get under 160 px.
     readonly property var cols: {
         // Renaming in the Sheet: room for "old → new", with only the date beside.

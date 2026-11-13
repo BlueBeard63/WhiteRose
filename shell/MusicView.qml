@@ -3,10 +3,14 @@
 // island's left side and fades into it; on the right the track, where it's
 // playing, the position (click to seek) and the controls the player has.
 // Space plays or pauses, Left / Right skip 5 s, Esc closes.
+// It moves with the music: a new song slides its title in (the way Next or
+// Previous went) and fades its cover in over the last one; pausing dims the
+// cover and turns the play button over; stopping fades back to the rose
+// cover and "Nothing playing"; the position glides between its updates.
 import QtQuick
+import QtQuick.Shapes
 import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
-import Quickshell.Widgets
 import qs
 
 Item {
@@ -14,11 +18,67 @@ Item {
     implicitWidth: 600
     implicitHeight: 178
 
-    readonly property var player: Mpris.players.values.length > 0 ? Mpris.players.values[0] : null
+    readonly property var player: NowPlaying.player
     readonly property var sink: Pipewire.defaultAudioSink
     PwObjectTracker { objects: root.sink ? [root.sink] : [] }
     readonly property real length: root.player?.lengthSupported ? root.player.length : 0
     readonly property real position: root.player?.positionSupported ? root.player.position : 0
+
+    // ---- what's shown, which follows the player through the transitions ----
+    readonly property string title: root.player?.trackTitle || "Nothing playing"
+    readonly property string subtitle: [root.player?.trackArtist, root.player?.trackAlbum].filter(s => s).join(" · ")
+    readonly property string artUrl: root.player?.trackArtUrl ?? ""
+    readonly property bool playing: !!root.player?.isPlaying
+    property string shownTitle: title
+    property string shownSubtitle: subtitle
+    // Which way the next title slides in: Next (1), Previous (-1); a song
+    // that ends on its own goes on like Next; stopping just fades (0).
+    property int pressedDir: 0
+    property int swapDir: 0
+    function trackChanged() {
+        root.swapDir = root.pressedDir !== 0 ? root.pressedDir : root.player?.trackTitle ? 1 : 0;
+        root.pressedDir = 0;
+        swap.restart();
+    }
+    onTitleChanged: trackChanged()
+    onSubtitleChanged: trackChanged()
+    SequentialAnimation {
+        id: swap
+        ParallelAnimation {
+            NumberAnimation { target: trackText; property: "opacity"; to: 0; duration: 120; easing.type: Easing.InQuad }
+            NumberAnimation { target: trackText; property: "x"; to: -16 * root.swapDir; duration: 120; easing.type: Easing.InQuad }
+        }
+        ScriptAction {
+            script: {
+                root.shownTitle = root.title;
+                root.shownSubtitle = root.subtitle;
+                trackText.x = 16 * root.swapDir;
+            }
+        }
+        ParallelAnimation {
+            NumberAnimation { target: trackText; property: "opacity"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+            NumberAnimation { target: trackText; property: "x"; to: 0; duration: 260; easing.type: Easing.OutCubic }
+        }
+    }
+
+    // The cover: the new one fades in over the last and settles from a
+    // slight zoom; with none (stopped, or no art), the last fades away to
+    // the rose gradient.
+    property string lastArt: artUrl
+    onArtUrlChanged: {
+        coverBack.source = root.lastArt;
+        coverBack.opacity = 1;
+        root.lastArt = root.artUrl;
+        cover.opacity = 0;
+        cover.scale = 1.05;
+        if (root.artUrl === "") backOut.restart();
+    }
+    NumberAnimation { id: backOut; target: coverBack; property: "opacity"; to: 0; duration: 360; easing.type: Easing.OutCubic }
+    ParallelAnimation {
+        id: coverIn
+        NumberAnimation { target: cover; property: "opacity"; to: 1; duration: 360; easing.type: Easing.OutCubic }
+        NumberAnimation { target: cover; property: "scale"; to: 1; duration: 700; easing.type: Easing.OutCubic }
+    }
 
     function clock(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") }
     function seekTo(s) { if (root.player?.canSeek) root.player.position = Math.max(0, Math.min(root.length, s)) }
@@ -35,17 +95,23 @@ Item {
         Keys.onRightPressed: root.seekTo(root.position + 5)
     }
 
-    // ---- the cover, filling the left side ----------------------------------------------
-    // (Rounded as the island's lower corner, which is 40 at this height:
-    // the island doesn't cut what a view draws.)
-    ClippingRectangle {
-        id: art
-        width: 260; height: root.height
-        color: "transparent"
-        bottomLeftRadius: 40
+    // ---- the cover, filling the left side and the left ear ---------------------------
+    // One outline: from the ear's tip on the bar, down the island's left
+    // side, round its lower corner (40 at this height), across, and up;
+    // filled with the cover (the island draws this view into its ear:
+    // bleed in island/music.qml). Ear and corner as Island.qml draws them.
+    readonly property real earW: 26
+    readonly property real earH: 30
+    readonly property real artW: 260
+
+    Item {
+        id: artSource
+        width: root.earW + root.artW; height: root.height
+        visible: false
+        clip: true
+        // Under the covers: shown with none.
         Rectangle {
             anchors.fill: parent
-            visible: cover.status !== Image.Ready
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0; color: "#E3A0B0" }
@@ -53,13 +119,34 @@ Item {
                 GradientStop { position: 1; color: "#2B2453" }
             }
         }
+        // The last song's cover, while the new one comes in.
+        Image {
+            id: coverBack
+            anchors.fill: parent
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            sourceSize: Qt.size(572, 572)
+        }
         Image {
             id: cover
             anchors.fill: parent
-            source: root.player?.trackArtUrl ?? ""
+            source: root.artUrl
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
-            sourceSize: Qt.size(520, 520)
+            sourceSize: Qt.size(572, 572)
+            onStatusChanged: {
+                if (status === Image.Ready) coverIn.restart();
+                // (A cover that won't load: back to the gradient, not the last song's.)
+                else if (status === Image.Error) backOut.restart();
+            }
+            Component.onCompleted: if (status === Image.Ready) { opacity = 1; scale = 1 }
+        }
+        // Paused: a little dimmer.
+        Rectangle {
+            anchors.fill: parent
+            color: "black"
+            opacity: root.playing ? 0 : 0.28
+            Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
         }
         // It bleeds into the island.
         Rectangle {
@@ -71,6 +158,26 @@ Item {
             }
         }
     }
+    ShaderEffectSource { id: artTexture; sourceItem: artSource; hideSource: true; visible: false }
+
+    Shape {
+        id: art
+        x: -root.earW
+        width: artSource.width; height: root.height
+        preferredRendererType: Shape.CurveRenderer
+        ShapePath {
+            strokeWidth: -1
+            fillColor: "transparent"
+            fillItem: artTexture
+            PathSvg {
+                path: {
+                    const k = 0.5523, ew = root.earW, eh = root.earH, r = 40, h = root.height, W = art.width;
+                    return `M 0 0 C ${ew * k} 0 ${ew} ${eh * (1 - k)} ${ew} ${eh} L ${ew} ${h - r} `
+                        + `C ${ew} ${h - r + r * k} ${ew + r - r * k} ${h} ${ew + r} ${h} L ${W} ${h} L ${W} 0 Z`;
+                }
+            }
+        }
+    }
 
     // ---- the track ---------------------------------------------------------------------
     Column {
@@ -78,22 +185,32 @@ Item {
         x: 236; y: 20
         width: root.width - x - 24
         spacing: 4
-        Text {
+        // Title and artist slide together when the song changes.
+        Item {
             width: parent.width
-            elide: Text.ElideRight
-            text: root.player?.trackTitle || "Nothing playing"
-            color: Theme.text
-            font { family: Theme.font; pointSize: Theme.pt(15); weight: Font.DemiBold }
-            Accessible.role: Accessible.StaticText
-            Accessible.name: text
-        }
-        Text {
-            width: parent.width
-            elide: Text.ElideRight
-            visible: text !== ""
-            text: [root.player?.trackArtist, root.player?.trackAlbum].filter(s => s).join(" · ")
-            color: Theme.muted
-            font { family: Theme.font; pointSize: Theme.pt(10.5) }
+            height: trackText.height
+            Column {
+                id: trackText
+                width: parent.width
+                spacing: 4
+                Text {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: root.shownTitle
+                    color: Theme.text
+                    font { family: Theme.font; pointSize: Theme.pt(15); weight: Font.DemiBold }
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
+                }
+                Text {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    visible: text !== ""
+                    text: root.shownSubtitle
+                    color: Theme.muted
+                    font { family: Theme.font; pointSize: Theme.pt(10.5) }
+                }
+            }
         }
         Row {
             visible: !!root.sink
@@ -116,7 +233,9 @@ Item {
         id: progress
         x: info.x; y: 104
         width: info.width; height: 14
-        visible: root.length > 0
+        opacity: root.length > 0 ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 260 } }
         Text { id: posText; anchors.verticalCenter: parent.verticalCenter; text: root.clock(root.position); color: Theme.muted; font { family: Theme.mono; pointSize: Theme.pt(9) } }
         Text { id: lenText; anchors { right: parent.right; verticalCenter: parent.verticalCenter } text: root.clock(root.length); color: Theme.muted; font { family: Theme.mono; pointSize: Theme.pt(9) } }
         Item {
@@ -127,8 +246,15 @@ Item {
             Accessible.role: Accessible.Slider
             Accessible.name: "Position"
             Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 3; radius: 2; color: Theme.surface2 }
-            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width * rail.done; height: 3; radius: 2; color: Theme.pearl }
-            Rectangle { anchors.verticalCenter: parent.verticalCenter; x: parent.width * rail.done - 5; width: 10; height: 10; radius: 5; color: Theme.pearl; visible: root.player?.canSeek ?? false }
+            // (Gliding between the once-a-second updates, and on a seek.)
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter; width: parent.width * rail.done; height: 3; radius: 2; color: Theme.pearl
+                Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+            }
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter; x: parent.width * rail.done - 5; width: 10; height: 10; radius: 5; color: Theme.pearl; visible: root.player?.canSeek ?? false
+                Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+            }
             MouseArea {
                 anchors.fill: parent
                 enabled: root.player?.canSeek ?? false
@@ -148,14 +274,14 @@ Item {
             on: root.player?.shuffle ?? false
             onPressed: root.player.shuffle = !root.player.shuffle
         }
-        Control { name: "skipBack"; label: "Previous"; enabled: root.player?.canGoPrevious ?? false; onPressed: root.player.previous() }
+        Control { name: "skipBack"; label: "Previous"; enabled: root.player?.canGoPrevious ?? false; onPressed: { root.pressedDir = -1; root.player.previous() } }
         Control {
-            name: root.player?.isPlaying ? "pause" : "play"; label: root.player?.isPlaying ? "Pause" : "Play"
+            name: root.playing ? "pause" : "play"; label: root.playing ? "Pause" : "Play"
             big: true
             enabled: root.player?.canTogglePlaying ?? false
             onPressed: root.player.togglePlaying()
         }
-        Control { name: "skipForward"; label: "Next"; enabled: root.player?.canGoNext ?? false; onPressed: root.player.next() }
+        Control { name: "skipForward"; label: "Next"; enabled: root.player?.canGoNext ?? false; onPressed: { root.pressedDir = 1; root.player.next() } }
         Control {
             visible: root.player?.loopSupported ?? false
             readonly property int loop: root.player?.loopState ?? MprisLoopState.None
@@ -175,6 +301,25 @@ Item {
         signal pressed()
         width: big ? 40 : 22; height: 40
         opacity: enabled ? 1 : 0.35
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        // Pressed in a little.
+        scale: hit.pressed ? 0.86 : 1
+        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        // A new icon (play ↔ pause, repeat ↔ repeat one) turns over.
+        property string shownName: name
+        onNameChanged: turn.restart()
+        SequentialAnimation {
+            id: turn
+            ParallelAnimation {
+                NumberAnimation { target: icon; property: "scale"; to: 0.3; duration: 90; easing.type: Easing.InQuad }
+                NumberAnimation { target: icon; property: "opacity"; to: 0; duration: 90 }
+            }
+            ScriptAction { script: c.shownName = c.name }
+            ParallelAnimation {
+                NumberAnimation { target: icon; property: "scale"; to: 1; duration: 220; easing.type: Easing.OutBack }
+                NumberAnimation { target: icon; property: "opacity"; to: 1; duration: 140 }
+            }
+        }
         Accessible.role: Accessible.Button
         Accessible.name: c.label
         Accessible.checkable: c.name === "shuffle" || c.label === "Repeat"
@@ -182,11 +327,12 @@ Item {
         Accessible.onPressAction: if (c.enabled) c.pressed()
         Rectangle { anchors.centerIn: parent; visible: c.big; width: 40; height: 40; radius: 20; color: Theme.pearl }
         Icon {
+            id: icon
             anchors.centerIn: parent
-            name: c.name
+            name: c.shownName
             size: c.big ? 16 : 16
             color: c.big ? Theme.bg : c.on ? Theme.rose : (c.name === "shuffle" || c.label === "Repeat") ? Theme.muted : Theme.text
         }
-        MouseArea { anchors.fill: parent; enabled: c.enabled; cursorShape: Qt.PointingHandCursor; onClicked: c.pressed() }
+        MouseArea { id: hit; anchors.fill: parent; enabled: c.enabled; cursorShape: Qt.PointingHandCursor; onClicked: c.pressed() }
     }
 }

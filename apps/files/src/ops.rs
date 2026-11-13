@@ -26,7 +26,7 @@ pub enum Kind {
     Move,
     Trash,
     Delete,
-    /// Deleting things in the Trash for good (their Trash records too).
+    /// Deleting things in the trash for good (their Trash records too).
     Purge,
     /// Archives unpacked, each into a new folder (archive.rs).
     Extract,
@@ -70,7 +70,7 @@ impl Choice {
     }
 }
 
-/// Settings › Files › Verify copies: each copied file is read back from the
+/// Settings › Files › Check copies: each copied file is read back from the
 /// drive and checked against what was read from the original.
 pub static VERIFY: AtomicBool = AtomicBool::new(false);
 
@@ -80,7 +80,7 @@ pub struct Control {
     pub pause: AtomicBool,
     /// Making an archive: its password and part size (0: whole).
     pub archive: std::sync::Mutex<(Option<String>, u64)>,
-    /// Syncing: what to copy and what to move to the Trash.
+    /// Syncing: what to copy and what to move to the trash.
     pub sync: std::sync::Mutex<Option<crate::compare::Plan>>,
     /// Folders onto folders merge without asking (carrying on with an
     /// interrupted transfer: they're its own, half made).
@@ -122,7 +122,7 @@ pub struct Outcome {
     /// [path, what went wrong]
     pub failed: Vec<(String, String)>,
     pub cancelled: bool,
-    /// [from, to] for what moved (to the Trash too): folders' looks follow.
+    /// [from, to] for what moved (to the trash too): folders' looks follow.
     #[serde(skip)]
     pub moved: Vec<(String, String)>,
     /// What's gone for good.
@@ -838,8 +838,8 @@ fn identical(a: &Path, am: &fs::Metadata, b: &Path, bm: &fs::Metadata) -> bool {
 
 /// Carries out a sync plan: copies replace what's there (a file is only
 /// swapped in once whole), a file where a folder was (or the other way
-/// round) sends the old one to the Trash first, and what the plan removes
-/// goes to the Trash, never deleted for good.
+/// round) sends the old one to the trash first, and what the plan removes
+/// goes to the trash, never deleted for good.
 fn sync<R: Report>(plan: &crate::compare::Plan, ctl: &Control, report: &mut R) -> Outcome {
     let home_trash = ctl
         .home_trash
@@ -1040,7 +1040,7 @@ mod tests {
         assert!(out.failed.is_empty(), "{:?}", out.failed);
         assert_eq!(fs::read_to_string(r.join("new.txt")).unwrap(), "new");
         assert_eq!(fs::read_to_string(r.join("docs/a.txt")).unwrap(), "left a");
-        // A folder where the file goes: the folder went to the Trash first.
+        // A folder where the file goes: the folder went to the trash first.
         assert_eq!(fs::read_to_string(r.join("kind")).unwrap(), "a file");
         assert!(!r.join("old.txt").exists());
         let trashed: Vec<String> = fs::read_dir(d.join("Trash/files"))

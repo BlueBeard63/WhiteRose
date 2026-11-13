@@ -1,6 +1,7 @@
 //! Input handling: shortcuts first, then forwarding to clients.
 //! Pointer handling follows Smithay's smallvil example (MIT).
 
+use crate::win::WinExt;
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
@@ -98,6 +99,8 @@ impl WhiteRose {
                 self.shake.motion(pos.x - from.x, pos.y - from.y, crate::shake::now_ms());
             }
         }
+        // An X11 app dragging off its windows: catch it for Wayland ones.
+        self.xdnd_pointer(pos);
         // The drag icon follows the pointer, and so does a pointer we draw.
         if self.dnd_icon.is_some() || self.draws_cursor {
             self.schedule_redraw();
@@ -144,7 +147,9 @@ impl WhiteRose {
                 }
             } else {
                 let clicked = self.window_under(at).map(|(w, _)| w.clone());
-                if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
+                // An X11 menu or tooltip takes the click, not the focus.
+                if clicked.as_ref().is_some_and(crate::xwayland::unmanaged) {
+                } else if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
                     // Click-to-focus; clicking the background clears focus.
                     self.focus_window(clicked);
                 }
@@ -152,6 +157,9 @@ impl WhiteRose {
         }
         pointer.button(self, &ButtonEvent { button, state: button_state, serial, time });
         pointer.frame(self);
+        // (Released: an X11 drag's drop catcher goes.)
+        let at = pointer.current_location();
+        self.xdnd_pointer(at);
     }
 
     /// SUPER+left-drag moves a window and SUPER+right-drag resizes it from
@@ -378,9 +386,7 @@ impl WhiteRose {
             k::KEY_q => {
                 let targets = s.close_targets();
                 for w in self.workspaces.mru().iter().filter(|w| targets.contains(&self.window_id(w))) {
-                    if let Some(t) = w.toplevel() {
-                        t.send_close();
-                    }
+                    w.close();
                 }
             }
             k::KEY_Escape => self.cancel_switcher(),

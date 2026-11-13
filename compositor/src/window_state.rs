@@ -16,6 +16,7 @@ use smithay::{
 };
 
 use crate::state::WhiteRose;
+use crate::win::WinExt;
 
 impl WhiteRose {
     /// The fullscreen window showing on `output` (visible workspace), if any.
@@ -44,22 +45,21 @@ impl WhiteRose {
     }
 
     pub(crate) fn has_state(w: &Window, state: ToplevelState) -> bool {
-        w.toplevel().is_some_and(|t| t.with_pending_state(|s| s.states.contains(state)))
+        w.has(state)
     }
 
     /// Applies `state` with `rect` as the window's size and position.
     pub(crate) fn apply(&mut self, w: &Window, state: ToplevelState, on: bool, rect: Option<Rectangle<i32, Logical>>) {
-        let Some(toplevel) = w.toplevel() else { return };
-        toplevel.with_pending_state(|s| {
+        w.pend(|s| {
             if on {
-                s.states.set(state);
+                s.set(state);
             } else {
-                s.states.unset(state);
+                s.unset(state);
             }
             // A zero size lets the client choose (e.g. it never had a buffer).
             s.size = rect.map(|r| r.size).filter(|sz| sz.w > 0 && sz.h > 0);
         });
-        toplevel.send_pending_configure();
+        w.configure();
         if let Some(r) = rect {
             self.space.map_element(w.clone(), r.loc, true);
         }

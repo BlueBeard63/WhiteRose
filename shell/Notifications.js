@@ -13,7 +13,7 @@ function ago(seconds) {
 }
 
 // Whether a new notification pops up. Not while the panel is open (it's
-// listed there already); under Do Not Disturb, or from a muted app, only
+// listed there already); under Do not disturb, or from a muted app, only
 // critical ones do.
 function shouldPopup(urgency, doNotDisturb, panelOpen, muted) {
     if (panelOpen) return false;

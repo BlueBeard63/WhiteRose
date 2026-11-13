@@ -27,7 +27,7 @@ import "FilesActions.js" as Actions
 
 AppWindow {
     id: win
-    title: Session.choose ? Session.choose.title + " — Files" : current ? current.title + " — Files" : "Files"
+    title: Session.choose ? Session.choose.title + " - Files" : current ? current.title + " - Files" : "Files"
     visible: true
     width: 1040; height: 680
 
@@ -416,7 +416,7 @@ AppWindow {
         }
         onConnectServer: win.connectServer(null)
         onAddCloud: win.addCloud()
-        onShelfClicked: win.info = shelfBar.items.length === 0 ? "Drop files on Shelf (or Ctrl+Shift+S) to gather them" : ""
+        onShelfClicked: win.info = shelfBar.items.length === 0 ? "Drop files on the shelf (or Ctrl+Shift+S) to gather them" : ""
         onServerMenu: (server, x, y) => { serverMenu.server = server; serverMenu.openAt(x, y) }
         onEjectDrive: device => { win.info = "Ejecting…"; Ops.eject(device) }
         Menu {
@@ -502,14 +502,14 @@ AppWindow {
             id: emptyTrash
             visible: win.current?.inTrash ?? false
             anchors { right: views.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
-            text: "Empty Trash"
+            text: "Empty trash"
             kind: "danger"
             enabled: (win.current?.entries.length ?? 0) > 0
             onClicked: if (enabled) win.askEmpty()
         }
         Segmented {
             id: views
-            // (Nothing to show differently on the Start page.)
+            // (Nothing to show differently on the start page.)
             visible: !(win.current?.ownView ?? false)
             anchors { right: extraTools.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
@@ -940,7 +940,7 @@ AppWindow {
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
                 ...(win.current.inTag ? [{ label: "Rename tag…", run: () => tagDialog.rename(win.current.path.slice(4)) }] : []),
             ] : itemMenu.trashed ? (!itemMenu.entry ? [
-                { label: "Empty Trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
+                { label: "Empty trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
             ] : [
                 { label: "Restore", run: () => win.restore(itemMenu.sel.map(e => e.path)) },
@@ -999,7 +999,7 @@ AppWindow {
                     { label: "Share…", enabled: !itemMenu.many, run: () => win.cloudAct("share") },
                     { label: "Copy link", enabled: !itemMenu.many, run: () => win.cloudAct("link") },
                 ] }] : []),
-                { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
+                { label: "Move to trash", shortcut: "Delete", run: () => win.trash() },
                 { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
                 { separator: true },
                 { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
@@ -1209,19 +1209,19 @@ AppWindow {
     }
     function trash() {
         const sel = win.current?.selection ?? [];
-        // In the Trash, Delete means for good.
+        // In the trash, Delete means for good.
         if (win.current?.inDrives) return;
         if (win.current?.inTrash) win.askDelete(sel.map(e => e.path), "purge");
         // (Settings › Files › General: ask first.)
         else if (Session.confirmTrash) win.askDelete(sel.map(e => e.path), "trash");
         else win.run("trash", sel.map(e => e.path));
     }
-    // kind: "delete" (anywhere), "purge" (things in the Trash), "empty" (all of it).
+    // kind: "delete" (anywhere), "purge" (things in the trash), "empty" (all of it).
     function askDelete(paths, kind) {
         if (paths.length === 0) return;
         confirm.paths = paths;
         confirm.kind = kind ?? "delete";
-        // Shown by their own names (a trashed one's name in the Trash can differ).
+        // Shown by their own names (a trashed one's name in the trash can differ).
         confirm.names = paths.map(p => (win.current?.entries.find(e => e.path === p)?.name) ?? p.substring(p.lastIndexOf("/") + 1));
         confirm.open();
     }
@@ -1562,8 +1562,8 @@ AppWindow {
                     anchors { left: confirmIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
                     width: Math.min(implicitWidth, confirmButtons.x - x - 12)
                     elide: Text.ElideMiddle
-                    text: confirm.kind === "empty" ? "Empty the Trash?"
-                        : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the Trash?" : "Move " + confirm.paths.length + " items to the Trash?")
+                    text: confirm.kind === "empty" ? "Empty the trash?"
+                        : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the trash?" : "Move " + confirm.paths.length + " items to the trash?")
                         : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” for good?"
                         : "Delete " + confirm.paths.length + " items for good?"
                     color: Theme.text
@@ -1572,9 +1572,9 @@ AppWindow {
                 Text {
                     anchors { left: confirmAsk.right; leftMargin: 8; right: confirmButtons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideRight
-                    text: confirm.kind === "trash" ? "You can bring them back from the Trash."
+                    text: confirm.kind === "trash" ? "You can bring them back from the trash."
                         : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") goes for good."
-                        : "It won't go to the Trash, so it can't be brought back."
+                        : "It skips the trash, so you can't get it back."
                     color: Theme.muted
                     font { family: Theme.font; pointSize: Theme.pt(11.5) }
                 }
@@ -1585,7 +1585,7 @@ AppWindow {
                     Button { text: confirm.kind === "trash" ? "Don't" : "Keep it"; kind: "ghost"; onClicked: confirm.close() }
                     Button {
                         id: deleteButton
-                        text: confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
+                        text: confirm.kind === "empty" ? "Empty trash" : confirm.kind === "trash" ? "Move to trash" : "Delete"
                         kind: confirm.kind === "trash" ? "primary" : "danger"
                         // After the key is handled: closing in the middle of it crashes Qt.
                         Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }

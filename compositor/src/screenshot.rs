@@ -22,7 +22,6 @@ use smithay::{
     },
     output::Output,
     utils::{Buffer as BufferCoord, Rectangle, Size, Transform},
-    wayland::selection::data_device::set_data_device_selection,
 };
 
 use crate::{ipc, render, state::WhiteRose};
@@ -286,24 +285,14 @@ impl WhiteRose {
         let event = match outcome {
             Outcome::Saved { path, width, height, png } => {
                 tracing::info!(path = %path.display(), width, height, "screenshot saved");
-                set_data_device_selection(
-                    &self.display_handle,
-                    &self.seat,
-                    vec!["image/png".into()],
-                    Arc::new(vec![("image/png".to_string(), png.as_ref().clone())]),
-                );
+                self.offer_clipboard(vec![("image/png".to_string(), png.as_ref().clone())]);
                 self.clipboard_add_screenshot(png.clone());
                 self.saved_screenshots.push(path.clone());
                 ipc::Event::Screenshot { path: path.to_string_lossy().into_owned(), width, height }
             }
             Outcome::Copied { width, height, png } => {
                 tracing::info!(width, height, "screenshot copied");
-                set_data_device_selection(
-                    &self.display_handle,
-                    &self.seat,
-                    vec!["image/png".into()],
-                    Arc::new(vec![("image/png".to_string(), png.as_ref().clone())]),
-                );
+                self.offer_clipboard(vec![("image/png".to_string(), png.as_ref().clone())]);
                 self.clipboard_add_screenshot(png.clone());
                 ipc::Event::Screenshot { path: String::new(), width, height }
             }

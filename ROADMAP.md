@@ -73,7 +73,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 <details>
 <summary><b>Compare & sync folders</b>: compare two folders and sync them. <sub>· WhiteRose's own</sub></summary>
 
-- By size and time or byte by byte; differences marked on the files in both panes; update either way, two-way or mirror (removed files go to the Trash); a clashing text file shows its changes line by line.
+- By size and time or byte by byte; differences marked on the files in both panes; update either way, two-way or mirror (removed files go to the trash); a clashing text file shows its changes line by line.
 
 </details>
 
@@ -232,7 +232,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 <details>
 <summary><b>Bar widgets</b>: System monitor, media visualiser, system tray, workspace previews; per-monitor bar layouts you arrange. <sub>· Noctalia</sub></summary>
 
-- A widget model for the bar (left/centre/right zones), arranged by dragging in Settings › Top Bar.
+- A widget model for the bar (left/centre/right zones), arranged by dragging in Settings › Top bar.
 - Widgets: CPU/RAM/temps, media with visualiser, StatusNotifierItem tray, keyboard layout, clock styles.
 
 </details>

@@ -1,4 +1,4 @@
-// Power & Battery (Figma: "Settings - Power & Battery"): the battery with its
+// Power & battery (Figma: "Settings - Power & battery"): the battery with its
 // last 24 hours, power modes (power-profiles-daemon), the charge limit where
 // the battery supports one, and the bar's percentage.
 import QtQuick
@@ -24,7 +24,7 @@ Column {
     Component.onCompleted: refresh()
     Timer { interval: 60000; running: true; repeat: true; onTriggered: page.refresh() }
 
-    PageHeader { title: "Power & Battery"; subtitle: "Laptop battery and power modes." }
+    PageHeader { title: "Power & battery"; subtitle: "Laptop battery and power modes." }
 
     // ---- battery ------------------------------------------------------------------
     // Narrow (a tiled window): the 24-hour chart goes under the charge, and
@@ -97,7 +97,7 @@ Column {
         spacing: 10
         Repeater {
             model: [
-                { p: PowerProfile.PowerSaver, name: "Power saver", say: "Lower brightness, limits background work", icon: "leaf" },
+                { p: PowerProfile.PowerSaver, name: "Power saver", say: "Lowers brightness and limits background work", icon: "leaf" },
                 { p: PowerProfile.Balanced, name: "Balanced", say: "Best for most use", icon: "zap" },
                 { p: PowerProfile.Performance, name: "Performance", say: "Highest speed, shorter battery life", icon: "gauge" },
             ].filter(m => m.p !== PowerProfile.Performance || PowerProfiles.hasPerformanceProfile)
@@ -137,7 +137,7 @@ Column {
         }
         SettingRow {
             divider: page.info?.limit_supported ?? false
-            title: "Show percentage in top bar"
+            title: "Show the percentage in the top bar"
             Toggle {
                 checked: Daemon.setting("bar.batteryPercent", true)
                 onToggled: on => Daemon.set("bar.batteryPercent", on)

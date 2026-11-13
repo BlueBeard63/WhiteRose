@@ -396,9 +396,21 @@ pub trait XwmHandler {
     fn disconnected(&mut self, _xwm: XwmId) {}
 }
 
+/// WhiteRose patch: removes the WM's event source from the loop.
+struct SourceRemover(Box<dyn FnOnce()>);
+
+impl fmt::Debug for SourceRemover {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("SourceRemover")
+    }
+}
+
 /// The runtime state of an reparenting XWayland window manager.
 #[derive(Debug)]
 pub struct X11Wm {
+    /// WhiteRose patch: so a WM dropped while its Xwayland still runs (a
+    /// compositor stopping an idle Xwayland) sends no more events.
+    remove_source: Option<SourceRemover>,
     id: XwmId,
     conn: Arc<RustConnection>,
     client_scale: Arc<AtomicF64>,
@@ -427,6 +439,9 @@ pub struct X11Wm {
 
 impl Drop for X11Wm {
     fn drop(&mut self) {
+        if let Some(remove) = self.remove_source.take() {
+            (remove.0)();
+        }
         // TODO: Not really needed for Xwayland, but maybe cleanup set root properties?
         let _ = self.conn.destroy_window(self.wm_window);
         xwm_id::remove(self.id.0);
@@ -887,7 +902,8 @@ impl X11Wm {
         let primary = XWmSelection::new(&conn, &screen, &atoms, atoms.PRIMARY)?;
 
         drop(_guard);
-        let wm = Self {
+        let mut wm = Self {
+            remove_source: None,
             id,
             conn,
             client_scale,
@@ -908,7 +924,7 @@ impl X11Wm {
         };
 
         let event_handle = handle.clone();
-        handle.insert_source(source, move |event, _, data| match event {
+        let token = handle.insert_source(source, move |event, _, data| match event {
             calloop::channel::Event::Msg(event) => {
                 if let Err(err) = handle_event(&event_handle, data, id, event) {
                     warn!(id = id.0, err = ?err, "Failed to handle X11 event");
@@ -918,6 +934,8 @@ impl X11Wm {
                 data.disconnected(id);
             }
         })?;
+        let remover = handle.clone();
+        wm.remove_source = Some(SourceRemover(Box::new(move || remover.remove(token))));
         Ok(wm)
     }
 
@@ -1158,6 +1176,10 @@ impl X11Wm {
             self.conn
                 .set_selection_owner(x11rb::NONE, selection.atom, selection.timestamp)?;
         }
+        // WhiteRose patch: send it now. Unflushed, X doesn't know who owns
+        // the selection until something else flushes the connection, and an
+        // X11 app pasting in between is told there's nothing to paste.
+        self.conn.flush()?;
 
         Ok(())
     }

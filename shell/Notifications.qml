@@ -1,6 +1,6 @@
 // The desktop's notification server (org.freedesktop.Notifications): every
 // notification apps send lands here, is listed in the notifications panel
-// until dismissed, and pops up briefly unless Do Not Disturb is on (critical
+// until dismissed, and pops up briefly unless Do not disturb is on (critical
 // ones always pop up, and stay until dismissed).
 pragma Singleton
 import QtQuick

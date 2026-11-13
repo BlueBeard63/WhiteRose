@@ -40,9 +40,12 @@ pub mod switcher;
 pub mod tab_strip;
 pub mod tiling;
 pub mod toplevel_export;
+pub mod win;
 pub mod window_rules;
 pub mod window_state;
 pub mod winit;
 pub mod workspace;
+pub mod xdnd;
+pub mod xwayland;
 
 pub use state::WhiteRose;

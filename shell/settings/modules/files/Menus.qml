@@ -69,7 +69,7 @@ Column {
     Text {
         width: parent.width
         wrapMode: Text.Wrap
-        text: "Commands in the right-click menu for what you've chosen. %f is the chosen paths, %n their names, %d the folder (each quoted); with none of these the paths go on the end. For example: “Make smaller” — convert %f -resize 50% small-%n, for files of types jpg, png."
+        text: "Commands in the right-click menu for what you've chosen. %f is the chosen paths, %n their names, %d the folder (each quoted); with none of these the paths go on the end. For example, “Make smaller”: convert %f -resize 50% small-%n, for files of types jpg, png."
         color: Theme.muted
         font { family: Theme.font; pointSize: Theme.pt(11.5) }
     }

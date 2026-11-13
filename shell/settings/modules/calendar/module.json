@@ -1,6 +1,6 @@
 {
   "id": "calendar",
-  "name": "Calendar & Weather",
+  "name": "Calendar & weather",
   "description": "Calendars shown in the clock panel, and the weather's place",
   "icon": "calendar",
   "category": "desktop",

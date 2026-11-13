@@ -5,7 +5,7 @@
 //! - "shortcuts.keys" (changes to the built-in shortcuts) and
 //!   "shortcuts.custom" (your own), rebuilt into the shortcut table.
 //!
-//! The Keyboard & Shortcuts page sees the resulting list in the
+//! The Keyboard & shortcuts page sees the resulting list in the
 //! `shortcuts` IPC event, and pauses shortcuts while it records new keys.
 
 use std::collections::HashMap;

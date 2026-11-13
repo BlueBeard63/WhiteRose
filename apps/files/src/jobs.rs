@@ -106,7 +106,7 @@ pub mod qobject {
         #[qinvokable]
         fn modifiers(self: &Ops) -> i32;
 
-        /// Puts things in the Trash back where they came from:
+        /// Puts things in the trash back where they came from:
         /// {done: [path], failed: [[path, why]]}.
         #[qinvokable]
         fn restore(self: &Ops, paths: &QString) -> QString;
@@ -321,7 +321,7 @@ pub mod qobject {
         fn markdown(self: &Ops, path: &QString, dark: bool, ink: &QString) -> QString;
         #[qsignal]
         fn rendered(self: Pin<&mut Ops>, path: QString);
-        /// Settings › Files › Verify copies.
+        /// Settings › Files › Check copies.
         #[qinvokable]
         #[cxx_name = "setVerify"]
         fn set_verify(self: &Ops, on: bool);
@@ -467,7 +467,7 @@ fn shown_name(p: &Path) -> String {
         .unwrap_or_else(|| p.to_string_lossy().into_owned())
 }
 
-/// "Copying notes.txt to Documents", "Moving 3 items to the Trash".
+/// "Copying notes.txt to Documents", "Moving 3 items to the trash".
 fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
     let what = match sources {
         [one] => format!("“{}”", shown_name(one)),
@@ -485,7 +485,7 @@ fn label(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         }
         Kind::Copy => format!("Copying {what} to {to}"),
         Kind::Move => format!("Moving {what} to {to}"),
-        Kind::Trash => format!("Moving {what} to the Trash"),
+        Kind::Trash => format!("Moving {what} to the trash"),
         Kind::Delete => format!("Deleting {what}"),
         Kind::Purge => format!("Deleting {what} for good"),
         Kind::Extract => format!("Extracting {what}"),
@@ -647,7 +647,7 @@ impl qobject::Ops {
             id,
             kind: kind_name(kind),
             label: if kind_text == "empty" {
-                "Emptying the Trash".into()
+                "Emptying the trash".into()
             } else {
                 label(kind, &sources, dest.as_deref())
             },
@@ -1920,7 +1920,7 @@ mod tests {
         );
         assert_eq!(
             label(Kind::Trash, &many, None),
-            "Moving 2 items to the Trash"
+            "Moving 2 items to the trash"
         );
         assert_eq!(label(Kind::Delete, &a, None), "Deleting “notes.txt”");
     }

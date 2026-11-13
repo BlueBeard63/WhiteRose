@@ -56,7 +56,7 @@ Singleton {
 
     function stopped(tooMany) {
         if (!fingerHeard) fingerAvailable = false;
-        fingerMessage = tooMany ? "Too many tries, use your password" : "";
+        fingerMessage = tooMany ? "Too many tries. Use your password." : "";
         fingerError = tooMany;
     }
 
@@ -82,7 +82,7 @@ Singleton {
             if (result === PamResult.Success) {
                 root.unlocked();
             } else {
-                root.error = result === PamResult.MaxTries ? "Too many attempts, wait a moment" : "Wrong password";
+                root.error = result === PamResult.MaxTries ? "Too many tries. Wait a moment and try again." : "Wrong password";
             }
         }
         onError: err => {
@@ -105,7 +105,7 @@ Singleton {
                 return;
             }
             root.fingerError = messageIsError || /fail|no match|not match|try again/i.test(message);
-            root.fingerMessage = root.fingerError ? "Not recognised, try again" : "Or touch the fingerprint reader";
+            root.fingerMessage = root.fingerError ? "Not recognised. Try again." : "Or touch the fingerprint reader";
         }
         onResponseRequiredChanged: if (responseRequired) respond("")
         onCompleted: result => {

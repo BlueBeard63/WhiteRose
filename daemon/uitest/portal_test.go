@@ -66,7 +66,7 @@ func TestPortalOpenFileIsFilesPicker(t *testing.T) {
 		"filters":        dbus.MakeVariant([]portal.Filter{images}),
 		"current_folder": dbus.MakeVariant([]byte(pics + "\x00")),
 	})
-	w := s.WaitWindow("Open Image — Files")
+	w := s.WaitWindow("Open Image - Files")
 	w.Press("ctrl+2")
 	w.Click(uitest.Named("Shot.PNG").Role("list item"))
 	if _, ok := w.Lookup(uitest.Named("notes.txt").Role("list item")); ok {
@@ -84,7 +84,7 @@ func TestPortalOpenFileIsFilesPicker(t *testing.T) {
 	// The app gives up (Request.Close): the picker goes, and it's cancelled.
 	handle := dbus.ObjectPath("/org/freedesktop/portal/desktop/request/1/b")
 	done = call(handle, "Open Something", map[string]dbus.Variant{})
-	w = s.WaitWindow("Open Something — Files")
+	w = s.WaitWindow("Open Something - Files")
 	if err := conn.Object(portal.BusName, handle).Call("org.freedesktop.impl.portal.Request.Close", 0).Err; err != nil {
 		t.Fatal(err)
 	}

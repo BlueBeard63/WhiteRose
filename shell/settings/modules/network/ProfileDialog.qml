@@ -102,11 +102,11 @@ Dialog {
             model: dlg.details?.active ? [
                 ["Interface", dlg.details.device],
                 ["Hardware address", dlg.details.mac],
-                ["Link speed", dlg.details.speed ? dlg.details.speed + " Mb/s" : "—"],
-                ["IPv4 address", (dlg.details.ipv4 ?? []).join(", ") || "—"],
-                ["Router", dlg.details.gateway4 || "—"],
-                ["DNS", (dlg.details.dns ?? []).join(", ") || "—"],
-                ["IPv6 address", (dlg.details.ipv6 ?? []).join(", ") || "—"],
+                ["Link speed", dlg.details.speed ? dlg.details.speed + " Mb/s" : "Unknown"],
+                ["IPv4 address", (dlg.details.ipv4 ?? []).join(", ") || "None"],
+                ["Router", dlg.details.gateway4 || "None"],
+                ["DNS", (dlg.details.dns ?? []).join(", ") || "None"],
+                ["IPv6 address", (dlg.details.ipv6 ?? []).join(", ") || "None"],
             ] : [["Status", "Not connected right now"]]
             delegate: SettingRow {
                 required property var modelData

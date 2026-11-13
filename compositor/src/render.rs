@@ -24,6 +24,7 @@ use smithay::{
 use smithay::reexports::wayland_server::Resource;
 
 use crate::state::WhiteRose;
+use crate::win::WinExt;
 
 /// Background of the empty desktop: white, as in the Figma frames, so the
 /// black bar and island stand out. Replaced by the wallpaper later.
@@ -295,8 +296,8 @@ fn clipped_window(
     crop: Rectangle<i32, Physical>,
     elements: &mut Vec<OutputElement>,
 ) {
-    let Some(toplevel) = w.toplevel() else { return };
-    let surface = toplevel.wl_surface();
+    let Some(surface) = w.surface() else { return };
+    let surface = &surface;
     for (popup, offset) in PopupManager::popups_for_surface(surface) {
         let at = (w.geometry().loc + offset - popup.geometry().loc).to_physical_precise_round(scale);
         elements.extend(
@@ -399,8 +400,8 @@ pub fn send_frame_callbacks(output: &Output, state: &mut WhiteRose) {
             continue;
         }
         if fullscreen.as_ref().is_none_or(|f| f == window) {
-            if let Some(t) = window.toplevel() {
-                send_scale(t.wl_surface(), output);
+            if let Some(s) = window.surface() {
+                send_scale(&s, output);
             }
             window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));
         }

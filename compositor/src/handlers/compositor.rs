@@ -29,6 +29,10 @@ impl CompositorHandler for WhiteRose {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        // Xwayland's own client carries Smithay's data, not ours.
+        if let Some(x) = client.get_data::<smithay::xwayland::XWaylandClientData>() {
+            return &x.compositor_state;
+        }
         &client.get_data::<ClientState>().unwrap().compositor_state
     }
 
@@ -46,26 +50,34 @@ impl CompositorHandler for WhiteRose {
             }
             // Includes windows hidden on other workspaces, so their previews update too.
             if let Some(window) = self.window_for_surface(&root) {
-                window.on_commit();
-                self.window_committed(&window);
-                self.mark_export_dirty(&window);
-                // Its size may have changed (maximized, resized).
-                self.island_sync();
-                // The windows event carries sizes: re-sent when one changes
-                // (its first buffer, a resize), not on every frame. Compared
-                // with the size last seen here: by now the commit has been
-                // applied, so the window's geometry is already the new one.
-                let size = window.geometry().size;
-                let seen = window.user_data().get_or_insert(|| SeenSize(std::cell::Cell::new(None)));
-                if seen.0.replace(Some(size)) != Some(size) {
-                    self.ipc_sync();
-                }
+                self.window_commit(&window);
             }
         };
 
         xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);
         self.schedule_redraw();
+    }
+}
+
+impl WhiteRose {
+    /// What a window's commit does: the rules and tiles on its first, its
+    /// preview, and the shell told when its size changes.
+    pub(crate) fn window_commit(&mut self, window: &smithay::desktop::Window) {
+        window.on_commit();
+        self.window_committed(window);
+        self.mark_export_dirty(window);
+        // Its size may have changed (maximized, resized).
+        self.island_sync();
+        // The windows event carries sizes: re-sent when one changes
+        // (its first buffer, a resize), not on every frame. Compared
+        // with the size last seen here: by now the commit has been
+        // applied, so the window's geometry is already the new one.
+        let size = window.geometry().size;
+        let seen = window.user_data().get_or_insert(|| SeenSize(std::cell::Cell::new(None)));
+        if seen.0.replace(Some(size)) != Some(size) {
+            self.ipc_sync();
+        }
     }
 }
 

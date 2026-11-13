@@ -347,7 +347,7 @@ const TAG: &str = "tag:";
 const DRIVES: &str = "drives:";
 /// Files opened or changed lately (recent.rs).
 const RECENT: &str = "recent:";
-/// The Start page (StartMode.qml draws it; nothing is listed).
+/// The start page (StartMode.qml draws it; nothing is listed).
 const START: &str = "start:";
 /// Clean up (CleanupMode.qml; cleanup.rs looks).
 const CLEANUP: &str = "cleanup:";

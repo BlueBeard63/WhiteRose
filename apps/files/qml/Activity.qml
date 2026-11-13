@@ -203,7 +203,7 @@ Rectangle {
                                 const j = card.job;
                                 if (j.state === "waiting") return "Waiting for the one before it";
                                 if (j.state === "paused") return "Paused · " + F.size(j.bytesDone) + " of " + F.size(j.bytesTotal);
-                                if (card.clash) return card.c.folders ? "Merging puts both together; files that are there and the same are skipped without asking."
+                                if (card.clash) return card.c.folders ? "Merging puts both together and skips files that are already there and the same."
                                     : "Coming " + F.size(card.c.srcSize) + " · " + F.date(card.c.srcModified, root.now) + "   ·   there " + F.size(card.c.dstSize) + " · " + F.date(card.c.dstModified, root.now);
                                 if (card.done) {
                                     if (j.cancelled) return "Stopped";

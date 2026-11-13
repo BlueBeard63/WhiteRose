@@ -13,7 +13,7 @@ Rectangle {
     property string current: ""
     property var places: ({ folders: [], bookmarks: [], drives: [] })
     signal chosen(string path)
-    // Files dropped on a place (the Trash trashes them).
+    // Files dropped on a place (the trash trashes them).
     signal dropped(var paths, string dest)
     function refresh() {
         side.places = JSON.parse(Fs.places());

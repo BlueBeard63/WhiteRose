@@ -1,6 +1,6 @@
 //! Checksums: MD5, SHA-1 and SHA-256 of a file in one read (Properties ›
 //! Checksums; the pasted-sum check is Format.js), and checking a copy against its original (Settings › Files ›
-//! Verify copies).
+//! Check copies).
 
 use std::{
     fs::File,

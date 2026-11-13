@@ -57,7 +57,7 @@ zones = ["right"]
 [[settings.page]]
 id = "weather-plus"
 qml = "qml/SettingsPage.qml"
-parent = "calendar"                 # a sub-page of Settings › Calendar & Weather
+parent = "calendar"                 # a sub-page of Settings › Calendar & weather
 
 [[launcher.provider]]
 id = "forecast"
@@ -75,7 +75,7 @@ location = "coarse"
 |---|---|---|---|
 | `settings.page`: a Settings page or sub-page | QML | 1.1 | none |
 | `settings.section`: a section in an existing page | QML | 1.1 | none |
-| `bar.widget`: in a bar zone, arranged in Settings › Top Bar | QML | 1.1 | none |
+| `bar.widget`: in a bar zone, arranged in Settings › Top bar | QML | 1.1 | none |
 | `island.view`: a view in the island, opened by key or IPC | QML | 1.1 | none |
 | `quick.tile`: a quick-settings tile | QML | 1.1 | none |
 | `launcher.provider`: results for what you type | logic | 1.1 | none (sees only what you type after its prefix) |

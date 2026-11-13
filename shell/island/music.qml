@@ -3,5 +3,6 @@ import QtQuick
 import qs
 
 IslandView {
+    bleed: true
     MusicView {}
 }

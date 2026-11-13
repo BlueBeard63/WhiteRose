@@ -1,6 +1,6 @@
 //! Files never runs code by itself. Opening a program, a script or a
 //! launcher asks first; if it's somewhere files from outside land
-//! (Downloads, the Desktop, a USB stick, temporary folders, the Trash, or
+//! (Downloads, the Desktop, a USB stick, temporary folders, the trash, or
 //! out of an archive),
 //! running it takes saying you trust it, and launchers from there don't run
 //! at all.
@@ -80,7 +80,7 @@ pub fn untrusted(
         return "It's on the Desktop, where downloads and attachments often land.".into();
     }
     if under(&crate::trash::home_trash()) || path.to_string_lossy().contains("/.Trash-") {
-        return "It's in the Trash.".into();
+        return "It's in the trash.".into();
     }
     // Taken out of an archive to open (archive.rs: cached_file).
     if path.components().collect::<Vec<_>>().windows(3).any(|w| {

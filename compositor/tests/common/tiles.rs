@@ -5,7 +5,7 @@ use serde_json::Value;
 use smithay::{desktop::Window, reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ServerState};
 use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_protocols::xdg::shell::client::xdg_toplevel::XdgToplevel;
-use whiterose_wm::WhiteRose;
+use whiterose_wm::{win::WinExt, WhiteRose};
 
 use serde_json::json;
 use smithay::{
@@ -38,7 +38,7 @@ pub fn all(state: &WhiteRose) -> Vec<Window> {
 /// choice); None while it's hidden.
 pub fn rect(state: &WhiteRose, w: &Window) -> Option<(i32, i32, i32, i32)> {
     let loc = state.space.element_location(w)?;
-    let size = w.toplevel().unwrap().with_pending_state(|s| s.size).unwrap_or_default();
+    let size = w.pending_size().unwrap_or_default();
     Some((loc.x, loc.y, size.w, size.h))
 }
 
@@ -47,7 +47,7 @@ pub fn rects(state: &WhiteRose) -> Vec<Option<(i32, i32, i32, i32)>> {
 }
 
 pub fn told_tiled(w: &Window) -> bool {
-    w.toplevel().unwrap().with_pending_state(|s| s.states.contains(ServerState::TiledLeft))
+    w.has(ServerState::TiledLeft)
 }
 
 /// Opens a window, letting `setup` describe it before its first commit.

@@ -31,7 +31,7 @@ func TestRenameManyShowsNewNamesThenRenames(t *testing.T) {
 	for _, n := range []string{"IMG_0412.JPG", "IMG_0413.JPG"} {
 		os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644)
 	}
-	files := s.Open(filesBinary(s)+" "+dir, "trip — Files")
+	files := s.Open(filesBinary(s)+" "+dir, "trip - Files")
 
 	files.Press("ctrl+2") // the list (where the new names show)
 	files.WaitFor(uitest.Named("IMG_0412.JPG").Role("list item"))
@@ -66,7 +66,7 @@ func TestNewFolderIsNamedInPlace(t *testing.T) {
 	dir := filepath.Join(s.Home, "Documents", "notes")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "todo.txt"), []byte("x"), 0o644)
-	files := s.Open(filesBinary(s)+" "+dir, "notes — Files")
+	files := s.Open(filesBinary(s)+" "+dir, "notes - Files")
 	files.Press("ctrl+2")
 	files.Click(uitest.Named("todo.txt").Role("list item"))
 
@@ -106,7 +106,7 @@ func TestIndexCarriesOnWhenFilesCloses(t *testing.T) {
 		}
 	}
 	index := filepath.Join(s.Home, ".cache/whiterose/files/index")
-	title := "Home — Files"
+	title := "Home - Files"
 	files := s.Open(filesBinary(s)+" "+s.Home, title)
 	files.Click(uitest.Named("Close").Role("push button"))
 	files.Closed()
@@ -128,7 +128,7 @@ func TestIndexCarriesOnWhenFilesCloses(t *testing.T) {
 	files = s.Open(filesBinary(s)+" "+s.Home, title)
 	files.Press("ctrl+f")
 	files.Type("note-007")
-	files = files.Retitled("Search — Files")
+	files = files.Retitled("Search - Files")
 	files.Click(uitest.Named("Home").Role("radio button"))
 	files.WaitFor(uitest.Named("Index again").Role("push button"))
 }
@@ -165,7 +165,7 @@ func TestFilesPicker(t *testing.T) {
 	}
 
 	done := pick(t, s, "--title 'Choose a picture' --in "+dir+" --filter 'Images:*.png *.jpg'")
-	w := s.WaitWindow("Choose a picture — Files")
+	w := s.WaitWindow("Choose a picture - Files")
 	w.Press("ctrl+2")
 	w.WaitFor(uitest.Named("a.png").Role("list item"))
 	w.WaitFor(uitest.Named("trip").Role("list item"))
@@ -179,14 +179,14 @@ func TestFilesPicker(t *testing.T) {
 	}
 
 	done = pick(t, s, "--folder --in "+dir)
-	w = s.WaitWindow("Choose a folder — Files")
+	w = s.WaitWindow("Choose a folder - Files")
 	w.Click(uitest.Named("Choose folder").Role("push button"))
 	if out, code := done(); code != "0" || out != dir+"\n" {
 		t.Errorf("folder: printed %q, exit %s", out, code)
 	}
 
 	done = pick(t, s, "--save notes.txt --in "+dir+" --json")
-	w = s.WaitWindow("Save as — Files")
+	w = s.WaitWindow("Save as - Files")
 	w.Click(uitest.Named("Save").Role("push button"))
 	w.WaitFor(uitest.Named("Replace").Role("push button"))
 	w.Click(uitest.Named("Replace").Role("push button"))
@@ -195,7 +195,7 @@ func TestFilesPicker(t *testing.T) {
 	}
 
 	done = pick(t, s, "--in "+dir)
-	w = s.WaitWindow("Choose a file — Files")
+	w = s.WaitWindow("Choose a file - Files")
 	w.Click(uitest.Named("Cancel").Role("push button"))
 	if out, code := done(); code != "1" || out != "" {
 		t.Errorf("cancel: printed %q, exit %s", out, code)
