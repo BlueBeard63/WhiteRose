@@ -14,9 +14,41 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.3.0-alpha.1
+version: 0.3.0-alpha.2
 
 releases:
+  - version: 0.3.0-alpha.2
+    date: 2026-11-13
+    title: X11 apps (alpha)
+    summary: >-
+      The second 0.3 alpha: X11 apps such as Spotify and Steam open, the island gets a note, an agenda and music, and the fixes from alpha.1's notes are in. Still installed by hand; the in-app updater stays on full releases.
+    added:
+      - "X11 apps (Spotify, Steam, older tools) open through XWayland and work like any other window: tiling, snapping, rules, scratchpads, the switchers and the dock. Xwayland only runs while an X11 app is open"
+      - "Copy and paste between X11 and Wayland apps, and drag and drop both ways; X11 copies go into the clipboard history"
+      - "Note in the island (SUPER+SHIFT+N): a title, then your lines; lines starting [ ] are tasks to tick, and Tab switches between writing and the list"
+      - "Agenda in the island (SUPER+A, or click the clock): today's next event and the day as a line; click the day for the month"
+      - "Music in the island (SUPER+SHIFT+M, or Now playing in the bar): the cover, the track and its controls, following whichever player is playing, browsers included"
+      - "Clipboard history on SUPER+V"
+      - "SUPER+ALT+arrow moves a window to the previous or next workspace, and SUPER+CTRL+arrow to the monitor on that side"
+      - "Mouse & touchpad settings: scroll direction, speed, acceleration and tap to click; shake the pointer to find it; hold CTRL+SHIFT to move it faster"
+      - "Open and save dialogs in other apps use Files (through the desktop portal), and so does choosing your account picture"
+      - "ALT+TAB can show apps from every workspace or only this one (Settings › Windows)"
+    changed:
+      - "Tabbed groups look like a small island, with each app's icon, and animate as windows join or leave"
+      - "Files builds its search index in the background, and Settings › Files shows how far it's got"
+      - "The music view moves with the music: song changes slide in, the cover fades, pausing dims it"
+      - "Sliders only take the scroll wheel once you've clicked them, so scrolling a page doesn't move them"
+      - "Do not disturb shows a bell with a line through it in the bar, not a moon"
+      - "Plainer wording in sentence case across the shell, Settings and the apps"
+      - "The packages depend on Xwayland"
+    fixed:
+      - "The screenshot toast's buttons didn't take clicks"
+      - "The Security tab of a Wi-Fi network's settings was laid out badly"
+      - "Files and Notepad from a development build could hide the installed ones; the installer offers to remove them"
+    notes: |
+      Install it with this release's `install.sh` (it installs this version, checked against the release key). Your settings carry over. X11 apps need Xwayland, which the packages now bring with them.
+    contributors: [BlueBeard63]
+
   - version: 0.3.0-alpha.1
     date: 2026-11-12
     title: Layouts (alpha)
