@@ -224,6 +224,7 @@ pub fn init_drm(
     let b = backend.clone();
     event_loop.handle().insert_source(ping_source, move |_, _, state| redraw_all(&b, state))?;
     state.redraw = Some(ping);
+    state.can_capture = true;
 
     // Ctrl+Alt+Fn.
     let b = backend.clone();

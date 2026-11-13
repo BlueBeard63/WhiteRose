@@ -273,7 +273,7 @@ impl WhiteRose {
             self.screenshot_done(Outcome::Failed("the screen is locked".into()));
             return;
         }
-        if self.redraw.is_none() {
+        if !self.can_capture {
             self.screenshot_done(Outcome::Failed("no renderer (headless)".into()));
             return;
         }

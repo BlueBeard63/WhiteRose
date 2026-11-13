@@ -131,6 +131,9 @@ func abs(n int) int {
 // removes the file again (the toast's input region once stayed where its
 // slide-in started, so clicks went through it).
 func TestScreenshotToastDeletes(t *testing.T) {
+	if uitest.Headless() {
+		t.Skip("the headless backend draws nothing to capture")
+	}
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	s.Bar().Press("Print")
 	toast := s.Layer("whiterose-toast")

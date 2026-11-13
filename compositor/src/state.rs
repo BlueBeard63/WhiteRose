@@ -117,8 +117,11 @@ pub struct WhiteRose {
     /// SUPER is down and nothing else has been pressed since.
     pub logo_tap_pending: bool,
 
-    /// Wakes the backend to draw a frame. None when running headless (tests).
+    /// Wakes the backend to draw a frame. None in the compositor tests.
     pub redraw: Option<Ping>,
+    /// The backend draws the screen, so it can be captured (screenshots).
+    /// Not headless: it draws nothing.
+    pub can_capture: bool,
     /// Imports a client's GPU buffer into the renderer. Set by the backend.
     pub dmabuf_importer: Option<DmabufImporter>,
     pub dmabuf_global: Option<DmabufGlobal>,
@@ -280,6 +283,7 @@ impl WhiteRose {
             swallowed: Vec::new(),
             logo_tap_pending: false,
             redraw: None,
+            can_capture: false,
             dmabuf_importer: None,
             dmabuf_global: None,
             compositor_state,
