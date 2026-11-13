@@ -11,13 +11,43 @@ FocusScope {
     id: root
     required property var pane
     readonly property var chain: JSON.parse(Fs.crumbs(pane.path))
-    // Each earlier column's listing (the last one is the pane's own).
+    // Each earlier column's listing (the last one is the pane's own). On a
+    // network drive each is asked for on a thread and kept (empty until it
+    // comes), so the window never waits on the server.
+    property var cache: ({})
+    property var asked: ({})
     readonly property var lists: {
-        void pane.stamp; void pane.hidden;
+        void pane.stamp; void pane.hidden; void root.cache;
         return chain.slice(0, -1).map(c => {
+            if (pane.remote) {
+                const hit = root.cache[c.path];
+                if (hit === undefined) Qt.callLater(() => root.askColumn(c.path));
+                return hit ?? [];
+            }
             const r = JSON.parse(Fs.list(c.path, pane.hidden, "name", false, 20, Session.foldersAt));
             return r.ok ? r.entries : [];
         });
+    }
+    function askColumn(path) {
+        if (root.asked[path]) return;
+        root.asked[path] = true;
+        Ops.listFolder(path, pane.hidden, "name", false, 20, Session.foldersAt);
+    }
+    Connections {
+        target: Ops
+        function onFolderListed(path, result) {
+            if (!root.asked[path]) return;
+            delete root.asked[path];
+            const r = JSON.parse(result);
+            const c = Object.assign({}, root.cache);
+            c[path] = r.ok ? r.entries : [];
+            root.cache = c;
+        }
+    }
+    // Hidden files shown or not: every column asked again.
+    Connections {
+        target: pane
+        function onHiddenChanged() { root.cache = {}; root.asked = {} }
     }
 
     ListView {

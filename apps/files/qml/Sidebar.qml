@@ -78,7 +78,13 @@ Rectangle {
     // Network servers: saved ones and shares mounted now (shares.rs), looked
     // at less often than drives (it asks GVfs).
     property var servers: []
-    function refreshServers() { side.servers = JSON.parse(Ops.servers()) }
+    // Asked for on a thread: it runs gio, which waits on the drives
+    // (half a second or more, every 15 s, would stall the window).
+    function refreshServers() { Ops.askServers() }
+    Connections {
+        target: Ops
+        function onServersListed(result) { side.servers = JSON.parse(result) }
+    }
     Timer { interval: 15000; repeat: true; running: Qt.application.state === Qt.ApplicationActive; onTriggered: side.refreshServers() }
     // A server clicked (not mounted), Connect to server…, a right-click.
     signal openServer(var server)

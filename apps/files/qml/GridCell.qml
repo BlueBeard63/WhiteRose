@@ -39,7 +39,8 @@ Item {
     // Pictures as themselves (decoded at icon size; up to 40 MB), the
     // rest, or a picture that won't load, as their type's icon.
     property bool thumbFailed: false
-    readonly property bool thumb: !cell.thumbFailed && String(cell.modelData.mime).startsWith("image/") && cell.modelData.size < 40e6
+    // (Not on a network drive: each would download the whole image.)
+    readonly property bool thumb: !cell.thumbFailed && !cell.pane.remote && String(cell.modelData.mime).startsWith("image/") && cell.modelData.size < 40e6
     Image {
         visible: !cell.modelData.look
         id: icon

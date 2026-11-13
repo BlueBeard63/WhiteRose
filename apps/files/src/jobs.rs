@@ -155,6 +155,14 @@ pub mod qobject {
         /// remembered, saved, account, path}] (path: "" if not mounted).
         #[qinvokable]
         fn servers(self: &Ops) -> QString;
+        /// The same, in the background (it runs gio, which waits on the
+        /// drives); `serversListed` brings it.
+        #[qinvokable]
+        #[cxx_name = "askServers"]
+        fn ask_servers(self: &Ops);
+        #[qsignal]
+        #[cxx_name = "serversListed"]
+        fn servers_listed(self: Pin<&mut Ops>, result: QString);
         /// Cloud accounts through rclone (cloudremotes.rs): {rclone: is it
         /// installed, providers: [{kind, name}]}.
         #[qinvokable]
@@ -283,6 +291,31 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "cloudAct"]
         fn cloud_act(self: &Ops, what: &QString, paths: &QString) -> QString;
+
+        /// A folder on a network drive listed in the background (Fs.list's
+        /// answer, without the window waiting on the server); `folderListed`
+        /// brings it with the request (to drop answers for folders left).
+        #[qinvokable]
+        #[cxx_name = "listFolder"]
+        fn list_folder(
+            self: &Ops,
+            path: &QString,
+            hidden: bool,
+            sort: &QString,
+            descending: bool,
+            icon_size: i32,
+            folders: &QString,
+        );
+        #[qsignal]
+        #[cxx_name = "folderListed"]
+        fn folder_listed(self: Pin<&mut Ops>, path: QString, result: QString);
+        /// Fs.stamp in the background (a network drive's change check).
+        #[qinvokable]
+        #[cxx_name = "folderStamp"]
+        fn folder_stamp(self: &Ops, path: &QString);
+        #[qsignal]
+        #[cxx_name = "folderStamped"]
+        fn folder_stamped(self: Pin<&mut Ops>, path: QString, stamp: f64);
 
         /// Git status of `dir` in the background; `gitStatus` brings
         /// {root, branch, ahead, behind, ignored, entries: {name: state}}.
@@ -1060,6 +1093,37 @@ impl qobject::Ops {
         }
     }
 
+    pub fn list_folder(
+        &self,
+        path: &QString,
+        hidden: bool,
+        sort: &QString,
+        descending: bool,
+        icon_size: i32,
+        folders: &QString,
+    ) {
+        let (path, sort, folders) = (path.to_string(), sort.to_string(), folders.to_string());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let r = crate::core::list_value(&path, hidden, &sort, descending, icon_size, &folders)
+                .to_string();
+            let _ = thread.queue(move |mut obj| {
+                obj.as_mut()
+                    .folder_listed(QString::from(path.as_str()), QString::from(r.as_str()))
+            });
+        });
+    }
+
+    pub fn folder_stamp(&self, path: &QString) {
+        let path = path.to_string();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let s = crate::core::stamp_of(&path);
+            let _ = thread
+                .queue(move |mut obj| obj.as_mut().folder_stamped(QString::from(path.as_str()), s));
+        });
+    }
+
     pub fn ask_git(&self, dir: &QString) {
         let dir = dir.to_string();
         if !dir.starts_with('/') {
@@ -1110,6 +1174,75 @@ impl qobject::Ops {
             .collect();
         q(json!({"cut": cut, "paths": paths}))
     }
+}
+
+/// The sidebar's network list (Ops.servers / askServers). It runs gio
+/// (`gio mount -l`, `gio info` per mounted drive: half a second or more),
+/// so the sidebar asks for it on a thread.
+pub fn servers_json() -> String {
+    use crate::shares;
+    let saved = shares::load(&shares::servers_file());
+    let now = shares::mounted("gio");
+    // A mount's address may carry the user (sftp://jack@build).
+    let bare = |u: &str| match shares::parse(u) {
+        Ok(a) => shares::Address {
+            user: String::new(),
+            ..a
+        }
+        .uri(),
+        Err(_) => u.to_string(),
+    };
+    let path_of = |uri: &str| -> String {
+        match now.iter().find(|(u, _)| bare(u) == uri) {
+            Some((u, _)) => shares::local_path("gio", u)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            None => String::new(),
+        }
+    };
+    let mut out: Vec<Value> = saved
+        .iter()
+        .map(|s| json!({"name": s.name, "uri": s.uri, "user": s.user, "domain": s.domain, "remembered": s.remembered, "saved": true, "path": path_of(&s.uri)}))
+        .collect();
+    // Cloud accounts (rclone).
+    if crate::launch::installed("rclone") {
+        let run = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        for r in crate::cloudremotes::remotes("rclone") {
+            let dir = crate::cloudremotes::mount_dir(&run, &r.name);
+            let path = if crate::cloudremotes::mounted(&dir) {
+                dir.to_string_lossy().into_owned()
+            } else {
+                String::new()
+            };
+            out.push(json!({"name": r.name, "uri": format!("rclone:{}", r.name), "kind": r.kind, "what": crate::cloudremotes::provider_name(&r.kind), "rclone": r.name, "saved": true, "path": path}));
+        }
+    }
+    // Online accounts' drives (mounted or not).
+    let accounts = shares::accounts();
+    for a in &accounts {
+        if !saved.iter().any(|s| s.uri == bare(&a.uri)) {
+            let path = if now.iter().any(|(u, _)| bare(u) == bare(&a.uri)) {
+                shares::local_path("gio", &a.uri)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            out.push(json!({"name": a.name, "uri": a.uri, "user": "", "domain": "", "remembered": false, "saved": false, "account": a.id, "path": path}));
+        }
+    }
+    for (u, name) in &now {
+        let b = bare(u);
+        if !saved.iter().any(|s| s.uri == b) && !accounts.iter().any(|a| bare(&a.uri) == b) {
+            let path = shares::local_path("gio", u)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            out.push(json!({"name": name, "uri": u, "user": "", "domain": "", "remembered": false, "saved": false, "path": path}));
+        }
+    }
+    json!(out).to_string()
 }
 
 impl qobject::Ops {
@@ -1344,69 +1477,16 @@ impl qobject::Ops {
     }
 
     pub fn servers(&self) -> QString {
-        use crate::shares;
-        let saved = shares::load(&shares::servers_file());
-        let now = shares::mounted("gio");
-        // A mount's address may carry the user (sftp://jack@build).
-        let bare = |u: &str| match shares::parse(u) {
-            Ok(a) => shares::Address {
-                user: String::new(),
-                ..a
-            }
-            .uri(),
-            Err(_) => u.to_string(),
-        };
-        let path_of = |uri: &str| -> String {
-            match now.iter().find(|(u, _)| bare(u) == uri) {
-                Some((u, _)) => shares::local_path("gio", u)
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_default(),
-                None => String::new(),
-            }
-        };
-        let mut out: Vec<Value> = saved
-            .iter()
-            .map(|s| json!({"name": s.name, "uri": s.uri, "user": s.user, "domain": s.domain, "remembered": s.remembered, "saved": true, "path": path_of(&s.uri)}))
-            .collect();
-        // Cloud accounts (rclone).
-        if crate::launch::installed("rclone") {
-            let run = std::env::var_os("XDG_RUNTIME_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            for r in crate::cloudremotes::remotes("rclone") {
-                let dir = crate::cloudremotes::mount_dir(&run, &r.name);
-                let path = if crate::cloudremotes::mounted(&dir) {
-                    dir.to_string_lossy().into_owned()
-                } else {
-                    String::new()
-                };
-                out.push(json!({"name": r.name, "uri": format!("rclone:{}", r.name), "kind": r.kind, "what": crate::cloudremotes::provider_name(&r.kind), "rclone": r.name, "saved": true, "path": path}));
-            }
-        }
-        // Online accounts' drives (mounted or not).
-        let accounts = shares::accounts();
-        for a in &accounts {
-            if !saved.iter().any(|s| s.uri == bare(&a.uri)) {
-                let path = if now.iter().any(|(u, _)| bare(u) == bare(&a.uri)) {
-                    shares::local_path("gio", &a.uri)
-                        .map(|p| p.to_string_lossy().into_owned())
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
-                out.push(json!({"name": a.name, "uri": a.uri, "user": "", "domain": "", "remembered": false, "saved": false, "account": a.id, "path": path}));
-            }
-        }
-        for (u, name) in &now {
-            let b = bare(u);
-            if !saved.iter().any(|s| s.uri == b) && !accounts.iter().any(|a| bare(&a.uri) == b) {
-                let path = shares::local_path("gio", u)
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                out.push(json!({"name": name, "uri": u, "user": "", "domain": "", "remembered": false, "saved": false, "path": path}));
-            }
-        }
-        q(json!(out))
+        QString::from(servers_json().as_str())
+    }
+
+    pub fn ask_servers(&self) {
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let r = servers_json();
+            let _ =
+                thread.queue(move |mut obj| obj.as_mut().servers_listed(QString::from(r.as_str())));
+        });
     }
 
     pub fn cloud_providers(&self) -> QString {

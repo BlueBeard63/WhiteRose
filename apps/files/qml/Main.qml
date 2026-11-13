@@ -811,7 +811,8 @@ AppWindow {
         const out = [];
         if (dir) out.push({ label: "Open in terminal", shortcut: entry ? "" : "F4", run: () => win.openTerminal(dir) });
         if (ed && (dir || textish)) out.push({ label: "Open in " + ed.name, run: () => win.openEditor(entry ? entry.path : dir) });
-        const root = dir ? Fs.gitRoot(dir) : "";
+        // (Not on a network drive: it looks for .git in every folder above.)
+        const root = dir && !Fs.isRemote(dir) ? Fs.gitRoot(dir) : "";
         if (ed && root && root !== dir) out.push({ label: "Open repository in " + ed.name, run: () => win.openEditor(root) });
         return out;
     }

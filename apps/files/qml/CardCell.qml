@@ -23,7 +23,8 @@ Item {
     Accessible.selectable: true
     Accessible.selected: cell.on
 
-    readonly property bool photo: String(modelData.mime).startsWith("image/") && modelData.size < 40e6
+    // (Not on a network drive: each would download the whole image.)
+    readonly property bool photo: !pane.remote && String(modelData.mime).startsWith("image/") && modelData.size < 40e6
     width: cell.view.cellWidth; height: cell.view.cellHeight
     // Selected next to selected: one block (no gap, no corner, between them).
     readonly property var join: cell.pane.joined(cell.at, cell.view.cols)

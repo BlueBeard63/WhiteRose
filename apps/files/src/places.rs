@@ -583,6 +583,94 @@ pub fn gvfs_name(mount: &str) -> String {
     }
 }
 
+/// Whether `path` is on a network drive (GVfs, rclone, sshfs, NFS, SMB):
+/// reading it waits on a server, so Files lists it on a thread, checks it
+/// for changes less often and skips thumbnails, folder sizes and git there.
+/// Decided from /proc/self/mountinfo (the mount's type), never by asking
+/// the drive itself, which may be the slow thing.
+pub fn is_remote(path: &str) -> bool {
+    std::fs::read_to_string("/proc/self/mountinfo")
+        .map(|m| remote_in(&m, path))
+        .unwrap_or(false)
+}
+
+/// The type of the filesystem `path` is on ("ext4", "fuse.gvfsd-fuse",
+/// "vfat"), from /proc/self/mountinfo.
+pub fn fs_type(path: &str) -> Option<String> {
+    std::fs::read_to_string("/proc/self/mountinfo")
+        .ok()
+        .and_then(|m| fs_type_in(&m, path))
+}
+
+/// Whether files there have real run permissions: not on network drives
+/// (GVfs shows every file as rwx), FAT/exFAT or NTFS (no permissions; all
+/// shown runnable).
+pub fn permissions_mean_something(path: &str) -> bool {
+    !is_remote(path)
+        && !fs_type(path).is_some_and(|k| {
+            matches!(
+                k.as_str(),
+                "vfat" | "msdos" | "exfat" | "ntfs" | "ntfs3" | "fuseblk"
+            )
+        })
+}
+
+/// `fs_type` against a given mountinfo (tests).
+pub fn fs_type_in(mountinfo: &str, path: &str) -> Option<String> {
+    let unescape = |s: &str| {
+        s.replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\134", "\\")
+    };
+    let mut best: Option<(usize, String)> = None;
+    for line in mountinfo.lines() {
+        let f: Vec<&str> = line.split(' ').collect();
+        let (Some(point), Some(sep)) = (f.get(4), f.iter().position(|x| *x == "-")) else {
+            continue;
+        };
+        let Some(kind) = f.get(sep + 1) else { continue };
+        let point = unescape(point);
+        let inside = path == point
+            || point == "/"
+            || path.starts_with(&format!("{}/", point.trim_end_matches('/')));
+        if inside && !best.as_ref().is_some_and(|(len, _)| point.len() < *len) {
+            best = Some((point.len(), kind.to_string()));
+        }
+    }
+    best.map(|(_, k)| k)
+}
+
+/// `is_remote` against a given mountinfo (tests).
+pub fn remote_in(mountinfo: &str, path: &str) -> bool {
+    let unescape = |s: &str| {
+        s.replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\134", "\\")
+    };
+    let mut best: Option<(usize, bool)> = None;
+    for line in mountinfo.lines() {
+        let f: Vec<&str> = line.split(' ').collect();
+        let (Some(point), Some(sep)) = (f.get(4), f.iter().position(|x| *x == "-")) else {
+            continue;
+        };
+        let Some(kind) = f.get(sep + 1) else { continue };
+        let point = unescape(point);
+        let inside = path == point
+            || point == "/"
+            || path.starts_with(&format!("{}/", point.trim_end_matches('/')));
+        if !inside || best.is_some_and(|(len, _)| point.len() < len) {
+            continue;
+        }
+        let remote = matches!(
+            *kind,
+            "nfs" | "nfs4" | "cifs" | "smb3" | "smbfs" | "davfs" | "9p"
+        ) || (kind.starts_with("fuse.")
+            && !matches!(*kind, "fuse.portal" | "fuse.appimagefuse" | "fuse.lxcfs"));
+        best = Some((point.len(), remote));
+    }
+    best.is_some_and(|(_, r)| r)
+}
+
 /// `crumbs`, with $XDG_RUNTIME_DIR given (tests).
 pub fn crumbs_in(path: &str, home: &Path, runtime: Option<&Path>) -> Vec<Crumb> {
     // A network or cloud drive: from its own top, by its name.
@@ -744,6 +832,34 @@ mod tests {
                 ("/mnt/backup".into(), "/dev/sdb1".into())
             ]
         );
+    }
+
+    #[test]
+    fn knows_network_drives() {
+        let m = "22 1 8:2 / / rw - ext4 /dev/sda2 rw\n\
+                 40 22 0:50 / /run/user/1000/gvfs rw - fuse.gvfsd-fuse gvfsd-fuse rw\n\
+                 41 22 0:51 / /mnt/nas rw - nfs4 nas:/srv rw\n\
+                 42 22 0:52 / /run/user/1000/doc rw - fuse.portal portal rw\n\
+                 43 22 0:53 / /media/me/My\\040Disk rw - fuseblk /dev/sdb1 rw\n\
+                 44 22 0:54 / /run/user/1000/whiterose/cloud/Work rw - fuse.rclone Work: rw\n";
+        assert!(remote_in(m, "/run/user/1000/gvfs/dav:host=x/Photos"));
+        assert!(remote_in(m, "/mnt/nas/films"));
+        assert!(remote_in(m, "/run/user/1000/whiterose/cloud/Work"));
+        assert!(!remote_in(m, "/home/me/Documents"));
+        assert!(
+            !remote_in(m, "/run/user/1000/doc/abc"),
+            "the document portal is local"
+        );
+        assert!(
+            !remote_in(m, "/media/me/My Disk/x"),
+            "an NTFS disk (fuseblk) is local"
+        );
+        assert!(!remote_in(m, "/mnt/nasty"), "not inside /mnt/nas");
+        assert_eq!(
+            fs_type_in(m, "/media/me/My Disk/a.pdf").as_deref(),
+            Some("fuseblk")
+        );
+        assert_eq!(fs_type_in(m, "/home/me").as_deref(), Some("ext4"));
     }
 
     #[test]

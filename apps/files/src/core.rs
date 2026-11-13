@@ -36,6 +36,14 @@ pub mod qobject {
         /// Changes when entries are added, removed or renamed (to re-list).
         #[qinvokable]
         fn stamp(self: &Fs, path: &QString) -> f64;
+        /// WHITEROSE_FILES_DEBUG=1 (timings in the log).
+        #[qinvokable]
+        fn debug(self: &Fs) -> bool;
+        /// On a network drive (places::is_remote): listed on a thread,
+        /// no thumbnails, folder sizes or git.
+        #[qinvokable]
+        #[cxx_name = "isRemote"]
+        fn is_remote(self: &Fs, path: &QString) -> bool;
         /// {folders, bookmarks, drives}, each with an icon file.
         #[qinvokable]
         fn places(self: &Fs) -> QString;
@@ -418,6 +426,213 @@ fn scattered(
         .collect()
 }
 
+/// WHITEROSE_FILES_DEBUG=1: how long each part of listing a folder takes,
+/// on stderr (and the window's side, through Fs.debug).
+pub fn debug() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("WHITEROSE_FILES_DEBUG").is_ok_and(|v| v == "1"))
+}
+
+/// A folder's listing (Fs.list; also run on a thread for network drives,
+/// Ops.listFolder): {ok, entries, stamp} or {ok: false, error}.
+pub fn list_value(
+    path: &str,
+    hidden: bool,
+    sort: &str,
+    descending: bool,
+    icon_size: i32,
+    folders: &str,
+) -> Value {
+    let mut stamp_early: Option<f64> = None;
+    let t0 = std::time::Instant::now();
+    let path = path.to_string();
+    let ic = icons::shared();
+    // The Trash ("trash:"): everything in every Trash, named and typed as
+    // it was, dated when it was trashed, with where it came from.
+    let mut origins = std::collections::HashMap::new();
+    let read = if path == TRASH {
+        Ok(trash::list()
+            .into_iter()
+            .filter_map(|t| {
+                let m = std::fs::symlink_metadata(&t.path).ok()?;
+                let name = t.origin.file_name()?.to_string_lossy().into_owned();
+                let p = t.path.to_string_lossy().into_owned();
+                let dir = m.is_dir();
+                origins.insert(
+                    p.clone(),
+                    t.origin
+                        .parent()
+                        .map(|d| d.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                );
+                Some(listing::Entry {
+                    mime: if dir {
+                        "inode/directory".into()
+                    } else {
+                        ic.mime.type_of(&name).to_string()
+                    },
+                    hidden: false,
+                    executable: false,
+                    size: if dir { 0 } else { m.len() },
+                    modified: t.deleted,
+                    created: 0,
+                    link: m.file_type().is_symlink(),
+                    dir,
+                    path: p,
+                    name,
+                })
+            })
+            .collect())
+    } else if let Some(tag) = path.strip_prefix(TAG) {
+        // A tag ("tag:Name"): every file with it, wherever it is.
+        Ok(scattered(tags::files_with(tag), &mut origins, &|n| {
+            ic.mime.type_of(n).to_string()
+        }))
+    } else if let Some((archive, inside)) = crate::archive::split_place(&path) {
+        // Inside an archive: what's in that folder of it.
+        crate::archive::list(&archive, &inside).map(|items| {
+            items
+                .into_iter()
+                .map(|i| {
+                    let name = i.path.rsplit('/').next().unwrap_or(&i.path).to_string();
+                    listing::Entry {
+                        mime: if i.dir {
+                            "inode/directory".into()
+                        } else {
+                            ic.mime.type_of(&name).to_string()
+                        },
+                        hidden: name.starts_with('.'),
+                        executable: false,
+                        size: i.size,
+                        modified: i.modified,
+                        created: 0,
+                        link: false,
+                        dir: i.dir,
+                        path: crate::archive::place(&archive, &i.path),
+                        name,
+                    }
+                })
+                .collect()
+        })
+    } else if path == START || path == CLEANUP || path == CONTAINERS {
+        Ok(vec![])
+    } else if path == RECENT {
+        // Recent: opened lately, or changed in the last two weeks.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let xbel = std::fs::read_to_string(recent::xbel_file()).unwrap_or_default();
+        let list = recent::files(&xbel, &search::index_file(), &places::home(), now);
+        Ok(scattered(
+            list.into_iter().map(|(p, _)| p).collect(),
+            &mut origins,
+            &|n| ic.mime.type_of(n).to_string(),
+        ))
+    } else {
+        // (The change-check stat at the same time: on a network drive each
+        // is a trip to the server.)
+        std::thread::scope(|sc| {
+            let st = sc.spawn(|| stamp_of(&path));
+            let r = listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string());
+            stamp_early = st.join().ok();
+            r
+        })
+    };
+    let t_read = t0.elapsed();
+    let mut entries = match read {
+        Ok(v) => v,
+        Err(e) => return json!({"ok": false, "error": e}),
+    };
+    let by = match sort {
+        "size" => listing::Sort::Size,
+        "modified" => listing::Sort::Modified,
+        "kind" => listing::Sort::Kind,
+        "created" => listing::Sort::Created,
+        _ => listing::Sort::Name,
+    };
+    let folders = listing::Folders::parse(folders);
+    listing::sort_with(&mut entries, by, descending, folders);
+    let size = icon_size.clamp(16, 256) as u32;
+    let looks = looks::load();
+    // Network drives (GVfs) don't keep tags, and asking costs a trip.
+    let tagged = !places::is_remote(&path);
+    let t_sorted = t0.elapsed();
+    let (mut t_icons, mut t_tags) = (std::time::Duration::ZERO, std::time::Duration::ZERO);
+    let count = entries.len();
+    let out: Vec<Value> = entries
+        .into_iter()
+        .map(|e| {
+            let ti = std::time::Instant::now();
+            let icon = icon_path(if e.dir {
+                ic.lookup("folder", size, 1)
+            } else {
+                ic.mime
+                    .icon_names(&e.mime)
+                    .iter()
+                    .find_map(|n| ic.lookup(n, size, 1))
+            });
+            t_icons += ti.elapsed();
+            let mut v = serde_json::to_value(&e).unwrap_or_default();
+            v["icon"] = json!(icon);
+            if let Some(o) = origins.get(&e.path) {
+                v["origin"] = json!(o);
+            }
+            if let Some(l) = looks.get(&e.path).filter(|_| e.dir) {
+                v["look"] = json!(l);
+            }
+            let tt = std::time::Instant::now();
+            let t = if tagged {
+                tags::read(Path::new(&e.path))
+            } else {
+                vec![]
+            };
+            t_tags += tt.elapsed();
+            if !t.is_empty() {
+                v["tags"] = json!(t);
+            }
+            v
+        })
+        .collect();
+    let t_entries = t0.elapsed();
+    let stamp = stamp_early.unwrap_or_else(|| stamp_of(&path));
+    if debug() {
+        let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0;
+        eprintln!(
+            "files-debug: list {path}: {count} entries in {:.0} ms (read {:.0}, sort {:.0}, icons {:.0}, tags {:.0}, stamp {:.0})",
+            ms(t0.elapsed()), ms(t_read), ms(t_sorted - t_read), ms(t_icons), ms(t_tags), ms(t0.elapsed() - t_entries)
+        );
+    }
+    json!({"ok": true, "entries": out, "stamp": stamp})
+}
+
+/// Changes when a folder's entries do (Fs.stamp; Ops.folderStamp).
+pub fn stamp_of(path: &str) -> f64 {
+    if let Some((archive, _)) = crate::archive::split_place(path) {
+        return stamp_of(&archive.to_string_lossy());
+    }
+    if path == RECENT {
+        // A file opened (the shared list) or the index made again.
+        return stamp_of(&recent::xbel_file().to_string_lossy())
+            + stamp_of(&search::index_file().to_string_lossy());
+    }
+    if path.starts_with(TAG) {
+        // Tagging or untagging anything changes the list.
+        return stamp_of(&tags::file().to_string_lossy());
+    }
+    if path == TRASH {
+        // Something trashed, restored or deleted changes an info folder.
+        return trash::all_trashes()
+            .iter()
+            .map(|t| stamp_of(&t.join("info").to_string_lossy()))
+            .sum();
+    }
+    // A folder's own modification time changes when its entries do.
+    std::fs::metadata(path)
+        .map(|m| m.mtime() as f64 * 1000.0 + m.mtime_nsec() as f64 / 1e6)
+        .unwrap_or(0.0)
+}
+
 impl qobject::Fs {
     pub fn list(
         &self,
@@ -428,165 +643,30 @@ impl qobject::Fs {
         icon_size: i32,
         folders: &QString,
     ) -> QString {
-        let path = path.to_string();
-        let ic = icons::shared();
-        // The Trash ("trash:"): everything in every Trash, named and typed as
-        // it was, dated when it was trashed, with where it came from.
-        let mut origins = std::collections::HashMap::new();
-        let read = if path == TRASH {
-            Ok(trash::list()
-                .into_iter()
-                .filter_map(|t| {
-                    let m = std::fs::symlink_metadata(&t.path).ok()?;
-                    let name = t.origin.file_name()?.to_string_lossy().into_owned();
-                    let p = t.path.to_string_lossy().into_owned();
-                    let dir = m.is_dir();
-                    origins.insert(
-                        p.clone(),
-                        t.origin
-                            .parent()
-                            .map(|d| d.to_string_lossy().into_owned())
-                            .unwrap_or_default(),
-                    );
-                    Some(listing::Entry {
-                        mime: if dir {
-                            "inode/directory".into()
-                        } else {
-                            ic.mime.type_of(&name).to_string()
-                        },
-                        hidden: false,
-                        executable: false,
-                        size: if dir { 0 } else { m.len() },
-                        modified: t.deleted,
-                        created: 0,
-                        link: m.file_type().is_symlink(),
-                        dir,
-                        path: p,
-                        name,
-                    })
-                })
-                .collect())
-        } else if let Some(tag) = path.strip_prefix(TAG) {
-            // A tag ("tag:Name"): every file with it, wherever it is.
-            Ok(scattered(tags::files_with(tag), &mut origins, &|n| {
-                ic.mime.type_of(n).to_string()
-            }))
-        } else if let Some((archive, inside)) = crate::archive::split_place(&path) {
-            // Inside an archive: what's in that folder of it.
-            crate::archive::list(&archive, &inside).map(|items| {
-                items
-                    .into_iter()
-                    .map(|i| {
-                        let name = i.path.rsplit('/').next().unwrap_or(&i.path).to_string();
-                        listing::Entry {
-                            mime: if i.dir {
-                                "inode/directory".into()
-                            } else {
-                                ic.mime.type_of(&name).to_string()
-                            },
-                            hidden: name.starts_with('.'),
-                            executable: false,
-                            size: i.size,
-                            modified: i.modified,
-                            created: 0,
-                            link: false,
-                            dir: i.dir,
-                            path: crate::archive::place(&archive, &i.path),
-                            name,
-                        }
-                    })
-                    .collect()
-            })
-        } else if path == START || path == CLEANUP || path == CONTAINERS {
-            Ok(vec![])
-        } else if path == RECENT {
-            // Recent: opened lately, or changed in the last two weeks.
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let xbel = std::fs::read_to_string(recent::xbel_file()).unwrap_or_default();
-            let list = recent::files(&xbel, &search::index_file(), &places::home(), now);
-            Ok(scattered(
-                list.into_iter().map(|(p, _)| p).collect(),
-                &mut origins,
-                &|n| ic.mime.type_of(n).to_string(),
-            ))
-        } else {
-            listing::read(Path::new(&path), hidden, |n| ic.mime.type_of(n).to_string())
-        };
-        let mut entries = match read {
-            Ok(v) => v,
-            Err(e) => return q(json!({"ok": false, "error": e})),
-        };
-        let by = match sort.to_string().as_str() {
-            "size" => listing::Sort::Size,
-            "modified" => listing::Sort::Modified,
-            "kind" => listing::Sort::Kind,
-            "created" => listing::Sort::Created,
-            _ => listing::Sort::Name,
-        };
-        let folders = listing::Folders::parse(&folders.to_string());
-        listing::sort_with(&mut entries, by, descending, folders);
-        let size = icon_size.clamp(16, 256) as u32;
-        let looks = looks::load();
-        let out: Vec<Value> = entries
-            .into_iter()
-            .map(|e| {
-                let icon = icon_path(if e.dir {
-                    ic.lookup("folder", size, 1)
-                } else {
-                    ic.mime
-                        .icon_names(&e.mime)
-                        .iter()
-                        .find_map(|n| ic.lookup(n, size, 1))
-                });
-                let mut v = serde_json::to_value(&e).unwrap_or_default();
-                v["icon"] = json!(icon);
-                if let Some(o) = origins.get(&e.path) {
-                    v["origin"] = json!(o);
-                }
-                if let Some(l) = looks.get(&e.path).filter(|_| e.dir) {
-                    v["look"] = json!(l);
-                }
-                let t = tags::read(Path::new(&e.path));
-                if !t.is_empty() {
-                    v["tags"] = json!(t);
-                }
-                v
-            })
-            .collect();
-        q(json!({"ok": true, "entries": out, "stamp": self.stamp_of(&path)}))
+        q(list_value(
+            &path.to_string(),
+            hidden,
+            &sort.to_string(),
+            descending,
+            icon_size,
+            &folders.to_string(),
+        ))
     }
 
     fn stamp_of(&self, path: &str) -> f64 {
-        if let Some((archive, _)) = crate::archive::split_place(path) {
-            return self.stamp_of(&archive.to_string_lossy());
-        }
-        if path == RECENT {
-            // A file opened (the shared list) or the index made again.
-            return self.stamp_of(&recent::xbel_file().to_string_lossy())
-                + self.stamp_of(&search::index_file().to_string_lossy());
-        }
-        if path.starts_with(TAG) {
-            // Tagging or untagging anything changes the list.
-            return self.stamp_of(&tags::file().to_string_lossy());
-        }
-        if path == TRASH {
-            // Something trashed, restored or deleted changes an info folder.
-            return trash::all_trashes()
-                .iter()
-                .map(|t| self.stamp_of(&t.join("info").to_string_lossy()))
-                .sum();
-        }
-        // A folder's own modification time changes when its entries do.
-        std::fs::metadata(path)
-            .map(|m| m.mtime() as f64 * 1000.0 + m.mtime_nsec() as f64 / 1e6)
-            .unwrap_or(0.0)
+        stamp_of(path)
     }
 
     pub fn stamp(&self, path: &QString) -> f64 {
         self.stamp_of(&path.to_string())
+    }
+
+    pub fn debug(&self) -> bool {
+        debug()
+    }
+
+    pub fn is_remote(&self, path: &QString) -> bool {
+        crate::places::is_remote(&path.to_string())
     }
 
     pub fn places(&self) -> QString {

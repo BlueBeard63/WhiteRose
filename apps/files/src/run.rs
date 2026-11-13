@@ -26,6 +26,13 @@ pub enum Kind {
 }
 
 pub fn kind_of(path: &Path, mime: &str) -> Kind {
+    let real = crate::places::permissions_mean_something(&path.to_string_lossy());
+    kind_with(path, mime, real)
+}
+
+/// `kind_of`, told whether the drive's run permissions are real (a network
+/// drive, FAT or NTFS shows every file as runnable).
+pub fn kind_with(path: &Path, mime: &str, permissions_real: bool) -> Kind {
     let Ok(m) = std::fs::metadata(path) else {
         return Kind::None;
     };
@@ -49,7 +56,26 @@ pub fn kind_of(path: &Path, mime: &str) -> Kind {
     if program_type {
         return Kind::Program;
     }
-    if exec {
+    // The run permission only counts where it's real, and never makes a
+    // document, picture, video or sound something to run: those open in
+    // their app (a PDF marked runnable is still a PDF).
+    let document = mime.starts_with("image/")
+        || mime.starts_with("video/")
+        || mime.starts_with("audio/")
+        || mime.starts_with("font/")
+        || mime == "application/pdf"
+        || mime.starts_with("application/vnd.")
+        || mime.starts_with("application/msword")
+        || [
+            "text/html",
+            "text/markdown",
+            "text/csv",
+            "application/epub+zip",
+            "application/zip",
+            "application/json",
+        ]
+        .contains(&mime);
+    if exec && permissions_real && !document {
         let script = mime.starts_with("text/")
             || [
                 "application/x-shellscript",
@@ -150,6 +176,34 @@ mod tests {
             Kind::Launcher
         );
         assert_eq!(kind_of(&d, "inode/directory"), Kind::None);
+        // Marked runnable, but a document: opens in its app.
+        assert_eq!(
+            kind_with(&w("book.pdf", 0o755), "application/pdf", true),
+            Kind::None
+        );
+        assert_eq!(
+            kind_with(&w("photo.jpg", 0o700), "image/jpeg", true),
+            Kind::None
+        );
+        // A drive whose permissions mean nothing (Nextcloud through GVfs,
+        // FAT): even text and unknown files just open...
+        assert_eq!(
+            kind_with(&w("notes2.txt", 0o700), "text/plain", false),
+            Kind::None
+        );
+        assert_eq!(
+            kind_with(&w("data.bin", 0o700), "application/octet-stream", false),
+            Kind::None
+        );
+        // ...but a real program still asks.
+        assert_eq!(
+            kind_with(
+                &w("App2.AppImage", 0o700),
+                "application/vnd.appimage",
+                false
+            ),
+            Kind::Program
+        );
     }
 
     #[test]
