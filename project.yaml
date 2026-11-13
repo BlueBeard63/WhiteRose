@@ -14,9 +14,21 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.3.0-alpha.2
+version: 0.3.0-alpha.3
 
 releases:
+  - version: 0.3.0-alpha.3
+    date: 2026-11-13
+    title: X11 apps (alpha)
+    summary: >-
+      A fix for alpha.2, which could crash at login and go back to alpha.1. Everything else is as in alpha.2. Still installed by hand; the in-app updater stays on full releases.
+    fixed:
+      - "Shaking the pointer to find it could crash WhiteRose, so alpha.2 often failed to start and went back to alpha.1"
+      - "The pointer grown by shaking it was cut off instead of drawn bigger"
+    notes: |
+      Install it with this release's `install.sh`. If alpha.2 went back to alpha.1 for you, remove it first (`sudo apt remove whiterose-core-0.3.0-alpha.2`, or `sudo dnf remove` on Fedora) so alpha.3 is the one tried at your next login. Your settings carry over.
+    contributors: [BlueBeard63]
+
   - version: 0.3.0-alpha.2
     date: 2026-11-13
     title: X11 apps (alpha)

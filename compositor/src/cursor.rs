@@ -21,7 +21,7 @@ use smithay::{
     },
     input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus},
     reexports::wayland_server::Resource,
-    utils::{Logical, Point, Scale, Size, Transform},
+    utils::{Logical, Point, Rectangle, Scale, Size, Transform},
     wayland::compositor,
 };
 
@@ -156,8 +156,16 @@ impl Cursors {
         // (Grown: the big image drawn at the size wanted now.)
         let k = if grow > 1.0 { self.size as f64 * grow / l.nominal } else { 1.0 };
         let loc = (at - l.hotspot.upscale(k)).to_physical(scale);
-        let size = (grow > 1.0).then(|| l.size.upscale(k).to_i32_round());
-        match MemoryRenderBufferRenderElement::from_buffer(renderer, loc, &l.buffer, None, None, size, Kind::Cursor) {
+        // The source must be the whole image: given only a size, smithay
+        // takes the source to be that size from the top-left, a crop at 1:1,
+        // and its cursor-plane copy then writes the full image rows into the
+        // smaller plane buffer (out of bounds: alpha.2's crash at login).
+        let (src, size) = if grow > 1.0 {
+            (Some(Rectangle::from_size(l.size)), Some(l.size.upscale(k).to_i32_round()))
+        } else {
+            (None, None)
+        };
+        match MemoryRenderBufferRenderElement::from_buffer(renderer, loc, &l.buffer, None, src, size, Kind::Cursor) {
             Ok(e) => vec![OutputElement::Image(e)],
             Err(err) => {
                 tracing::warn!(?err, "cursor upload failed");
