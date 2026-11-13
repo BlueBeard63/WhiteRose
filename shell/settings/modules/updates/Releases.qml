@@ -38,15 +38,28 @@ Column {
             }
         });
     }
-    function act(op, extra) {
+    // What's going on (a line under the switch), and what came of it.
+    property string doing: ""
+    property string note: ""
+    function act(op, extra, doing, done) {
         page.waiting = true;
         page.error = "";
+        page.note = "";
+        page.doing = doing ?? "";
         Daemon.request(Object.assign({ op: op }, extra ?? {}), (v, err) => {
             if (!page) return;
             page.waiting = false;
+            page.doing = "";
             page.error = err ?? "";
+            if (!err && done) page.note = done;
             page.refresh();
         });
+    }
+    function install(r) {
+        const v = r.version;
+        page.act("update_install_version", { name: v },
+            r.state === "installed" ? "Switching to " + v + "…" : "Getting " + v + " and installing it beside this version. It asks for your password…",
+            "WhiteRose " + v + " starts the next time you log in.");
     }
     // Install or switch to a release; one older than the newest asks first.
     function choose(r) {
@@ -54,7 +67,7 @@ Column {
             confirmOlder.release = r;
             confirmOlder.open();
         } else {
-            page.act("update_install_version", { version: r.version });
+            page.install(r);
         }
     }
     function toggle(name) {
@@ -72,7 +85,7 @@ Column {
         title: "Releases"
         subtitle: "Every WhiteRose release by version. Install any of them beside the one you're on."
         Button {
-            text: page.waiting ? "Checking…" : "Check now"
+            text: page.waiting && page.doing === "" ? "Checking…" : "Check now"
             icon: "refresh"
             enabled: !page.waiting
             onClicked: page.act("update_check")
@@ -103,6 +116,14 @@ Column {
         }
     }
 
+    Text {
+        visible: page.doing !== "" || page.note !== ""
+        width: parent.width
+        wrapMode: Text.Wrap
+        text: page.doing || page.note
+        color: Theme.muted
+        font { family: Theme.font; pointSize: Theme.pt(11.5) }
+    }
     Text {
         visible: page.error !== ""
         width: parent.width
@@ -284,9 +305,9 @@ Column {
                 text: (confirmOlder.release?.state === "installed" ? "Switch to " : "Install ") + confirmOlder.version
                 kind: "primary"
                 onClicked: {
-                    const v = confirmOlder.version;
+                    const r = confirmOlder.release;
                     confirmOlder.close();
-                    page.act("update_install_version", { version: v });
+                    page.install(r);
                 }
             }
         ]

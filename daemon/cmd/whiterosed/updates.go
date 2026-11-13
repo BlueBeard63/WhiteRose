@@ -43,13 +43,14 @@ var versionRe = regexp.MustCompile(`^[0-9][0-9A-Za-z.~-]{0,39}$`)
 
 // cmdUpdateRoot installs a downloaded update, run through pkexec:
 //
-//	whiterosed update-root DIR KEEP
+//	whiterosed update-root DIR KEEP [CHOSEN]
 //
 // It copies the download into a folder of its own, checks it again (the
 // signature by the installed release key, every package against the signed
 // checksums: nothing in DIR is trusted), installs the packages with apt or
 // dnf beside the versions already there, then uninstalls versions older
-// than the two kept (the new one, and KEEP: the one running).
+// than the two kept (the new one, and KEEP: the one running), keeping
+// CHOSEN too: a release picked under Releases (an older one included).
 func cmdUpdateRoot(args []string, stdout, stderr io.Writer) int {
 	fail := func(f string, a ...any) int {
 		fmt.Fprintf(stderr, "whiterosed update-root: "+f+"\n", a...)
@@ -58,11 +59,14 @@ func cmdUpdateRoot(args []string, stdout, stderr io.Writer) int {
 	if os.Geteuid() != 0 {
 		return fail("run through pkexec (it installs system packages)")
 	}
-	if len(args) != 2 || !versionRe.MatchString(args[1]) {
-		fmt.Fprintln(stderr, "usage: whiterosed update-root DIR KEEP_VERSION")
+	if len(args) < 2 || len(args) > 3 || !versionRe.MatchString(args[1]) || (len(args) == 3 && !versionRe.MatchString(args[2])) {
+		fmt.Fprintln(stderr, "usage: whiterosed update-root DIR KEEP_VERSION [CHOSEN_VERSION]")
 		return 2
 	}
-	src, keep := args[0], args[1]
+	src, keep, chosen := args[0], args[1], ""
+	if len(args) == 3 {
+		chosen = args[2]
+	}
 	kind := packageKind()
 	if kind == "" {
 		return fail("this distribution isn't supported (Ubuntu or Fedora)")
@@ -118,7 +122,7 @@ func cmdUpdateRoot(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Never more than two versions on disk.
-	for _, v := range update.Remove(update.Installed(update.Root), keep) {
+	for _, v := range update.Remove(update.Installed(update.Root), keep, chosen) {
 		pkg := update.CorePackage(v)
 		fmt.Fprintln(stdout, "removing", pkg)
 		if kind == "deb" {
@@ -235,13 +239,17 @@ func newUpdater(st *store.Store, cache string, broadcast func(any)) *updater.Man
 		},
 		Restart: restartSession,
 		Emit:    broadcast,
-		Install: func(ctx context.Context, dir, keep string, line func(string)) error {
+		Install: func(ctx context.Context, dir, keep, chosen string, line func(string)) error {
 			self, err := rootSelf()
 			if err != nil {
 				return err
 			}
 			var stderr bytesTail
-			cmd := exec.CommandContext(ctx, "pkexec", self, "update-root", dir, keep)
+			args := []string{self, "update-root", dir, keep}
+			if chosen != "" {
+				args = append(args, chosen)
+			}
+			cmd := exec.CommandContext(ctx, "pkexec", args...)
 			cmd.Stderr = &stderr
 			out, err := cmd.StdoutPipe()
 			if err != nil {
@@ -320,7 +328,14 @@ func updateOps(m *updater.Manager) map[string]func(server.Request) (any, error) 
 			defer cancel()
 			return status(m.InstallNow(ctx))
 		},
-		"update_releases":      func(server.Request) (any, error) { return m.Releases(), nil },
+		"update_releases": func(server.Request) (any, error) { return m.Releases(), nil },
+		// Releases: install (if need be) and switch to release Name at the
+		// next login, newer or older.
+		"update_install_version": func(r server.Request) (any, error) {
+			ctx, cancel := long()
+			defer cancel()
+			return status(m.InstallVersion(ctx, r.Name))
+		},
 		"update_apply":         func(server.Request) (any, error) { return status(m.Apply()) },
 		"update_restart":       func(server.Request) (any, error) { return status(m.RestartSession()) },
 		"update_rollback":      func(server.Request) (any, error) { return status(m.Rollback()) },

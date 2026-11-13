@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,8 +48,9 @@ type Manager struct {
 	Launcher bool
 
 	// Install runs the root half: install the packages in dir, keep `keep`
-	// (the running version), remove older ones. Progress lines go to `line`.
-	Install func(ctx context.Context, dir, keep string, line func(string)) error
+	// (the running version) and `chosen` (a release picked under Releases,
+	// or ""), remove older ones. Progress lines go to `line`.
+	Install func(ctx context.Context, dir, keep, chosen string, line func(string)) error
 	// Restart asks the compositor to restart the session.
 	Restart func() error
 	Metered func() bool
@@ -455,7 +457,7 @@ func (m *Manager) InstallNow(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	err := m.Install(ctx, m.Dir(ver), m.Running, func(string) {})
+	err := m.Install(ctx, m.Dir(ver), m.Running, "", func(string) {})
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -508,6 +510,120 @@ func (m *Manager) Rollback() error {
 		s.Current = m.Running
 		return launch.Rollback(s, prev)
 	})
+}
+
+// InstallVersion: a release picked under Settings › Updates › Releases,
+// newer or older than this one. Not installed yet: downloaded and checked
+// as an update is, then installed beside the others; one older than what's
+// installed brings only its core package (whiterose-core-<version>), so
+// the whiterose package (the session and commands, shared by every
+// version) is never downgraded. Then it's the one started at the next
+// login: a newer one with the health check (Apply); an older one like
+// Roll back (the newer one isn't tried again until a newer release).
+func (m *Manager) InstallVersion(ctx context.Context, version string) error {
+	installed := update.Installed(m.Root)
+	if !slices.Contains(installed, version) {
+		m.mu.Lock()
+		m.load()
+		var rel *update.Release
+		for i := range m.saved.Releases {
+			if m.saved.Releases[i].Version() == version {
+				rel = &m.saved.Releases[i]
+				break
+			}
+		}
+		if rel == nil {
+			m.mu.Unlock()
+			return errors.New("that release isn't in the list: check for updates, then try again")
+		}
+		if err := m.start("downloading"); err != nil {
+			m.mu.Unlock()
+			return err
+		}
+		r := *rel
+		m.mu.Unlock()
+
+		dir := m.Dir(version)
+		os.RemoveAll(dir)
+		_, _, err := m.Src.Fetch(ctx, r, m.Kind, m.Public, dir, func(done, total int64) {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			m.done, m.total = done, total
+			if t := m.now(); t.Sub(m.lastEmit) > 250*time.Millisecond || done == total {
+				m.lastEmit = t
+				m.emit()
+			}
+		})
+		if err == nil && len(installed) > 0 && update.Newer(installed[len(installed)-1], version) {
+			err = coreOnly(dir, version)
+		}
+		m.mu.Lock()
+		if err != nil {
+			os.RemoveAll(dir)
+			m.finish(err)
+			m.mu.Unlock()
+			return err
+		}
+		m.busy = "installing"
+		m.emit()
+		m.mu.Unlock()
+
+		err = m.Install(ctx, dir, m.Running, version, func(string) {})
+		os.RemoveAll(dir)
+		m.mu.Lock()
+		m.finish(err)
+		m.mu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	installed = update.Installed(m.Root)
+	if !slices.Contains(installed, version) {
+		return errors.New("it didn't install")
+	}
+	newest := installed[len(installed)-1]
+	return m.change(func(s launch.State) launch.State {
+		if s.Current == "" {
+			s.Current = m.Running
+		}
+		if update.Newer(version, s.Current) {
+			s = launch.Apply(s, version)
+		} else {
+			s = launch.Rollback(s, version)
+		}
+		// Not the newest: the launcher would otherwise start the newest
+		// (it moves on to newer installs by itself) until a newer release.
+		if version != newest {
+			s.Skip = newest
+		}
+		return s
+	})
+}
+
+// coreOnly leaves only `version`'s core package in dir (an older release:
+// the whiterose package installed stays the newer one).
+func coreOnly(dir, version string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	core := false
+	for _, e := range entries {
+		n := e.Name()
+		switch {
+		case n == "SHA256SUMS" || n == "SHA256SUMS.sig":
+		case strings.HasPrefix(n, update.CorePackage(version)+"_") || strings.HasPrefix(n, update.CorePackage(version)+"-"):
+			core = true
+		default:
+			if err := os.Remove(filepath.Join(dir, n)); err != nil {
+				return err
+			}
+		}
+	}
+	if !core {
+		return errors.New("the release has no core package for this system")
+	}
+	return nil
 }
 
 // UndoRollback: stay on the running version after all.

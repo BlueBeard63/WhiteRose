@@ -74,7 +74,7 @@ func setup(t *testing.T, running string) (*Manager, *[]any) {
 	if running != "" {
 		installVersion(t, m.Root, running)
 	}
-	m.Install = func(ctx context.Context, dir, keep string, line func(string)) error {
+	m.Install = func(ctx context.Context, dir, keep, chosen string, line func(string)) error {
 		// What the root helper does: check the download again, install it.
 		if _, err := update.VerifyDir(dir, "deb", pub); err != nil {
 			return err
@@ -310,5 +310,67 @@ func TestRollbackAndPrompt(t *testing.T) {
 	}
 	if st := launch.Load(f); st.Pending != "0.5.0" || st.Attempts != 0 || st.Failed != "" {
 		t.Errorf("%+v", st)
+	}
+}
+
+// Releases › Install on an older release: only its core package goes in,
+// the chosen one is kept, and it starts at the next login without the
+// launcher moving back up to the newest.
+func TestInstallOlderVersion(t *testing.T) {
+	priv, pub, _ := update.NewKey()
+	var gotFiles []string
+	var gotChosen string
+	m := &Manager{
+		Src: fakeGitHub(t, "0.4.2", priv), Public: pub, Kind: "deb",
+		Root: t.TempDir(), State: t.TempDir(), Cache: t.TempDir(), Running: "0.5.0", Launcher: true,
+	}
+	installVersion(t, m.Root, "0.5.0")
+	m.Install = func(ctx context.Context, dir, keep, chosen string, line func(string)) error {
+		if _, err := update.VerifyDir(dir, "deb", pub); err != nil {
+			return err
+		}
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			gotFiles = append(gotFiles, e.Name())
+		}
+		gotChosen = chosen
+		installVersion(t, m.Root, "0.4.2")
+		return nil
+	}
+	ctx := context.Background()
+	if err := m.InstallVersion(ctx, "0.4.2"); err == nil {
+		t.Fatal("installed a release it hasn't listed")
+	}
+	if err := m.Check(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.InstallVersion(ctx, "0.4.2"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(gotFiles, " ") != "SHA256SUMS SHA256SUMS.sig whiterose-core-0.4.2_0.4.2_amd64.deb" || gotChosen != "0.4.2" {
+		t.Errorf("installed %v (chosen %q)", gotFiles, gotChosen)
+	}
+	st := launch.Load(launch.StateFile(m.State))
+	plan, _, _ := launch.Decide(st, update.Installed(m.Root), update.Newer)
+	if plan.Version != "0.4.2" || plan.Trial || st.Skip != "0.5.0" {
+		t.Errorf("next login: %+v, state %+v", plan, st)
+	}
+	if _, err := os.Stat(m.Dir("0.4.2")); err == nil {
+		t.Error("the download is still there")
+	}
+}
+
+// Switching to an installed version that isn't the newest: health-checked
+// at the next login, and the newest doesn't take its place.
+func TestSwitchToInstalledVersion(t *testing.T) {
+	m, _ := setup(t, "0.4.1")
+	installVersion(t, m.Root, "0.4.2")
+	installVersion(t, m.Root, "0.5.0")
+	if err := m.InstallVersion(context.Background(), "0.4.2"); err != nil {
+		t.Fatal(err)
+	}
+	plan, _, _ := launch.Decide(launch.Load(launch.StateFile(m.State)), update.Installed(m.Root), update.Newer)
+	if plan.Version != "0.4.2" || !plan.Trial || plan.Fallback != "0.4.1" {
+		t.Errorf("%+v", plan)
 	}
 }
