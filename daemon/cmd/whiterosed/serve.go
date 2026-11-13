@@ -420,6 +420,12 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		srv.Ops[name] = op
 	}
 	go reps.watch()
+	// Memory running out: name (and later close) the app at fault.
+	mem := newMemWatch(st, srv.Broadcast)
+	for name, op := range mem.ops() {
+		srv.Ops[name] = op
+	}
+	go mem.run()
 	every := func(d time.Duration, fn func()) {
 		for {
 			fn()

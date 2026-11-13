@@ -31,6 +31,8 @@ Singleton {
     signal reportRequested(string from)
     // A crash record got its snapshot (the "Report this" prompt).
     signal reportSnapshotsEvent(var list)
+    // Memory is running out (the memory watcher names the app at fault).
+    signal memoryWarning(var e)
     signal lockRequested()
     signal unlockRequested()
 
@@ -95,6 +97,7 @@ Singleton {
         case "unlock": root.unlockRequested(); break;
         case "report_show": root.reportRequested(msg.from ?? ""); break;
         case "report_snapshots": root.reportSnapshotsEvent(msg.snapshots ?? []); break;
+        case "memory_warning": root.memoryWarning(msg); break;
         }
     }
 

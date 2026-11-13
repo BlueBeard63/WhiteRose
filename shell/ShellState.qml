@@ -24,6 +24,9 @@ Singleton {
     // file's; see IslandView.qml), found when the shell starts.
     property var islandViews: []
     readonly property var views: ["idle"].concat(islandViews)
+    // A prompt that came before the views were found (a crash, memory
+    // running out, right as the shell starts): offered once they are.
+    onIslandViewsChanged: { offerCrash(); offerMemory() }
     Process {
         running: true
         command: ["sh", "-c", "for f in \"$1\"/*.qml; do [ -f \"$f\" ] && basename \"$f\" .qml; done; true", "sh", Quickshell.shellDir + "/island"]
@@ -33,7 +36,9 @@ Singleton {
     // The screen (connector) a view is for, if only one: the others' islands
     // stay at rest. "" for every screen.
     property string islandScreen: ""
-    function show(view) { if (views.includes(view)) { islandView = view; islandScreen = ""; if (view !== "idle") panel = "" } }
+    // (islandViews, not views: read while islandViews is changing, views
+    // can still be the old list.)
+    function show(view) { if (view === "idle" || islandViews.includes(view)) { islandView = view; islandScreen = ""; if (view !== "idle") panel = "" } }
     function toggle(view) { islandView === view ? close() : show(view) }
     function close() { islandView = "idle"; islandScreen = "" }
 
@@ -65,8 +70,9 @@ Singleton {
             crashWaiting = reportPrompt;
             reportPrompt = null;
         }
-        // A crash waiting to be offered: now, if the island is free.
+        // A crash or a memory warning waiting: now, if the island is free.
         offerCrash();
+        if (islandView === "idle") offerMemory();
     }
 
     // The side panel hanging from the bar: "" (none) or "quick". Only one
@@ -109,7 +115,8 @@ Singleton {
     function askUpdates() {
         if (Daemon.connected) Daemon.request({ op: "updates" }, v => { if (v) root.noteUpdates(v) });
     }
-    Component.onCompleted: askUpdates()
+    // (Already connected when this was made: asked now.)
+    Component.onCompleted: { askUpdates(); askMemory(); askCrashes() }
 
     // An item is being dragged out of the island: keep it open meanwhile.
     property bool dragging: false
@@ -190,7 +197,7 @@ Singleton {
             promptReport(c);
         }
     }
-    onLockedChanged: offerCrash()
+    onLockedChanged: { offerCrash(); offerMemory() }
     // SUPER+SHIFT+B: a snapshot of this moment, then the offer to report it.
     function snapshotNow() {
         Daemon.request({ op: "report_snapshot_now" }, (v, err) => {
@@ -198,13 +205,30 @@ Singleton {
             root.promptReport({ id: v.id, what: "manual", title: "Snapshot you took", time: Date.now() });
         });
     }
+    // Memory running out (island/memory.qml): { level, app, available, total }.
+    // Shown over nothing but the idle island or itself; else it waits.
+    property var memoryWarning: null
+    function offerMemory() {
+        if (memoryWarning && (islandView === "idle" || islandView === "memory") && !locked) show("memory");
+    }
+    Connections {
+        target: Daemon
+        function onMemoryWarning(e) { root.memoryWarning = e; root.offerMemory() }
+        // Connected (or reconnected after a restart): the warning showing, if any.
+        function onConnectedChanged() { root.askMemory() }
+    }
+    function askCrashes() {
+        if (Daemon.connected) Daemon.request({ op: "report_snapshots" }, v => { if (v) root.noteCrashes(v) });
+    }
+    function askMemory() {
+        if (Daemon.connected) Daemon.request({ op: "memory_warning" }, v => { if (v) { root.memoryWarning = v; root.offerMemory(); } });
+    }
+
     Connections {
         target: Daemon
         function onReportRequested(from) { root.report(from) }
         function onReportSnapshotsEvent(list) { root.noteCrashes(list) }
-        function onConnectedChanged() {
-            if (Daemon.connected) Daemon.request({ op: "report_snapshots" }, v => { if (v) root.noteCrashes(v) });
-        }
+        function onConnectedChanged() { root.askCrashes() }
     }
     IpcHandler {
         target: "report"

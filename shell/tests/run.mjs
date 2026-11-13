@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
@@ -27,6 +27,7 @@ const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "p
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
 const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn", "crashToPrompt", "promptText"]);
+const Mem = load("Memory.js", ["size", "warningText", "appName"]);
 const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
@@ -1240,6 +1241,21 @@ test("shell quoting for desktop entries run in a terminal", () => {
     assert.equal(Search.shellQuote("two words"), "'two words'");
     assert.equal(Search.shellQuote("it's"), "'it'\\''s'");
     assert.equal(Search.shellQuote("$(rm -rf ~)"), "'$(rm -rf ~)'");
+});
+
+test("memory warning words", () => {
+    const GB = 1 << 30;
+    assert.equal(Mem.appName("org.mozilla.firefox"), "Firefox");
+    assert.equal(Mem.appName("code"), "Code");
+    assert.equal(Mem.appName(""), "This app");
+    assert.equal(Mem.size(6.2 * GB), "6.2 GB");
+    assert.equal(Mem.size(12.4 * GB), "12 GB");
+    assert.equal(Mem.size(850 * (1 << 20)), "850 MB");
+    assert.equal(Mem.warningText({ app: { bytes: 6.2 * GB, growing: true, reason: "growing" } }, "Firefox")[0], "Firefox is using 6.2 GB and still growing");
+    assert.equal(Mem.warningText({ app: { bytes: 9 * GB, reason: "half" } }, "Code")[0], "Code is using 9 GB, more than half of memory");
+    const [t, x] = Mem.warningText({ app: { bytes: 2.1 * GB, reason: "biggest" } }, "Files");
+    assert.equal(t, "Memory is nearly full");
+    assert.ok(x.startsWith("Files is using the most (2.1 GB)."));
 });
 
 // ---- the bug report flow (Report.js) -------------------------------------------
