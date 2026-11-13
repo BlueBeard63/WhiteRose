@@ -1280,6 +1280,13 @@ test("old-version reports: versions", () => {
     assert.equal(Old.reportedVersion(form("WhiteRose v0.2.1")), "0.2.1");
     assert.equal(Old.reportedVersion(form("latest")), "");
     assert.equal(Old.reportedVersion("no form at all"), "");
+    const id = "ab".repeat(32);
+    assert.equal(Old.reportedBuild("### Build\n\n" + id.toUpperCase() + "\n\n### What happened"), id);
+    assert.equal(Old.reportedBuild("### Build\n\nnot one\n"), "");
+    const sums = "cd".repeat(32) + "  whiterose_0.3.1_amd64.deb\n" + id + "  build-0.3.1-rpm\n";
+    assert.equal(Old.listsBuild(sums, "0.3.1", id), true);
+    assert.equal(Old.listsBuild(sums, "0.3.2", id), false, "another version's build");
+    assert.equal(Old.listsBuild(sums, "0.3.1", "ef".repeat(32)), false);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

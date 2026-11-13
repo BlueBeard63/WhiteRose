@@ -1,8 +1,11 @@
-name: old-version reports
+name: bug report checks
 
-# Bug reports from a version older than the newest release are closed with
-# a note to update first (the rule is in .github/scripts/old-version.js;
-# Settings › Updates › Releases warns about it before switching back).
+# Bug reports are closed with a short note when they didn't come from an
+# official build (their build ID isn't in the release's signed SHA256SUMS:
+# forks and rebuilt builds report to whoever made them), or come from a
+# version older than the newest release (Settings › Updates › Releases
+# warns about that before switching back). The rules are in
+# .github/scripts/old-version.js.
 on:
   issues:
     types: [opened]
