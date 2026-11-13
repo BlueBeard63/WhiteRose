@@ -212,7 +212,10 @@ func setup(t *testing.T) Config {
 		Command:   func(dir string) []string { return []string{filepath.Join(dir, "bin/whiterose-wm")} },
 		Env:       []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home},
 		Installed: update.Installed, Newer: update.Newer,
-		Ready: 300 * time.Millisecond, Survive: 400 * time.Millisecond, Stop: time.Second,
+		// Long enough for a slow machine (CI, the race detector) to start
+		// a shell script: the fakes that come up, crash or exit do so at
+		// once, so only the one that hangs waits it out.
+		Ready: 2 * time.Second, Survive: 3 * time.Second, Stop: time.Second,
 		Logf: t.Logf,
 	}
 }
@@ -234,6 +237,7 @@ func TestRunFailsBack(t *testing.T) {
 	for name, script := range map[string]string{"crashes": crashes, "hangs": hangs} {
 		t.Run(name, func(t *testing.T) {
 			c := setup(t)
+
 			// The old version notes it ran (and with which settings).
 			version(t, c.Root, "0.4.2", comesUp+`cat "$HOME/.config/whiterose/look.conf" > "$HOME/ran-0.4.2"`+"\nexit 0\n")
 			// The new one changes a setting, then fails.
