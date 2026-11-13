@@ -183,7 +183,9 @@ func TestSettingsNarrowRailOpensTheSidebarOverThePage(t *testing.T) {
 	searchBox := uitest.Named("Search settings").Role("text")
 	menu := uitest.Named("Menu").Role("push button")
 	settings.WaitFor(menu)
-	if n, ok := settings.Find(searchBox); ok && n.Showing() {
+	// (Settings was wide until Files opened beside it: the sidebar slides
+	// away into the rail, which takes a moment drawn in software.)
+	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(searchBox); return !ok || !n.Showing() }) {
 		t.Fatal("the sidebar's search box shows before Menu opened it")
 	}
 	settings.Click(menu)
