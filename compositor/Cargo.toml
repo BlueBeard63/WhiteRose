@@ -15,6 +15,8 @@ name = "whiterose-wm"
 path = "src/main.rs"
 
 [dependencies]
+# Asking our Xwayland whether any X11 app is still connected (XRes).
+x11rb = { version = "0.13", features = ["res"] }
 bitflags = "2"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 png = "0.17"
@@ -52,7 +54,6 @@ features = [
 ]
 
 [dev-dependencies]
-x11rb = "0.13"
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
 [profile.release]

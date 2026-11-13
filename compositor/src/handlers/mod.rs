@@ -59,7 +59,10 @@ impl SelectionHandler for WhiteRose {
         source: Option<smithay::wayland::selection::SelectionSource>,
         _seat: Seat<Self>,
     ) {
-        // X11 apps paste it too.
+        // X11 apps paste it too (now, or when Xwayland starts).
+        if ty == smithay::wayland::selection::SelectionTarget::Clipboard {
+            self.xwayland.clipboard = source.as_ref().map(|s| s.mime_types());
+        }
         if let Some(wm) = self.xwayland.wm.as_mut() {
             let _ = wm.new_selection(ty, source.as_ref().map(|s| s.mime_types()));
         }

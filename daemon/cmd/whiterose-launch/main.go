@@ -30,8 +30,9 @@ func main() {
 			"--daemon", "whiterosed serve",
 			"--shell", "qs -p " + filepath.Join(dir, "shell"),
 			// Apps started by D-Bus and systemd (portals, the file chooser)
-			// need to find this session's display.
-			"-c", "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WHITEROSE_DIR",
+			// need to find this session's displays (DISPLAY: X11 apps, by
+			// way of XWayland, which starts when the first one connects).
+			"-c", "dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WHITEROSE_DIR",
 		}
 	}
 	logf := func(format string, args ...any) {

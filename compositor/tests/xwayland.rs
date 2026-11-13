@@ -45,21 +45,16 @@ use x11rb::protocol::{
 
 const BTN_LEFT: u32 = 0x110;
 
-/// A compositor with Xwayland running and the bar open; None (the test is
-/// skipped) without an Xwayland.
+/// A compositor taking X11 apps (Xwayland starts with the first that
+/// connects) with the bar open; the test is skipped without an Xwayland.
 fn with_x11(test: impl FnOnce(&mut Headless) + 'static) {
     if which("Xwayland").is_none() {
         eprintln!("skipped: Xwayland isn't installed");
         return;
     }
     let mut h = Headless::new(true);
-    let handle = h.event_loop.handle();
-    h.state.start_xwayland(&handle);
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while h.state.xwayland.wm.is_none() {
-        assert!(Instant::now() < deadline, "Xwayland didn't start");
-        h.dispatch();
-    }
+    h.state.listen_xwayland();
+    assert!(h.state.xwayland.display.is_some(), "an X display is taken");
     test(&mut h);
 }
 
@@ -561,6 +556,81 @@ fn an_x11_app_without_the_keyboard_cant_read_the_clipboard() {
             ask.run(|s| s.offer_clipboard(vec![(TEXT.into(), b"secret".to_vec())]));
             let display = ask.run(|s| s.xwayland.display.unwrap());
             assert_eq!(pasted(&mut c, x11_paste(display)), None);
+        });
+    });
+}
+
+// ---------------------------------------------------------------- on demand
+
+#[test]
+fn xwayland_starts_with_the_first_x11_app() {
+    with_x11(|h| {
+        for _ in 0..50 {
+            h.dispatch();
+        }
+        assert!(!h.state.xwayland.running(), "no X server until an X11 app wants one");
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_bar();
+            let x = X::connect(&ask);
+            x.open("First", "first", None);
+            opened(&ask, "First");
+            ask.run(|s| assert!(s.xwayland.running() && s.xwayland.wm.is_some()));
+        });
+    });
+}
+
+#[test]
+fn xwayland_exits_after_the_last_x11_app_and_comes_back_for_the_next() {
+    with_x11(|h| {
+        h.state.xwayland.linger = 1;
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_bar();
+            let x = X::connect(&ask);
+            x.open("Once", "once", None);
+            opened(&ask, "Once");
+            drop(x);
+            until(&ask, "Xwayland exits and its window goes", |s| {
+                !s.xwayland.running() && by_class(s, "Once").is_none()
+            });
+            let x = X::connect(&ask);
+            x.open("Again", "again", None);
+            opened(&ask, "Again");
+            ask.run(|s| assert!(s.xwayland.running()));
+        });
+    });
+}
+
+/// The pid of the Xwayland serving display `n` (this test's own).
+fn xwayland_pid(n: u32) -> Option<u32> {
+    std::fs::read_dir("/proc").ok()?.flatten().find_map(|e| {
+        let pid: u32 = e.file_name().to_str()?.parse().ok()?;
+        let cmd = std::fs::read(e.path().join("cmdline")).ok()?;
+        let args: Vec<&[u8]> = cmd.split(|b| *b == 0).collect();
+        let ours =
+            args.first().is_some_and(|a| a.ends_with(b"Xwayland")) && args.get(1) == Some(&format!(":{n}").as_bytes());
+        ours.then_some(pid)
+    })
+}
+
+#[test]
+fn a_crashed_xwayland_starts_again_for_the_next_x11_app() {
+    with_x11(|h| {
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_bar();
+            let x = X::connect(&ask);
+            x.open("Doomed", "doomed", None);
+            opened(&ask, "Doomed");
+            let n = ask.run(|s| s.xwayland.display.unwrap());
+            let pid = xwayland_pid(n).expect("its Xwayland");
+            std::process::Command::new("kill").arg("-9").arg(pid.to_string()).status().unwrap();
+            drop(x);
+            until(&ask, "its window goes", |s| !s.xwayland.running() && by_class(s, "Doomed").is_none());
+            let x = X::connect(&ask);
+            x.open("Again", "again", None);
+            opened(&ask, "Again");
         });
     });
 }

@@ -17,7 +17,15 @@ use smithay::{
     desktop::Window,
     input::pointer::GrabStartData as PointerGrabStartData,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    reexports::{calloop::LoopHandle, wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState},
+    reexports::{
+        calloop::{
+            self,
+            generic::Generic,
+            timer::{TimeoutAction, Timer},
+            Interest, Mode, PostAction, RegistrationToken,
+        },
+        wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState,
+    },
     utils::{Logical, Rectangle, SERIAL_COUNTER},
     wayland::{
         selection::SelectionTarget,
@@ -25,11 +33,11 @@ use smithay::{
     },
     xwayland::{
         xwm::{Reorder, ResizeEdge as X11ResizeEdge, WmWindowProperty, XwmId},
-        X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler,
+        X11Surface, X11Wm, XWayland, XWaylandEvent, XWaylandSockets, XwmHandler,
     },
 };
 
-use std::os::fd::OwnedFd;
+use std::{os::fd::OwnedFd, time::Duration};
 
 use smithay::wayland::selection::data_device::{
     clear_data_device_selection, current_data_device_selection_userdata, set_data_device_selection,
@@ -49,25 +57,115 @@ pub fn unmanaged(w: &Window) -> bool {
 pub struct XState {
     pub shell: XWaylandShellState,
     pub wm: Option<X11Wm>,
-    /// The display it serves (":N").
+    /// The display it serves (":N"), bound at startup.
     pub display: Option<u32>,
+    sockets: Option<XWaylandSockets>,
+    /// Watching the sockets for the first X11 app (while Xwayland isn't running).
+    watches: Vec<RegistrationToken>,
+    /// The running Xwayland's startup source.
+    server: Option<RegistrationToken>,
+    /// Starts that failed in a row (it stops trying after a few).
+    failures: u32,
+    /// How often (seconds) a running Xwayland is asked whether any X11 app
+    /// is still connected; it stops after two answers of "none" in a row.
+    pub linger: u32,
+    /// "None connected" answers in a row.
+    idle: u32,
+    /// The idle check's timer, while Xwayland runs.
+    check: Option<RegistrationToken>,
+    /// Where idle checks (on a worker thread) send their answer.
+    checked: Option<calloop::channel::Sender<bool>>,
+    /// The Wayland clipboard's types, announced to an Xwayland that starts
+    /// after the copy (None: nothing copied, or an X11 app's copy).
+    pub clipboard: Option<Vec<String>>,
 }
 
 impl XState {
     pub fn new(dh: &smithay::reexports::wayland_server::DisplayHandle) -> Self {
-        XState { shell: XWaylandShellState::new::<WhiteRose>(dh), wm: None, display: None }
+        XState {
+            shell: XWaylandShellState::new::<WhiteRose>(dh),
+            wm: None,
+            display: None,
+            sockets: None,
+            watches: Vec::new(),
+            server: None,
+            failures: 0,
+            linger: 10,
+            idle: 0,
+            check: None,
+            checked: None,
+            clipboard: None,
+        }
+    }
+
+    /// Whether Xwayland is running now.
+    pub fn running(&self) -> bool {
+        self.server.is_some()
     }
 }
 
+/// Starts after this many failures in a row: then X11 apps just don't open.
+const MAX_FAILURES: u32 = 3;
+
 impl WhiteRose {
-    /// Starts Xwayland and sets DISPLAY for what the compositor starts from
-    /// now on. Without an Xwayland, X11 apps just don't open.
-    pub fn start_xwayland(&mut self, handle: &LoopHandle<'static, WhiteRose>) {
-        let spawned = XWayland::spawn(
+    /// Takes an X display and sets DISPLAY for what the compositor starts
+    /// from now on; Xwayland itself starts when the first X11 app connects,
+    /// and exits a while after the last one goes (docs/plans/xwayland.md).
+    /// Without an Xwayland installed, nothing: X11 apps just don't open.
+    pub fn listen_xwayland(&mut self) {
+        if !in_path("Xwayland") {
+            tracing::info!("no Xwayland installed: X11 apps won't open");
+            return;
+        }
+        let sockets = match XWaylandSockets::bind(None, true) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::warn!(%err, "no free X display: X11 apps won't open");
+                return;
+            }
+        };
+        let n = sockets.display_number();
+        self.xwayland.display = Some(n);
+        self.xwayland.sockets = Some(sockets);
+        // (Before the daemon and shell start: they and what they launch inherit it.)
+        std::env::set_var("DISPLAY", format!(":{n}"));
+        tracing::info!(display = n, "X11 apps can connect (Xwayland starts with the first)");
+        let (tx, rx) = calloop::channel::channel::<bool>();
+        let _ = self.loop_handle.insert_source(rx, |event, _, state| {
+            if let calloop::channel::Event::Msg(idle) = event {
+                state.x11_checked(idle);
+            }
+        });
+        self.xwayland.checked = Some(tx);
+        self.watch_x11_sockets();
+    }
+
+    /// Waits for an X11 app to connect, to start Xwayland for it.
+    fn watch_x11_sockets(&mut self) {
+        let Some(sockets) = self.xwayland.sockets.as_ref() else { return };
+        let fds: Vec<_> = sockets.listeners().iter().filter_map(|l| l.try_clone().ok()).collect();
+        for fd in fds {
+            let source = Generic::new(fd, Interest::READ, Mode::Level);
+            match self.loop_handle.insert_source(source, |_, _, state| {
+                state.start_xwayland();
+                Ok(PostAction::Continue)
+            }) {
+                Ok(token) => self.xwayland.watches.push(token),
+                Err(err) => tracing::warn!(%err, "couldn't watch the X11 socket"),
+            }
+        }
+    }
+
+    /// An X11 app is connecting: starts Xwayland, which takes it.
+    fn start_xwayland(&mut self) {
+        for token in std::mem::take(&mut self.xwayland.watches) {
+            self.loop_handle.remove(token);
+        }
+        let Some(sockets) = self.xwayland.sockets.as_ref() else { return };
+        let spawned = XWayland::spawn_with_sockets(
             &self.display_handle,
-            None,
+            sockets,
             std::iter::empty::<(String, String)>(),
-            true,
             std::process::Stdio::null(),
             std::process::Stdio::null(),
             |_| {},
@@ -75,30 +173,113 @@ impl WhiteRose {
         let (xwayland, client) = match spawned {
             Ok(x) => x,
             Err(err) => {
-                tracing::warn!(%err, "no XWayland: X11 apps won't open");
+                tracing::warn!(%err, "XWayland didn't start");
+                self.xwayland_failed();
                 return;
             }
         };
-        let display = xwayland.display_number();
-        self.xwayland.display = Some(display);
-        // (Before the daemon and shell start: they and what they launch inherit it.)
-        std::env::set_var("DISPLAY", format!(":{display}"));
-        let wm_handle = handle.clone();
-        let inserted = handle.insert_source(xwayland, move |event, _, state| match event {
+        let inserted = self.loop_handle.insert_source(xwayland, move |event, _, state| match event {
             XWaylandEvent::Ready { x11_socket, display_number } => {
-                match X11Wm::start_wm(wm_handle.clone(), x11_socket, client.clone()) {
-                    Ok(wm) => {
+                match X11Wm::start_wm(state.loop_handle.clone(), x11_socket, client.clone()) {
+                    Ok(mut wm) => {
                         tracing::info!(display = display_number, "XWayland is running");
+                        state.xwayland.failures = 0;
+                        // What Wayland apps copied before it started.
+                        let _ = wm.new_selection(SelectionTarget::Clipboard, state.xwayland.clipboard.clone());
                         state.xwayland.wm = Some(wm);
+                        state.start_x11_checks();
                     }
-                    Err(err) => tracing::warn!(%err, "the X11 window manager didn't start"),
+                    Err(err) => {
+                        tracing::warn!(%err, "the X11 window manager didn't start");
+                        state.stop_xwayland();
+                        state.xwayland_failed();
+                    }
                 }
             }
-            XWaylandEvent::Error => tracing::warn!("XWayland stopped"),
+            XWaylandEvent::Error => {
+                tracing::warn!("XWayland didn't start");
+                state.stop_xwayland();
+                state.xwayland_failed();
+            }
         });
-        if let Err(err) = inserted {
-            tracing::warn!(%err, "XWayland's events couldn't be watched");
+        match inserted {
+            Ok(token) => self.xwayland.server = Some(token),
+            Err(err) => tracing::warn!(%err, "XWayland's events couldn't be watched"),
         }
+    }
+
+    /// A start failed: tries again for the next X11 app, a few times.
+    fn xwayland_failed(&mut self) {
+        self.xwayland.failures += 1;
+        if self.xwayland.failures >= MAX_FAILURES {
+            tracing::warn!("XWayland keeps failing: X11 apps won't open until WhiteRose restarts");
+            return;
+        }
+        self.watch_x11_sockets();
+    }
+
+    /// Every `linger` seconds while Xwayland runs, asks it (on a worker
+    /// thread: X may be waiting on us) whether any X11 app is connected.
+    fn start_x11_checks(&mut self) {
+        let every = Duration::from_secs(self.xwayland.linger.max(1).into());
+        let timer = Timer::from_duration(every);
+        let token = self.loop_handle.insert_source(timer, move |_, _, state| {
+            let (Some(n), Some(tx)) = (state.xwayland.display, state.xwayland.checked.clone()) else {
+                return TimeoutAction::Drop;
+            };
+            std::thread::spawn(move || {
+                if let Some(idle) = x11_idle(n) {
+                    let _ = tx.send(idle);
+                }
+            });
+            TimeoutAction::ToDuration(every)
+        });
+        self.xwayland.check = token.ok();
+    }
+
+    /// An idle check's answer: twice "no X11 app" in a row stops Xwayland,
+    /// and the next X11 app starts it again.
+    fn x11_checked(&mut self, idle: bool) {
+        if !self.xwayland.running() {
+            return;
+        }
+        self.xwayland.idle = if idle { self.xwayland.idle + 1 } else { 0 };
+        if self.xwayland.idle >= 2 {
+            tracing::info!("no X11 apps left: XWayland stops until the next one");
+            self.stop_xwayland();
+            self.watch_x11_sockets();
+        }
+    }
+
+    /// Xwayland is gone (stopped when no X11 app was left, or failed): its
+    /// windows go, its copy leaves the clipboard.
+    fn stop_xwayland(&mut self) {
+        self.xwayland.wm = None;
+        self.xwayland.idle = 0;
+        if let Some(token) = self.xwayland.check.take() {
+            self.loop_handle.remove(token);
+        }
+        if let Some(token) = self.xwayland.server.take() {
+            self.loop_handle.remove(token);
+        }
+        let windows: Vec<Window> = self
+            .space
+            .elements()
+            .chain(self.hidden_at.iter().map(|(w, _)| w))
+            .filter(|w| crate::win::is_x11(w))
+            .cloned()
+            .collect();
+        for w in windows {
+            if unmanaged(&w) {
+                self.space.unmap_elem(&w);
+            } else {
+                self.forget_window(&w);
+            }
+        }
+        if matches!(current_data_device_selection_userdata(&self.seat).as_deref(), Some(Offer::X11)) {
+            clear_data_device_selection(&self.display_handle, &self.seat);
+        }
+        self.schedule_redraw();
     }
 
     /// The managed X11 window of `x`, if it's on screen or hidden.
@@ -166,6 +347,17 @@ impl XWaylandShellHandler for WhiteRose {
 smithay::delegate_xwayland_shell!(WhiteRose);
 
 impl XwmHandler for WhiteRose {
+    /// Xwayland went away on its own (it crashed): the next X11 app starts
+    /// it again. (One we stopped is already forgotten.)
+    fn disconnected(&mut self, xwm: XwmId) {
+        if self.xwayland.wm.as_ref().map(|w| w.id()) != Some(xwm) {
+            return;
+        }
+        tracing::warn!("XWayland exited: it starts again with the next X11 app");
+        self.stop_xwayland();
+        self.watch_x11_sockets();
+    }
+
     fn xwm_state(&mut self, _: XwmId) -> &mut X11Wm {
         self.xwayland.wm.as_mut().expect("an X11 window manager is running")
     }
@@ -358,6 +550,7 @@ impl XwmHandler for WhiteRose {
         if selection != SelectionTarget::Clipboard {
             return;
         }
+        self.xwayland.clipboard = None;
         set_data_device_selection(&self.display_handle, &self.seat, mime_types.clone(), Offer::X11);
         self.capture_clipboard(mime_types);
     }
@@ -377,4 +570,22 @@ impl XwmHandler for WhiteRose {
             self.read_clipboard(mime_type, fd);
         }
     }
+}
+
+/// Whether `program` is on PATH.
+fn in_path(program: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(program).is_file()))
+}
+
+/// Whether no X11 app is connected to display `n`: only the X server
+/// itself, our window manager and this question are. None if X didn't
+/// answer.
+fn x11_idle(n: u32) -> Option<bool> {
+    use x11rb::{connection::Connection as _, protocol::res::ConnectionExt as _};
+    let (conn, _) = x11rb::connect(Some(&format!(":{n}"))).ok()?;
+    let me = conn.setup().resource_id_base;
+    let clients = conn.res_query_clients().ok()?.reply().ok()?.clients;
+    let others = clients.iter().filter(|c| c.resource_base != 0 && c.resource_base != me).count();
+    // One of them is our window manager.
+    Some(others <= 1)
 }

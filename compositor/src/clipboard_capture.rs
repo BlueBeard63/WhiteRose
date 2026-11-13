@@ -135,6 +135,7 @@ impl WhiteRose {
     pub fn offer_clipboard(&mut self, payloads: Vec<(String, Vec<u8>)>) {
         let mimes: Vec<String> = payloads.iter().map(|(m, _)| m.clone()).collect();
         set_data_device_selection(&self.display_handle, &self.seat, mimes.clone(), Offer::Data(Arc::new(payloads)));
+        self.xwayland.clipboard = Some(mimes.clone());
         if let Some(wm) = self.xwayland.wm.as_mut() {
             let _ = wm.new_selection(SelectionTarget::Clipboard, Some(mimes));
         }

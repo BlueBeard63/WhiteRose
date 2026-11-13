@@ -1,6 +1,6 @@
 # XWayland: X11 apps in WhiteRose
 
-Status: in progress (2026-11-12): steps 1 to 4 done (drag and drop between X11 and Wayland left out: Smithay has no XDND), branch `v0.3/xwayland` (off `v0.3/alpha-fixes`,
+Status: in progress (2026-11-12): steps 1 to 5 done (drag and drop between X11 and Wayland is step 7), branch `v0.3/xwayland` (off `v0.3/alpha-fixes`,
 which touches the same compositor files).
 
 ## Why
@@ -61,7 +61,9 @@ the Music module had nothing to show).
    groups, rules, scratchpads, switchers, dock, IPC ids.
 4. **Clipboard** between X11 and Wayland (drag and drop moved to 7).
 5. **Started on demand**: the vendored Smithay patch, Xwayland launched on
-   the first X11 connection.
+   the first X11 connection. Done: stopped by the compositor after two idle
+   XRes checks 10 s apart (`-terminate` never fires while our WM is
+   connected).
 6. **Packaging**: depend on Xwayland (`xwayland` / `xorg-x11-server-Xwayland`).
 7. **Drag and drop between X11 and Wayland apps.** Smithay's X11 WM has no
    XDND, so the compositor speaks it itself, as its own small X11 client

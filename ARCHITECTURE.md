@@ -542,7 +542,7 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 
 ## Vendored Smithay
 
-`compositor/vendor/smithay` is Smithay 0.7.0 plus four patches, used through `[patch.crates-io]`.
+`compositor/vendor/smithay` is Smithay 0.7.0 plus five patches, used through `[patch.crates-io]`.
 
 - **`smithay-layer-unmap-after-destroy.patch`:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell. Test: `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client`.
 - **`smithay-session-lock.patch`:**
@@ -550,6 +550,7 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
   - **New hooks:** `lock_cancelled` (a lock destroyed before it was confirmed now ends the lock instead of leaving the screen locked forever) and `unlock_requested` (lets the compositor ignore an unlock from a lock that a newer one replaced). Tests: in `tests/session_lock.rs`.
 - **`smithay-x11-focus.patch`:** `X11Surface::give_focus`, the X11 half of keyboard focus (X input focus, or `WM_TAKE_FOCUS`), split out of its `KeyboardTarget::enter`. Our seat focuses an X11 window's `wl_surface` (as for any window), so the compositor calls this itself when it focuses one. Test: `daemon/uitest/xwayland_test.go`.
 - **`smithay-x11-selection-flush.patch`:** `X11Wm::new_selection` now flushes, so X learns at once that the clipboard changed hands; before, an X11 app pasting soon after a copy could be told there was nothing to paste. Test: `the_compositors_own_clipboard_pastes_into_an_x11_app` in `tests/xwayland.rs`.
+- **`smithay-xwayland-on-demand.patch`:** `XWaylandSockets` (an X display's lock and listening sockets, held by the compositor) and `XWayland::spawn_with_sockets`, so Xwayland can start on sockets bound at login, and again after it's stopped; and `X11Wm` removes its event source when dropped, so a WM dropped while its Xwayland still runs sends no more events. Tests: the on-demand ones in `tests/xwayland.rs`.
 - **Removing them:** drop the vendored copy once upstream ships these fixes.
 
 ---
@@ -558,7 +559,7 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 
 Implemented in `compositor/src/xwayland.rs`, with `win.rs` as the one way the rest of the compositor talks to a window of either kind. Plan: `docs/plans/xwayland.md`.
 
-- **Started with the compositor** (for now; on demand is step 5): `Xwayland -rootless`, and `DISPLAY` set before the daemon and shell start, so everything they launch inherits it. Without Xwayland installed, X11 apps just don't open.
+- **Started on demand:** at login the compositor only takes an X display (its lock and sockets) and sets `DISPLAY`, before the daemon and shell start, so everything they launch inherits it (and D-Bus-activated apps, through `dbus-update-activation-environment`). Xwayland starts when the first X11 app connects, and takes that connection. While it runs, every 10 s a worker thread asks it (XRes) whether any client besides our window manager is connected; two "none" answers in a row stop it, and the next X11 app starts it again. (`-terminate` doesn't do this: our window manager counts as a client.) A crashed Xwayland is restarted the same way; after three failed starts in a row it gives up until WhiteRose restarts. An idle desktop runs no X server. Without Xwayland installed, no display is taken and X11 apps just don't open.
 - **Managed X11 windows** open as Wayland ones do: under the pointer, cascaded, on this workspace, focused. WM_CLASS (its class, else instance) is the app id, `_NET_WM_NAME` the title. Transient-for windows and dialog, utility, toolbar and splash types float.
 - **Place and size together:** X11 must be told where a window is. Its next size and states are kept with it, and after each batch of events `sync_x11` configures any X11 window whose rectangle (where the compositor has it, the size it's told) differs from what X has.
 - **Override-redirect windows** (menus, tooltips) are unmanaged: drawn where they ask, above everything, never in a workspace, never focused by a click.
