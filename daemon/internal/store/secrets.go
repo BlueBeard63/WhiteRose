@@ -138,6 +138,13 @@ func Keyring() (Secrets, error) {
 	return &keyring{conn: conn, session: session}, nil
 }
 
+// Locked: its default collection is locked now.
+func (k *keyring) Locked() bool {
+	v, err := k.conn.Object(ssName, ssDefault).GetProperty("org.freedesktop.Secret.Collection.Locked")
+	b, _ := v.Value().(bool)
+	return err == nil && b
+}
+
 func attrs(id string) map[string]string {
 	return map[string]string{"application": "whiterose", "whiterose-secret": id}
 }
@@ -295,6 +302,18 @@ func (r *Resolver) Closed() error {
 		return nil
 	}
 	return r.openErr
+}
+
+// Locked: the keyring is there but locked (what it keeps waits for the
+// password): it wouldn't open, or it's open and was locked since.
+func (r *Resolver) Locked() bool {
+	r.mu.Lock()
+	k, err := r.Keyring, r.openErr
+	r.mu.Unlock()
+	if l, ok := k.(interface{ Locked() bool }); ok {
+		return l.Locked()
+	}
+	return k == nil && errors.Is(err, ErrLocked)
 }
 
 // Get is the secret `id`. ErrLocked: it may be in the keyring, which is

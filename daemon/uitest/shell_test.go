@@ -333,3 +333,56 @@ func TestSuperKShowsTheShortcutSheet(t *testing.T) {
 	bar.Press("Escape")
 	bar.Gone(uitest.Named("Keyboard shortcuts"))
 }
+
+// The keyring locked (as after a fingerprint login): the island asks for
+// the password. A wrong one says so; the right one opens the keyring and
+// the prompt goes.
+func TestKeyringPromptOpensTheKeyring(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	s.LockedKeyring("right horse")
+	bar := s.Bar()
+	title := uitest.Named("Your keyring is locked")
+	bar.WaitFor(title)
+	field := uitest.Named("Password").Role("text")
+	bar.WaitFor(field)
+	bar.Type("wrong staple")
+	uitest.WaitUntil(func() bool { return bar.Text(field) != "" })
+	if got := bar.Text(field); got == "" || strings.Contains(got, "staple") {
+		t.Fatalf("the password shows in the accessibility tree: %q", got)
+	}
+	bar.Press("Return")
+	bar.WaitFor(uitest.Named("That's not your keyring's password. If you changed your login password, type the old one."))
+	if !s.KeyringLocked() {
+		t.Fatal("a wrong password opened the keyring")
+	}
+	bar.Type("right horse")
+	bar.Click(uitest.Named("Open keyring").Role("push button"))
+	bar.Gone(title)
+	s.WaitKeyring(false)
+	if strings.Contains(s.Log(), "right horse") || strings.Contains(s.Log(), "wrong staple") {
+		t.Fatal("a password is in the log")
+	}
+}
+
+// Not now closes the prompt, and it isn't asked again this login.
+func TestKeyringPromptNotNowAsksNoMore(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	s.LockedKeyring("right horse")
+	bar := s.Bar()
+	title := uitest.Named("Your keyring is locked")
+	bar.WaitFor(title)
+	bar.Click(uitest.Named("Not now").Role("push button"))
+	bar.Gone(title)
+	// The island free again (another view opened and closed): not offered.
+	bar.Press("super+k")
+	bar.WaitFor(uitest.Named("Keyboard shortcuts"))
+	bar.Press("Escape")
+	bar.Gone(uitest.Named("Keyboard shortcuts"))
+	time.Sleep(time.Second)
+	if _, shown := bar.Lookup(title); shown {
+		t.Fatal("asked again after Not now")
+	}
+	if !s.KeyringLocked() {
+		t.Fatal("the keyring opened without a password")
+	}
+}

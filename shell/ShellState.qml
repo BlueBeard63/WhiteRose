@@ -26,7 +26,7 @@ Singleton {
     readonly property var views: ["idle"].concat(islandViews)
     // A prompt that came before the views were found (a crash, memory
     // running out, right as the shell starts): offered once they are.
-    onIslandViewsChanged: { offerCrash(); offerMemory() }
+    onIslandViewsChanged: { offerCrash(); offerMemory(); offerKeyring() }
     Process {
         running: true
         command: ["sh", "-c", "for f in \"$1\"/*.qml; do [ -f \"$f\" ] && basename \"$f\" .qml; done; true", "sh", Quickshell.shellDir + "/island"]
@@ -72,7 +72,7 @@ Singleton {
         }
         // A crash or a memory warning waiting: now, if the island is free.
         offerCrash();
-        if (islandView === "idle") offerMemory();
+        if (islandView === "idle") { offerMemory(); offerKeyring(); }
     }
 
     // The side panel hanging from the bar: "" (none) or "quick". Only one
@@ -197,13 +197,31 @@ Singleton {
             promptReport(c);
         }
     }
-    onLockedChanged: { offerCrash(); offerMemory() }
+    onLockedChanged: { offerCrash(); offerMemory(); offerKeyring() }
     // SUPER+SHIFT+B: a snapshot of this moment, then the offer to report it.
     function snapshotNow() {
         Daemon.request({ op: "report_snapshot_now" }, (v, err) => {
             if (err || !v) return;
             root.promptReport({ id: v.id, what: "manual", title: "Snapshot you took", time: Date.now() });
         });
+    }
+    // The keyring is locked after a fingerprint login (island/keyring.qml):
+    // asked once a login, over nothing but the idle island. Not now (or
+    // clicking away) asks no more; it goes away if the keyring opens anyway
+    // (the lock screen's password opens it too).
+    property bool keyringAsked: false
+    function offerKeyring() {
+        if (System.keyringLocked && !keyringAsked && islandView === "idle" && !locked && islandViews.includes("keyring")) {
+            keyringAsked = true;
+            show("keyring");
+        }
+    }
+    Connections {
+        target: System
+        function onKeyringLockedChanged() {
+            if (System.keyringLocked) root.offerKeyring();
+            else if (root.islandView === "keyring") root.close();
+        }
     }
     // Memory running out (island/memory.qml): { level, app, available, total }.
     // Shown over nothing but the idle island or itself; else it waits.

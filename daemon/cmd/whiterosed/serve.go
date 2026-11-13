@@ -133,9 +133,6 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			go keyringOpened()
 		}
 	}
-	if err := store.WatchKeyring(func() { secrets.Retry() }); err != nil {
-		fmt.Fprintln(stderr, "whiterosed: not watching the keyring:", err)
-	}
 
 	rep := migrate.Run(st, secrets, migrate.DefaultDirs())
 	for _, f := range rep.Imported {
@@ -169,6 +166,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	read := func() SystemState {
 		s := readState(os.DirFS(backlight.Sysfs), os.DirFS(rfkill.Sysfs))
 		s.Weather, s.Calendars = weatherView(st, dirs.Cache), calendar.Version(dirs, localSources(st, dirs))
+		s.KeyringLocked = secrets.Locked()
 		return s
 	}
 	go func() {
@@ -177,6 +175,11 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			srv.SetState(read())
 		}
 	}()
+	// The keyring started, was locked or opened: try it, and say so (the
+	// shell asks for the password while it's locked).
+	if err := store.WatchKeyring(func() { secrets.Retry(); poke() }); err != nil {
+		fmt.Fprintln(stderr, "whiterosed: not watching the keyring:", err)
+	}
 	if f, err := os.Open(rfkill.Device); err == nil {
 		go func() { _ = rfkill.ReadEvents(f, func(rfkill.Event) { poke() }) }()
 	}

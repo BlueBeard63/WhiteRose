@@ -30,6 +30,15 @@ func TestGnomeKeyringLockedThenUnlockedWithThePassword(t *testing.T) {
 		t.Fatalf("not sandboxed: bus %q", os.Getenv("DBUS_SESSION_BUS_ADDRESS"))
 	}
 
+	early := make(chan string, 8)
+	if err := WatchKeyring(func() {
+		select {
+		case early <- "x":
+		default:
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
 	// A keyring whose login password is "pw".
 	gk := exec.Command("gnome-keyring-daemon", "--unlock", "--components=secrets")
 	gk.Stdin = strings.NewReader("pw")
@@ -40,6 +49,11 @@ func TestGnomeKeyringLockedThenUnlockedWithThePassword(t *testing.T) {
 	var err error
 	if !waitFor(func() bool { kr, err = Keyring(); return err == nil }) {
 		t.Fatalf("keyring didn't open: %v", err)
+	}
+	select {
+	case <-early:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the keyring starting wasn't seen")
 	}
 	if err := kr.Set("cal", "https://cal.example/x"); err != nil {
 		t.Fatal(err)
@@ -64,6 +78,9 @@ func TestGnomeKeyringLockedThenUnlockedWithThePassword(t *testing.T) {
 	r := &Resolver{Fallback: memSecrets{}, Open: Keyring}
 	if _, err := r.Get("cal"); !errors.Is(err, ErrLocked) {
 		t.Fatalf("want ErrLocked, got %v", err)
+	}
+	if !r.Locked() {
+		t.Fatal("not said to be locked")
 	}
 	changed := make(chan struct{}, 1)
 	if err := WatchKeyring(func() {
@@ -91,6 +108,19 @@ func TestGnomeKeyringLockedThenUnlockedWithThePassword(t *testing.T) {
 	}
 	if !r.Retry() {
 		t.Fatalf("keyring didn't open after unlocking: %v", r.Closed())
+	}
+	if r.Locked() {
+		t.Fatal("open, but said to be locked")
+	}
+	// Locked again while open (by hand): it says so.
+	if err := conn.Object(ssName, ssPath).Call(ssService+".Lock", 0, []dbus.ObjectPath{"/org/freedesktop/secrets/collection/login"}).Store(&unlocked, &prompt); err != nil {
+		t.Fatal(err)
+	}
+	if !r.Locked() {
+		t.Fatal("locked again, but not said to be")
+	}
+	if err := UnlockKeyring("pw"); err != nil {
+		t.Fatal(err)
 	}
 	if v, err := r.Get("cal"); err != nil || v != "https://cal.example/x" {
 		t.Fatalf("%q %v", v, err)
