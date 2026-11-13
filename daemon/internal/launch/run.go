@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"whiterose/daemon/internal/crash"
 )
 
 // RestartCode: the compositor exits with it to have the session started
@@ -170,14 +172,37 @@ func (c Config) start(plan Plan, stateFile string) (int, error) {
 			}
 		}
 	}
+	quitting := false
 	for {
 		select {
 		case <-done:
-			return exitCode(cmd), nil
+			code := exitCode(cmd)
+			// Not logged out, not restarted: the compositor crashed (and
+			// every app with it). Noted for a bug report.
+			if !quitting && code != 0 && code != RestartCode {
+				c.crashed(plan.Version, cmd, tail.lines())
+			}
+			return code, nil
 		case sig := <-sigs:
+			quitting = true
 			syscall.Kill(-cmd.Process.Pid, sig.(syscall.Signal))
 		}
 	}
+}
+
+// crashed writes a crash record for the compositor, with what the session
+// printed last.
+func (c Config) crashed(version string, cmd *exec.Cmd, out []string) {
+	r := crash.Record{What: crash.Compositor, Version: version}
+	if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		r.Signal = int(ws.Signal())
+	} else {
+		r.Code = cmd.ProcessState.ExitCode()
+	}
+	if _, err := crash.Write(c.StateHome, r, out); err != nil {
+		c.logf("crash record: %v", err)
+	}
+	c.logf("%s", r.Describe())
 }
 
 type checked struct {

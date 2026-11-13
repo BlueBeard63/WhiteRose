@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"whiterose/daemon/internal/crash"
 	"whiterose/daemon/internal/update"
 )
 
@@ -331,5 +332,29 @@ func TestSessionLogCap(t *testing.T) {
 		if !strings.HasPrefix(line, "line ") || len(line) != 8 {
 			t.Errorf("cut line %q", line)
 		}
+	}
+}
+
+// The compositor dying (not logging out, not restarting) leaves a crash
+// record with what it printed last.
+func TestRunCrashRecord(t *testing.T) {
+	c := setup(t)
+	version(t, c.Root, "0.5.0", comesUp+"echo 'thread main panicked at cursor.rs' >&2\nexit 101\n")
+	if code, err := Run(c); err != nil || code != 101 {
+		t.Fatalf("%d %v", code, err)
+	}
+	rs := crash.List(c.StateHome)
+	if len(rs) != 1 || rs[0].What != crash.Compositor || rs[0].Code != 101 || rs[0].Version != "0.5.0" {
+		t.Fatalf("%+v", rs)
+	}
+	if b, _ := os.ReadFile(crash.File(c.StateHome, rs[0].ID, "output.txt")); !strings.Contains(string(b), "cursor.rs") {
+		t.Errorf("output %q", b)
+	}
+	// Logging out (exit 0) and restarting leave none.
+	c2 := setup(t)
+	version(t, c2.Root, "0.5.0", good)
+	Run(c2)
+	if rs := crash.List(c2.StateHome); len(rs) != 0 {
+		t.Errorf("logged out, yet %+v", rs)
 	}
 }
