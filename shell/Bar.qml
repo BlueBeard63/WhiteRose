@@ -102,8 +102,9 @@ PanelWindow {
                 Item {
                     y: Math.round((parent.height - height) / 2)
                     width: 16; height: 16
-                    // Do Not Disturb: the moon.
-                    Glyph { name: QuickState.doNotDisturb ? "moon" : "bell"; color: QuickState.doNotDisturb ? Theme.muted : Theme.text }
+                    // Do Not Disturb: the bell struck through (as in Quick
+                    // Settings and the notifications panel).
+                    Glyph { name: QuickState.doNotDisturb ? "bellOff" : "bell" }
                     Rectangle {
                         visible: Notifications.unread && !QuickState.doNotDisturb
                         x: 10; y: 0
