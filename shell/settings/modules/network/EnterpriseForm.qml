@@ -5,7 +5,6 @@
 // form, as whiterosed takes it (netconf.EAPChange). Secrets left empty keep
 // the saved ones.
 import QtQuick
-import QtQuick.Dialogs
 import Quickshell
 import qs
 import qs.settings
@@ -207,14 +206,13 @@ Column {
         }
     }
 
-    FileDialog {
+    FilePicker {
         id: picker
         property string target: "caCert"
         title: target === "caCert" ? "Choose the CA certificate" : target === "clientCert" ? "Choose your certificate" : "Choose your private key"
-        currentFolder: "file://" + (Quickshell.env("HOME") ?? "")
-        nameFilters: ["Certificates and keys (*.pem *.crt *.cer *.der *.key *.p12 *.pfx)", "All files (*)"]
-        onAccepted: {
-            form[target] = decodeURIComponent(String(selectedFile).replace(/^file:\/\//, ""));
+        filters: [{ name: "Certificates and keys", patterns: ["*.pem", "*.crt", "*.cer", "*.der", "*.key", "*.p12", "*.pfx"] }, { name: "All files", patterns: ["*"] }]
+        onPicked: path => {
+            form[target] = path;
             form.touch();
         }
     }

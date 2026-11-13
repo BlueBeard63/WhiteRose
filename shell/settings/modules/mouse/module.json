@@ -1,0 +1,11 @@
+{
+  "id": "mouse",
+  "name": "Mouse & Touchpad",
+  "description": "Scroll direction, pointer speed and tap to click",
+  "icon": "mouse",
+  "category": "desktop",
+  "order": 13.1,
+  "version": "1.0.0",
+  "core": true,
+  "keywords": ["mouse", "touchpad", "trackpad", "pointer", "cursor", "scroll", "natural", "reverse", "speed", "sensitivity", "acceleration", "tap", "click"]
+}

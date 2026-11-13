@@ -50,6 +50,14 @@ pub enum Action {
     /// Show each output's number on it (the shell draws it).
     IdentifyOutputs,
     Notifications,
+    /// The island's clipboard history (SUPER+V).
+    Clipboard,
+    /// The note in the island (SUPER+SHIFT+N; the Note module).
+    Note,
+    /// Today's agenda in the island (SUPER+A; the Agenda module).
+    Agenda,
+    /// What's playing, in the island (SUPER+SHIFT+M; the Music module).
+    Music,
     ScreenshotRegion,
     // Handled by the compositor.
     /// PrtSc: capture the whole screen straight away.
@@ -60,6 +68,11 @@ pub enum Action {
     Workspace(u8),
     /// Move the focused window to workspace N (1-based).
     MoveToWorkspace(u8),
+    /// Move the focused window to the workspace before (left, up) or after
+    /// (right, down) this one, and go there with it.
+    MoveToWorkspaceStep(Dir),
+    /// Move the focused window to the monitor on that side.
+    MoveToOutput(Dir),
     Spawn(String),
     /// A scratchpad's key (its id): start, show, focus or hide it.
     Scratchpad(String),
@@ -127,6 +140,10 @@ impl Action {
                 | Action::Lock
                 | Action::IdentifyOutputs
                 | Action::Notifications
+                | Action::Clipboard
+                | Action::Note
+                | Action::Agenda
+                | Action::Music
                 | Action::ScreenshotRegion
                 | Action::Media(_)
         )
@@ -319,6 +336,10 @@ impl Def {
             "window-switcher" => Action::WindowSwitcher,
             "quick-settings" => Action::QuickSettings,
             "notifications" => Action::Notifications,
+            "clipboard" => Action::Clipboard,
+            "note" => Action::Note,
+            "agenda" => Action::Agenda,
+            "music" => Action::Music,
             "lock" => Action::Lock,
             "screenshot-region" => Action::ScreenshotRegion,
             "screenshot-screen" => Action::ScreenshotScreen,
@@ -329,6 +350,8 @@ impl Def {
             "fullscreen" => Action::ToggleFullscreen,
             "workspace" => Action::Workspace(n),
             "move-to-workspace" => Action::MoveToWorkspace(n),
+            "move-to-workspace-step" => Action::MoveToWorkspaceStep(ARROWS[n as usize].1),
+            "move-to-monitor" => Action::MoveToOutput(ARROWS[n as usize].1),
             "volume-up" => Action::Media("volume_up"),
             "volume-down" => Action::Media("volume_down"),
             "volume-mute" => Action::Media("volume_mute"),
@@ -365,6 +388,10 @@ pub const CATALOG: &[Def] = &[
     def("window-switcher", "Window switcher", "Windows", &["SUPER+TAB"]),
     def("quick-settings", "Quick settings", "Shell", &["SUPER+S"]),
     def("notifications", "Notifications", "Shell", &["SUPER+N"]),
+    def("clipboard", "Clipboard history", "Shell", &["SUPER+V"]),
+    def("note", "Note", "Shell", &["SUPER+SHIFT+N"]),
+    def("agenda", "Today's agenda", "Shell", &["SUPER+A"]),
+    def("music", "Now playing", "Shell", &["SUPER+SHIFT+M"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
     def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
@@ -373,6 +400,10 @@ pub const CATALOG: &[Def] = &[
     Def {
         range: Range::Arrows,
         ..def("move-direction", "Move or snap window ←→↑↓", "Windows", &["SUPER+SHIFT+ARROWS"])
+    },
+    Def {
+        range: Range::Arrows,
+        ..def("move-to-monitor", "Move window to the monitor ←→↑↓", "Windows", &["SUPER+CTRL+ARROWS"])
     },
     def("resize-mode", "Resize window (then arrows; Esc ends)", "Windows", &["SUPER+R"]),
     def("toggle-split", "Flip split (dwindle)", "Windows", &["SUPER+J"]),
@@ -385,6 +416,15 @@ pub const CATALOG: &[Def] = &[
     Def {
         range: Range::Digits,
         ..def("move-to-workspace", "Move window to workspace 1–9", "Workspaces", &["SUPER+SHIFT+1-9"])
+    },
+    Def {
+        range: Range::Arrows,
+        ..def(
+            "move-to-workspace-step",
+            "Move window to the previous / next workspace ←→↑↓",
+            "Workspaces",
+            &["SUPER+ALT+ARROWS"],
+        )
     },
     def("screenshot-region", "Screenshot region", "Shell", &["SUPER+SHIFT+S"]),
     def("screenshot-screen", "Screenshot screen", "Shell", &["PRTSC"]),
@@ -486,10 +526,23 @@ impl Bindings {
     /// nested inside another desktop, which usually keeps SUPER for itself.
     /// The SUPER-tap binding is left alone.
     pub fn remap_logo(mut self, to: Mods) -> Self {
-        for (combo, _) in &mut self.entries {
-            if combo.mods.logo && !combo.is_logo_tap() {
-                combo.mods.logo = false;
-                combo.mods = combo.mods.union(to);
+        // One that would land on another's keys (SUPER+ALT+arrow and
+        // SUPER+arrow both becoming CTRL+ALT+arrow) is left as it was:
+        // out of reach in that mode, rather than taking another's keys.
+        let remapped = |c: &Combo| {
+            let mut c = *c;
+            if c.mods.logo && !c.is_logo_tap() {
+                c.mods.logo = false;
+                c.mods = c.mods.union(to);
+            }
+            c
+        };
+        let new: Vec<Combo> = self.entries.iter().map(|(c, _)| remapped(c)).collect();
+        for i in 0..self.entries.len() {
+            let clash =
+                new.iter().enumerate().any(|(j, n)| j < i && *n == new[i] && self.entries[j].0 != self.entries[i].0);
+            if !clash {
+                self.entries[i].0 = new[i];
             }
         }
         self
@@ -538,6 +591,8 @@ mod tests {
     }
     const SUPER: Mods = Mods { logo: true, alt: false, ctrl: false, shift: false };
     const SUPER_SHIFT: Mods = Mods { logo: true, alt: false, ctrl: false, shift: true };
+    const SUPER_ALT: Mods = Mods { logo: true, alt: true, ctrl: false, shift: false };
+    const SUPER_CTRL: Mods = Mods { logo: true, alt: false, ctrl: true, shift: false };
     const ALT: Mods = Mods { logo: false, alt: true, ctrl: false, shift: false };
 
     #[test]
@@ -594,6 +649,13 @@ mod tests {
         let cases = [
             (Mods::NONE, keysyms::KEY_Print, Action::ScreenshotScreen),
             (SUPER_SHIFT, keysyms::KEY_s, Action::ScreenshotRegion),
+            (SUPER, keysyms::KEY_v, Action::Clipboard),
+            (SUPER_SHIFT, keysyms::KEY_n, Action::Note),
+            (SUPER, keysyms::KEY_a, Action::Agenda),
+            (SUPER_SHIFT, keysyms::KEY_m, Action::Music),
+            (SUPER_ALT, keysyms::KEY_Left, Action::MoveToWorkspaceStep(Dir::Left)),
+            (SUPER_ALT, keysyms::KEY_Down, Action::MoveToWorkspaceStep(Dir::Down)),
+            (SUPER_CTRL, keysyms::KEY_Right, Action::MoveToOutput(Dir::Right)),
             (ALT, keysyms::KEY_Tab, Action::AppSwitcher),
             (SUPER, keysyms::KEY_Tab, Action::WindowSwitcher),
             (SUPER, keysyms::KEY_s, Action::QuickSettings),
@@ -636,6 +698,11 @@ mod tests {
         assert_eq!(b.lookup(ALT, sym(keysyms::KEY_Tab)), Some(&Action::AppSwitcher));
         assert_eq!(b.lookup(Mods::NONE, sym(keysyms::KEY_Print)), Some(&Action::ScreenshotScreen));
         assert_eq!(b.logo_tap(), Some(&Action::AppLauncher));
+        // SUPER+ALT+arrow would land on SUPER+arrow's keys: left as it was.
+        let ctrl_alt = Mods { ctrl: true, alt: true, ..Mods::NONE };
+        assert_eq!(b.lookup(ctrl_alt, sym(keysyms::KEY_Left)), Some(&Action::FocusDirection(Dir::Left)));
+        let super_alt = Mods { logo: true, alt: true, ..Mods::NONE };
+        assert_eq!(b.lookup(super_alt, sym(keysyms::KEY_Left)), Some(&Action::MoveToWorkspaceStep(Dir::Left)));
     }
 
     #[test]

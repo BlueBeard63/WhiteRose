@@ -14,7 +14,7 @@ pub mod snap;
 use std::collections::HashMap;
 
 pub use dwindle::Dwindle;
-pub use group::{Groups, TAB_STRIP};
+pub use group::{Groups, GROUP_DROP, TAB_STRIP};
 pub use master::{Master, Side};
 
 /// How a workspace places its windows.
@@ -521,11 +521,11 @@ impl Drop {
     }
 }
 
-/// Where on `target` the point `(x, y)` drops a tile: the top band (as
-/// tall as a tab strip) groups, the middle third (each way) swaps,
+/// Where on `target` the point `(x, y)` drops a tile: the top band
+/// (GROUP_DROP) groups, the middle third (each way) swaps,
 /// elsewhere the nearest edge.
 pub fn drop_zone(target: Rect, x: i32, y: i32) -> Drop {
-    if y < target.y + TAB_STRIP {
+    if y < target.y + GROUP_DROP {
         return Drop::Group;
     }
     let (fx, fy) = fractions(target, x, y);

@@ -198,6 +198,16 @@ Every feature in detail: [ROADMAP.md](ROADMAP.md). The module API's design: [API
 
 WhiteRose is a personal project in active development, and it's the desktop I use day to day. Expect rough edges, and expect things to change.
 
+### Whose desktop this is
+
+WhiteRose is built for me first, not for everyone. Commits and pull requests here mainly go to what I find frustrating, annoying or inconvenient and haven't got round to fixing myself, or to features and code improvements that are clearly good. Requests that don't fit that may well not happen, and that's not a judgement on them.
+
+If you want it to work differently, please **fork it** and change it to your heart's content: it's MIT-licensed for exactly that. If your fork is good, I'll happily link it below, but it won't change what this repository focuses on.
+
+#### Forks
+
+None yet. Yours could be the first.
+
 ## Thanks
 
 WhiteRose stands on [Smithay](https://github.com/Smithay/smithay), [QuickShell](https://quickshell.org), [Qt](https://www.qt.io), [cxx-qt](https://github.com/KDAB/cxx-qt), [godbus](https://github.com/godbus/dbus), the [Lucide](https://lucide.dev) icons, and the Geist typeface.

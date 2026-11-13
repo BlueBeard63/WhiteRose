@@ -12,6 +12,11 @@ import WhiteRose.Files
 QtObject {
     id: session
     property bool owner: false
+    // A picker (`--choose`): what's wanted ({mode: open | folder | save,
+    // multiple, folder, title, name, filters: [{name, patterns}]}), else
+    // null; and the filter shown (its number).
+    readonly property var choose: JSON.parse(Fs.choosing())
+    property int chooseFilter: 0
     // Hidden files shown, everywhere.
     // ---- settings (whiterosed, Settings › Files): followed as they change -----
     // A setting's value, or `fallback` if it isn't there (no daemon).
@@ -83,7 +88,6 @@ QtObject {
         return Object.keys(session.palette).find(c => !used.includes(c)) ?? "rose";
     }
     property var defaultView: session.setting("files.defaultView", ({ mode: "grid", sortBy: "name", descending: false, group: "" }))
-    readonly property var indexOpts: ({ drives: session.setting("files.indexDrives", true), exclude: session.setting("files.indexExclude", []) })
     // The daemon's settings arrive a moment after start (the values above are
     // the defaults until then): everything read again once they're here.
     function readAll() {
@@ -141,7 +145,7 @@ QtObject {
             case "files.sidebarOpen": session.sidebarOpen = v(key, []); break;
             case "files.tags": session.tagDefs = v(key, []); session.reload(false); break;
             case "files.defaultView": session.defaultView = v(key, session.defaultView); session.reload(true); break;
-            case "files.reindex": Search.keepFresh(JSON.stringify(session.indexOpts), v(key, 0)); break;
+            case "files.reindex": Search.keepFresh(v(key, 0)); break;
             }
         }
     }
@@ -189,8 +193,11 @@ QtObject {
 
     // Starts the first window; returns its tabs ({tabs, current}).
     function start() {
+        // A picker: where it was asked to start (or home); it leaves your
+        // tabs and the index alone.
+        if (session.choose) return { tabs: [{ path: session.choose.folder ? Fs.resolve(session.choose.folder) : "" }], current: 0 };
         // The search index, made or freshened in the background.
-        Search.keepFresh(JSON.stringify(session.indexOpts), session.setting("files.reindex", 0));
+        Search.keepFresh(session.setting("files.reindex", 0));
         const args = JSON.parse(Fs.arguments());
         if (args.length > 0) return { tabs: args.map(a => ({ path: a })), current: 0 };
         session.owner = true;

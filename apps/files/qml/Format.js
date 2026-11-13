@@ -21,6 +21,16 @@ function date(ms, nowMs) {
     return d.getDate() + " " + m + (d.getFullYear() !== now.getFullYear() ? " " + d.getFullYear() : "");
 }
 
+// The index being made: "Indexing · 42% · about 2 min left", or (the first
+// time, nothing to compare with) "Indexing · 12,345 items".
+function indexing(count, done, left) {
+    if (done < 0) return count > 0 ? "Indexing · " + Math.round(count).toLocaleString() + " items" : "Indexing…";
+    const pct = Math.round(done * 100) + "%";
+    if (left < 0) return "Indexing · " + pct;
+    const t = left < 45 ? "under a minute" : left < 3600 ? "about " + Math.max(1, Math.round(left / 60)) + " min" : "about " + Math.round(left / 360) / 10 + " h";
+    return "Indexing · " + pct + " · " + t + " left";
+}
+
 const KINDS = {
     "inode/directory": "Folder", "application/pdf": "PDF", "text/plain": "Text", "text/markdown": "Markdown",
     "application/zip": "Archive", "application/x-compressed-tar": "Archive", "application/x-7z-compressed": "Archive",

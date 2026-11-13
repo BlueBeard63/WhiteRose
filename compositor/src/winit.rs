@@ -85,6 +85,7 @@ pub fn init_winit(
         ping_backend.borrow().window().request_redraw();
     })?;
     state.redraw = Some(ping);
+    state.can_capture = true;
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
     let mut night = crate::night_light::Pass::default();

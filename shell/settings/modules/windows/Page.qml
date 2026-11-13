@@ -262,4 +262,19 @@ Column {
             }
         }
     }
+
+    // ---- switching --------------------------------------------------------------------
+    Section { text: "Switching" }
+    Card {
+        SettingRow {
+            divider: false
+            title: "ALT+TAB shows apps from"
+            subtitle: "SUPER+TAB always shows every window"
+            Segmented {
+                value: Daemon.setting("windows.appSwitcher.workspaces", "all")
+                options: [{ label: "All workspaces", value: "all" }, { label: "This workspace", value: "current" }]
+                onPicked: v => Daemon.set("windows.appSwitcher.workspaces", v)
+            }
+        }
+    }
 }

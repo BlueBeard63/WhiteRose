@@ -31,7 +31,7 @@ use crate::{
     layout::{self, Axis, Dir, Drop, Layout, Rect, Side, Tiling, TAB_STRIP},
     outputs,
     state::WhiteRose,
-    tab_strip::{Strip, StripImages},
+    tab_strip::{Anim, Leaving, Strip, StripImages, ANIM},
 };
 
 /// The states that tell a client it's tiled: it drops its shadows and
@@ -67,6 +67,11 @@ pub struct TilingState {
     /// The visible groups' tab strips, and their drawn pictures.
     pub strips: Vec<Strip>,
     pub strip_images: StripImages,
+    /// Strips of groups that just ended, going away; and the workspace the
+    /// strips were last worked out for (a strip only moves on the one
+    /// it's on: switching workspace isn't a group forming or ending).
+    pub leaving: Vec<crate::tab_strip::Leaving>,
+    pub strips_workspace: Option<usize>,
     /// Each tiled window's tile as last placed: it's drawn and takes the
     /// pointer only there, so an app that won't shrink to its tile (a
     /// minimum size) is cut off instead of covering its neighbours.
@@ -232,7 +237,7 @@ impl WhiteRose {
                     let h = TAB_STRIP.min(r.size.h);
                     let shown = tabs.iter().position(|t| *t == w).unwrap_or(0);
                     let rect = Rectangle::new(r.loc, (r.size.w, h).into());
-                    strips.push(Strip { output: o.clone(), rect, tabs: tabs.to_vec(), shown });
+                    strips.push(Strip { output: o.clone(), rect, tabs: tabs.to_vec(), shown, anim: None });
                     r = Rectangle::new((r.loc.x, r.loc.y + h).into(), (r.size.w, r.size.h - h).into());
                 }
                 if !Self::maximized_or_fullscreen(&w) {
@@ -242,6 +247,7 @@ impl WhiteRose {
                 tiled.push(w);
             }
         }
+        self.animate_strips(ws, &mut strips);
         self.tiling.strips = strips;
         self.tiling.placed = placed;
 
@@ -870,6 +876,39 @@ impl WhiteRose {
 
     /// SUPER+G: a tab leaves its group (and gets its own tile beside it);
     /// a tile joins the group of the last tile used before it.
+    /// Starts the strips moving that changed since they were last worked
+    /// out: a group new on screen appears, one whose tabs or shown tab
+    /// changed moves to how it is now (one still moving carries on), and
+    /// one that's gone goes away. A strip is the same group as before if
+    /// they share a window.
+    fn animate_strips(&mut self, ws: usize, strips: &mut [Strip]) {
+        let now = std::time::Instant::now();
+        let same_ws = self.tiling.strips_workspace.replace(ws) == Some(ws);
+        let old = std::mem::take(&mut self.tiling.strips);
+        self.tiling.leaving.retain(|l| now < l.start + ANIM);
+        if !same_ws {
+            return;
+        }
+        let same = |a: &Strip, b: &Strip| a.output == b.output && a.tabs.iter().any(|t| b.tabs.contains(t));
+        for s in strips.iter_mut() {
+            s.anim = match old.iter().find(|o| same(o, s)) {
+                Some(o) if o.tabs == s.tabs && o.shown == s.shown => o.anim.clone(),
+                Some(o) => Some(Anim { start: now, from: Some((o.tabs.clone(), o.shown)) }),
+                None => Some(Anim { start: now, from: None }),
+            };
+        }
+        for o in old.iter().filter(|o| !strips.iter().any(|s| same(o, s))) {
+            let labels = self.tiling.strip_images.labels_of(&o.tabs);
+            self.tiling.leaving.push(Leaving {
+                output: o.output.clone(),
+                rect: o.rect,
+                labels,
+                shown: o.shown,
+                start: now,
+            });
+        }
+    }
+
     pub fn toggle_group(&mut self) {
         let Some((w, i, _)) = self.focused_tile() else { return };
         if self.tiling.groups.tabs_of(&w).is_some() {

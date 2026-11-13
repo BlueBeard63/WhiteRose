@@ -280,6 +280,20 @@ pub mod qobject {
         /// Folders named on the command line, as JSON.
         #[qinvokable]
         fn arguments(self: &Fs) -> QString;
+        /// Started as a picker (`--choose`, choose.rs): what's wanted, as
+        /// JSON; "null" otherwise.
+        #[qinvokable]
+        fn choosing(self: &Fs) -> QString;
+        /// True if `name` / `mime` is one of filter `filter`'s (its number
+        /// in `choosing`'s filters).
+        #[qinvokable]
+        #[cxx_name = "chooseMatches"]
+        fn choose_matches(self: &Fs, filter: i32, name: &QString, mime: &QString) -> bool;
+        /// The picker's answer: `paths` (JSON) printed and exit 0, or
+        /// (null) nothing and exit 1.
+        #[qinvokable]
+        #[cxx_name = "chooseDone"]
+        fn choose_done(self: &Fs, paths: &QString);
         /// The windows and tabs saved last time, cleaned up ({windows: []} if none).
         #[qinvokable]
         #[cxx_name = "loadSession"]
@@ -907,7 +921,39 @@ impl qobject::Fs {
         }
     }
 
+    pub fn choosing(&self) -> QString {
+        q(choose_options().map_or(Value::Null, |c| serde_json::to_value(c).unwrap_or_default()))
+    }
+
+    pub fn choose_matches(&self, filter: i32, name: &QString, mime: &QString) -> bool {
+        let Some(c) = choose_options() else {
+            return true;
+        };
+        match c.filters.get(filter.max(0) as usize) {
+            Some(f) => crate::choose::matches(f, &name.to_string(), &mime.to_string()),
+            None => true,
+        }
+    }
+
+    pub fn choose_done(&self, paths: &QString) {
+        use std::io::Write;
+        let json = choose_options().is_some_and(|c| c.json);
+        match serde_json::from_str::<Vec<String>>(&paths.to_string()) {
+            Ok(p) if !p.is_empty() => {
+                let mut out = std::io::stdout().lock();
+                let _ = out.write_all(crate::choose::output(&p, json).as_bytes());
+                let _ = out.flush();
+                std::process::exit(0)
+            }
+            _ => std::process::exit(1),
+        }
+    }
+
     pub fn arguments(&self) -> QString {
+        // (A picker's options aren't folders to open.)
+        if choose_options().is_some() {
+            return q(json!([]));
+        }
         let cwd = std::env::current_dir().unwrap_or_default();
         let dirs: Vec<String> = std::env::args()
             .skip(1)
@@ -1587,4 +1633,16 @@ fn untrusted_why(p: impl AsRef<Path>) -> String {
         .map(|d| d.path)
         .collect();
     crate::run::untrusted(p.as_ref(), &home, Some(&downloads), &removable)
+}
+
+/// The picker's options (`--choose …` on the command line), read once.
+fn choose_options() -> Option<&'static crate::choose::Choose> {
+    static OPTS: std::sync::OnceLock<Option<crate::choose::Choose>> = std::sync::OnceLock::new();
+    OPTS.get_or_init(|| {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        (args.first().map(String::as_str) == Some("--choose"))
+            .then(|| crate::choose::parse(&args[1..]).ok())
+            .flatten()
+    })
+    .as_ref()
 }

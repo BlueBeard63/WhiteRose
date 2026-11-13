@@ -32,11 +32,7 @@ impl WhiteRose {
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
                 self.on_pointer_motion(pos, event.time_msec());
             }
-            InputEvent::PointerMotion { event, .. } => {
-                let pointer = self.seat.get_pointer().expect("seat has a pointer");
-                let pos = self.clamp_to_outputs(pointer.current_location(), pointer.current_location() + event.delta());
-                self.on_pointer_motion(pos, event.time_msec());
-            }
+            InputEvent::PointerMotion { event, .. } => self.on_pointer_relative(event.delta(), event.time_msec()),
             InputEvent::PointerButton { event, .. } => {
                 self.on_pointer_button(event.button_code(), event.state(), event.time_msec())
             }
@@ -71,16 +67,36 @@ impl WhiteRose {
         }
     }
 
+    /// A mouse or touchpad moved the pointer by `delta`: faster while the
+    /// modifiers in `mouse.fasterWith` (and only those) are held. They still
+    /// reach apps: nothing is taken. Also driven by tests.
+    pub fn on_pointer_relative(&mut self, delta: Point<f64, Logical>, time: u32) {
+        let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        let held = self.seat.get_keyboard().map(|k| Mods::from(&k.modifier_state()));
+        let k = match (self.pointer.faster_with, held) {
+            (Some(want), Some(held)) if held == want => self.pointer.faster_by,
+            _ => 1.0,
+        };
+        let from = pointer.current_location();
+        let pos = self.clamp_to_outputs(from, from + delta.upscale(k));
+        self.on_pointer_motion(pos, time);
+    }
+
     /// The pointer moved to `pos` (global coordinates). Also driven by tests.
     pub fn on_pointer_motion(&mut self, pos: Point<f64, Logical>, time: u32) {
         self.activity();
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        let from = pointer.current_location();
         let under = self.surface_under(pos);
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
         pointer.frame(self);
         if !pointer.is_grabbed() {
             self.picker_pointer(pos);
+            // (Dragging something is never a shake.)
+            if self.draws_cursor {
+                self.shake.motion(pos.x - from.x, pos.y - from.y, crate::shake::now_ms());
+            }
         }
         // The drag icon follows the pointer, and so does a pointer we draw.
         if self.dnd_icon.is_some() || self.draws_cursor {
@@ -109,6 +125,9 @@ impl WhiteRose {
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         let serial = SERIAL_COUNTER.next_serial();
         let button_state = state;
+        if button_state == ButtonState::Pressed {
+            self.shake.reset();
+        }
 
         if button_state == ButtonState::Pressed && self.is_locked() {
             self.focus_lock_surface();

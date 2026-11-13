@@ -281,6 +281,26 @@ var Known = map[string]Key{
 	"update.check":             {Default: json.RawMessage(`"daily"`), Check: into(oneOf("daily", "weekly", "manual"))},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"privacy.recentFiles":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Mice and touchpads (Settings › Mouse & Touchpad; the compositor
+	// applies them through libinput). Speed is libinput's, -1 to 1.
+	"mouse.naturalScroll":    {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"mouse.speed":            {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},
+	"mouse.acceleration":     {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.naturalScroll": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.speed":         {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},
+	"touchpad.acceleration":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.tapToClick":    {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Shaking the pointer makes it big for a moment (the compositor).
+	"mouse.shakeToFind": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Held, the pointer moves faster (fasterBy times); "" turns it off.
+	// The modifiers still reach apps.
+	"mouse.fasterWith": {Default: json.RawMessage(`"CTRL+SHIFT"`), Check: into(oneOf("", "CTRL+SHIFT", "CTRL+ALT", "SUPER+SHIFT"))},
+	"mouse.fasterBy": {Default: json.RawMessage(`3`), Check: into(func(v float64) error {
+		if v < 1 || v > 8 {
+			return errors.New("must be 1-8")
+		}
+		return nil
+	})},
 	// Keyboard layouts, first is the default: UK English to start with.
 	// An empty list means the system's (/etc/default/keyboard or the X11
 	// keyboard config).
@@ -417,9 +437,14 @@ var Known = map[string]Key{
 		return nil
 	})},
 	// Gaps in pixels: between tiles, and around them. Smart: none with one tile.
-	"windows.gaps.inner": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
-	"windows.gaps.outer": {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
-	"windows.gaps.smart": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// The note (the Note module, SUPER+SHIFT+N): one text, its first line the
+	// title, "[ ]" lines tasks.
+	"note.text": {Default: json.RawMessage(`""`), Check: into(func(s string) error { return limit(s, 20000) })},
+	// ALT+TAB: apps with windows on any workspace, or only this one.
+	"windows.appSwitcher.workspaces": {Default: json.RawMessage(`"all"`), Check: into(oneOf("all", "current"))},
+	"windows.gaps.inner":             {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.outer":             {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.smart":             {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	// Master layout: the master tile's share of the area, and its side.
 	"windows.master.ratio": {Default: json.RawMessage(`0.55`), Check: into(func(v float64) error {
 		if v < 0.1 || v > 0.9 {
@@ -910,6 +935,14 @@ func checkZones(zones [][4]float64) error {
 				return fmt.Errorf("zones %d and %d overlap", j+1, i+1)
 			}
 		}
+	}
+	return nil
+}
+
+// pointerSpeed: libinput's range.
+func pointerSpeed(v float64) error {
+	if v < -1 || v > 1 {
+		return errors.New("must be -1 to 1")
 	}
 	return nil
 }

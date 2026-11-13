@@ -183,7 +183,9 @@ func TestSettingsNarrowRailOpensTheSidebarOverThePage(t *testing.T) {
 	searchBox := uitest.Named("Search settings").Role("text")
 	menu := uitest.Named("Menu").Role("push button")
 	settings.WaitFor(menu)
-	if n, ok := settings.Find(searchBox); ok && n.Showing() {
+	// (Settings was wide until Files opened beside it: the sidebar slides
+	// away into the rail, which takes a moment drawn in software.)
+	if !uitest.WaitUntil(func() bool { n, ok := settings.Find(searchBox); return !ok || !n.Showing() }) {
 		t.Fatal("the sidebar's search box shows before Menu opened it")
 	}
 	settings.Click(menu)
@@ -383,5 +385,126 @@ func TestSettingsScratchpadIsAddedAndItsKeyStartsIt(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if n := strings.Count(s.Log(), "scratchpad window opened"); n != 1 {
 		t.Fatalf("%d scratchpad windows opened, want 1", n)
+	}
+}
+
+// Settings › Files › Search › Make again: whiterosed makes the index with
+// Files never opened, and the row says when.
+func TestSettingsMakesTheSearchIndexWithoutFiles(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	os.WriteFile(filepath.Join(s.Home, "Documents", "plan.txt"), nil, 0o644)
+	settings := s.Settings("files/search")
+	settings.Click(uitest.Named("Make again").Role("push button"))
+	index := filepath.Join(s.Home, ".cache/whiterose/files/index")
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if _, err := os.Stat(index); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no index after Make again")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if s.HasWindow("Home — Files") || s.HasWindow("Files") {
+		t.Error("a Files window opened")
+	}
+	// Done: the button's back (it's off while the index is being made).
+	for !settings.WaitFor(uitest.Named("Make again").Role("push button")).Enabled() {
+		if time.Now().After(deadline) {
+			t.Fatal("Make again stays off after the index was made")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// Mouse & Touchpad: the mouse scrolls naturally once picked, and tap to
+// click and shake to find turn off; all stored for the compositor.
+func TestSettingsMouseAndTouchpad(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("mouse")
+	// (The mouse's row comes first; the touchpad's is natural already.)
+	settings.Click(uitest.Named("Natural").Role("radio button"))
+	s.WaitSetting("mouse.naturalScroll", true)
+	settings.Click(uitest.Named("Tap to click").Role("check box"))
+	s.WaitSetting("touchpad.tapToClick", false)
+	settings.Click(uitest.Named("Shake to find").Role("check box"))
+	s.WaitSetting("mouse.shakeToFind", false)
+	if got := s.Setting("touchpad.naturalScroll"); got != "true" {
+		t.Errorf("touchpad.naturalScroll = %s", got)
+	}
+}
+
+// Mouse & Touchpad › Faster while you hold: Ctrl+Shift to start with;
+// another pick is stored, and how much faster follows a click and then
+// the wheel.
+func TestSettingsFasterPointer(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("mouse")
+	settings.Click(uitest.Named("Faster while you hold").Role("combo box").Described("Ctrl + Shift"))
+	settings.Activate(uitest.Named("Super + Shift"))
+	s.WaitSetting("mouse.fasterWith", "SUPER+SHIFT")
+	// (Clicked first: the wheel only moves a slider once it's clicked.
+	// The middle is 3.5×; two turns up, 4.5×.)
+	settings.Click(uitest.Named("How much faster").Role("slider"))
+	s.WaitSetting("mouse.fasterBy", 3.5)
+	settings.Wheel(uitest.Named("How much faster").Role("slider"), -2)
+	s.WaitSetting("mouse.fasterBy", 4.5)
+}
+
+// Settings chooses files and folders with Files' picker: a folder left out
+// of the search index, and a wallpaper image.
+func TestSettingsPicksWithFiles(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	pics := filepath.Join(s.Home, "Pictures")
+	os.WriteFile(filepath.Join(pics, "dunes.png"), []byte("x"), 0o644)
+
+	settings := s.Settings("files/search")
+	settings.Click(uitest.Named("Leave a folder out…").Role("push button"))
+	picker := s.WaitWindow("A folder to leave out of the index — Files")
+	picker.Press("ctrl+2")
+	picker.Click(uitest.Named("Documents").Role("list item"))
+	picker.Click(uitest.Named("Choose folder").Role("push button"))
+	s.WaitSetting("files.indexExclude", []any{"~/Documents"})
+
+	settings = s.Settings("appearance")
+	settings.Click(uitest.Named("Add a wallpaper").Role("push button"))
+	picker = s.WaitWindow("Choose a wallpaper — Files")
+	picker.Press("ctrl+2")
+	picker.Click(uitest.Named("dunes.png").Role("list item"))
+	picker.Click(uitest.Named("Open").Role("push button"))
+	s.WaitSetting("wallpaper.files", []any{"~/Pictures/dunes.png"})
+}
+
+// Windows › Switching: ALT+TAB can list only this workspace's apps. (At
+// the end of the page, scrolled to past the gap and master sliders: they
+// leave the wheel to the page.)
+func TestSettingsAltTabThisWorkspace(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("windows")
+	settings.Click(uitest.Named("This workspace").Role("radio button"))
+	s.WaitSetting("windows.appSwitcher.workspaces", "current")
+}
+
+// A slider ignores the wheel until it's clicked: scrolling past one scrolls
+// the page and leaves its value be; clicked, the wheel moves it.
+func TestSettingsSlidersTakeTheWheelOnlyOnceClicked(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("keyboard")
+	delay := uitest.Named("Repeat delay").Role("slider")
+	before := settings.WaitFor(delay)
+	settings.Wheel(delay, 3)
+	time.Sleep(400 * time.Millisecond)
+	if got := s.Setting("keyboard.repeatDelay"); got != "300" {
+		t.Errorf("the wheel moved an unclicked slider: %s", got)
+	}
+	if after, _ := settings.Lookup(delay); after.Y >= before.Y {
+		t.Errorf("the page didn't scroll (%d, then %d)", before.Y, after.Y)
+	}
+	settings.Click(delay)
+	clicked := s.Setting("keyboard.repeatDelay")
+	settings.Wheel(delay, -3)
+	if !uitest.WaitUntil(func() bool { return s.Setting("keyboard.repeatDelay") != clicked }) {
+		t.Errorf("clicked, the wheel didn't move it (still %s)", clicked)
 	}
 }

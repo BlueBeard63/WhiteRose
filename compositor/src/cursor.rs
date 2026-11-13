@@ -21,7 +21,7 @@ use smithay::{
     },
     input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus},
     reexports::wayland_server::Resource,
-    utils::{Logical, Point, Scale, Transform},
+    utils::{Logical, Point, Scale, Size, Transform},
     wayland::compositor,
 };
 
@@ -33,13 +33,16 @@ use crate::render::OutputElement;
 struct Loaded {
     buffer: MemoryRenderBuffer,
     hotspot: Point<f64, Logical>,
+    /// Its size in logical pixels, and the theme's nominal size for it.
+    size: Size<f64, Logical>,
+    nominal: f64,
 }
 
 pub struct Cursors {
     theme: xcursor::CursorTheme,
     size: u32,
-    /// By (name, integer scale); None when the theme doesn't have it.
-    cache: HashMap<(&'static str, u32), Option<Loaded>>,
+    /// By (name, pixels, integer scale); None when the theme doesn't have it.
+    cache: HashMap<(&'static str, u32, u32), Option<Loaded>>,
 }
 
 /// The cursor theme and size: $XCURSOR_THEME / $XCURSOR_SIZE, else the
@@ -75,12 +78,15 @@ impl Cursors {
         Self { theme: xcursor::CursorTheme::load(theme), size, cache: HashMap::new() }
     }
 
-    fn named(&mut self, icon: CursorIcon, scale: u32) -> Option<Loaded> {
+    /// `icon` at `grow` times the usual size (shake to find): the theme's
+    /// biggest image needed, drawn scaled to exactly that.
+    fn named(&mut self, icon: CursorIcon, scale: u32, grow: f64) -> Option<Loaded> {
+        let pixels = if grow > 1.0 { self.size * crate::shake::MAX as u32 } else { self.size } * scale;
         let names = std::iter::once(icon.name()).chain(icon.alt_names().iter().copied());
         for name in names.chain(["default", "left_ptr"]) {
-            let key = (name, scale);
+            let key = (name, pixels, scale);
             if !self.cache.contains_key(&key) {
-                let loaded = load(&self.theme, name, self.size * scale, scale);
+                let loaded = load(&self.theme, name, pixels, scale);
                 self.cache.insert(key, loaded);
             }
             if let Some(Some(l)) = self.cache.get(&key) {
@@ -91,19 +97,25 @@ impl Cursors {
     }
 
     /// The pointer's render elements for an output, `at` in output-local
-    /// logical coordinates. Empty when hidden. A client cursor surface that
-    /// has gone away falls back to the default arrow.
+    /// logical coordinates, `grow` times its usual size (shake to find; an
+    /// app's own pointer is shown as the arrow while it's bigger). Empty
+    /// when hidden. A client cursor surface that has gone away falls back
+    /// to the default arrow.
     pub fn elements(
         &mut self,
         renderer: &mut GlesRenderer,
         status: &mut CursorImageStatus,
         at: Point<f64, Logical>,
         scale: f64,
+        grow: f64,
     ) -> Vec<OutputElement> {
         if let CursorImageStatus::Surface(s) = status {
             if !s.is_alive() {
                 *status = CursorImageStatus::default_named();
             }
+        }
+        if grow > 1.0 && matches!(status, CursorImageStatus::Surface(_)) {
+            return self.draw(renderer, CursorIcon::Default, at, scale, grow);
         }
         match status {
             CursorImageStatus::Hidden => Vec::new(),
@@ -128,24 +140,28 @@ impl Cursors {
                 .map(OutputElement::Surface)
                 .collect()
             }
-            CursorImageStatus::Named(icon) => {
-                let Some(l) = self.named(*icon, scale.ceil().max(1.0) as u32) else { return Vec::new() };
-                let loc = (at - l.hotspot).to_physical(scale);
-                match MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    loc,
-                    &l.buffer,
-                    None,
-                    None,
-                    None,
-                    Kind::Cursor,
-                ) {
-                    Ok(e) => vec![OutputElement::Image(e)],
-                    Err(err) => {
-                        tracing::warn!(?err, "cursor upload failed");
-                        Vec::new()
-                    }
-                }
+            CursorImageStatus::Named(icon) => self.draw(renderer, *icon, at, scale, grow),
+        }
+    }
+
+    fn draw(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        icon: CursorIcon,
+        at: Point<f64, Logical>,
+        scale: f64,
+        grow: f64,
+    ) -> Vec<OutputElement> {
+        let Some(l) = self.named(icon, scale.ceil().max(1.0) as u32, grow) else { return Vec::new() };
+        // (Grown: the big image drawn at the size wanted now.)
+        let k = if grow > 1.0 { self.size as f64 * grow / l.nominal } else { 1.0 };
+        let loc = (at - l.hotspot.upscale(k)).to_physical(scale);
+        let size = (grow > 1.0).then(|| l.size.upscale(k).to_i32_round());
+        match MemoryRenderBufferRenderElement::from_buffer(renderer, loc, &l.buffer, None, None, size, Kind::Cursor) {
+            Ok(e) => vec![OutputElement::Image(e)],
+            Err(err) => {
+                tracing::warn!(?err, "cursor upload failed");
+                Vec::new()
             }
         }
     }
@@ -167,6 +183,8 @@ fn load(theme: &xcursor::CursorTheme, name: &str, pixels: u32, scale: u32) -> Op
         Transform::Normal,
         None,
     );
-    let hotspot = Point::from((image.xhot as f64 / scale as f64, image.yhot as f64 / scale as f64));
-    Some(Loaded { buffer, hotspot })
+    let s = scale as f64;
+    let hotspot = Point::from((image.xhot as f64 / s, image.yhot as f64 / s));
+    let size = Size::from((image.width as f64 / s, image.height as f64 / s));
+    Some(Loaded { buffer, hotspot, size, nominal: image.size as f64 / s })
 }

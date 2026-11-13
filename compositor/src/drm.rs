@@ -45,7 +45,7 @@ use smithay::{
             EventLoop,
         },
         drm::control::{connector, crtc, Device as _, ModeTypeFlags},
-        input::{DeviceCapability, Libinput},
+        input::Libinput,
         rustix::fs::OFlags,
         wayland_server::backend::GlobalId,
     },
@@ -154,9 +154,11 @@ pub fn init_drm(
 
     // Input.
     let input = LibinputInputBackend::new(backend.borrow().libinput.clone());
-    event_loop.handle().insert_source(input, |mut event, _, state| {
-        if let InputEvent::DeviceAdded { device } = &mut event {
-            configure_device(device);
+    event_loop.handle().insert_source(input, |event, _, state| {
+        match &event {
+            InputEvent::DeviceAdded { device } => state.add_input_device(device.clone()),
+            InputEvent::DeviceRemoved { device } => state.remove_input_device(device),
+            _ => {}
         }
         state.process_input_event(event);
     })?;
@@ -222,6 +224,7 @@ pub fn init_drm(
     let b = backend.clone();
     event_loop.handle().insert_source(ping_source, move |_, _, state| redraw_all(&b, state))?;
     state.redraw = Some(ping);
+    state.can_capture = true;
 
     // Ctrl+Alt+Fn.
     let b = backend.clone();
@@ -240,13 +243,6 @@ fn libinput(session: &LibSeatSession, seat: &str) -> Result<Libinput, Box<dyn st
     let mut li = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
     li.udev_assign_seat(seat).map_err(|()| "libinput couldn't take the seat")?;
     Ok(li)
-}
-
-/// Tap to click on touchpads, as every laptop user expects.
-fn configure_device(device: &mut smithay::reexports::input::Device) {
-    if device.has_capability(DeviceCapability::Pointer) && device.config_tap_finger_count() > 0 {
-        let _ = device.config_tap_set_enabled(true);
-    }
 }
 
 /// Opens the GPU: KMS device, GBM buffers, a GLES renderer.
@@ -652,9 +648,10 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
     let scale = output.current_scale().fractional_scale();
     let geo = state.space.output_geometry(&output);
     let pointer = state.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
+    let grow = state.shake.factor(crate::shake::now_ms());
     let front = match geo {
         Some(g) if g.to_f64().contains(pointer) => {
-            b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale)
+            b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale, grow)
         }
         _ => Vec::new(),
     };
@@ -675,6 +672,19 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
     };
     s.pending = queued;
     let refresh = s.mode.vrefresh().max(1);
+    // Shake to find: a frame each refresh while the pointer is bigger than
+    // usual (on a timer: a still, big pointer damages nothing, so frames
+    // alone wouldn't come).
+    if state.shake.animating() && !std::mem::replace(&mut state.shake.tick_armed, true) {
+        let _ = state.loop_handle.insert_source(
+            Timer::from_duration(Duration::from_micros(1_000_000 / refresh as u64)),
+            |_, _, state| {
+                state.shake.tick_armed = false;
+                state.schedule_redraw();
+                TimeoutAction::Drop
+            },
+        );
+    }
     let arm_callbacks = !queued && !std::mem::replace(&mut s.callbacks_armed, true);
     if queued {
         s.callbacks_armed = false;
@@ -686,7 +696,7 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
         state.screenshot_pending = false;
         let pointer = match geo {
             Some(g) if g.to_f64().contains(pointer) => {
-                b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale)
+                b.cursors.elements(&mut b.renderer, &mut state.cursor_status, pointer - g.loc.to_f64(), scale, 1.0)
             }
             _ => Vec::new(),
         };

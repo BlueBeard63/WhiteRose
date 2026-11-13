@@ -177,8 +177,9 @@ pub fn output_elements(
             space_elements(renderer, output, state, &mut elements);
         }
     }
-    // A scratchpad sliding: the next frame too, until it ends.
-    if state.scratchpads.animating() {
+    // A scratchpad sliding or a tab strip moving: the next frame too,
+    // until it ends.
+    if state.scratchpads.animating() || crate::tab_strip::animating(state) {
         state.schedule_redraw();
     }
     (elements, CLEAR)
@@ -218,6 +219,8 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
         }
     };
     layer_elements(renderer, false, elements);
+    // Strips of groups that just ended, going away over their windows.
+    elements.extend(crate::tab_strip::leaving_elements(renderer, output, state));
     for w in state.space.elements().rev() {
         let Some(bbox) = state.space.element_bbox(w) else { continue };
         if !bbox.overlaps(out) || !state.shows_on(w, output) {

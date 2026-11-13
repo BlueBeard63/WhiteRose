@@ -33,7 +33,10 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-    mask: Region { item: shape }
+    // The sliding item, not the shape inside it: a Region follows its own
+    // item's moves only, so with `shape` it stayed where the slide started
+    // (above the window) and every click went straight through.
+    mask: Region { item: slider }
 
     function show() {
         open = true;
@@ -201,6 +204,7 @@ PanelWindow {
                 ToastButton {
                     width: 34
                     icon: "trash"
+                    name: "Delete"
                     onClicked: { Compositor.deleteScreenshot(root.path); root.dismiss(); }
                 }
             }

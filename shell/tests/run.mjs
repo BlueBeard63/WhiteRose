@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,8 @@ const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "butto
 const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "dragTo", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
 const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "padShortcut", "newId", "parseLayouts", "searchLayouts"]);
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
+const Note = load("Note.js", ["parse", "toggle", "withoutDone"]);
+const Ag = load("Agenda.js", ["timed", "next", "when", "span", "at", "blocks"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
@@ -1105,6 +1107,66 @@ test("a monitor's or a workspace's grid is shown and saved", () => {
     assert.equal(Z.monitorName({ builtin: true }), "Built-in display");
     assert.equal(Z.monitorName({ make: "Dell", model: "U2723", connector: "DP-1" }), "Dell U2723");
     assert.equal(Z.monitorName({ connector: "DP-1" }), "DP-1");
+});
+
+test("the note: a title, lines and tasks", () => {
+    const text = "Today\n[ ] Call mom\n[x] Gym at six\n\nPay rent\n  [X] Bins";
+    const n = Note.parse(text);
+    assert.equal(n.title, "Today");
+    assert.deepEqual(n.lines.map(l => [l.text, l.task, l.done, l.at]), [
+        ["Call mom", true, false, 1], ["Gym at six", true, true, 2], ["Pay rent", false, false, 4], ["Bins", true, true, 5],
+    ], "blank lines left out; [X] is done too");
+    assert.equal(n.tasks, 3);
+    assert.equal(n.done, 2);
+    assert.deepEqual(Note.parse(""), { title: "", lines: [], tasks: 0, done: 0 });
+    assert.equal(Note.parse("[ ] Not a task: the title").tasks, 0, "the first line is always the title");
+    // The ways people write a task.
+    const forms = Note.parse("T\n[] a\n- [ ] b\n* [x] c\n[ ]d");
+    assert.deepEqual(forms.lines.map(l => [l.text, l.done]), [["a", false], ["b", false], ["c", true], ["d", false]]);
+    assert.equal(Note.toggle("T\n- [] a", 1), "T\n- [x] a");
+});
+
+test("the note: ticking tasks and clearing the done ones", () => {
+    const text = "Today\n[ ] Call mom\n[x] Gym\nPay rent";
+    assert.equal(Note.toggle(text, 1), "Today\n[x] Call mom\n[x] Gym\nPay rent");
+    assert.equal(Note.toggle(text, 2), "Today\n[ ] Call mom\n[ ] Gym\nPay rent");
+    assert.equal(Note.toggle(text, 3), text, "not a task: unchanged");
+    assert.equal(Note.withoutDone(text), "Today\n[ ] Call mom\nPay rent");
+});
+
+test("the agenda: what's next today, and when", () => {
+    const now = new Date(2026, 10, 12, 14, 12);
+    const at = (h, m = 0, d = 12) => new Date(2026, 10, d, h, m).toISOString();
+    const events = [
+        { title: "Gym", start: at(18, 30), end: at(19, 30) },
+        { title: "Standup", start: at(9), end: at(9, 30) },
+        { title: "Design review", start: at(15), end: at(16) },
+        { title: "Holiday", start: at(0), end: at(0, 0, 13), all_day: true },
+        { title: "Tomorrow", start: at(9, 0, 13), end: at(10, 0, 13) },
+    ];
+    assert.deepEqual(Ag.timed(events, now).map(e => e.title), ["Standup", "Design review", "Gym"], "today's timed ones, in order");
+    const n = Ag.next(events, now);
+    assert.equal(n.event.title, "Design review");
+    assert.equal(Ag.when(n), "in 48 min");
+    assert.equal(Ag.when(Ag.next(events, new Date(2026, 10, 12, 12, 0))), "in 3 h");
+    assert.equal(Ag.when(Ag.next(events, new Date(2026, 10, 12, 12, 40))), "in 2 h 20 min");
+    const on = Ag.next(events, new Date(2026, 10, 12, 15, 20));
+    assert.equal(on.now, true);
+    assert.equal(Ag.when(on), "now · until 16:00");
+    assert.equal(Ag.next(events, new Date(2026, 10, 12, 20, 0)), null, "nothing else today");
+});
+
+test("the agenda: the day as a line", () => {
+    const now = new Date(2026, 10, 12, 14, 0);
+    const at = (h, m = 0) => new Date(2026, 10, 12, h, m).toISOString();
+    const events = [{ title: "Review", start: at(15), end: at(16) }];
+    const sp = Ag.span(events, now);
+    assert.deepEqual(sp, { from: 8, to: 20 });
+    assert.equal(Ag.at(now, now, sp), 0.5, "14:00 is halfway through 08–20");
+    const b = Ag.blocks(events, now, sp, events[0]);
+    assert.deepEqual(b.map(x => [Math.round(x.x0 * 12), Math.round(x.x1 * 12), x.next, x.past]), [[7, 8, true, false]]);
+    // An early start and a late finish widen it.
+    assert.deepEqual(Ag.span([{ title: "Flight", start: at(6, 30), end: at(7, 30) }, { title: "Late", start: at(21), end: at(22, 15) }], now), { from: 6, to: 23 });
 });
 
 console.log(`${passed} passed, ${failed} failed`);

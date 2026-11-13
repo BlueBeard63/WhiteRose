@@ -3,7 +3,6 @@
 // permission: the shell's password prompt appears when they do, and a
 // request waits until you answer it.
 import QtQuick
-import QtQuick.Dialogs
 import Quickshell
 import Quickshell.Widgets
 import qs
@@ -203,12 +202,12 @@ Column {
     }
 
     // ---- dialogs --------------------------------------------------------------------------------
-    FileDialog {
+    FilePicker {
         id: pictureDialog
         title: "Choose a picture"
-        currentFolder: "file://" + (Quickshell.env("HOME") ?? "") + "/Pictures"
-        nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.bmp)"]
-        onAccepted: page.change("user_icon", { uid: page.me.uid, path: decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")) })
+        folder: (Quickshell.env("HOME") ?? "") + "/Pictures"
+        filters: [{ name: "Images", patterns: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }]
+        onPicked: path => page.change("user_icon", { uid: page.me.uid, path: path })
     }
 
     Dialog {

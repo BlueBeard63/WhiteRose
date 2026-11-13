@@ -83,6 +83,10 @@ install -Dm644 shell/pam/whiterose-lock "$meta/etc/pam.d/whiterose-lock"
 install -Dm644 shell/pam/whiterose-fingerprint "$meta/etc/pam.d/whiterose-fingerprint"
 install -Dm644 packaging/files/whiterose.desktop "$meta/usr/share/wayland-sessions/whiterose.desktop"
 install -Dm644 packaging/files/whiterose-portals.conf "$meta/usr/share/xdg-desktop-portal/whiterose-portals.conf"
+# The file chooser portal: Files as every app's Open / Save (whiterosed portal,
+# started by D-Bus when the portal first asks).
+install -Dm644 packaging/files/whiterose.portal "$meta/usr/share/xdg-desktop-portal/portals/whiterose.portal"
+install -Dm644 packaging/files/org.freedesktop.impl.portal.desktop.whiterose.service "$meta/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.whiterose.service"
 install -Dm644 ARCHITECTURE.md "$meta/usr/share/doc/whiterose/ARCHITECTURE.md"
 install -Dm644 packaging/files/whiterose-autostart.sh "$meta/etc/profile.d/whiterose-autostart.sh"
 install -Dm644 packaging/files/org.whiterose.apps.policy "$meta/usr/share/polkit-1/actions/org.whiterose.apps.policy"

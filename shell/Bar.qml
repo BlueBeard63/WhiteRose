@@ -116,8 +116,10 @@ PanelWindow {
             Clock {
                 label: "Clock"
                 anchors.verticalCenter: parent.verticalCenter
-                active: calendar.open
-                onClicked: ShellState.togglePanel("calendar")
+                active: calendar.open || ShellState.islandView === "agenda"
+                // The agenda (its module on), the month one click from it;
+                // else the month.
+                onClicked: Daemon.setting("settings.modules.disabled", []).includes("agenda") ? ShellState.togglePanel("calendar") : ShellState.toggle("agenda")
             }
         }
     }

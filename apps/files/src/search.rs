@@ -549,16 +549,18 @@ pub fn build_leaving(
     file: &Path,
     stop: &AtomicBool,
 ) -> Result<usize, String> {
-    build_tagged(roots, exclude, file, stop, &mut vec![])
+    build_tagged(roots, exclude, file, stop, &mut vec![], &mut |_| {})
 }
 
-/// As build_leaving, also gathering the tags found on files ([path, tags]).
+/// As build_leaving, also gathering the tags found on files ([path, tags]),
+/// and telling `progress` how many entries so far (every 1024).
 pub fn build_tagged(
     roots: &[PathBuf],
     exclude: &[PathBuf],
     file: &Path,
     stop: &AtomicBool,
     tagged: &mut Vec<(String, Vec<String>)>,
+    progress: &mut dyn FnMut(usize),
 ) -> Result<usize, String> {
     use std::os::unix::ffi::OsStrExt;
     let mut head = MAGIC.to_vec();
@@ -617,6 +619,9 @@ pub fn build_tagged(
                 body.extend_from_slice(&m.mtime().to_le_bytes());
                 put_name(&mut body, name.as_bytes());
                 count += 1;
+                if count.is_multiple_of(1024) {
+                    progress(count);
+                }
             }
         }
         ranges.push((start, count as u32, root.clone()));
@@ -806,6 +811,13 @@ impl Index {
             n = r.parent;
         }
         None
+    }
+
+    /// How many entries it holds (files and folders, the tops too).
+    pub fn entries(&self) -> usize {
+        self.trees()
+            .and_then(|(t, _)| t.last().map(|x| x.1 as usize))
+            .unwrap_or(0)
     }
 
     /// The tops of the trees in it.

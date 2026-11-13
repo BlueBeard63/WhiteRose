@@ -24,6 +24,14 @@ ShellRoot {
             if (name === "app_launcher") ShellState.toggle("launcher");
             else if (name === "quick_settings") ShellState.togglePanel("quick");
             else if (name === "notifications") ShellState.togglePanel("notifications");
+            // SUPER+V: the clipboard history, in the island.
+            else if (name === "clipboard") ShellState.toggle("clipboard");
+            // SUPER+SHIFT+N: the note, if its module is on (Settings › Modules).
+            else if (name === "note" && !Daemon.setting("settings.modules.disabled", []).includes("note")) ShellState.toggle("note");
+            // SUPER+SHIFT+M: what's playing, if its module is on.
+            else if (name === "music" && !Daemon.setting("settings.modules.disabled", []).includes("music")) ShellState.toggle("music");
+            // SUPER+A: the agenda, if its module is on.
+            else if (name === "agenda" && !Daemon.setting("settings.modules.disabled", []).includes("agenda")) ShellState.toggle("agenda");
             else if (name === "lock") ShellState.lock();
         }
     }

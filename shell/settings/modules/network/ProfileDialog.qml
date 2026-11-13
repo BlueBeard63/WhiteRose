@@ -79,6 +79,10 @@ Dialog {
                 required property var modelData
                 readonly property bool on: dlg.tab === modelData[0]
                 spacing: 6
+                Accessible.role: Accessible.PageTab
+                Accessible.name: modelData[1]
+                Accessible.selected: on
+                Accessible.onPressAction: dlg.tab = modelData[0]
                 Text {
                     text: modelData[1]
                     color: parent.on ? Theme.text : Theme.muted
@@ -131,41 +135,25 @@ Dialog {
         visible: dlg.tab === "security" && dlg.profile !== null
         width: parent.width
         spacing: 12
-        Section { text: "Security type" }
-        Grid {
+        Card {
             visible: dlg.p.security !== "wpa-eap"
-            columns: 2
-            spacing: 8
-            Repeater {
-                model: [
-                    ["sae", "WPA3 Personal", "Strongest option for home networks", "recommended"],
-                    ["wpa-psk", "WPA2 / WPA3 Personal", "Works with older devices", ""],
-                    ["owe", "Enhanced Open", "Encrypted, no password", ""],
-                    ["none", "Open", "No encryption: anyone nearby can read traffic", "not secure"],
+            SettingRow {
+                id: secRow
+                divider: false
+                readonly property var types: [
+                    { value: "sae", label: "WPA3 Personal", hint: "recommended", about: "Strongest option for home networks" },
+                    { value: "wpa-psk", label: "WPA2 / WPA3 Personal", about: "Works with older devices" },
+                    { value: "owe", label: "Enhanced Open", about: "Encrypted, no password" },
+                    { value: "none", label: "Open", hint: "not secure", about: "No encryption: anyone nearby can read traffic" },
                 ]
-                delegate: Rectangle {
-                    required property var modelData
-                    readonly property bool on: dlg.val("security", dlg.p.security) === modelData[0]
-                    width: (dlg.width - 36 - 8) / 2; height: 54; radius: 12
-                    color: Theme.surface1
-                    border { width: on ? 1.5 : 0; color: Theme.pearl }
-                    Rectangle {
-                        x: 12; anchors.verticalCenter: parent.verticalCenter
-                        width: 14; height: 14; radius: 7
-                        color: "transparent"; border { width: 1.5; color: parent.on ? Theme.pearl : Theme.muted }
-                        Rectangle { anchors.centerIn: parent; width: 6; height: 6; radius: 3; color: Theme.pearl; visible: parent.parent.on }
-                    }
-                    Column {
-                        x: 34; anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 44
-                        Row {
-                            spacing: 6
-                            Text { text: modelData[1]; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium } }
-                            Badge { visible: modelData[3] !== ""; text: modelData[3]; ink: modelData[0] === "none" ? Theme.rose : Theme.muted }
-                        }
-                        Text { width: parent.width; elide: Text.ElideRight; text: modelData[2]; color: modelData[0] === "none" ? Theme.rose : Theme.muted; font { family: Theme.font; pointSize: Theme.pt(10.5) } }
-                    }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: dlg.change("security", modelData[0]) }
+                readonly property string current: dlg.val("security", dlg.p.security)
+                title: "Security type"
+                subtitle: (types.find(t => t.value === current) ?? { about: "" }).about
+                subtitleColor: current === "none" ? Theme.rose : Theme.muted
+                Choice {
+                    value: secRow.current
+                    options: secRow.types
+                    onPicked: v => dlg.change("security", v)
                 }
             }
         }

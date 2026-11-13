@@ -103,6 +103,9 @@ pub struct WhiteRose {
     next_window_id: u64,
     /// The open switcher and the modifiers that keep it open (released = commit).
     pub switcher: Option<(crate::switcher::Switcher, crate::keybind::Mods)>,
+    /// ALT+TAB lists only the active workspace's apps
+    /// (`windows.appSwitcher.workspaces` "current"); SUPER+TAB always all.
+    pub app_switcher_current_only: bool,
     /// Modifiers of the shortcut that triggered the current action.
     pub shortcut_mods: crate::keybind::Mods,
     /// Per output: (whole, usable) rectangles last used to fit them.
@@ -114,8 +117,11 @@ pub struct WhiteRose {
     /// SUPER is down and nothing else has been pressed since.
     pub logo_tap_pending: bool,
 
-    /// Wakes the backend to draw a frame. None when running headless (tests).
+    /// Wakes the backend to draw a frame. None in the compositor tests.
     pub redraw: Option<Ping>,
+    /// The backend draws the screen, so it can be captured (screenshots).
+    /// Not headless: it draws nothing.
+    pub can_capture: bool,
     /// Imports a client's GPU buffer into the renderer. Set by the backend.
     pub dmabuf_importer: Option<DmabufImporter>,
     pub dmabuf_global: Option<DmabufGlobal>,
@@ -146,6 +152,11 @@ pub struct WhiteRose {
     pub clipboard_history_on: bool,
     /// Layouts, key repeat and the shortcut settings (see keyboard.rs).
     pub keyboard: crate::keyboard::KeyboardSettings,
+    /// Mice and touchpads (pointer.rs), and the libinput devices they apply to.
+    pub pointer: crate::pointer::PointerSettings,
+    pub input_devices: Vec<smithay::reexports::input::Device>,
+    /// Shake to find (shake.rs): how big the pointer is drawn.
+    pub shake: crate::shake::Shake,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
     pub shortcuts_paused: Option<u64>,
     /// The cursor theme and size we draw with (DRM), passed on to apps.
@@ -262,6 +273,7 @@ impl WhiteRose {
             fitted_to: Vec::new(),
             next_window_id: 1,
             switcher: None,
+            app_switcher_current_only: false,
             shortcut_mods: crate::keybind::Mods::NONE,
             screenshot_pending: false,
             screenshot_shot: Default::default(),
@@ -271,6 +283,7 @@ impl WhiteRose {
             swallowed: Vec::new(),
             logo_tap_pending: false,
             redraw: None,
+            can_capture: false,
             dmabuf_importer: None,
             dmabuf_global: None,
             compositor_state,
@@ -296,6 +309,9 @@ impl WhiteRose {
                 terminal: "ptyxis --standalone".into(),
                 ..Default::default()
             },
+            pointer: Default::default(),
+            input_devices: Vec::new(),
+            shake: Default::default(),
             shortcuts_paused: None,
             idle: Default::default(),
             idle_inhibit_state,
@@ -379,11 +395,17 @@ impl WhiteRose {
             let (output, geo) = output_hit?;
             let map = layer_map_for_output(output);
             let local = pos - geo.loc.to_f64();
-            let surface = map.layer_under(layer, local)?;
-            let layer_geo = map.layer_geometry(surface)?;
-            surface
-                .surface_under(local - layer_geo.loc.to_f64(), WindowSurfaceType::ALL)
-                .map(|(s, p)| (s, (p + layer_geo.loc + geo.loc).to_f64()))
+            // The topmost surface that takes input here, not just the
+            // topmost whose rectangle covers it: a mostly click-through
+            // layer (its input region is a few shapes) over another, like the
+            // island's window over the screenshot toast, lets clicks through.
+            let hit = map.layers_on(layer).rev().find_map(|surface| {
+                let layer_geo = map.layer_geometry(surface)?;
+                surface
+                    .surface_under(local - layer_geo.loc.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(s, p)| (s, (p + layer_geo.loc + geo.loc).to_f64()))
+            });
+            hit
         };
         let window_hit = || {
             self.window_under(pos).and_then(|(window, location)| {
@@ -639,6 +661,25 @@ impl WhiteRose {
         }
     }
 
+    /// SUPER+ALT+arrow: the focused window to the workspace before (left,
+    /// up) or after (right, down) this one, and there with it. Nothing at
+    /// the first or last.
+    pub fn move_focused_step(&mut self, dir: crate::layout::Dir) {
+        use crate::layout::Dir;
+        let Some(w) = self.focused_window() else { return };
+        let ws = self.workspaces.active();
+        let to = match dir {
+            Dir::Left | Dir::Up => ws.checked_sub(1),
+            Dir::Right | Dir::Down => Some(ws + 1).filter(|n| *n < self.workspaces.count()),
+        };
+        let Some(to) = to else { return };
+        self.move_focused_to(to);
+        if self.workspaces.workspace_of(&w) == Some(to) {
+            self.switch_workspace(to);
+            self.focus_window(Some(w));
+        }
+    }
+
     pub(crate) fn hide(&mut self, w: &Window) {
         if let Some(loc) = self.space.element_location(w) {
             self.hidden_at.push((w.clone(), loc));
@@ -737,6 +778,8 @@ impl WhiteRose {
             }
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
+            Action::MoveToWorkspaceStep(dir) => self.move_focused_step(dir),
+            Action::MoveToOutput(dir) => self.move_focused_to_output(dir),
             Action::Quit => self.loop_signal.stop(),
             Action::Restart => {
                 self.exit_code = crate::keybind::RESTART_CODE;
@@ -820,6 +863,7 @@ impl WhiteRose {
             Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
             Action::NextTab => self.next_tab(true),
             Action::PreviousTab => self.next_tab(false),
+
             shell => {
                 debug_assert!(shell.is_shell());
                 let name = ipc::action_name(&shell).expect("every shell action has a wire name");
@@ -843,10 +887,22 @@ impl ClientData for ClientState {
 }
 
 impl WhiteRose {
-    fn switcher_mru(&self) -> Vec<(u64, String)> {
+    /// `windows.appSwitcher.workspaces`: "current" or "all" (the default).
+    pub fn switcher_setting(&mut self, key: &str, value: &serde_json::Value) {
+        if key == "windows.appSwitcher.workspaces" {
+            self.app_switcher_current_only = value.as_str() == Some("current");
+        }
+    }
+
+    /// The windows a switcher offers, most recent first: ALT+TAB's only
+    /// on this workspace if the setting says so.
+    fn switcher_mru(&self, mode: crate::switcher::Mode) -> Vec<(u64, String)> {
+        let here = self.workspaces.active();
+        let only_here = mode == crate::switcher::Mode::Apps && self.app_switcher_current_only;
         self.workspaces
             .mru()
             .iter()
+            .filter(|w| !only_here || self.workspaces.workspace_of(w) == Some(here))
             .map(|w| (self.window_id(w), crate::ipc::toplevel_ids(w).0.unwrap_or_default()))
             .collect()
     }
@@ -857,7 +913,7 @@ impl WhiteRose {
         }
         // Held modifiers keep it open; Shift only changes direction.
         let held = crate::keybind::Mods { shift: false, ..self.shortcut_mods };
-        if let Some(s) = crate::switcher::Switcher::open(mode, &self.switcher_mru()) {
+        if let Some(s) = crate::switcher::Switcher::open(mode, &self.switcher_mru(mode)) {
             self.switcher = Some((s, held));
             self.switcher_sync();
         }

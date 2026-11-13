@@ -85,7 +85,7 @@ ui-test:             ## Run the click-and-check UI tests
 # inside notify it. System services (network, Bluetooth, power) are shared.
 run-nested:          ## WhiteRose in a window on your current desktop: bar + a terminal
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
-	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
+	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" WHITEROSE_FILES="$(CURDIR)/apps/target/release/whiterose-files" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
 
 # Settings, Notepad and Files in the launcher, with their icons, running
 # straight from this checkout (your ~/.local only; dev-apps-remove undoes it).
@@ -116,7 +116,7 @@ run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl
 	cd $(WM) && $(CARGO) build --release
 	@if [ -n "$$WAYLAND_DISPLAY$$DISPLAY" ]; then echo "run-tty takes over the screens, so it must start from a text console: press Ctrl+Alt+F3, log in, then run make run-tty there (make run-nested runs it in a window here)."; exit 1; fi
 	@echo "Starting on this console; Ctrl+Alt+F1/F2 gets you back to your desktop. Log: build/whiterose-tty.log"
-	PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(WM)/target/release/whiterose-wm --backend drm --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone" > build/whiterose-tty.log 2>&1
+	PATH="$(CURDIR)/build:$$PATH" WHITEROSE_FILES="$(CURDIR)/apps/target/release/whiterose-files" dbus-run-session -- $(WM)/target/release/whiterose-wm --backend drm --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone" > build/whiterose-tty.log 2>&1
 
 # ---- Packages ----------------------------------------------------------------
 # One .deb (Ubuntu 26.04) and one .rpm (Fedora), each built in its distro's
