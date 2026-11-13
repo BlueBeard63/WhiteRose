@@ -430,11 +430,18 @@ fn parse_mounts(text: &str) -> Vec<(String, String)> {
         .filter_map(|r| {
             let (name, uri) = r.rsplit_once(" -> ")?;
             let scheme = uri.split("://").next()?;
+            // (gio names a Nextcloud "jack@storage.example.org".)
+            let name = if is_nextcloud(uri) { "Nextcloud" } else { name };
             SCHEMES
                 .contains(&scheme)
                 .then(|| (uri.trim_end_matches('/').to_string(), name.to_string()))
         })
         .collect()
+}
+
+/// A WebDAV address that's a Nextcloud (its files are at /remote.php/).
+pub fn is_nextcloud(uri: &str) -> bool {
+    uri.starts_with("dav") && uri.contains("/remote.php/")
 }
 
 /// An online account's drive (GNOME Online Accounts: Nextcloud, OneDrive,
@@ -569,7 +576,7 @@ fn parse_accounts(text: &str) -> Vec<Account> {
     let Some(volumes) = parts.get(1).and_then(|v| unwrap(v, '[', ']')) else {
         return vec![];
     };
-    split_top(volumes)
+    let mut out: Vec<Account> = split_top(volumes)
         .into_iter()
         .filter_map(|t| {
             let f = split_top(unwrap(t, '(', ')')?);
@@ -581,7 +588,34 @@ fn parse_accounts(text: &str) -> Vec<Account> {
                 uri: uri.trim_end_matches('/').to_string(),
             })
         })
-        .collect()
+        .collect();
+    // A Nextcloud account is named "jack@storage.example.org" by GOA:
+    // "Nextcloud" (with its server when there's more than one).
+    let nextcloud = |a: &Account| is_nextcloud(&a.uri);
+    let several = out.iter().filter(|a| nextcloud(a)).count() > 1;
+    for a in out.iter_mut().filter(|a| nextcloud(a)) {
+        let host = a
+            .uri
+            .split("://")
+            .nth(1)
+            .unwrap_or("")
+            .split('/')
+            .next()
+            .unwrap_or("");
+        let host = host
+            .rsplit('@')
+            .next()
+            .unwrap_or(host)
+            .split(':')
+            .next()
+            .unwrap_or(host);
+        a.name = if several {
+            format!("Nextcloud ({host})")
+        } else {
+            "Nextcloud".into()
+        };
+    }
+    out
 }
 
 /// The hosts named in an SSH config ("Host build nas", not patterns like
@@ -710,12 +744,16 @@ mod tests {
 
     #[test]
     fn lists_network_mounts_only() {
-        let text = "Drive(0): WDSN740\n  Type: GProxyDrive\nMount(0): photos on nas -> smb://nas/photos/\n  Type: GDaemonMount\nMount(1): Boot -> file:///boot\nMount(2): jack on build -> sftp://jack@build/\n";
+        let text = "Drive(0): WDSN740\n  Type: GProxyDrive\nMount(0): photos on nas -> smb://nas/photos/\n  Type: GDaemonMount\nMount(1): Boot -> file:///boot\nMount(2): jack on build -> sftp://jack@build/\nMount(3): jack@storage.bluebeard.site -> davs://jack@storage.bluebeard.site/remote.php/webdav/\n";
         assert_eq!(
             parse_mounts(text),
             vec![
                 ("smb://nas/photos".into(), "photos on nas".into()),
-                ("sftp://jack@build".into(), "jack on build".into())
+                ("sftp://jack@build".into(), "jack on build".into()),
+                (
+                    "davs://jack@storage.bluebeard.site/remote.php/webdav".into(),
+                    "Nextcloud".into()
+                )
             ]
         );
     }
@@ -729,7 +767,7 @@ mod tests {
             vec![
                 Account {
                     id: "0x7387680041c0".into(),
-                    name: "jack@storage.bluebeard.site".into(),
+                    name: "Nextcloud".into(),
                     uri: "davs://jack@storage.bluebeard.site/remote.php/webdav".into()
                 },
                 Account {

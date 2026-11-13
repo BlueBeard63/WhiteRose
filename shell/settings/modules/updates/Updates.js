@@ -60,3 +60,57 @@ function fraction(st) {
     const p = st?.progress ?? [0, 0];
     return p[1] > 0 ? Math.min(1, p[0] / p[1]) : 0;
 }
+
+// ---- the Releases tab ---------------------------------------------------------------------
+
+// The series (from whiterosed's update_releases) narrowed to what matches
+// `query`: a version ("0.3", "alpha.2") or words from a release's changes.
+// A series whose name matches keeps all its releases.
+function filterSeries(series, query) {
+    const q = (query ?? "").trim().toLowerCase();
+    if (q === "") return series ?? [];
+    const out = [];
+    for (const s of series ?? []) {
+        if (("v" + s.name).startsWith(q.startsWith("v") ? q : "v" + q)) { out.push(s); continue; }
+        const rs = s.releases.filter(r => r.version.toLowerCase().includes(q.replace(/^v/, ""))
+            || (r.changes ?? []).some(c => c.toLowerCase().includes(q)));
+        if (rs.length) out.push({ name: s.name, releases: rs });
+    }
+    return out;
+}
+
+// The series' line under its name: "3 releases · 0.3.0-alpha.3 running".
+function seriesNote(s) {
+    const n = s.releases.length;
+    let t = n + (n === 1 ? " release" : " releases");
+    const run = s.releases.find(r => r.state === "running");
+    const next = s.releases.find(r => r.state === "next");
+    if (run) t += " · " + run.version + " running";
+    else if (next) t += " · " + next.version + " starts next";
+    return t;
+}
+
+// A release's faint facts: "alpha · 13 Nov".
+function releaseFacts(r, nowMs) {
+    const parts = [];
+    const m = /-(alpha|beta|rc)/i.exec(r.version);
+    if (r.pre) parts.push(m ? m[1].toLowerCase() : "pre-release");
+    if (r.published > 0) parts.push(day(r.published, nowMs));
+    return parts.join(" · ");
+}
+
+// What a release row says on the right: [text, button] (button "" for none).
+function releaseAction(r) {
+    switch (r.state) {
+    case "running": return ["Running", ""];
+    case "next": return ["Starts at next login", ""];
+    case "installed": return ["", "Switch to it"];
+    }
+    return ["", "Install"];
+}
+
+// The newest release listed ("" for none): the series and their releases
+// come newest first.
+function newestRelease(series) {
+    return series?.[0]?.releases?.[0]?.version ?? "";
+}

@@ -78,7 +78,13 @@ Rectangle {
     // Network servers: saved ones and shares mounted now (shares.rs), looked
     // at less often than drives (it asks GVfs).
     property var servers: []
-    function refreshServers() { side.servers = JSON.parse(Ops.servers()) }
+    // Asked for on a thread: it runs gio, which waits on the drives
+    // (half a second or more, every 15 s, would stall the window).
+    function refreshServers() { Ops.askServers() }
+    Connections {
+        target: Ops
+        function onServersListed(result) { side.servers = JSON.parse(result) }
+    }
     Timer { interval: 15000; repeat: true; running: Qt.application.state === Qt.ApplicationActive; onTriggered: side.refreshServers() }
     // A server clicked (not mounted), Connect to server…, a right-click.
     signal openServer(var server)
@@ -181,7 +187,7 @@ Rectangle {
             width: 18; height: 18
             sourceSize: Qt.size(36, 36)
             // (An icon theme's file, or one of Files' own: qrc:.)
-            source: !pr.icon ? "" : pr.icon.startsWith("qrc:") ? pr.icon : "file://" + pr.icon
+            source: !pr.icon ? "" : pr.icon.startsWith("qrc:") ? pr.icon : F.fileUrl(pr.icon)
             visible: !pr.look && pr.dot.a === 0 && pr.glyph === ""
         }
         Icon {

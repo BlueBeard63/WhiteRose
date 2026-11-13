@@ -54,6 +54,9 @@ pub enum Action {
     Clipboard,
     /// The note in the island (SUPER+SHIFT+N; the Note module).
     Note,
+    /// A snapshot for a bug report, the moment something goes wrong
+    /// (SUPER+SHIFT+B; whiterosed takes it, the island offers to report).
+    ReportSnapshot,
     /// Today's agenda in the island (SUPER+A; the Agenda module).
     Agenda,
     /// What's playing, in the island (SUPER+SHIFT+M; the Music module).
@@ -74,6 +77,13 @@ pub enum Action {
     /// Move the focused window to the monitor on that side.
     MoveToOutput(Dir),
     Spawn(String),
+    /// An app from the launcher or dock (its desktop entry): its app id, its
+    /// command line already split, and where to start it.
+    Launch {
+        app_id: String,
+        argv: Vec<String>,
+        cwd: Option<String>,
+    },
     /// A scratchpad's key (its id): start, show, focus or hide it.
     Scratchpad(String),
     /// Focus a window by its IPC id (switching workspace if needed).
@@ -142,6 +152,7 @@ impl Action {
                 | Action::Notifications
                 | Action::Clipboard
                 | Action::Note
+                | Action::ReportSnapshot
                 | Action::Agenda
                 | Action::Music
                 | Action::ScreenshotRegion
@@ -338,6 +349,7 @@ impl Def {
             "notifications" => Action::Notifications,
             "clipboard" => Action::Clipboard,
             "note" => Action::Note,
+            "report" => Action::ReportSnapshot,
             "agenda" => Action::Agenda,
             "music" => Action::Music,
             "lock" => Action::Lock,
@@ -392,6 +404,7 @@ pub const CATALOG: &[Def] = &[
     def("note", "Note", "Shell", &["SUPER+SHIFT+N"]),
     def("agenda", "Today's agenda", "Shell", &["SUPER+A"]),
     def("music", "Now playing", "Shell", &["SUPER+SHIFT+M"]),
+    def("report", "Snapshot for a bug report", "Shell", &["SUPER+SHIFT+B"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
     def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
@@ -653,6 +666,7 @@ mod tests {
             (SUPER_SHIFT, keysyms::KEY_n, Action::Note),
             (SUPER, keysyms::KEY_a, Action::Agenda),
             (SUPER_SHIFT, keysyms::KEY_m, Action::Music),
+            (SUPER_SHIFT, keysyms::KEY_b, Action::ReportSnapshot),
             (SUPER_ALT, keysyms::KEY_Left, Action::MoveToWorkspaceStep(Dir::Left)),
             (SUPER_ALT, keysyms::KEY_Down, Action::MoveToWorkspaceStep(Dir::Down)),
             (SUPER_CTRL, keysyms::KEY_Right, Action::MoveToOutput(Dir::Right)),

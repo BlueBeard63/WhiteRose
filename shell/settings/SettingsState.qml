@@ -20,7 +20,7 @@ Singleton {
         badges = b;
     }
     // Updates: 1 while there's an update (or a failed start) to see to.
-    function updatesBadge(st) { setBadge("updates", st && (st.release || st.failure) ? 1 : 0) }
+    function updatesBadge(st) { setBadge("updates", st && (st.release || st.failure || st.waiting) ? 1 : 0) }
     Connections {
         target: Daemon
         function onUpdatesEvent(st) { root.updatesBadge(st) }

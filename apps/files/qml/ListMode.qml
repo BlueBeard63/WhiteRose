@@ -197,7 +197,7 @@ FocusScope {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 20 * Session.zoom; height: 20 * Session.zoom
                         sourceSize: Qt.size(40, 40)
-                        source: row.modelData.icon ? "file://" + row.modelData.icon : ""
+                        source: row.modelData.icon ? F.fileUrl(row.modelData.icon) : ""
                         asynchronous: true
                         opacity: row.modelData.hidden ? 0.55 : 1
                     }

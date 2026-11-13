@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Shapes
 import WhiteRose.Kit
+import "Format.js" as Fmt
 
 Item {
     id: root
@@ -23,7 +24,7 @@ Item {
         id: pic
         anchors.fill: parent
         visible: root.picture
-        source: root.look?.image ? "file://" + root.look.image : ""
+        source: root.look?.image ? Fmt.fileUrl(root.look.image) : ""
         sourceSize: Qt.size(root.size * 2, root.size * 2)
         fillMode: Image.PreserveAspectFit
         asynchronous: true

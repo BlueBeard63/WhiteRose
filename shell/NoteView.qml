@@ -43,7 +43,7 @@ Item {
         height: Math.min(Math.max(area.contentHeight, 66), 280)
         Text {
             visible: area.length === 0
-            text: "Title, then your lines"
+            text: "A title, then a line per thing. Start a line with [ ] to make it a task."
             color: Theme.faint
             font { family: Theme.font; pointSize: Theme.pt(14) }
         }

@@ -4,6 +4,7 @@
 import QtQuick
 import QtMultimedia
 import WhiteRose.Kit
+import "Format.js" as Fmt
 
 Item {
     id: root
@@ -19,7 +20,7 @@ Item {
 
     MediaPlayer {
         id: player
-        source: root.path ? "file://" + root.path : ""
+        source: root.path ? Fmt.fileUrl(root.path) : ""
         audioOutput: AudioOutput {}
         videoOutput: screen
         onMediaStatusChanged: if (root.big && player.mediaStatus === MediaPlayer.LoadedMedia && player.playbackState === MediaPlayer.StoppedState) player.play()

@@ -239,7 +239,11 @@ pub fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+            // (From the bytes: slicing the str there could split a character.)
+            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+            {
                 out.push(v);
                 i += 3;
                 continue;
@@ -508,6 +512,257 @@ pub struct Crumb {
 
 /// "/home/me/Code/app" -> Home › Code › app (or / › etc › …).
 pub fn crumbs(path: &str, home: &Path) -> Vec<Crumb> {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from);
+    crumbs_in(path, home, runtime.as_deref())
+}
+
+/// A network or cloud drive's folder: its mount point (where its own
+/// crumbs start) and the name people know it by. GVfs mounts are folders
+/// in $XDG_RUNTIME_DIR/gvfs named for gio ("dav:host=x,ssl=true,
+/// prefix=%2Fremote.php%2Fwebdav"); WhiteRose's rclone drives are in
+/// $XDG_RUNTIME_DIR/whiterose/cloud/<account name>.
+pub fn mount_place(path: &str, runtime: &Path) -> Option<(String, String)> {
+    for (base, gvfs) in [
+        (runtime.join("gvfs"), true),
+        (runtime.join("whiterose/cloud"), false),
+    ] {
+        let base = base.to_string_lossy().into_owned();
+        let Some(rest) = path.strip_prefix(&format!("{base}/")) else {
+            continue;
+        };
+        let mount = rest.split('/').next().filter(|m| !m.is_empty())?;
+        let name = if gvfs {
+            gvfs_name(mount)
+        } else {
+            mount.to_string()
+        };
+        return Some((format!("{base}/{mount}"), name));
+    }
+    None
+}
+
+/// A GVfs mount folder's name for people: "Nextcloud" (WebDAV at
+/// /remote.php/), "photos on nas" (SMB), the host (SFTP, FTP, WebDAV),
+/// "Google Drive", "OneDrive".
+pub fn gvfs_name(mount: &str) -> String {
+    let (kind, rest) = mount.split_once(':').unwrap_or((mount, ""));
+    let decode = |v: &str| {
+        let b = v.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] == b'%' && i + 2 < b.len() {
+                if let Some(n) = std::str::from_utf8(&b[i + 1..i + 3])
+                    .ok()
+                    .and_then(|h| u8::from_str_radix(h, 16).ok())
+                {
+                    out.push(n);
+                    i += 3;
+                    continue;
+                }
+            }
+            out.push(b[i]);
+            i += 1;
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    };
+    let get = |k: &str| {
+        rest.split(',')
+            .find_map(|kv| {
+                kv.split_once('=')
+                    .filter(|(key, _)| *key == k)
+                    .map(|(_, v)| decode(v))
+            })
+            .unwrap_or_default()
+    };
+    let host = get("host");
+    match kind {
+        "dav" | "davs" if get("prefix").contains("/remote.php/") => "Nextcloud".into(),
+        "smb-share" if !get("share").is_empty() => format!("{} on {}", get("share"), get("server")),
+        "smb-server" => get("server"),
+        "google-drive" => "Google Drive".into(),
+        "onedrive" => "OneDrive".into(),
+        _ if !host.is_empty() => host,
+        _ => mount.to_string(),
+    }
+}
+
+/// Whether `path` is on a network drive (GVfs, rclone, sshfs, NFS, SMB):
+/// reading it waits on a server, so Files lists it on a thread, checks it
+/// for changes less often and skips thumbnails, folder sizes and git there.
+/// Decided from /proc/self/mountinfo (the mount's type), never by asking
+/// the drive itself, which may be the slow thing.
+pub fn is_remote(path: &str) -> bool {
+    std::fs::read_to_string("/proc/self/mountinfo")
+        .map(|m| remote_in(&m, path))
+        .unwrap_or(false)
+}
+
+/// The type of the filesystem `path` is on ("ext4", "fuse.gvfsd-fuse",
+/// "vfat"), from /proc/self/mountinfo.
+pub fn fs_type(path: &str) -> Option<String> {
+    std::fs::read_to_string("/proc/self/mountinfo")
+        .ok()
+        .and_then(|m| fs_type_in(&m, path))
+}
+
+/// Whether files there have real run permissions: not on network drives
+/// (GVfs shows every file as rwx), FAT/exFAT or NTFS (no permissions; all
+/// shown runnable).
+pub fn permissions_mean_something(path: &str) -> bool {
+    !is_remote(path)
+        && !fs_type(path).is_some_and(|k| {
+            matches!(
+                k.as_str(),
+                "vfat" | "msdos" | "exfat" | "ntfs" | "ntfs3" | "fuseblk"
+            )
+        })
+}
+
+/// `fs_type` against a given mountinfo (tests).
+pub fn fs_type_in(mountinfo: &str, path: &str) -> Option<String> {
+    let unescape = |s: &str| {
+        s.replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\134", "\\")
+    };
+    let mut best: Option<(usize, String)> = None;
+    for line in mountinfo.lines() {
+        let f: Vec<&str> = line.split(' ').collect();
+        let (Some(point), Some(sep)) = (f.get(4), f.iter().position(|x| *x == "-")) else {
+            continue;
+        };
+        let Some(kind) = f.get(sep + 1) else { continue };
+        let point = unescape(point);
+        let inside = path == point
+            || point == "/"
+            || path.starts_with(&format!("{}/", point.trim_end_matches('/')));
+        if inside && !best.as_ref().is_some_and(|(len, _)| point.len() < *len) {
+            best = Some((point.len(), kind.to_string()));
+        }
+    }
+    best.map(|(_, k)| k)
+}
+
+/// `is_remote` against a given mountinfo (tests).
+pub fn remote_in(mountinfo: &str, path: &str) -> bool {
+    let unescape = |s: &str| {
+        s.replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\134", "\\")
+    };
+    let mut best: Option<(usize, bool)> = None;
+    for line in mountinfo.lines() {
+        let f: Vec<&str> = line.split(' ').collect();
+        let (Some(point), Some(sep)) = (f.get(4), f.iter().position(|x| *x == "-")) else {
+            continue;
+        };
+        let Some(kind) = f.get(sep + 1) else { continue };
+        let point = unescape(point);
+        let inside = path == point
+            || point == "/"
+            || path.starts_with(&format!("{}/", point.trim_end_matches('/')));
+        if !inside || best.is_some_and(|(len, _)| point.len() < len) {
+            continue;
+        }
+        let remote = matches!(
+            *kind,
+            "nfs" | "nfs4" | "cifs" | "smb3" | "smbfs" | "davfs" | "9p"
+        ) || (kind.starts_with("fuse.")
+            && !matches!(*kind, "fuse.portal" | "fuse.appimagefuse" | "fuse.lxcfs"));
+        best = Some((point.len(), remote));
+    }
+    best.is_some_and(|(_, r)| r)
+}
+
+/// A file in a GVfs mount as GVfs's own address ("davs://jack@cloud/
+/// remote.php/webdav/Uni/a.pdf"): apps that take addresses (GNOME's) then
+/// read it through GVfs directly, much faster than through the FUSE
+/// folder. None outside a GVfs mount, or for a kind it can't be told for.
+pub fn gvfs_uri(path: &str, runtime: &Path) -> Option<String> {
+    let base = runtime.join("gvfs").to_string_lossy().into_owned();
+    let rest = path.strip_prefix(&format!("{base}/"))?;
+    let (mount, inside) = rest.split_once('/').unwrap_or((rest, ""));
+    let (kind, opts) = mount.split_once(':')?;
+    let get = |k: &str| -> String {
+        opts.split(',')
+            .find_map(|kv| {
+                kv.split_once('=')
+                    .filter(|(key, _)| *key == k)
+                    .map(|(_, v)| v.to_string())
+            })
+            .map(|v| percent_decode(&v))
+            .unwrap_or_default()
+    };
+    let user = |u: String| {
+        if u.is_empty() {
+            String::new()
+        } else {
+            format!("{}@", percent_encode(&u))
+        }
+    };
+    let port = |p: String| {
+        if p.is_empty() {
+            String::new()
+        } else {
+            format!(":{p}")
+        }
+    };
+    let base_uri = match kind {
+        "dav" | "davs" => format!(
+            "{}://{}{}{}{}",
+            if get("ssl") == "true" || kind == "davs" {
+                "davs"
+            } else {
+                "dav"
+            },
+            user(get("user")),
+            get("host"),
+            port(get("port")),
+            get("prefix").trim_end_matches('/')
+        ),
+        "smb-share" => format!(
+            "smb://{}{}/{}",
+            user(get("user")),
+            get("server"),
+            get("share")
+        ),
+        "sftp" | "ftp" | "ftps" => format!(
+            "{kind}://{}{}{}",
+            user(get("user")),
+            get("host"),
+            port(get("port"))
+        ),
+        _ => return None,
+    };
+    if get("host").is_empty() && get("server").is_empty() {
+        return None;
+    }
+    Some(if inside.is_empty() {
+        base_uri
+    } else {
+        format!("{base_uri}/{}", percent_encode(inside))
+    })
+}
+
+/// `crumbs`, with $XDG_RUNTIME_DIR given (tests).
+pub fn crumbs_in(path: &str, home: &Path, runtime: Option<&Path>) -> Vec<Crumb> {
+    // A network or cloud drive: from its own top, by its name.
+    if let Some((root, name)) = runtime.and_then(|r| mount_place(path, r)) {
+        let mut out = vec![Crumb {
+            name,
+            path: root.clone(),
+        }];
+        let mut acc = root.clone();
+        for part in path[root.len()..].split('/').filter(|p| !p.is_empty()) {
+            acc = format!("{acc}/{part}");
+            out.push(Crumb {
+                name: part.into(),
+                path: acc.clone(),
+            });
+        }
+        return out;
+    }
     let home_s = home.to_string_lossy();
     let (mut out, rest, mut acc) = if path == home_s || path.starts_with(&format!("{home_s}/")) {
         (
@@ -651,6 +906,121 @@ mod tests {
                 ("/mnt/backup".into(), "/dev/sdb1".into())
             ]
         );
+    }
+
+    #[test]
+    fn knows_network_drives() {
+        let m = "22 1 8:2 / / rw - ext4 /dev/sda2 rw\n\
+                 40 22 0:50 / /run/user/1000/gvfs rw - fuse.gvfsd-fuse gvfsd-fuse rw\n\
+                 41 22 0:51 / /mnt/nas rw - nfs4 nas:/srv rw\n\
+                 42 22 0:52 / /run/user/1000/doc rw - fuse.portal portal rw\n\
+                 43 22 0:53 / /media/me/My\\040Disk rw - fuseblk /dev/sdb1 rw\n\
+                 44 22 0:54 / /run/user/1000/whiterose/cloud/Work rw - fuse.rclone Work: rw\n";
+        assert!(remote_in(m, "/run/user/1000/gvfs/dav:host=x/Photos"));
+        assert!(remote_in(m, "/mnt/nas/films"));
+        assert!(remote_in(m, "/run/user/1000/whiterose/cloud/Work"));
+        assert!(!remote_in(m, "/home/me/Documents"));
+        assert!(
+            !remote_in(m, "/run/user/1000/doc/abc"),
+            "the document portal is local"
+        );
+        assert!(
+            !remote_in(m, "/media/me/My Disk/x"),
+            "an NTFS disk (fuseblk) is local"
+        );
+        assert!(!remote_in(m, "/mnt/nasty"), "not inside /mnt/nas");
+        assert_eq!(
+            fs_type_in(m, "/media/me/My Disk/a.pdf").as_deref(),
+            Some("fuseblk")
+        );
+        assert_eq!(fs_type_in(m, "/home/me").as_deref(), Some("ext4"));
+    }
+
+    #[test]
+    fn gvfs_addresses() {
+        let run = Path::new("/run/user/1000");
+        let nc = "/run/user/1000/gvfs/dav:host=storage.bluebeard.site,ssl=true,user=jack,prefix=%2Fremote.php%2Fwebdav";
+        assert_eq!(
+            gvfs_uri(&format!("{nc}/Uni/Group Form #1.pdf"), run).as_deref(),
+            Some(
+                "davs://jack@storage.bluebeard.site/remote.php/webdav/Uni/Group%20Form%20%231.pdf"
+            )
+        );
+        assert_eq!(
+            gvfs_uri(nc, run).as_deref(),
+            Some("davs://jack@storage.bluebeard.site/remote.php/webdav")
+        );
+        assert_eq!(
+            gvfs_uri(
+                "/run/user/1000/gvfs/smb-share:server=nas,share=photos/2026/a.jpg",
+                run
+            )
+            .as_deref(),
+            Some("smb://nas/photos/2026/a.jpg")
+        );
+        assert_eq!(
+            gvfs_uri(
+                "/run/user/1000/gvfs/sftp:host=build,port=2222,user=jack/srv/x",
+                run
+            )
+            .as_deref(),
+            Some("sftp://jack@build:2222/srv/x")
+        );
+        assert_eq!(gvfs_uri("/home/me/a.pdf", run), None);
+        assert_eq!(
+            percent_decode("a%é%2Fb"),
+            "a%é/b",
+            "a stray % before a non-ASCII letter"
+        );
+        assert_eq!(
+            gvfs_uri(
+                "/run/user/1000/gvfs/google-drive:host=gmail.com,user=j/x",
+                run
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn drives_by_their_names() {
+        let h = Path::new("/home/me");
+        let run = Path::new("/run/user/1000");
+        let nc = "/run/user/1000/gvfs/dav:host=storage.bluebeard.site,ssl=true,user=jack,prefix=%2Fremote.php%2Fwebdav";
+        let c = crumbs_in(&format!("{nc}/Photos/2026"), h, Some(run));
+        assert_eq!(
+            c.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["Nextcloud", "Photos", "2026"]
+        );
+        assert_eq!(c[0].path, nc);
+        assert_eq!(c[2].path, format!("{nc}/Photos/2026"));
+        assert_eq!(
+            gvfs_name("smb-share:server=nas,share=photos"),
+            "photos on nas"
+        );
+        assert_eq!(gvfs_name("sftp:host=build.local,user=jack"), "build.local");
+        assert_eq!(
+            gvfs_name("davs:host=files.example.org,ssl=true,prefix=%2Fdav"),
+            "files.example.org"
+        );
+        assert_eq!(
+            gvfs_name("google-drive:host=gmail.com,user=jack"),
+            "Google Drive"
+        );
+        assert_eq!(gvfs_name("odd"), "odd");
+        assert_eq!(gvfs_name("sftp:host=h%C3%A9,user=x"), "hé");
+        assert_eq!(
+            gvfs_name("sftp:host=%é,user=x"),
+            "%é",
+            "a stray % before a non-ASCII letter"
+        );
+        let cloud = crumbs_in("/run/user/1000/whiterose/cloud/Work/Docs", h, Some(run));
+        assert_eq!(
+            cloud.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["Work", "Docs"]
+        );
+        // The gvfs folder itself, and anything else: as before.
+        assert_eq!(crumbs_in("/run/user/1000/gvfs", h, Some(run))[0].name, "/");
+        assert_eq!(crumbs_in("/home/me/x", h, Some(run))[0].name, "Home");
     }
 
     #[test]

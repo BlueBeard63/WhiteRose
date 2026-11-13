@@ -1,5 +1,91 @@
-# Defaults inside a WhiteRose session (XDG_CURRENT_DESKTOP=WhiteRose):
-# folders open in WhiteRose Files. Your own ~/.config/mimeapps.list wins.
+# Defaults inside a WhiteRose session (XDG_CURRENT_DESKTOP=WhiteRose).
+# Yours (Settings › Apps › Default apps, saved in
+# ~/.config/whiterose-mimeapps.list) win over these. An app named here
+# that isn't installed is skipped: the next one listed, else whatever the
+# system says.
 [Default Applications]
+# Folders open in WhiteRose Files.
 inode/directory=whiterose-files.desktop
 x-scheme-handler/trash=whiterose-files.desktop
+
+# Office documents in LibreOffice (the distribution's, else the Flatpak).
+application/vnd.oasis.opendocument.text=libreoffice-writer.desktop;org.libreoffice.LibreOffice.writer.desktop;
+application/vnd.oasis.opendocument.text-template=libreoffice-writer.desktop;org.libreoffice.LibreOffice.writer.desktop;
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=libreoffice-writer.desktop;org.libreoffice.LibreOffice.writer.desktop;
+application/vnd.openxmlformats-officedocument.wordprocessingml.template=libreoffice-writer.desktop;org.libreoffice.LibreOffice.writer.desktop;
+application/msword=libreoffice-writer.desktop;org.libreoffice.LibreOffice.writer.desktop;
+application/rtf=libreoffice-writer.desktop;org.libreoffice.LibreOffice.writer.desktop;
+text/rtf=libreoffice-writer.desktop;org.libreoffice.LibreOffice.writer.desktop;
+application/vnd.oasis.opendocument.spreadsheet=libreoffice-calc.desktop;org.libreoffice.LibreOffice.calc.desktop;
+application/vnd.oasis.opendocument.spreadsheet-template=libreoffice-calc.desktop;org.libreoffice.LibreOffice.calc.desktop;
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=libreoffice-calc.desktop;org.libreoffice.LibreOffice.calc.desktop;
+application/vnd.ms-excel=libreoffice-calc.desktop;org.libreoffice.LibreOffice.calc.desktop;
+text/csv=libreoffice-calc.desktop;org.libreoffice.LibreOffice.calc.desktop;
+application/vnd.oasis.opendocument.presentation=libreoffice-impress.desktop;org.libreoffice.LibreOffice.impress.desktop;
+application/vnd.openxmlformats-officedocument.presentationml.presentation=libreoffice-impress.desktop;org.libreoffice.LibreOffice.impress.desktop;
+application/vnd.openxmlformats-officedocument.presentationml.slideshow=libreoffice-impress.desktop;org.libreoffice.LibreOffice.impress.desktop;
+application/vnd.ms-powerpoint=libreoffice-impress.desktop;org.libreoffice.LibreOffice.impress.desktop;
+application/vnd.oasis.opendocument.graphics=libreoffice-draw.desktop;org.libreoffice.LibreOffice.draw.desktop;
+
+# The web: Firefox (Snap, package or Flatpak).
+x-scheme-handler/http=firefox_firefox.desktop;firefox.desktop;org.mozilla.firefox.desktop;
+x-scheme-handler/https=firefox_firefox.desktop;firefox.desktop;org.mozilla.firefox.desktop;
+text/html=firefox_firefox.desktop;firefox.desktop;org.mozilla.firefox.desktop;
+application/xhtml+xml=firefox_firefox.desktop;firefox.desktop;org.mozilla.firefox.desktop;
+
+# Email: Thunderbird.
+x-scheme-handler/mailto=thunderbird_thunderbird.desktop;thunderbird.desktop;org.mozilla.Thunderbird.desktop;
+message/rfc822=thunderbird_thunderbird.desktop;thunderbird.desktop;org.mozilla.Thunderbird.desktop;
+
+# Calendar files: GNOME Calendar.
+text/calendar=org.gnome.Calendar.desktop;
+
+# Pictures: Image Viewer.
+image/jpeg=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/png=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/gif=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/webp=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/heic=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/avif=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/tiff=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/bmp=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+image/svg+xml=org.gnome.Loupe.desktop;org.gnome.eog.desktop;
+
+# Music: Rhythmbox.
+audio/mpeg=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+audio/flac=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+audio/ogg=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+audio/x-wav=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+audio/mp4=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+audio/aac=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+audio/opus=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+audio/x-vorbis+ogg=org.gnome.Rhythmbox3.desktop;org.gnome.Decibels.desktop;
+
+# Videos: Showtime (else Totem, else VLC).
+video/mp4=org.gnome.Showtime.desktop;org.gnome.Totem.desktop;vlc.desktop;org.videolan.VLC.desktop;
+video/x-matroska=org.gnome.Showtime.desktop;org.gnome.Totem.desktop;vlc.desktop;org.videolan.VLC.desktop;
+video/webm=org.gnome.Showtime.desktop;org.gnome.Totem.desktop;vlc.desktop;org.videolan.VLC.desktop;
+video/quicktime=org.gnome.Showtime.desktop;org.gnome.Totem.desktop;vlc.desktop;org.videolan.VLC.desktop;
+video/x-msvideo=org.gnome.Showtime.desktop;org.gnome.Totem.desktop;vlc.desktop;org.videolan.VLC.desktop;
+video/mpeg=org.gnome.Showtime.desktop;org.gnome.Totem.desktop;vlc.desktop;org.videolan.VLC.desktop;
+video/ogg=org.gnome.Showtime.desktop;org.gnome.Totem.desktop;vlc.desktop;org.videolan.VLC.desktop;
+
+# PDFs: Papers (else Evince).
+application/pdf=org.gnome.Papers.desktop;org.gnome.Evince.desktop;
+
+# Text: WhiteRose Notepad (else Text Editor).
+text/plain=whiterose-notepad.desktop;org.gnome.TextEditor.desktop;
+text/markdown=whiterose-notepad.desktop;org.gnome.TextEditor.desktop;
+application/json=whiterose-notepad.desktop;org.gnome.TextEditor.desktop;
+application/x-yaml=whiterose-notepad.desktop;org.gnome.TextEditor.desktop;
+text/x-log=whiterose-notepad.desktop;org.gnome.TextEditor.desktop;
+
+# Archives: File Roller (Files also opens them as folders).
+application/zip=org.gnome.FileRoller.desktop;
+application/x-tar=org.gnome.FileRoller.desktop;
+application/x-compressed-tar=org.gnome.FileRoller.desktop;
+application/x-7z-compressed=org.gnome.FileRoller.desktop;
+application/x-rar=org.gnome.FileRoller.desktop;
+application/vnd.rar=org.gnome.FileRoller.desktop;
+application/gzip=org.gnome.FileRoller.desktop;
+application/x-xz-compressed-tar=org.gnome.FileRoller.desktop;

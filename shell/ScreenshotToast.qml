@@ -190,14 +190,14 @@ PanelWindow {
                     width: (parent.width - 8 * 2 - 34) / 2
                     icon: "open"
                     label: "Open"
-                    onClicked: { Quickshell.execDetached(["xdg-open", root.path]); root.dismiss(); }
+                    onClicked: { Compositor.launch("", ["xdg-open", root.path]); root.dismiss(); }
                 }
                 ToastButton {
                     width: (parent.width - 8 * 2 - 34) / 2
                     icon: "folder"
                     label: "Open folder"
                     onClicked: {
-                        Quickshell.execDetached(["xdg-open", root.path.substring(0, root.path.lastIndexOf("/"))]);
+                        Compositor.launch("", ["xdg-open", root.path.substring(0, root.path.lastIndexOf("/"))]);
                         root.dismiss();
                     }
                 }

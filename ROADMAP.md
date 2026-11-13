@@ -43,7 +43,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 **Shipped.** A file manager that doesn't get in your way: online drives, network shares, and nothing popping up over your files.
 
 <details>
-<summary><b>Cloud drives in Files</b>: Google Drive, OneDrive, Dropbox, iCloud Drive, pCloud and S3 as folders. <sub>· GNOME, rclone</sub></summary>
+<summary><b>Cloud drives in Files</b>: Google Drive, OneDrive, Dropbox, iCloud Drive, Nextcloud and S3 as folders. <sub>· GNOME, rclone</sub></summary>
 
 - Add cloud account… (the Files sidebar or ☰) signs in with the browser and asks anything else (iCloud's two-factor code) in Files; opened as folders, cached on disk as used. GNOME Online Accounts' drives show up too.
 

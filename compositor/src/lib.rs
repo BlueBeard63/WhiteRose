@@ -2,6 +2,7 @@
 //! wrapper; integration tests drive the same state directly.
 
 pub mod app_icons;
+pub mod app_scope;
 pub mod clipboard;
 pub mod clipboard_capture;
 pub mod cursor;

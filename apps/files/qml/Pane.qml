@@ -61,7 +61,49 @@ FocusScope {
     // is in, shown in the status bar: {root, branch, ahead, behind};
     // root "" when not in one.
     property var git: ({ root: "", branch: "", ahead: 0, behind: 0 })
-    readonly property bool wantsGit: Session.git && !pane.special && !pane.readOnly && !pane.searching && pane.path.startsWith("/")
+    // On a network drive (Nextcloud, a share): every read waits on a server,
+    // so the folder is listed on a thread ("Loading…" meanwhile), looked at
+    // for changes every 5 s off the window's thread, and has no thumbnails,
+    // folder sizes or git (each would read the whole drive over the network).
+    readonly property bool remote: pane.path.startsWith("/") && Fs.isRemote(pane.path)
+    property bool loading: false
+    property real askedAt: 0
+    // The last listings of network folders (40 at most): a folder visited
+    // again shows at once, then the fresh listing replaces it.
+    property var remoteSeen: ({})
+    property var remoteOrder: []
+    function remoteKey(path) { return path + "|" + pane.hidden + "|" + pane.sortBy + "|" + pane.descending }
+    // When it was read (to read ahead only what's older than a minute).
+    property var remoteAt: ({})
+    function remember(path, r) {
+        if (!r.ok) return;
+        const k = pane.remoteKey(path);
+        pane.remoteSeen[k] = r;
+        pane.remoteAt[k] = Date.now();
+        pane.remoteOrder = pane.remoteOrder.filter(x => x !== k).concat([k]);
+        while (pane.remoteOrder.length > 40) { const old = pane.remoteOrder.shift(); delete pane.remoteSeen[old]; delete pane.remoteAt[old] }
+    }
+    // Reading ahead: once a network folder is shown and you've paused, its
+    // subfolders are read one at a time in the background (30 at most), so
+    // opening one shows at once. Opening another folder drops the rest.
+    property var ahead: []
+    property string aheadNow: ""
+    Timer {
+        id: aheadTimer
+        interval: 600
+        onTriggered: {
+            const fresh = p => Date.now() - (pane.remoteAt[pane.remoteKey(p)] ?? 0) < 60000;
+            pane.ahead = pane.entries.filter(e => e.dir && !e.link && !fresh(e.path)).slice(0, 30).map(e => e.path);
+            pane.readAhead();
+        }
+    }
+    function readAhead() {
+        if (pane.aheadNow !== "" || pane.ahead.length === 0 || !pane.remote) return;
+        pane.aheadNow = pane.ahead[0];
+        pane.ahead = pane.ahead.slice(1);
+        Ops.listFolder(pane.aheadNow, pane.hidden, pane.sortBy, pane.descending, 48, Session.foldersAt);
+    }
+    readonly property bool wantsGit: Session.git && !pane.special && !pane.readOnly && !pane.searching && pane.path.startsWith("/") && !pane.remote
     function askGit() { if (pane.wantsGit && pane.visible) Ops.askGit(pane.path) }
     onWantsGitChanged: if (!pane.wantsGit) pane.git = { root: "", branch: "", ahead: 0, behind: 0 }; else pane.askGit()
     Connections {
@@ -194,7 +236,7 @@ FocusScope {
     // A folder is shown the way it was last time (or as the folder above
     // it lends, or the default); load() follows.
     // (Real folders are remembered for jumping: the address bar's few-letters search.)
-    onPathChanged: { pane.naming = null; pane.namingError = ""; if (pane.path.startsWith("/")) Fs.visited(pane.path); pane.git = { root: "", branch: "", ahead: 0, behind: 0 }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
+    onPathChanged: { pane.ahead = []; aheadTimer.stop(); pane.naming = null; pane.namingError = ""; if (pane.path.startsWith("/")) Fs.visited(pane.path); pane.git = { root: "", branch: "", ahead: 0, behind: 0 }; pane.folded = {}; pane.sizes = {}; pane.sizesSoon = {}; pane.applyView(); pane.changed() }
 
     // Recent starts as a list, newest first, grouped by day (until changed by hand).
     readonly property var baseView: pane.path === "recent:" ? { mode: "list", sortBy: "modified", descending: true, group: "modified" } : Session.defaultView
@@ -286,7 +328,48 @@ FocusScope {
             pane.entries = JSON.parse(text).map(d => Object.assign(d, { dir: true, mime: "inode/directory", size: 0, modified: 0, hidden: false, link: false }));
             return;
         }
-        const r = JSON.parse(Fs.list(pane.path, pane.hidden, pane.sortBy, pane.descending, 48, Session.foldersAt));
+        if (pane.remote) {
+            const seen = pane.remoteSeen[pane.remoteKey(pane.path)];
+            if (seen) pane.applyListing(seen);
+            if (seen && Fs.debug()) console.log("files-debug: shown " + pane.path + " at once (read ahead or seen before)");
+            pane.loading = !seen;
+            pane.askedAt = Date.now();
+            Ops.listFolder(pane.path, pane.hidden, pane.sortBy, pane.descending, 48, Session.foldersAt);
+            return;
+        }
+        pane.loading = false;
+        pane.applyListing(JSON.parse(Fs.list(pane.path, pane.hidden, pane.sortBy, pane.descending, 48, Session.foldersAt)));
+    }
+    Connections {
+        target: Ops
+        function onFolderListed(path, result) {
+            // A folder read ahead: kept for when it's opened, then the next.
+            if (path === pane.aheadNow) {
+                pane.aheadNow = "";
+                pane.remember(path, JSON.parse(result));
+                if (Fs.debug()) console.log("files-debug: read ahead " + path);
+                pane.readAhead();
+                if (path !== pane.path) return;
+            }
+            if (path !== pane.path || !pane.remote) return;
+            pane.loading = false;
+            const got = Date.now();
+            const r = JSON.parse(result);
+            pane.remember(path, r);
+            pane.applyListing(r);
+            aheadTimer.restart();
+            // WHITEROSE_FILES_DEBUG=1: the window's side of the wait.
+            if (Fs.debug()) {
+                const applied = Date.now();
+                Qt.callLater(() => console.log("files-debug: shown " + path + ": answer after " + (got - pane.askedAt)
+                    + " ms, applied in " + (applied - got) + " ms, drawn " + (Date.now() - applied) + " ms after (" + result.length + " bytes)"));
+            }
+        }
+        function onFolderStamped(path, stamp) {
+            if (path === pane.path && !pane.loading && stamp !== pane.stamp) pane.load();
+        }
+    }
+    function applyListing(r) {
         if (!r.ok) { pane.error = r.error; pane.entries = []; return }
         pane.error = "";
         pane.entries = r.entries;
@@ -382,11 +465,13 @@ FocusScope {
     // Something changed in the folder: list it again (checked every 1.5 s
     // while the window is in front; a stat call, nothing more).
     Timer {
-        interval: 1500
+        interval: pane.remote ? 5000 : 1500
         repeat: true
         running: pane.visible && Qt.application.state === Qt.ApplicationActive
         onTriggered: {
             if (pane.searching) return;
+            // A network drive: asked on a thread (onFolderStamped).
+            if (pane.remote) { if (!pane.loading) Ops.folderStamp(pane.path); return }
             // Drives come and go (and fill up): looked at again each time.
             if (pane.inDrives || Fs.stamp(pane.path) !== pane.stamp) pane.load();
         }
@@ -436,7 +521,7 @@ FocusScope {
 
     // Folder sizes for the list's Size column, worked out in the background
     // (not for / : that would be the whole system).
-    readonly property bool wantsSizes: (["list", "cards"].includes(pane.mode) && Session.folderSizes || pane.mode === "usage") && !pane.special && !pane.searching && pane.path !== "/"
+    readonly property bool wantsSizes: (["list", "cards"].includes(pane.mode) && Session.folderSizes || pane.mode === "usage") && !pane.special && !pane.searching && pane.path !== "/" && !pane.remote
     onEntriesChanged: pane.askSizes()
     onWantsSizesChanged: pane.askSizes()
     function askSizes() {
@@ -514,7 +599,7 @@ FocusScope {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: pane.error || pane.searchError || (pane.searching ? (!pane.searchDone ? "Looking…" : (pane.search.text.trim() || pane.search.kind || pane.search.size || pane.search.modified) ? "Nothing found" : "")
-                : pane.filter !== "" ? "Nothing matches “" + pane.filter + "”" : "This folder is empty")
+                : pane.loading ? "Loading…" : pane.filter !== "" ? "Nothing matches “" + pane.filter + "”" : "This folder is empty")
             color: Theme.muted
             font { family: Theme.font; pointSize: Theme.pt(13) }
         }

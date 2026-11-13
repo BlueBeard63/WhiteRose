@@ -24,13 +24,15 @@ Column {
 
     function refresh() {
         Daemon.request({ op: "apps" }, (v, err) => {
+            // (The page may be gone by the answer: a sub-page opened.)
+            if (!page) return;
             page.loadError = err ?? "";
-            if (!err) {
+            if (!err && v) {
                 page.info = v;
                 // Start with everything not installed yet picked.
                 if (Object.keys(page.picked).length === 0) {
                     const p = {};
-                    for (const a of v.apps) if (!a.installed) p[a.id] = true;
+                    for (const a of v.apps ?? []) if (!a.installed) p[a.id] = true;
                     page.picked = p;
                 }
             }
@@ -48,6 +50,8 @@ Column {
         page.error = "";
         page.steps = [];
         Daemon.request({ op: "apps_install", args: { ids: page.chosen.map(a => a.id) } }, (v, err) => {
+            // (Installing takes a while: the page may be gone by the answer.)
+            if (!page) return;
             page.busy = false;
             page.error = err ?? "";
             if (v) { page.info = v; page.picked = {}; }

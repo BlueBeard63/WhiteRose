@@ -1,12 +1,14 @@
 package launch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"whiterose/daemon/internal/crash"
 	"whiterose/daemon/internal/update"
 )
 
@@ -105,6 +107,25 @@ func TestDecide(t *testing.T) {
 	if p.Version != "0.5.0" || !p.Trial || s.Pending != "0.5.0" {
 		t.Errorf("pending gone: %+v %+v", p, s)
 	}
+	// A newer one installed while another is pending: the newer one is tried
+	// instead, from its first try.
+	three := append(both, "0.5.1")
+	p, s, _ = Decide(State{Current: "0.4.2", Pending: "0.5.0"}, three, newer)
+	if !p.Trial || p.Version != "0.5.1" || p.Fallback != "0.4.2" || s.Pending != "0.5.1" || s.Attempts != 1 {
+		t.Errorf("newer than pending: %+v %+v", p, s)
+	}
+	// ...also when the pending one has failed out (no more tries): the newer
+	// one is tried and the old failure isn't asked about any more.
+	p, s, _ = Decide(State{Current: "0.4.2", Pending: "0.5.0", Attempts: Tries, Failed: "0.5.0", Reason: "crashed"}, three, newer)
+	if !p.Trial || p.Version != "0.5.1" || s.Failed != "" || s.Reason != "" {
+		t.Errorf("newer than failed: %+v %+v", p, s)
+	}
+	// A pending one that's newest stays mid-try.
+	p, s, _ = Decide(State{Current: "0.4.2", Pending: "0.5.0", Attempts: 1}, both, newer)
+	if !p.Trial || p.Version != "0.5.0" || s.Attempts != 2 {
+		t.Errorf("pending newest: %+v %+v", p, s)
+	}
+
 	// An older one is never "pending".
 	p, _, _ = Decide(State{Current: "0.5.0"}, both, newer)
 	if p.Trial || p.Version != "0.5.0" {
@@ -191,7 +212,10 @@ func setup(t *testing.T) Config {
 		Command:   func(dir string) []string { return []string{filepath.Join(dir, "bin/whiterose-wm")} },
 		Env:       []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home},
 		Installed: update.Installed, Newer: update.Newer,
-		Ready: 300 * time.Millisecond, Survive: 400 * time.Millisecond, Stop: time.Second,
+		// Long enough for a slow machine (CI, the race detector) to start
+		// a shell script: the fakes that come up, crash or exit do so at
+		// once, so only the one that hangs waits it out.
+		Ready: 2 * time.Second, Survive: 3 * time.Second, Stop: time.Second,
 		Logf: t.Logf,
 	}
 }
@@ -213,6 +237,7 @@ func TestRunFailsBack(t *testing.T) {
 	for name, script := range map[string]string{"crashes": crashes, "hangs": hangs} {
 		t.Run(name, func(t *testing.T) {
 			c := setup(t)
+
 			// The old version notes it ran (and with which settings).
 			version(t, c.Root, "0.4.2", comesUp+`cat "$HOME/.config/whiterose/look.conf" > "$HOME/ran-0.4.2"`+"\nexit 0\n")
 			// The new one changes a setting, then fails.
@@ -263,5 +288,90 @@ exit 3
 	}
 	if b, _ := os.ReadFile(filepath.Join(c.Home, "n")); strings.TrimSpace(string(b)) != "2" {
 		t.Errorf("ran %s times", b)
+	}
+}
+
+// Tidy (the user manager's portals and variables) runs before the session
+// and after it, whatever the outcome.
+func TestRunTidies(t *testing.T) {
+	c := setup(t)
+	version(t, c.Root, "0.5.0", comesUp+"exit 101\n")
+	n := 0
+	c.Tidy = func() { n++ }
+	Run(c)
+	if n != 2 {
+		t.Errorf("tidied %d times", n)
+	}
+}
+
+// The session's output goes to session.log; the session before is kept as
+// session.1.log (the one that crashed, after a crash).
+func TestSessionLog(t *testing.T) {
+	c := setup(t)
+	version(t, c.Root, "0.5.0", comesUp+`n=$(cat "$HOME/n" 2>/dev/null || echo 0); echo $((n+1)) > "$HOME/n"
+echo "session $n says hello" >&2
+[ "$n" = 0 ] && exit 42
+exit 0
+`)
+	if code, err := Run(c); err != nil || code != 0 {
+		t.Fatalf("%d %v", code, err)
+	}
+	now, _ := os.ReadFile(SessionLog(c.StateHome))
+	before, _ := os.ReadFile(SessionLogBefore(c.StateHome))
+	if !strings.HasPrefix(string(now), "WhiteRose 0.5.0, session started ") || !strings.Contains(string(now), "session 1 says hello") {
+		t.Errorf("session.log:\n%s", now)
+	}
+	if !strings.Contains(string(before), "session 0 says hello") || strings.Contains(string(before), "session 1") {
+		t.Errorf("session.1.log:\n%s", before)
+	}
+	if fi, _ := os.Stat(SessionLog(c.StateHome)); fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v", fi.Mode())
+	}
+}
+
+// Past its limit the log keeps its newer half, from a line start.
+func TestSessionLogCap(t *testing.T) {
+	state := t.TempDir()
+	l, err := openSessionLog(state, "0.5.0", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 200 {
+		fmt.Fprintf(l, "line %03d\n", i)
+	}
+	l.Close()
+	b, _ := os.ReadFile(SessionLog(state))
+	s := string(b)
+	if len(b) > 1000 || !strings.HasPrefix(s, "(older lines dropped") || !strings.HasSuffix(s, "line 199\n") || strings.Contains(s, "line 000") {
+		t.Errorf("%d bytes:\n%s", len(b), s)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(s), "\n")[1:] {
+		if !strings.HasPrefix(line, "line ") || len(line) != 8 {
+			t.Errorf("cut line %q", line)
+		}
+	}
+}
+
+// The compositor dying (not logging out, not restarting) leaves a crash
+// record with what it printed last.
+func TestRunCrashRecord(t *testing.T) {
+	c := setup(t)
+	version(t, c.Root, "0.5.0", comesUp+"echo 'thread main panicked at cursor.rs' >&2\nexit 101\n")
+	if code, err := Run(c); err != nil || code != 101 {
+		t.Fatalf("%d %v", code, err)
+	}
+	rs := crash.List(c.StateHome)
+	if len(rs) != 1 || rs[0].What != crash.Compositor || rs[0].Code != 101 || rs[0].Version != "0.5.0" {
+		t.Fatalf("%+v", rs)
+	}
+	if b, _ := os.ReadFile(crash.File(c.StateHome, rs[0].ID, "output.txt")); !strings.Contains(string(b), "cursor.rs") {
+		t.Errorf("output %q", b)
+	}
+	// Logging out (exit 0) and restarting leave none.
+	c2 := setup(t)
+	version(t, c2.Root, "0.5.0", good)
+	Run(c2)
+	if rs := crash.List(c2.StateHome); len(rs) != 0 {
+		t.Errorf("logged out, yet %+v", rs)
 	}
 }

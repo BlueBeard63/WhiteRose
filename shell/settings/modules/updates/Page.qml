@@ -22,6 +22,13 @@ Column {
     Timer { interval: 30000; running: true; repeat: true; onTriggered: page.now = Date.now() }
 
     readonly property var rel: st?.release ?? null
+    // A newer version installed but not running yet (install.sh, apt / dnf,
+    // or a stale try), when the release card or the failure isn't already
+    // about it.
+    readonly property string installedNext: {
+        const w = st?.waiting ?? "";
+        return w !== "" && rel?.version !== w && st?.failure?.version !== w ? w : "";
+    }
 
     function show(v) {
         page.st = v;
@@ -94,9 +101,26 @@ Column {
         }
     }
 
+    // Installed, starts at the next login.
+    Card {
+        visible: (page.st?.supported ?? false) && page.installedNext !== ""
+        SettingRow {
+            divider: false
+            title: "WhiteRose " + page.installedNext + " is installed"
+            subtitle: "It starts the next time you log in."
+                + ((page.st?.auto_rollback ?? true) ? " If it doesn't start properly, " + (page.st?.running ?? "") + " starts instead." : "")
+            Button {
+                visible: page.st?.launcher ?? false
+                text: "Restart now"; icon: "restart"; kind: "primary"
+                enabled: !page.waiting
+                onClicked: confirmRestart.open()
+            }
+        }
+    }
+
     // Up to date.
     Card {
-        visible: (page.st?.supported ?? false) && page.rel === null
+        visible: (page.st?.supported ?? false) && page.rel === null && page.installedNext === ""
         Item {
             width: parent.width; height: 64
             Rectangle {
@@ -111,7 +135,7 @@ Column {
                 spacing: 2
                 Text { text: "You're up to date"; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(13); weight: Font.Medium } }
                 Text {
-                    text: (page.st?.checked ?? 0) ? "WhiteRose " + page.st.running + " is the newest release" : "Not checked yet"
+                    text: (page.st?.checked ?? 0) ? "No newer release to download" : "Not checked yet"
                     color: Theme.muted
                     font { family: Theme.font; pointSize: Theme.pt(11.5) }
                 }
@@ -378,7 +402,7 @@ Column {
             wrapMode: Text.Wrap
             text: page.st?.rolled_to
                 ? "WhiteRose " + page.st.rolled_to + " starts straight away."
-                : "WhiteRose " + (page.rel?.version ?? "") + " starts straight away. If it doesn't come up properly, " + (page.st?.running ?? "") + " starts instead and your settings are put back."
+                : "WhiteRose " + (page.rel?.version ?? page.installedNext) + " starts straight away. If it doesn't come up properly, " + (page.st?.running ?? "") + " starts instead and your settings are put back."
             color: Theme.muted
             font { family: Theme.font; pointSize: Theme.pt(12) }
         }

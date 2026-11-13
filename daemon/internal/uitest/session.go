@@ -171,6 +171,9 @@ func Start(t testing.TB, o Options) *Session {
 		"QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1",
 		"QT_ACCESSIBILITY=1",
 		"WHITEROSE_DEBUG_INPUT=1",
+		// Apps the tests start stay in the test's own process tree, not in
+		// scopes of the person's systemd user manager (app_scope.rs).
+		"WHITEROSE_APP_SCOPES=0",
 		// Headless, the session has no desktop to name: the accessibility
 		// registry only needs to know it's a Wayland one (else it looks for
 		// an X server). Apps get the compositor's own from the compositor.

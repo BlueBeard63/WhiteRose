@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
 import WhiteRose.Files
+import "Format.js" as Fmt
 
 Item {
     id: cell
@@ -38,7 +39,8 @@ Item {
     // Pictures as themselves (decoded at icon size; up to 40 MB), the
     // rest, or a picture that won't load, as their type's icon.
     property bool thumbFailed: false
-    readonly property bool thumb: !cell.thumbFailed && String(cell.modelData.mime).startsWith("image/") && cell.modelData.size < 40e6
+    // (Not on a network drive: each would download the whole image.)
+    readonly property bool thumb: !cell.thumbFailed && !cell.pane.remote && String(cell.modelData.mime).startsWith("image/") && cell.modelData.size < 40e6
     Image {
         visible: !cell.modelData.look
         id: icon
@@ -46,7 +48,7 @@ Item {
         width: (cell.thumb ? 60 : 48) * cell.view.k; height: width
         sourceSize: Qt.size(width * 2, height * 2)
         fillMode: Image.PreserveAspectFit
-        source: cell.thumb ? "file://" + cell.modelData.path : cell.modelData.icon ? "file://" + cell.modelData.icon : ""
+        source: cell.thumb ? Fmt.fileUrl(cell.modelData.path) : cell.modelData.icon ? Fmt.fileUrl(cell.modelData.icon) : ""
         asynchronous: true
         autoTransform: true
         opacity: cell.modelData.hidden ? 0.55 : 1

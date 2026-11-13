@@ -55,7 +55,7 @@ Item {
 
     function activate(app) {
         if (app.running) Compositor.focusApp(app.appId);
-        else app.entry?.execute();
+        else Compositor.launchEntry(app.entry);
         ShellState.close();
     }
 
@@ -87,7 +87,7 @@ Item {
                 required property var modelData
                 app: modelData
                 onActivated: root.activate(modelData)
-                onNewWindow: { modelData.entry?.execute(); ShellState.close(); }
+                onNewWindow: { Compositor.launchEntry(modelData.entry); ShellState.close(); }
                 onTogglePin: DockConfig.togglePin(modelData.key)
             }
         }

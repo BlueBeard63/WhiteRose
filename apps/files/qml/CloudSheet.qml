@@ -1,5 +1,7 @@
 // The Sheet's Account tab: a cloud account (Google Drive, OneDrive,
-// Dropbox, iCloud Drive, S3, pCloud) through rclone (cloudremotes.rs).
+// Dropbox, iCloud Drive, Nextcloud, S3) through rclone (cloudremotes.rs).
+// Nextcloud asks for the server's address, then signs in with the browser
+// (Nextcloud's own sign-in: an app password, never yours).
 // Accounts that sign in with a browser open it; anything rclone needs to
 // ask (an iCloud two-factor code, a choice) is asked here, one question at
 // a time. Without rclone: a way to install it (Settings › Apps).
@@ -24,8 +26,8 @@ Column {
     property var ask: null
     // The choice picked for a question with choices (starts at its default).
     property string pick: ""
-    readonly property bool browserSignIn: ["drive", "onedrive", "dropbox", "pcloud"].includes(root.kind)
-    readonly property bool typing: name.editing || appleId.editing || applePassword.editing || s3Key.editing || s3Secret.editing || s3Endpoint.editing || s3Region.editing || answer.editing
+    readonly property bool browserSignIn: ["drive", "onedrive", "dropbox", "nextcloud"].includes(root.kind)
+    readonly property bool typing: name.editing || ncServer.editing || appleId.editing || applePassword.editing || s3Key.editing || s3Secret.editing || s3Endpoint.editing || s3Region.editing || answer.editing
 
     function show() {
         root.info = JSON.parse(Ops.cloudProviders());
@@ -36,6 +38,7 @@ Column {
     function reset() { root.error = ""; root.link = ""; root.ask = null; root.busy = false; answer.text = "" }
     function params() {
         if (root.kind === "iclouddrive") return { apple_id: appleId.text.trim(), password: applePassword.text };
+        if (root.kind === "nextcloud") return { server: ncServer.text.trim() };
         if (root.kind === "s3") return { provider: s3Provider.value, access_key_id: s3Key.text.trim(), secret_access_key: s3Secret.text, endpoint: s3Endpoint.text.trim(), region: s3Region.text.trim(), env_auth: "false" };
         return {};
     }
@@ -98,7 +101,7 @@ Column {
         visible: !root.info.rclone
         width: parent.width
         spacing: 12
-        Note { text: "Cloud drives in Files (Google Drive, OneDrive, Dropbox, iCloud Drive, S3) use rclone, which isn't installed. Settings › Apps can install it." }
+        Note { text: "Cloud drives in Files (Google Drive, OneDrive, Dropbox, iCloud Drive, Nextcloud, S3) use rclone, which isn't installed. Settings › Apps can install it." }
         Row {
             spacing: 8
             Button { anchors.verticalCenter: undefined; text: "Install rclone…"; kind: "primary"; onClicked: { const e = Fs.openSettings("apps"); if (e) root.error = e } }
@@ -128,6 +131,7 @@ Column {
             }
         }
         Box { label: "Name"; Field { id: name; anchors.fill: parent; placeholder: "Shown in the sidebar" } }
+        Box { visible: root.kind === "nextcloud"; label: "Server"; Field { id: ncServer; anchors.fill: parent; mono: true; placeholder: "cloud.example.org" } }
         Box { visible: root.kind === "iclouddrive"; label: "Apple ID"; Field { id: appleId; anchors.fill: parent; placeholder: "name@icloud.com" } }
         Box { visible: root.kind === "iclouddrive"; label: "Password"; Field { id: applePassword; anchors.fill: parent; secret: true } }
         Note {
@@ -152,7 +156,9 @@ Column {
         Box { visible: root.kind === "s3"; label: "Region"; Field { id: s3Region; anchors.fill: parent; mono: true; placeholder: "e.g. eu-west-2 (optional)" } }
         Note {
             visible: root.browserSignIn
-            text: "Your web browser opens to sign in. Come back here when it says you're done."
+            text: root.kind === "nextcloud"
+                ? "Your web browser opens on your Nextcloud to approve the sign-in. Files gets an app password of its own, never your password."
+                : "Your web browser opens to sign in. Come back here when it says you're done."
         }
     }
 
@@ -188,7 +194,9 @@ Column {
     // ---- signing in ----
     Note {
         visible: root.busy
-        text: root.browserSignIn && root.ask === null ? "Waiting for you to sign in in your browser…" : "Setting it up…"
+        text: root.browserSignIn && root.ask === null
+            ? (root.kind === "nextcloud" ? "Waiting for you to approve the sign-in in your browser…" : "Waiting for you to sign in in your browser…")
+            : "Setting it up…"
     }
     Text {
         visible: root.busy && root.link !== ""
@@ -217,7 +225,7 @@ Column {
             anchors.verticalCenter: undefined
             text: root.browserSignIn ? "Sign in" : "Add"
             kind: "primary"
-            enabled: !root.busy && name.text.trim() !== ""
+            enabled: !root.busy && name.text.trim() !== "" && (root.kind !== "nextcloud" || ncServer.text.trim() !== "")
             onClicked: root.start()
         }
     }

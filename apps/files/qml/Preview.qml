@@ -14,6 +14,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Window
 import WhiteRose.Kit
 import WhiteRose.Files
+import "Format.js" as Fmt
 
 Item {
     id: root
@@ -22,7 +23,38 @@ Item {
     // Inside an archive: the file taken out into a cache (only what can be
     // shown, and not too big: it's read out of the archive to show it).
     readonly property bool fromArchive: (root.entry?.path ?? "").startsWith("archive:")
+    // On a network drive: shown from a local copy, made in the background
+    // (remotecopy.rs); the readers below would otherwise read through the
+    // drive on the window's thread (a PDF on a Nextcloud froze Files).
+    readonly property bool remote: !!root.entry && !root.fromArchive && !root.entry.dir && Fs.isRemote(root.entry.path)
+    property string localCopy: ""
+    property bool fetching: false
+    property bool tooBig: false
+    // (A moment later: in the change itself `remote` and `kind` can still be
+    // the last entry's.)
+    onEntryChanged: {
+        root.localCopy = "";
+        root.tooBig = false;
+        root.fetching = false;
+        const asked = root.entry?.path ?? "";
+        Qt.callLater(() => {
+            if (!root.entry || root.entry.path !== asked) return;
+            root.fetching = root.remote && root.kind !== "other";
+            if (root.fetching) Ops.fetchCopy(asked);
+        });
+    }
+    Connections {
+        target: Ops
+        function onCopyFetched(path, result) {
+            if (!root.entry || path !== root.entry.path) return;
+            const r = JSON.parse(result);
+            root.fetching = false;
+            root.localCopy = r.local ?? "";
+            root.tooBig = r.error === "big";
+        }
+    }
     readonly property string path: !root.entry ? ""
+        : root.remote ? root.localCopy
         : !root.fromArchive ? root.entry.path
         : root.entry.dir || root.kind === "other" || (root.entry.size ?? 0) > 30e6 ? ""
         : Fs.archiveFile(root.entry.path)
@@ -49,7 +81,7 @@ Item {
         : root.kind === "markdown" ? (mdView.read.hint ?? "")
         : (special.item?.facts ?? "")
     // Shown as its icon (nothing better, or it couldn't be shown).
-    readonly property bool iconOnly: root.kind === "folder" || root.kind === "other"
+    readonly property bool iconOnly: root.fetching || root.tooBig || root.kind === "folder" || root.kind === "other"
         || (root.kind === "image" && picture.status === Image.Error)
         || ((root.kind === "text" || root.kind === "json" || (root.kind === "markdown" && root.showSource)) && !textView.ok)
         || (root.kind === "markdown" && !root.showSource && !mdView.ok)
@@ -70,7 +102,7 @@ Item {
         width: root.natural.width > 0 ? root.natural.width * root.fit : root.width
         height: root.natural.height > 0 ? root.natural.height * root.fit : root.height
         visible: root.kind === "image" && status === Image.Ready
-        source: root.kind === "image" ? "file://" + root.path : ""
+        source: root.kind === "image" ? Fmt.fileUrl(root.path) : ""
         // Decoded at the size it's shown, not the file's (memory).
         sourceSize: Qt.size(Math.max(16, width) * Screen.devicePixelRatio, Math.max(16, height) * Screen.devicePixelRatio)
         fillMode: Image.PreserveAspectFit
@@ -217,7 +249,16 @@ Item {
         sourceSize: Qt.size(width * 2, height * 2)
         // The theme's large one (the listing's is 48 px: blurry blown up).
         readonly property string large: root.entry ? Fs.typeIcon(root.mime, root.entry.dir, 256) : ""
-        source: large ? "file://" + large : root.entry?.icon ? "file://" + root.entry.icon : ""
+        source: large ? Fmt.fileUrl(large) : root.entry?.icon ? Fmt.fileUrl(root.entry.icon) : ""
         asynchronous: true
+    }
+
+    // A network drive's file being copied to show it, or too big to.
+    Text {
+        visible: root.fetching || root.tooBig
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 16 }
+        text: root.fetching ? "Loading preview…" : "Too big to preview from the network"
+        color: Theme.muted
+        font { family: Theme.font; pointSize: Theme.pt(11) }
     }
 }

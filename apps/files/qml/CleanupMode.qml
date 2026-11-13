@@ -183,7 +183,7 @@ Item {
                     anchors { left: box.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
                     width: 24; height: 24
                     sourceSize: Qt.size(48, 48)
-                    source: row.modelData.icon ? "file://" + row.modelData.icon : ""
+                    source: row.modelData.icon ? F.fileUrl(row.modelData.icon) : ""
                 }
                 Column {
                     anchors { left: ic.right; leftMargin: 10; right: sizeText.left; rightMargin: 16; verticalCenter: parent.verticalCenter }

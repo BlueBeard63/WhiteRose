@@ -11,6 +11,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import "Report.js" as Rep
 import Quickshell.Io
 
 Singleton {
@@ -23,6 +24,9 @@ Singleton {
     // file's; see IslandView.qml), found when the shell starts.
     property var islandViews: []
     readonly property var views: ["idle"].concat(islandViews)
+    // A prompt that came before the views were found (a crash, memory
+    // running out, right as the shell starts): offered once they are.
+    onIslandViewsChanged: { offerCrash(); offerMemory() }
     Process {
         running: true
         command: ["sh", "-c", "for f in \"$1\"/*.qml; do [ -f \"$f\" ] && basename \"$f\" .qml; done; true", "sh", Quickshell.shellDir + "/island"]
@@ -32,7 +36,9 @@ Singleton {
     // The screen (connector) a view is for, if only one: the others' islands
     // stay at rest. "" for every screen.
     property string islandScreen: ""
-    function show(view) { if (views.includes(view)) { islandView = view; islandScreen = ""; if (view !== "idle") panel = "" } }
+    // (islandViews, not views: read while islandViews is changing, views
+    // can still be the old list.)
+    function show(view) { if (view === "idle" || islandViews.includes(view)) { islandView = view; islandScreen = ""; if (view !== "idle") panel = "" } }
     function toggle(view) { islandView === view ? close() : show(view) }
     function close() { islandView = "idle"; islandScreen = "" }
 
@@ -57,7 +63,17 @@ Singleton {
     function zonesTool(tool) { if (zones) zones = Object.assign({}, zones, { tool }) }
     function endZones() { if (islandView === "zones") close(); zones = null }
     // Another view (or none) taking the island ends the editing.
-    onIslandViewChanged: if (islandView !== "zones") zones = null
+    onIslandViewChanged: {
+        if (islandView !== "zones") zones = null;
+        // A crash's prompt closed without an answer: offered again later.
+        if (islandView !== "reportprompt" && reportPrompt && !promptAnswered && reportPrompt.what !== "manual") {
+            crashWaiting = reportPrompt;
+            reportPrompt = null;
+        }
+        // A crash or a memory warning waiting: now, if the island is free.
+        offerCrash();
+        if (islandView === "idle") offerMemory();
+    }
 
     // The side panel hanging from the bar: "" (none) or "quick". Only one
     // thing is open at a time: opening it returns the island to idle.
@@ -68,7 +84,7 @@ Singleton {
     // Opens the Settings app (its own window), at `page` if given.
     function openSettings(page) {
         panel = ""; islandView = "idle";
-        Quickshell.execDetached([Quickshell.shellDir + "/bin/whiterose-settings", page ?? ""]);
+        Compositor.launch("whiterose-settings", [Quickshell.shellDir + "/bin/whiterose-settings", page ?? ""]);
     }
 
     // The session lock screen (LockScreen.qml) shows while this is true; only
@@ -99,7 +115,8 @@ Singleton {
     function askUpdates() {
         if (Daemon.connected) Daemon.request({ op: "updates" }, v => { if (v) root.noteUpdates(v) });
     }
-    Component.onCompleted: askUpdates()
+    // (Already connected when this was made: asked now.)
+    Component.onCompleted: { askUpdates(); askMemory(); askCrashes() }
 
     // An item is being dragged out of the island: keep it open meanwhile.
     property bool dragging: false
@@ -142,6 +159,80 @@ Singleton {
         target: "zones"
         function edit(monitor: string, ws: string, tool: string): void { root.editZones(monitor, ws, tool) }
         function done(): void { root.endZones() }
+    }
+    // The bug report flow (island/report.qml): `from` is the crash record
+    // (snapshot) it starts on, "" to pick.
+    property string reportFrom: ""
+    function report(from) { reportFrom = from ?? ""; show("report") }
+    // "Report this" after a crash / "Snapshot saved" (island/reportprompt.qml):
+    // the record ({ id, what, title, time }). A crash waits for the island
+    // to be free (not over the launcher you're typing in, not while locked)
+    // and is offered until it's answered (Report or Not now: whiterosed
+    // remembers, across shell restarts). Closed some other way (another
+    // view, Settings opening), it's offered again once the island is free.
+    property var reportPrompt: null
+    property var crashWaiting: null
+    property bool promptAnswered: false
+    function promptReport(rec) {
+        reportPrompt = rec;
+        promptAnswered = false;
+        show("reportprompt");
+    }
+    // Report (`report` true) or Not now / Later.
+    function answerPrompt(report) {
+        const rec = reportPrompt;
+        promptAnswered = true;
+        if (rec && rec.what !== "manual") Daemon.request({ op: "report_prompted", name: rec.id }, () => {});
+        if (report && rec) root.report(rec.id); else close();
+    }
+    function noteCrashes(list) {
+        const c = Rep.crashToPrompt(list, Date.now());
+        if (c) crashWaiting = c;
+        offerCrash();
+    }
+    function offerCrash() {
+        if (crashWaiting && islandView === "idle" && !locked) {
+            const c = crashWaiting;
+            crashWaiting = null;
+            promptReport(c);
+        }
+    }
+    onLockedChanged: { offerCrash(); offerMemory() }
+    // SUPER+SHIFT+B: a snapshot of this moment, then the offer to report it.
+    function snapshotNow() {
+        Daemon.request({ op: "report_snapshot_now" }, (v, err) => {
+            if (err || !v) return;
+            root.promptReport({ id: v.id, what: "manual", title: "Snapshot you took", time: Date.now() });
+        });
+    }
+    // Memory running out (island/memory.qml): { level, app, available, total }.
+    // Shown over nothing but the idle island or itself; else it waits.
+    property var memoryWarning: null
+    function offerMemory() {
+        if (memoryWarning && (islandView === "idle" || islandView === "memory") && !locked) show("memory");
+    }
+    Connections {
+        target: Daemon
+        function onMemoryWarning(e) { root.memoryWarning = e; root.offerMemory() }
+        // Connected (or reconnected after a restart): the warning showing, if any.
+        function onConnectedChanged() { root.askMemory() }
+    }
+    function askCrashes() {
+        if (Daemon.connected) Daemon.request({ op: "report_snapshots" }, v => { if (v) root.noteCrashes(v) });
+    }
+    function askMemory() {
+        if (Daemon.connected) Daemon.request({ op: "memory_warning" }, v => { if (v) { root.memoryWarning = v; root.offerMemory(); } });
+    }
+
+    Connections {
+        target: Daemon
+        function onReportRequested(from) { root.report(from) }
+        function onReportSnapshotsEvent(list) { root.noteCrashes(list) }
+        function onConnectedChanged() { root.askCrashes() }
+    }
+    IpcHandler {
+        target: "report"
+        function open(from: string): void { root.report(from) }
     }
     IpcHandler {
         target: "session"

@@ -811,7 +811,8 @@ AppWindow {
         const out = [];
         if (dir) out.push({ label: "Open in terminal", shortcut: entry ? "" : "F4", run: () => win.openTerminal(dir) });
         if (ed && (dir || textish)) out.push({ label: "Open in " + ed.name, run: () => win.openEditor(entry ? entry.path : dir) });
-        const root = dir ? Fs.gitRoot(dir) : "";
+        // (Not on a network drive: it looks for .git in every folder above.)
+        const root = dir && !Fs.isRemote(dir) ? Fs.gitRoot(dir) : "";
         if (ed && root && root !== dir) out.push({ label: "Open repository in " + ed.name, run: () => win.openEditor(root) });
         return out;
     }
@@ -1282,7 +1283,14 @@ AppWindow {
             return;
         }
         const info = JSON.parse(Fs.runInfo(entry.path, entry.mime ?? ""));
-        if (info.kind === "none") { Qt.openUrlExternally("file://" + entry.path); return }
+        if (info.kind === "none") {
+            // On a network drive: by its GVfs address, so the app reads it
+            // through GVfs (much faster than the FUSE folder).
+            const r = Fs.openRemote(entry.path);
+            if (r === "local") Qt.openUrlExternally(F.fileUrl(entry.path));
+            else if (r !== "") { win.notice = "Couldn't open “" + entry.name + "”: " + r; Qt.openUrlExternally(F.fileUrl(entry.path)) }
+            return;
+        }
         runDialog.ask(entry, info);
     }
     // As text, in Notepad (or the code editor).
@@ -1428,8 +1436,8 @@ AppWindow {
         id: exportDialog
         title: "Export Files' settings"
         fileMode: FileDialog.SaveFile
-        currentFolder: "file://" + Fs.home()
-        selectedFile: "file://" + Fs.home() + "/whiterose-files-settings.json"
+        currentFolder: F.fileUrl(Fs.home())
+        selectedFile: F.fileUrl(Fs.home()) + "/whiterose-files-settings.json"
         nameFilters: ["Files settings (*.json)"]
         onAccepted: {
             const err = Ops.exportSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")));
@@ -1439,7 +1447,7 @@ AppWindow {
     FileDialog {
         id: importDialog
         title: "Import Files' settings"
-        currentFolder: "file://" + Fs.home()
+        currentFolder: F.fileUrl(Fs.home())
         nameFilters: ["Files settings (*.json)"]
         onAccepted: {
             const r = JSON.parse(Ops.importSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, ""))));

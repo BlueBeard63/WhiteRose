@@ -16,8 +16,9 @@ import (
 	"whiterose/daemon/internal/update"
 )
 
-// A fake GitHub with release `ver`, signed by `priv`.
-func fakeGitHub(t *testing.T, ver, priv string) update.Source {
+// A fake GitHub with release `ver`, signed by `priv`, and `others` (no
+// packages) in the list.
+func fakeGitHub(t *testing.T, ver, priv string, others ...update.Release) update.Source {
 	t.Helper()
 	dir := t.TempDir()
 	names := []string{"whiterose-core-" + ver + "_" + ver + "_amd64.deb", "whiterose_" + ver + "_amd64.deb"}
@@ -32,12 +33,17 @@ func fakeGitHub(t *testing.T, ver, priv string) update.Source {
 	files["SHA256SUMS"], files["SHA256SUMS.sig"] = sums, []byte(sig)
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/me/whiterose/releases/latest" {
-			var assets []update.Asset
-			for n, b := range files {
-				assets = append(assets, update.Asset{Name: n, Size: int64(len(b)), URL: srv.URL + "/dl/" + n})
-			}
-			json.NewEncoder(w).Encode(update.Release{Tag: "v" + ver, Notes: "- New window switcher\n- Faster", Published: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), Assets: assets})
+		var assets []update.Asset
+		for n, b := range files {
+			assets = append(assets, update.Asset{Name: n, Size: int64(len(b)), URL: srv.URL + "/dl/" + n})
+		}
+		main := update.Release{Tag: "v" + ver, Notes: "- New window switcher\n- Faster", Published: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), Assets: assets}
+		switch r.URL.Path {
+		case "/repos/me/whiterose/releases/latest":
+			json.NewEncoder(w).Encode(main)
+			return
+		case "/repos/me/whiterose/releases":
+			json.NewEncoder(w).Encode(append([]update.Release{main}, others...))
 			return
 		}
 		if b, ok := files[strings.TrimPrefix(r.URL.Path, "/dl/")]; ok {
@@ -68,7 +74,7 @@ func setup(t *testing.T, running string) (*Manager, *[]any) {
 	if running != "" {
 		installVersion(t, m.Root, running)
 	}
-	m.Install = func(ctx context.Context, dir, keep string, line func(string)) error {
+	m.Install = func(ctx context.Context, dir, keep, chosen string, line func(string)) error {
 		// What the root helper does: check the download again, install it.
 		if _, err := update.VerifyDir(dir, "deb", pub); err != nil {
 			return err
@@ -178,6 +184,86 @@ func TestInstallRefusesTamperedDownload(t *testing.T) {
 	}
 }
 
+// Pre-releases: offered only with the switch on; the Releases tab groups
+// by series and hides pre-releases you haven't installed while it's off.
+func TestPreReleasesAndList(t *testing.T) {
+	priv, pub, _ := update.NewKey()
+	day := func(d int) time.Time { return time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC) }
+	pre := false
+	m := &Manager{
+		Src: fakeGitHub(t, "0.5.0", priv,
+			update.Release{Tag: "v0.6.0-alpha.2", Pre: true, Published: day(12)},
+			update.Release{Tag: "v0.6.0-alpha.10", Pre: true, Published: day(13)},
+			update.Release{Tag: "v0.5.0-alpha.1", Pre: true, Published: day(5)},
+			update.Release{Tag: "v0.4.2", Published: day(1)},
+			update.Release{Tag: "v0.4.3-draft", Draft: true}),
+		Public: pub, Kind: "deb", Root: t.TempDir(), State: t.TempDir(), Cache: t.TempDir(),
+		Running: "0.5.0", Pre: func() bool { return pre },
+	}
+	installVersion(t, m.Root, "0.5.0")
+	installVersion(t, m.Root, "0.6.0-alpha.2")
+	installVersion(t, m.Root, "0.5.0-alpha.1")
+	ctx := context.Background()
+	// (alpha.2 is installed and starts next; an older installed alpha isn't shown.)
+	if err := m.Check(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if r := m.Status().Release; r != nil {
+		t.Errorf("switch off, offered %+v", r)
+	}
+	names := func() (out []string) {
+		for _, g := range m.Releases() {
+			var vs []string
+			for _, e := range g.Releases {
+				vs = append(vs, e.Version+":"+e.State)
+			}
+			out = append(out, g.Name+"="+strings.Join(vs, ","))
+		}
+		return
+	}
+	// alpha.2 is installed (and newer than 0.5.0: it starts next); alpha.10 isn't shown.
+	if got := strings.Join(names(), " "); got != "0.6=0.6.0-alpha.2:next 0.5=0.5.0:running 0.4=0.4.2:available" {
+		t.Errorf("switch off: %s", got)
+	}
+	pre = true
+	if err := m.Check(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if r := m.Status().Release; r == nil || r.Version != "0.6.0-alpha.10" {
+		t.Errorf("switch on, offered %+v", r)
+	}
+	if got := strings.Join(names(), " "); got != "0.6=0.6.0-alpha.10:available,0.6.0-alpha.2:next 0.5=0.5.0:running,0.5.0-alpha.1:installed 0.4=0.4.2:available" {
+		t.Errorf("switch on: %s", got)
+	}
+}
+
+// A newer version installed outside the page (install.sh, apt): shown as
+// waiting for the next start, even when the release check knows nothing newer.
+func TestWaiting(t *testing.T) {
+	m, _ := setup(t, "0.4.1")
+	f := launch.StateFile(m.State)
+	launch.Save(f, launch.State{Current: "0.4.1"})
+	if v := m.Status(); v.Waiting != "" {
+		t.Errorf("nothing newer: %+v", v)
+	}
+	installVersion(t, m.Root, "0.4.2")
+	installVersion(t, m.Root, "0.4.3")
+	// A stale pending one: the newest is what starts.
+	launch.Save(f, launch.State{Current: "0.4.1", Pending: "0.4.2"})
+	if v := m.Status(); v.Waiting != "0.4.3" {
+		t.Errorf("waiting: %+v", v)
+	}
+	// Not when you chose to stay off it.
+	launch.Save(f, launch.State{Current: "0.4.1", Skip: "0.4.3"})
+	if v := m.Status(); v.Waiting != "" {
+		t.Errorf("skipped: %+v", v)
+	}
+	// Looking doesn't change the state.
+	if st := launch.Load(f); st.Pending != "" || st.Attempts != 0 {
+		t.Errorf("state changed: %+v", st)
+	}
+}
+
 func TestRollbackAndPrompt(t *testing.T) {
 	m, _ := setup(t, "0.5.0")
 	installVersion(t, m.Root, "0.4.2")
@@ -224,5 +310,67 @@ func TestRollbackAndPrompt(t *testing.T) {
 	}
 	if st := launch.Load(f); st.Pending != "0.5.0" || st.Attempts != 0 || st.Failed != "" {
 		t.Errorf("%+v", st)
+	}
+}
+
+// Releases › Install on an older release: only its core package goes in,
+// the chosen one is kept, and it starts at the next login without the
+// launcher moving back up to the newest.
+func TestInstallOlderVersion(t *testing.T) {
+	priv, pub, _ := update.NewKey()
+	var gotFiles []string
+	var gotChosen string
+	m := &Manager{
+		Src: fakeGitHub(t, "0.4.2", priv), Public: pub, Kind: "deb",
+		Root: t.TempDir(), State: t.TempDir(), Cache: t.TempDir(), Running: "0.5.0", Launcher: true,
+	}
+	installVersion(t, m.Root, "0.5.0")
+	m.Install = func(ctx context.Context, dir, keep, chosen string, line func(string)) error {
+		if _, err := update.VerifyDir(dir, "deb", pub); err != nil {
+			return err
+		}
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			gotFiles = append(gotFiles, e.Name())
+		}
+		gotChosen = chosen
+		installVersion(t, m.Root, "0.4.2")
+		return nil
+	}
+	ctx := context.Background()
+	if err := m.InstallVersion(ctx, "0.4.2"); err == nil {
+		t.Fatal("installed a release it hasn't listed")
+	}
+	if err := m.Check(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.InstallVersion(ctx, "0.4.2"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(gotFiles, " ") != "SHA256SUMS SHA256SUMS.sig whiterose-core-0.4.2_0.4.2_amd64.deb" || gotChosen != "0.4.2" {
+		t.Errorf("installed %v (chosen %q)", gotFiles, gotChosen)
+	}
+	st := launch.Load(launch.StateFile(m.State))
+	plan, _, _ := launch.Decide(st, update.Installed(m.Root), update.Newer)
+	if plan.Version != "0.4.2" || plan.Trial || st.Skip != "0.5.0" {
+		t.Errorf("next login: %+v, state %+v", plan, st)
+	}
+	if _, err := os.Stat(m.Dir("0.4.2")); err == nil {
+		t.Error("the download is still there")
+	}
+}
+
+// Switching to an installed version that isn't the newest: health-checked
+// at the next login, and the newest doesn't take its place.
+func TestSwitchToInstalledVersion(t *testing.T) {
+	m, _ := setup(t, "0.4.1")
+	installVersion(t, m.Root, "0.4.2")
+	installVersion(t, m.Root, "0.5.0")
+	if err := m.InstallVersion(context.Background(), "0.4.2"); err != nil {
+		t.Fatal(err)
+	}
+	plan, _, _ := launch.Decide(launch.Load(launch.StateFile(m.State)), update.Installed(m.Root), update.Newer)
+	if plan.Version != "0.4.2" || !plan.Trial || plan.Fallback != "0.4.1" {
+		t.Errorf("%+v", plan)
 	}
 }

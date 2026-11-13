@@ -47,8 +47,35 @@ pub fn dir() -> PathBuf {
     state.join("whiterose/files")
 }
 
+/// On a network drive, asking whether a folder exists is a trip to the
+/// server each (restoring a history of them took seconds). There, a
+/// folder counts while its drive is mounted: known from the mount's own
+/// folder (GVfs answers listing its root itself) or mountinfo, never the
+/// server.
+fn remote_present(p: &str) -> Option<bool> {
+    if !crate::places::is_remote(p) {
+        return None;
+    }
+    let run = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from)?;
+    Some(match crate::places::mount_place(p, &run) {
+        Some((root, _)) => {
+            let root = Path::new(&root);
+            root.parent()
+                .and_then(|g| std::fs::read_dir(g).ok())
+                .is_some_and(|mut d| {
+                    d.any(|e| e.is_ok_and(|e| Some(e.file_name().as_os_str()) == root.file_name()))
+                })
+        }
+        // (Some other network mount, NFS or SMB: mounted, so it counts.)
+        None => true,
+    })
+}
+
 /// The nearest folder at or above `p` that exists ("/" at worst).
 fn nearest(p: &str) -> String {
+    if remote_present(p) == Some(true) {
+        return p.to_string();
+    }
     let mut p = Path::new(p);
     while !p.is_dir() {
         match p.parent() {
@@ -96,7 +123,9 @@ fn special(p: &str) -> bool {
 }
 
 fn clean_tab(t: Tab, home: &Path, outer: bool) -> Tab {
-    let ok = |p: &String| p.starts_with('/') && Path::new(p).is_dir();
+    let ok = |p: &String| {
+        p.starts_with('/') && remote_present(p).unwrap_or_else(|| Path::new(p).is_dir())
+    };
     let path = if special(&t.path) {
         t.path
     } else if t.path.starts_with('/') {

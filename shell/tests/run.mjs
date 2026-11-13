@@ -1,10 +1,11 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // `deps`: what its `.import "…" as Name` lines bring in, by Name.
@@ -13,7 +14,7 @@ function load(file, names, deps = {}) {
     return new Function(...Object.keys(deps), `${src}\nreturn { ${names.join(", ")} };`)(...Object.values(deps));
 }
 const Calc = load("Calc.js", ["evaluate"]);
-const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results"]);
+const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results", "shellQuote"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
@@ -25,8 +26,11 @@ const Ag = load("Agenda.js", ["timed", "next", "when", "span", "at", "blocks"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
-const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction"]);
-const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
+const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn", "crashToPrompt", "promptText"]);
+const Mem = load("Memory.js", ["size", "warningText", "appName", "closedText"]);
+const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
+const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName", "fileUrl"]);
+const Ph = load("../apps/notepad/qml/Placeholder.js", ["text"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
 const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
@@ -761,6 +765,29 @@ test("users: suggested usernames, checks, last seen", () => {
     assert.equal(U.lastSeen(new Date(2025, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct 2025");
 });
 
+test("releases tab", () => {
+    const series = [
+        { name: "0.3", releases: [
+            { version: "0.3.0-alpha.3", pre: true, state: "running", published: 1794571000, changes: ["Resize floating windows from any edge"] },
+            { version: "0.3.0-alpha.2", pre: true, state: "installed", published: 1794480000, changes: ["Drag and drop between X11 and Wayland apps"] }] },
+        { name: "0.2", releases: [{ version: "0.2.1", pre: false, state: "available", published: 1794380000, changes: ["One command installs WhiteRose"] }] },
+    ];
+    assert.equal(Up.filterSeries(series, "").length, 2);
+    assert.equal(Up.filterSeries(series, "0.2").map(s => s.name).join(), "0.2");
+    assert.equal(Up.filterSeries(series, "v0.3").map(s => s.releases.length).join(), "2");
+    assert.equal(Up.filterSeries(series, "alpha.2")[0].releases.map(r => r.version).join(), "0.3.0-alpha.2");
+    assert.equal(Up.filterSeries(series, "drag")[0].releases[0].version, "0.3.0-alpha.2");
+    assert.equal(Up.filterSeries(series, "nothing like it").length, 0);
+    assert.equal(Up.seriesNote(series[0]), "2 releases · 0.3.0-alpha.3 running");
+    assert.equal(Up.seriesNote(series[1]), "1 release");
+    assert.equal(Up.releaseFacts(series[0].releases[0], 1794571000000), "alpha · 13 Nov");
+    assert.equal(Up.releaseFacts(series[1].releases[0], 1794571000000), "11 Nov");
+    assert.equal(Up.releaseAction({ state: "installed" }).join("|"), "|Switch to it");
+    assert.equal(Up.releaseAction({ state: "available" }).join("|"), "|Install");
+    assert.equal(Up.newestRelease(series), "0.3.0-alpha.3");
+    assert.equal(Up.newestRelease([]), "");
+});
+
 test("updates page text", () => {
     const now = Date.UTC(2026, 10, 10, 12, 0, 0);
     const t = now / 1000;
@@ -1207,6 +1234,116 @@ test("UI text follows the copy rules", () => {
         });
     }
     assert.deepEqual(problems, []);
+});
+
+test("shell quoting for desktop entries run in a terminal", () => {
+    assert.equal(Search.shellQuote("htop"), "htop");
+    assert.equal(Search.shellQuote("/usr/bin/x"), "/usr/bin/x");
+    assert.equal(Search.shellQuote("two words"), "'two words'");
+    assert.equal(Search.shellQuote("it's"), "'it'\\''s'");
+    assert.equal(Search.shellQuote("$(rm -rf ~)"), "'$(rm -rf ~)'");
+});
+
+test("memory warning words", () => {
+    const GB = 1 << 30;
+    const [ct, cx] = Mem.closedText({ app: { bytes: 9 * GB, reason: "half" } }, "Firefox");
+    assert.equal(ct, "Closed Firefox to free memory");
+    assert.ok(cx.includes("Firefox was using 9 GB, more than half of all memory."), cx);
+    assert.ok(Mem.closedText({ app: { bytes: GB, reason: "growing" } }, "Code")[1].includes("Code was using 1 GB and had grown steadily for 10 minutes."));
+    assert.equal(Mem.appName("org.mozilla.firefox"), "Firefox");
+    assert.equal(Mem.appName("code"), "Code");
+    assert.equal(Mem.appName(""), "This app");
+    assert.equal(Mem.size(6.2 * GB), "6.2 GB");
+    assert.equal(Mem.size(12.4 * GB), "12 GB");
+    assert.equal(Mem.size(850 * (1 << 20)), "850 MB");
+    assert.equal(Mem.warningText({ app: { bytes: 6.2 * GB, growing: true, reason: "growing" } }, "Firefox")[0], "Firefox is using 6.2 GB and still growing");
+    assert.equal(Mem.warningText({ app: { bytes: 9 * GB, reason: "half" } }, "Code")[0], "Code is using 9 GB, more than half of memory");
+    const [t, x] = Mem.warningText({ app: { bytes: 2.1 * GB, reason: "biggest" } }, "Files");
+    assert.equal(t, "Memory is nearly full");
+    assert.ok(x.startsWith("Files is using the most (2.1 GB)."));
+});
+
+test("notepad's empty documents say what they are", () => {
+    assert.equal(Ph.text({ scratch: true }), "Notes, lists, anything. It saves itself.");
+    assert.ok(Ph.text({ path: "" }).startsWith("Start typing."));
+    assert.equal(Ph.text({ path: "/home/x/todo.txt", syntax: "" }), "todo.txt is empty.");
+    assert.equal(Ph.text({ path: "/home/x/README.md", syntax: "Markdown", language: "Markdown" }), "README.md is empty. # starts a heading, - starts a list.");
+    assert.equal(Ph.text({ path: "/src/main.go", syntax: "Go", language: "Go" }), "main.go is empty. It's highlighted as Go.");
+});
+
+test("files: file addresses keep names with % # ?", () => {
+    assert.equal(F.fileUrl("/run/user/1000/gvfs/dav:host=s,prefix=%2Fremote.php%2Fwebdav/a b.jpg"),
+        "file:///run/user/1000/gvfs/dav%3Ahost%3Ds%2Cprefix%3D%252Fremote.php%252Fwebdav/a%20b.jpg");
+    assert.equal(decodeURIComponent(F.fileUrl("/x/#1?.png").split("/").pop()), "#1?.png");
+    assert.equal(F.fileUrl(""), "");
+});
+
+// ---- the bug report flow (Report.js) -------------------------------------------
+test("report flow guesses", () => {
+    const now = Date.UTC(2026, 10, 13, 14, 0);
+    const list = [
+        { id: "b", what: "manual", time: now - 60_000, ready: true, title: "Snapshot you took" },
+        { id: "a", what: "shell", time: now - 3_600_000, ready: true, title: "The shell crashed (signal 11, SIGSEGV)" },
+    ];
+    assert.equal(Rep.pickSnapshot(list, "a", now), "a");
+    assert.equal(Rep.pickSnapshot(list, "gone", now), "b");
+    assert.equal(Rep.pickSnapshot(list.slice(1), "", now), "", "an hour old: take one now");
+    assert.equal(Rep.kindFor({ what: "shell" }, null), "crashed");
+    assert.equal(Rep.kindFor({ what: "memory" }, null), "slow");
+    assert.equal(Rep.kindFor({ what: "manual" }, { load: { mem_used_mb: 950, mem_total_mb: 1000 } }), "slow");
+    assert.equal(Rep.kindFor({ what: "manual" }, { load: { mem_used_mb: 500, mem_total_mb: 1000 } }), "wrong");
+    assert.equal(Rep.whereFor({ what: "compositor" }, null), "The whole desktop");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "whiterose-files" } }), "Files");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "firefox" } }), "firefox");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "(no app ID)" } }), "The whole desktop");
+    const opts = Rep.areaOptions({ windows: { apps: { firefox: 2, "whiterose-files": 1, "(no app ID)": 1 } } }, "Custom place");
+    assert.ok(opts.includes("firefox") && opts.filter(o => o === "Files").length === 1 && opts.at(-1) === "Custom place");
+    assert.equal(Rep.titleFor("froze", "Files", ""), "Files froze");
+    assert.equal(Rep.titleFor("crashed", "The bar", "The shell crashed (signal 11, SIGSEGV)"), "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(Rep.titleFor("wrong", "Displays", ""), "Displays doesn't do what it should");
+    // Filling keeps what you chose and a title you edited.
+    assert.equal(Rep.newDraft(list, "a", now).step, 2, "opened from a crash: the problem is known");
+    assert.equal(Rep.newDraft(list, "", now).step, 1);
+    const crashes = [
+        { id: "m", what: "manual", time: now - 1000, ready: true },
+        { id: "s2", what: "shell", time: now - 2000, ready: false },
+        { id: "s1", what: "shell", time: now - 3000, ready: true, prompted: true },
+        { id: "c", what: "compositor", time: now - 4000, ready: true, title: "The compositor exited with code 101" },
+    ];
+    assert.equal(Rep.crashToPrompt(crashes, now).id, "c", "not a snapshot you took, not before it's ready, not twice");
+    assert.equal(Rep.crashToPrompt([{ id: "o", what: "shell", time: now - 2 * 86400000, ready: true }], now), null, "too old");
+    assert.equal(Rep.promptText(crashes[3], now)[0], "WhiteRose crashed last time");
+    assert.equal(Rep.promptText({ what: "shell", title: "The shell crashed (signal 11, SIGSEGV)", time: now }, now)[0], "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(Rep.promptText({ what: "manual", time: now }, now)[0], "Snapshot saved");
+    let d = Rep.fill(Rep.newDraft(list, "a", now), { what: "shell" }, null, "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(d.kind + "|" + d.where + "|" + d.title, "crashed|The bar|The shell crashed (signal 11, SIGSEGV)");
+    d = Rep.fill(Object.assign(d, { kind: "froze", title: "My title", edited: true }), { what: "shell" }, null, "");
+    assert.equal(d.title, "My title");
+    assert.equal(Rep.canGoOn({ step: 4, what: "short" }), false);
+    assert.equal(Rep.canGoOn({ step: 4, what: "the bar went away" }), true);
+    assert.equal(Rep.canGoOn({ step: 3, title: "  " }), false);
+});
+
+// ---- the old-version issue workflow (.github/scripts/old-version.js) ------------
+test("old-version reports: versions", () => {
+    const Old = createRequire(import.meta.url)(join(here, "..", "..", ".github", "scripts", "old-version.js"));
+    const order = ["0.2.0", "0.2.1", "0.3.0-alpha", "0.3.0-alpha.2", "0.3.0-alpha.10", "0.3.0-beta.1", "0.3.0", "v0.3.1", "1.0.0"];
+    for (let i = 0; i < order.length; i++)
+        for (let j = 0; j < order.length; j++)
+            assert.equal(Old.compare(order[i], order[j]), Math.sign(i - j), order[i] + " vs " + order[j]);
+    assert.equal(Old.compare("0.3.0~alpha.3", "0.3.0-alpha.3"), 0);
+    const form = v => "### WhiteRose version\n\n" + v + "\n\n### What happened\n\nIt broke";
+    assert.equal(Old.reportedVersion(form("0.3.0-alpha.3")), "0.3.0-alpha.3");
+    assert.equal(Old.reportedVersion(form("WhiteRose v0.2.1")), "0.2.1");
+    assert.equal(Old.reportedVersion(form("latest")), "");
+    assert.equal(Old.reportedVersion("no form at all"), "");
+    const id = "ab".repeat(32);
+    assert.equal(Old.reportedBuild("### Build\n\n" + id.toUpperCase() + "\n\n### What happened"), id);
+    assert.equal(Old.reportedBuild("### Build\n\nnot one\n"), "");
+    const sums = "cd".repeat(32) + "  whiterose_0.3.1_amd64.deb\n" + id + "  build-0.3.1-rpm\n";
+    assert.equal(Old.listsBuild(sums, "0.3.1", id), true);
+    assert.equal(Old.listsBuild(sums, "0.3.2", id), false, "another version's build");
+    assert.equal(Old.listsBuild(sums, "0.3.1", "ef".repeat(32)), false);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"whiterose/daemon/internal/crash"
 )
 
 // RestartCode: the compositor exits with it to have the session started
@@ -36,8 +38,14 @@ type Config struct {
 	Ready   time.Duration // all pieces ready within this (20 s)
 	Survive time.Duration // and still running at this (60 s)
 	Stop    time.Duration // between asking to stop and making it (5 s)
+	LogMax  int64         // the session log's size limit (0: LogMax)
 
 	Logf func(format string, args ...any)
+
+	// Tidy runs before the session starts and after it ends, to leave the
+	// user's systemd manager as another desktop expects it (the portals,
+	// the environment: main.go). nil: nothing.
+	Tidy func()
 }
 
 func (c Config) dir() string             { return filepath.Join(c.StateHome, "whiterose") }
@@ -59,6 +67,10 @@ func (c Config) logf(format string, args ...any) {
 // Run starts sessions until one ends other than by restarting, and returns
 // its exit code.
 func Run(c Config) (int, error) {
+	if c.Tidy != nil {
+		c.Tidy()
+		defer c.Tidy()
+	}
 	stateFile := StateFile(c.StateHome)
 	for {
 		s := Load(stateFile)
@@ -117,7 +129,18 @@ func (c Config) start(plan Plan, stateFile string) (int, error) {
 	// Its own process group: stopping it stops the daemon and shell too.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	tail := &tailWriter{max: 200}
-	cmd.Stderr = io.MultiWriter(os.Stderr, tail)
+	out := []io.Writer{os.Stderr, tail}
+	max := c.LogMax
+	if max == 0 {
+		max = LogMax
+	}
+	if log, err := openSessionLog(c.StateHome, plan.Version, max); err == nil {
+		defer log.Close()
+		out = append(out, log)
+	} else {
+		c.logf("session log: %v", err)
+	}
+	cmd.Stderr = io.MultiWriter(out...)
 	c.logf("starting %s%s", plan.Version, map[bool]string{true: " (trying it)"}[plan.Trial])
 	if err := cmd.Start(); err != nil {
 		if plan.Trial {
@@ -158,14 +181,37 @@ func (c Config) start(plan Plan, stateFile string) (int, error) {
 			}
 		}
 	}
+	quitting := false
 	for {
 		select {
 		case <-done:
-			return exitCode(cmd), nil
+			code := exitCode(cmd)
+			// Not logged out, not restarted: the compositor crashed (and
+			// every app with it). Noted for a bug report.
+			if !quitting && code != 0 && code != RestartCode {
+				c.crashed(plan.Version, cmd, tail.lines())
+			}
+			return code, nil
 		case sig := <-sigs:
+			quitting = true
 			syscall.Kill(-cmd.Process.Pid, sig.(syscall.Signal))
 		}
 	}
+}
+
+// crashed writes a crash record for the compositor, with what the session
+// printed last.
+func (c Config) crashed(version string, cmd *exec.Cmd, out []string) {
+	r := crash.Record{What: crash.Compositor, Version: version}
+	if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		r.Signal = int(ws.Signal())
+	} else {
+		r.Code = cmd.ProcessState.ExitCode()
+	}
+	if _, err := crash.Write(c.StateHome, r, out); err != nil {
+		c.logf("crash record: %v", err)
+	}
+	c.logf("%s", r.Describe())
 }
 
 type checked struct {

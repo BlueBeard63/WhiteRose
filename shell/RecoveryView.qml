@@ -116,7 +116,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Quickshell.execDetached(["xdg-open", root.f?.log ?? ""])
+                    onClicked: Compositor.launch("", ["xdg-open", root.f?.log ?? ""])
                 }
             }
             Row {

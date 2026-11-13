@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,11 +27,13 @@ import (
 
 // Saved is what's remembered between runs ($XDG_STATE_HOME/whiterose/updates.json).
 type Saved struct {
-	Checked    int64           `json:"checked"`
-	Release    *update.Release `json:"release,omitempty"`
-	Downloaded string          `json:"downloaded,omitempty"` // the version in Dir(), verified
-	Steps      []update.Step   `json:"steps,omitempty"`
-	Error      string          `json:"error,omitempty"`
+	Checked int64           `json:"checked"`
+	Release *update.Release `json:"release,omitempty"`
+	// Every published release (for the Releases tab), newest first.
+	Releases   []update.Release `json:"releases,omitempty"`
+	Downloaded string           `json:"downloaded,omitempty"` // the version in Dir(), verified
+	Steps      []update.Step    `json:"steps,omitempty"`
+	Error      string           `json:"error,omitempty"`
 }
 
 type Manager struct {
@@ -45,13 +48,16 @@ type Manager struct {
 	Launcher bool
 
 	// Install runs the root half: install the packages in dir, keep `keep`
-	// (the running version), remove older ones. Progress lines go to `line`.
-	Install func(ctx context.Context, dir, keep string, line func(string)) error
+	// (the running version) and `chosen` (a release picked under Releases,
+	// or ""), remove older ones. Progress lines go to `line`.
+	Install func(ctx context.Context, dir, keep, chosen string, line func(string)) error
 	// Restart asks the compositor to restart the session.
 	Restart func() error
 	Metered func() bool
-	Emit    func(any)
-	Now     func() time.Time
+	// Pre: pre-releases (alpha, beta) are offered too (update.prerelease).
+	Pre  func() bool
+	Emit func(any)
+	Now  func() time.Time
 
 	mu       sync.Mutex
 	saved    Saved
@@ -68,6 +74,8 @@ func (m *Manager) now() time.Time {
 	}
 	return time.Now()
 }
+
+func (m *Manager) pre() bool { return m.Pre != nil && m.Pre() }
 
 func (m *Manager) savedFile() string  { return filepath.Join(m.State, "whiterose", "updates.json") }
 func (m *Manager) launchFile() string { return launch.StateFile(m.State) }
@@ -136,6 +144,7 @@ type View struct {
 	Release   *ReleaseView `json:"release"`
 	Previous  string       `json:"previous"`
 	RolledTo  string       `json:"rolled_to"` // rolled back: this from the next start
+	Waiting   string       `json:"waiting"`   // a newer version installed, started (and checked) at the next start
 	Rollback  bool         `json:"auto_rollback"`
 	Snapshot  int64        `json:"snapshot"`
 	Launcher  bool         `json:"launcher"`
@@ -179,6 +188,12 @@ func (m *Manager) status() View {
 	}
 	if st.Current != "" && st.Current != m.Running && slices.Contains(installed, st.Current) {
 		v.RolledTo = st.Current
+	}
+	// Installed but not running yet (by the Updates page, apt / dnf, or a
+	// release's install.sh): what the launcher would start next.
+	if plan, _, err := launch.Decide(st, installed, update.Newer); err == nil && v.RolledTo == "" &&
+		m.Running != "" && update.Newer(plan.Version, m.Running) {
+		v.Waiting = plan.Version
 	}
 	if st.Failed != "" {
 		v.Failure = &Failure{Version: st.Failed, Reason: st.Reason, Attempts: st.Attempts, Tries: launch.Tries,
@@ -247,6 +262,60 @@ func (m *Manager) status() View {
 	return v
 }
 
+// ---- the Releases tab -------------------------------------------------------------------
+
+type ReleaseEntry struct {
+	Version   string   `json:"version"`
+	Published int64    `json:"published"`
+	Pre       bool     `json:"pre"`
+	Changes   []string `json:"changes"`
+	// running | next (starts at the next login) | installed | available
+	State string `json:"state"`
+}
+
+// Series is one major.minor ("0.3") and its releases, newest first.
+type Series struct {
+	Name     string         `json:"name"`
+	Releases []ReleaseEntry `json:"releases"`
+}
+
+// Releases is every known release grouped by series, newest first.
+// Pre-releases only show with the pre-release switch on, or when one is
+// the version you're on (or the one starting at the next login).
+func (m *Manager) Releases() []Series {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.load()
+	installed := update.Installed(m.Root)
+	next := ""
+	if plan, _, err := launch.Decide(launch.Load(m.launchFile()), installed, update.Newer); err == nil && plan.Version != m.Running {
+		next = plan.Version
+	}
+	pre := m.pre()
+	out := []Series{}
+	for _, r := range m.saved.Releases {
+		v := r.Version()
+		e := ReleaseEntry{Version: v, Published: r.Published.Unix(), Pre: r.Pre, Changes: r.Changes(), State: "available"}
+		switch {
+		case v == m.Running:
+			e.State = "running"
+		case v == next:
+			e.State = "next"
+		case slices.Contains(installed, v):
+			e.State = "installed"
+		}
+		if r.Pre && !pre && e.State != "running" && e.State != "next" {
+			continue
+		}
+		name := update.Series(v)
+		if n := len(out); n == 0 || out[n-1].Name != name {
+			out = append(out, Series{Name: name})
+		}
+		out[len(out)-1].Releases = append(out[len(out)-1].Releases, e)
+	}
+	return out
+}
+
 func (m *Manager) emit() {
 	if m.Emit != nil {
 		v := m.status()
@@ -299,11 +368,16 @@ func (m *Manager) Check(ctx context.Context, fetch bool) error {
 	}
 	m.mu.Unlock()
 
-	r, err := m.Src.Latest(ctx)
+	list, err := m.Src.List(ctx)
+	r, ok := update.Newest(list, m.pre())
+	if err == nil && !ok {
+		err = errors.New("there are no releases yet")
+	}
 
 	m.mu.Lock()
 	m.saved.Checked = m.now().Unix()
 	if err == nil {
+		m.saved.Releases = list
 		m.saved.Release = &r
 		if m.saved.Downloaded != "" && m.saved.Downloaded != r.Version() {
 			// An older download: not needed any more.
@@ -383,7 +457,7 @@ func (m *Manager) InstallNow(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	err := m.Install(ctx, m.Dir(ver), m.Running, func(string) {})
+	err := m.Install(ctx, m.Dir(ver), m.Running, "", func(string) {})
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -436,6 +510,120 @@ func (m *Manager) Rollback() error {
 		s.Current = m.Running
 		return launch.Rollback(s, prev)
 	})
+}
+
+// InstallVersion: a release picked under Settings › Updates › Releases,
+// newer or older than this one. Not installed yet: downloaded and checked
+// as an update is, then installed beside the others; one older than what's
+// installed brings only its core package (whiterose-core-<version>), so
+// the whiterose package (the session and commands, shared by every
+// version) is never downgraded. Then it's the one started at the next
+// login: a newer one with the health check (Apply); an older one like
+// Roll back (the newer one isn't tried again until a newer release).
+func (m *Manager) InstallVersion(ctx context.Context, version string) error {
+	installed := update.Installed(m.Root)
+	if !slices.Contains(installed, version) {
+		m.mu.Lock()
+		m.load()
+		var rel *update.Release
+		for i := range m.saved.Releases {
+			if m.saved.Releases[i].Version() == version {
+				rel = &m.saved.Releases[i]
+				break
+			}
+		}
+		if rel == nil {
+			m.mu.Unlock()
+			return errors.New("that release isn't in the list: check for updates, then try again")
+		}
+		if err := m.start("downloading"); err != nil {
+			m.mu.Unlock()
+			return err
+		}
+		r := *rel
+		m.mu.Unlock()
+
+		dir := m.Dir(version)
+		os.RemoveAll(dir)
+		_, _, err := m.Src.Fetch(ctx, r, m.Kind, m.Public, dir, func(done, total int64) {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			m.done, m.total = done, total
+			if t := m.now(); t.Sub(m.lastEmit) > 250*time.Millisecond || done == total {
+				m.lastEmit = t
+				m.emit()
+			}
+		})
+		if err == nil && len(installed) > 0 && update.Newer(installed[len(installed)-1], version) {
+			err = coreOnly(dir, version)
+		}
+		m.mu.Lock()
+		if err != nil {
+			os.RemoveAll(dir)
+			m.finish(err)
+			m.mu.Unlock()
+			return err
+		}
+		m.busy = "installing"
+		m.emit()
+		m.mu.Unlock()
+
+		err = m.Install(ctx, dir, m.Running, version, func(string) {})
+		os.RemoveAll(dir)
+		m.mu.Lock()
+		m.finish(err)
+		m.mu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	installed = update.Installed(m.Root)
+	if !slices.Contains(installed, version) {
+		return errors.New("it didn't install")
+	}
+	newest := installed[len(installed)-1]
+	return m.change(func(s launch.State) launch.State {
+		if s.Current == "" {
+			s.Current = m.Running
+		}
+		if update.Newer(version, s.Current) {
+			s = launch.Apply(s, version)
+		} else {
+			s = launch.Rollback(s, version)
+		}
+		// Not the newest: the launcher would otherwise start the newest
+		// (it moves on to newer installs by itself) until a newer release.
+		if version != newest {
+			s.Skip = newest
+		}
+		return s
+	})
+}
+
+// coreOnly leaves only `version`'s core package in dir (an older release:
+// the whiterose package installed stays the newer one).
+func coreOnly(dir, version string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	core := false
+	for _, e := range entries {
+		n := e.Name()
+		switch {
+		case n == "SHA256SUMS" || n == "SHA256SUMS.sig":
+		case strings.HasPrefix(n, update.CorePackage(version)+"_") || strings.HasPrefix(n, update.CorePackage(version)+"-"):
+			core = true
+		default:
+			if err := os.Remove(filepath.Join(dir, n)); err != nil {
+				return err
+			}
+		}
+	}
+	if !core {
+		return errors.New("the release has no core package for this system")
+	}
+	return nil
 }
 
 // UndoRollback: stay on the running version after all.

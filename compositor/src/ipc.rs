@@ -193,6 +193,14 @@ pub enum Request {
     Spawn {
         command: String,
     },
+    /// Start an app in its own scope (app_scope.rs): the launcher's and
+    /// dock's desktop entries, and files opened from the shell.
+    Launch {
+        app_id: String,
+        argv: Vec<String>,
+        #[serde(default)]
+        cwd: Option<String>,
+    },
     CloseWindow,
     /// Open a switcher without held modifiers (mouse, dock, scripts): it
     /// stays open until Enter, Esc or a click.
@@ -293,6 +301,7 @@ impl Request {
             Request::Workspace { n } => Action::Workspace(n),
             Request::MoveToWorkspace { n } => Action::MoveToWorkspace(n),
             Request::Spawn { command } => Action::Spawn(command),
+            Request::Launch { app_id, argv, cwd } => Action::Launch { app_id, argv, cwd },
             Request::CloseWindow => Action::CloseWindow,
             Request::Screenshot => Action::ScreenshotScreen,
             Request::ClipboardList => Action::Shell(ShellRequest::ClipboardList),
@@ -335,6 +344,7 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
         Action::Notifications => "notifications",
         Action::Clipboard => "clipboard",
         Action::Note => "note",
+        Action::ReportSnapshot => "report_snapshot",
         Action::Agenda => "agenda",
         Action::Music => "music",
         Action::ScreenshotRegion => "screenshot_region",
