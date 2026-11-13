@@ -151,6 +151,9 @@ pub struct WhiteRose {
     pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     /// "privacy.clipboardHistory": remember what's copied.
     pub clipboard_history_on: bool,
+    /// App ids kept running when memory runs out (the `memory.protected`
+    /// setting; the terminal always is): app_scope.rs.
+    pub memory_protected: Vec<String>,
     /// Layouts, key repeat and the shortcut settings (see keyboard.rs).
     pub keyboard: crate::keyboard::KeyboardSettings,
     /// Mice and touchpads (pointer.rs), and the libinput devices they apply to.
@@ -320,6 +323,7 @@ impl WhiteRose {
             idle: Default::default(),
             idle_inhibit_state,
             clipboard_history_on: true,
+            memory_protected: Vec::new(),
             rules: Default::default(),
             scratchpads: Default::default(),
             cursor_shape_state,
@@ -753,14 +757,15 @@ impl WhiteRose {
     /// Starts app `app_id` (`argv`, in `cwd`) in a scope of its own
     /// (app_scope.rs); its process id if it started.
     pub fn launch(&self, app_id: &str, argv: &[String], cwd: Option<&str>) -> Option<u32> {
-        let mut cmd = crate::app_scope::command(app_id, argv)?;
+        let protected = crate::app_scope::is_protected(app_id, &self.memory_protected, &self.keyboard.terminal);
+        let mut cmd = crate::app_scope::command(app_id, argv, protected)?;
         cmd.env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env());
         if let Some(dir) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
             cmd.current_dir(dir);
         }
         match cmd.spawn() {
             Ok(child) => {
-                tracing::info!(app_id, ?argv, scoped = crate::app_scope::available(), "spawned");
+                tracing::info!(app_id, ?argv, scoped = crate::app_scope::available(), protected, "spawned");
                 Some(child.id())
             }
             Err(err) => {

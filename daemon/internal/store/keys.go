@@ -279,6 +279,9 @@ var Known = map[string]Key{
 	"privacy.lockOnSuspend":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// How often whiterosed looks for a WhiteRose update (Settings › Updates).
 	"update.check": {Default: json.RawMessage(`"daily"`), Check: into(oneOf("daily", "weekly", "manual"))},
+	// App ids kept running when memory runs out (the terminal always is):
+	// further back in the kill order, and never closed by the watcher.
+	"memory.protected": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](100))},
 	// Offer pre-releases (alpha, beta) as updates and list them under Releases.
 	"update.prerelease":        {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},

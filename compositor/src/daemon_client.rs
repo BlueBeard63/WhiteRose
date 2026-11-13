@@ -130,6 +130,10 @@ impl WhiteRose {
             state.pointer_setting(key, value);
             shortcuts |= state.scratchpads_setting(key, value);
             state.switcher_setting(key, value);
+            // Apps kept running when memory runs out (app_scope.rs).
+            if key == "memory.protected" {
+                state.memory_protected = serde_json::from_value(value.clone()).unwrap_or_default();
+            }
             if key == "privacy.clipboardHistory" {
                 state.clipboard_history_on = value.as_bool().unwrap_or(true);
             }
