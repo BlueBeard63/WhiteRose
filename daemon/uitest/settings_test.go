@@ -510,7 +510,8 @@ func TestSettingsSlidersTakeTheWheelOnlyOnceClicked(t *testing.T) {
 }
 
 // A floating window gets smaller when its bottom-right corner is dragged in:
-// Settings (a shell window) and Files (the apps' AppWindow), each on its own.
+// Settings (a shell window), and Files and Notepad (the apps' AppWindow),
+// each on its own.
 func TestFloatingWindowsResizeFromTheirCorner(t *testing.T) {
 	t.Run("Settings", func(t *testing.T) {
 		s := uitest.Start(t, uitest.Options{})
@@ -519,6 +520,10 @@ func TestFloatingWindowsResizeFromTheirCorner(t *testing.T) {
 	t.Run("Files", func(t *testing.T) {
 		s := uitest.Start(t, uitest.Options{})
 		dragCornerIn(t, s, s.Open(filesBinary(s)+" "+s.Home, "Home - Files"))
+	})
+	t.Run("Notepad", func(t *testing.T) {
+		s := uitest.Start(t, uitest.Options{})
+		dragCornerIn(t, s, s.Open(filepath.Join(s.Repo, "apps/target/debug/whiterose-notepad"), "Scratch - Notepad"))
 	})
 }
 
