@@ -59,3 +59,31 @@ func TestReports(t *testing.T) {
 		t.Errorf("now: %s", b[:min(len(b), 300)])
 	}
 }
+
+func TestBuildLines(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := buildLines(dir); err == nil {
+		t.Error("no IDs, yet signed")
+	}
+	id := strings.Repeat("0f", 32)
+	os.WriteFile(dir+"/build-0.5.0-deb.id", []byte(id+"\n"), 0o644)
+	os.WriteFile(dir+"/build-0.5.0-rpm.id", []byte(strings.Repeat("1e", 32)), 0o644)
+	b, err := buildLines(dir)
+	if err != nil || string(b) != id+"  build-0.5.0-deb\n"+strings.Repeat("1e", 32)+"  build-0.5.0-rpm\n" {
+		t.Errorf("%q %v", b, err)
+	}
+	os.WriteFile(dir+"/build-0.5.0-deb.id", []byte("not an id"), 0o644)
+	if _, err := buildLines(dir); err == nil {
+		t.Error("signed a bad ID")
+	}
+}
+
+func TestReportBuildDevelopment(t *testing.T) {
+	t.Setenv("WHITEROSE_VERSION", "")
+	t.Setenv("WHITEROSE_DIR", "")
+	r := newReports(nil)
+	v, _ := r.ops()["report_build"](server.Request{})
+	if v.(buildView).State != "development" {
+		t.Errorf("%+v", v)
+	}
+}

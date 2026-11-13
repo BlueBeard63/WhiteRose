@@ -7,24 +7,49 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"whiterose/daemon/internal/crash"
 	"whiterose/daemon/internal/launch"
 	"whiterose/daemon/internal/server"
 	"whiterose/daemon/internal/snapshot"
+	"whiterose/daemon/internal/update"
 )
 
 type reports struct {
 	state     string // $XDG_STATE_HOME
 	version   string
 	broadcast func(any)
+
+	// Where reports go, and how this build is checked (set by newReports;
+	// tests change them).
+	src    update.Source
+	public string
+	kind   string
+	dir    string // this version's folder ("" in a build being worked on)
+
+	mu    sync.Mutex
+	build *buildView // checked once per session (not when offline)
+}
+
+// buildView: is this the released build? Only a verified one reports to
+// the repository; the others save the report to a file.
+type buildView struct {
+	State   string `json:"state"` // update.Build*
+	Version string `json:"version"`
+	Kind    string `json:"kind"`
+	ID      string `json:"id"`
+	Repo    string `json:"repo"`
+	Reason  string `json:"reason"`
 }
 
 func newReports(broadcast func(any)) *reports {
@@ -33,7 +58,51 @@ func newReports(broadcast func(any)) *reports {
 		home, _ := os.UserHomeDir()
 		state = filepath.Join(home, ".local", "state")
 	}
-	return &reports{state: state, version: runningVersion(), broadcast: broadcast}
+	r := &reports{state: state, version: runningVersion(), broadcast: broadcast, kind: packageKind()}
+	repo, _ := os.ReadFile(releaseRepoFile)
+	pub, _ := os.ReadFile(installedKeyFile)
+	r.src = update.Source{Repo: strings.TrimSpace(string(repo)), API: os.Getenv("WHITEROSE_UPDATE_API")}
+	r.public = strings.TrimSpace(string(pub))
+	if r.version != "" {
+		r.dir = os.Getenv("WHITEROSE_DIR")
+		if r.dir == "" {
+			r.dir = filepath.Join(update.Root, r.version)
+		}
+	}
+	return r
+}
+
+// checkBuild: verified, modified, unlisted, development or unknown.
+func (r *reports) checkBuild(ctx context.Context) buildView {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.build != nil {
+		return *r.build
+	}
+	v := buildView{Version: r.version, Kind: r.kind, Repo: r.src.Repo}
+	switch {
+	case r.version == "" || r.dir == "":
+		v.State, v.Reason = update.BuildDevelopment, "a build being worked on, not an installed version"
+		return v
+	case r.kind == "" || r.public == "" || r.src.Repo == "":
+		v.State, v.Reason = update.BuildUnlisted, "this build has no release key or repository to check against"
+		return v
+	}
+	id, err := update.BuildID(r.dir)
+	if err != nil {
+		v.State, v.Reason = update.BuildModified, err.Error()
+		return v
+	}
+	v.ID = id
+	state, err := r.src.VerifyBuild(ctx, r.version, r.kind, id, r.public)
+	v.State = state
+	if err != nil {
+		v.Reason = err.Error()
+	}
+	if state != update.BuildUnknown {
+		r.build = &v
+	}
+	return v
 }
 
 func (r *reports) sources() snapshot.Sources {
@@ -145,6 +214,12 @@ func (r *reports) list() []snapshotView {
 func (r *reports) ops() map[string]func(server.Request) (any, error) {
 	return map[string]func(server.Request) (any, error){
 		"report_snapshots": func(server.Request) (any, error) { return r.list(), nil },
+		// Whether a report may go to the repository (only a verified build's).
+		"report_build": func(server.Request) (any, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			return r.checkBuild(ctx), nil
+		},
 		// SUPER+SHIFT+B, or "something that's happening now" in the flow.
 		"report_snapshot_now": func(server.Request) (any, error) {
 			id, err := crash.Write(r.state, crash.Record{What: crash.Manual, Version: r.version}, nil)

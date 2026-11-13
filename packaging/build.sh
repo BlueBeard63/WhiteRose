@@ -185,6 +185,9 @@ recommends:
 $(yaml_list "$recommends")
 $scripts
 YAML
+# The version folder's build ID, signed with the packages by `make release`
+# (sign-release): an installed WhiteRose checks it's this release, unchanged.
+"$work/whiterosed" build-id "$v" > "/out/build-$VERSION-$FORMAT.id"
 nfpm package --config "$work/nfpm-core.yaml" --packager "$FORMAT" --target /out/
 nfpm package --config "$work/nfpm.yaml" --packager "$FORMAT" --target /out/
 # File names without "~" (GitHub renames such assets, and SHA256SUMS
