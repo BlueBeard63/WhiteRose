@@ -5,6 +5,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import "Search.js" as Search
 
 Singleton {
     id: root
@@ -77,6 +78,25 @@ Singleton {
     function workspace(n) { send({ cmd: "workspace", n: n }) }
     function moveToWorkspace(n) { send({ cmd: "move_to_workspace", n: n }) }
     function spawn(command) { send({ cmd: "spawn", command: command }) }
+    // Start an app in its own systemd scope (compositor/src/app_scope.rs:
+    // running out of memory then closes that app, not the session). `appId`
+    // "" names it after its program. Without the compositor (a test, a
+    // restart), it's started from here as before.
+    function launch(appId, argv, cwd) {
+        if (!argv || argv.length === 0) return;
+        if (connected) send({ cmd: "launch", app_id: appId ?? "", argv: Array.from(argv), cwd: cwd || null });
+        else Quickshell.execDetached({ command: Array.from(argv), workingDirectory: cwd || "" });
+    }
+    // A desktop entry (launcher, dock): its own command line, in a terminal
+    // if it asks for one.
+    function launchEntry(entry) {
+        if (!entry) return;
+        if (!connected) { entry.execute(); return; }
+        const argv = entry.runInTerminal
+            ? Search.terminalCommand(Quickshell.env("TERMINAL") || "ptyxis", Array.from(entry.command).map(Search.shellQuote).join(" "))
+            : Array.from(entry.command);
+        launch(entry.id, argv, entry.workingDirectory);
+    }
     function closeWindow() { send({ cmd: "close_window" }) }
     // The next window layout on `screenName` (as SUPER+T), saved for the workspace.
     function nextWindowLayout(screenName) { send({ cmd: "next_window_layout", output: screenName }) }

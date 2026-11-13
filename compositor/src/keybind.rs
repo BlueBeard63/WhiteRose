@@ -77,6 +77,13 @@ pub enum Action {
     /// Move the focused window to the monitor on that side.
     MoveToOutput(Dir),
     Spawn(String),
+    /// An app from the launcher or dock (its desktop entry): its app id, its
+    /// command line already split, and where to start it.
+    Launch {
+        app_id: String,
+        argv: Vec<String>,
+        cwd: Option<String>,
+    },
     /// A scratchpad's key (its id): start, show, focus or hide it.
     Scratchpad(String),
     /// Focus a window by its IPC id (switching workspace if needed).

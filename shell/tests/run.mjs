@@ -14,7 +14,7 @@ function load(file, names, deps = {}) {
     return new Function(...Object.keys(deps), `${src}\nreturn { ${names.join(", ")} };`)(...Object.values(deps));
 }
 const Calc = load("Calc.js", ["evaluate"]);
-const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results"]);
+const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results", "shellQuote"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
@@ -1232,6 +1232,14 @@ test("UI text follows the copy rules", () => {
         });
     }
     assert.deepEqual(problems, []);
+});
+
+test("shell quoting for desktop entries run in a terminal", () => {
+    assert.equal(Search.shellQuote("htop"), "htop");
+    assert.equal(Search.shellQuote("/usr/bin/x"), "/usr/bin/x");
+    assert.equal(Search.shellQuote("two words"), "'two words'");
+    assert.equal(Search.shellQuote("it's"), "'it'\\''s'");
+    assert.equal(Search.shellQuote("$(rm -rf ~)"), "'$(rm -rf ~)'");
 });
 
 // ---- the bug report flow (Report.js) -------------------------------------------

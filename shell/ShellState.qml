@@ -78,7 +78,7 @@ Singleton {
     // Opens the Settings app (its own window), at `page` if given.
     function openSettings(page) {
         panel = ""; islandView = "idle";
-        Quickshell.execDetached([Quickshell.shellDir + "/bin/whiterose-settings", page ?? ""]);
+        Compositor.launch("whiterose-settings", [Quickshell.shellDir + "/bin/whiterose-settings", page ?? ""]);
     }
 
     // The session lock screen (LockScreen.qml) shows while this is true; only

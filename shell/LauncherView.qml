@@ -77,14 +77,14 @@ Item {
     function activate(item) {
         if (!item) return;
         switch (item.kind) {
-        case "app": item.app.entry.execute(); LauncherConfig.record(item.app.id); break;
-        case "file": Quickshell.execDetached(["xdg-open", item.file.path]); break;
+        case "app": Compositor.launchEntry(item.app.entry); LauncherConfig.record(item.app.id); break;
+        case "file": Compositor.launch("", ["xdg-open", item.file.path]); break;
         case "calc":
             Quickshell.clipboardText = item.result;
             LauncherConfig.recordCalculation(item.expr, item.result);
             break;
         case "cmd":
-            Quickshell.execDetached(item.terminal
+            Compositor.launch("", item.terminal
                 ? Search.terminalCommand(Quickshell.env("TERMINAL") || "ptyxis", item.cmd)
                 : ["sh", "-c", item.cmd]);
             LauncherConfig.recordCommand(item.cmd);

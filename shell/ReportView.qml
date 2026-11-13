@@ -121,8 +121,8 @@ Item {
             root.busy = false;
             if (err) { root.error = err; return; }
             root.done = v;
-            if (v.url) Quickshell.execDetached(["xdg-open", v.url]);
-            Quickshell.execDetached(["whiterose-files", v.file.substring(0, v.file.lastIndexOf("/"))]);
+            if (v.url) Compositor.launch("", ["xdg-open", v.url]);
+            Compositor.launch("", ["whiterose-files", v.file.substring(0, v.file.lastIndexOf("/"))]);
         });
     }
     function toggleSection(key) {

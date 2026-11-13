@@ -1,7 +1,7 @@
 //! Compositor state. Structure follows Smithay's smallvil example (MIT).
 
 use crate::win::WinExt;
-use std::{ffi::OsString, process::Command, sync::Arc};
+use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
@@ -741,17 +741,30 @@ impl WhiteRose {
         env
     }
 
-    /// Starts `command`; its process id if it started.
+    /// Starts `command` (a command line: shortcuts, scratchpads, `-c`) in a
+    /// scope of its own, named after its program; its process id if it
+    /// started.
     pub fn spawn(&self, command: &str) -> Option<u32> {
-        let mut parts = command.split_whitespace();
-        let program = parts.next()?;
-        match Command::new(program).args(parts).env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env()).spawn() {
+        let argv: Vec<String> = command.split_whitespace().map(String::from).collect();
+        let id = crate::app_scope::id_for(argv.first()?);
+        self.launch(&id, &argv, None)
+    }
+
+    /// Starts app `app_id` (`argv`, in `cwd`) in a scope of its own
+    /// (app_scope.rs); its process id if it started.
+    pub fn launch(&self, app_id: &str, argv: &[String], cwd: Option<&str>) -> Option<u32> {
+        let mut cmd = crate::app_scope::command(app_id, argv)?;
+        cmd.env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env());
+        if let Some(dir) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
+            cmd.current_dir(dir);
+        }
+        match cmd.spawn() {
             Ok(child) => {
-                tracing::info!(command, "spawned");
+                tracing::info!(app_id, ?argv, scoped = crate::app_scope::available(), "spawned");
                 Some(child.id())
             }
             Err(err) => {
-                tracing::warn!(command, %err, "failed to spawn");
+                tracing::warn!(app_id, ?argv, %err, "failed to spawn");
                 None
             }
         }
@@ -777,6 +790,15 @@ impl WhiteRose {
         match action {
             Action::Spawn(cmd) => {
                 self.spawn(&cmd);
+            }
+            Action::Launch { app_id, argv, cwd } => {
+                // (No id: named after its program, like a command line.)
+                let id = if app_id.is_empty() {
+                    crate::app_scope::id_for(argv.first().map_or("app", |s| s))
+                } else {
+                    app_id
+                };
+                self.launch(&id, &argv, cwd.as_deref());
             }
             Action::Scratchpad(id) => self.scratchpad_key(&id),
             Action::CloseWindow => {
