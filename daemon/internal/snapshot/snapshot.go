@@ -345,6 +345,10 @@ func processes(root string) map[int]proc {
 		if len(f) < 22 {
 			continue
 		}
+		// Kernel threads (children of kthreadd, pid 2) aren't programs.
+		if ppid, _ := strconv.Atoi(f[1]); ppid == 2 || pid == 2 {
+			continue
+		}
 		ut, _ := strconv.ParseUint(f[11], 10, 64)
 		st, _ := strconv.ParseUint(f[12], 10, 64)
 		rss, _ := strconv.ParseInt(f[21], 10, 64)

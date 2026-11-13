@@ -33,6 +33,8 @@ func TestTake(t *testing.T) {
 	write(t, filepath.Join(proc, "10/stat"), stat(10, "firefox", 100, 300000))
 	write(t, filepath.Join(proc, "11/stat"), stat(11, "Xwayland", 5, 1000))
 	write(t, filepath.Join(proc, "12/stat"), stat(12, "Web Content (x)", 0, 500))
+	// A kernel thread (parent kthreadd): left out.
+	write(t, filepath.Join(proc, "13/stat"), strings.Replace(stat(13, "kworker/6:0-i915", 999, 999999), " S 1 ", " I 2 ", 1))
 	write(t, filepath.Join(sys, "class/drm/card1/device/vendor"), "0x1002\n")
 	write(t, filepath.Join(sys, "class/drm/card1/device/device"), "0x15bf\n")
 	os.MkdirAll(filepath.Join(sys, "class/drm/card1-eDP-1"), 0o755)
@@ -75,6 +77,11 @@ func TestTake(t *testing.T) {
 	}
 	if s.Load == nil || s.Load.Avg[0] != 1.5 || s.Load.MemUsedMB != 9765 || s.Load.SwapUsedMB != 976 {
 		t.Fatalf("load %+v", s.Load)
+	}
+	for _, p := range append(s.Load.TopCPU, s.Load.TopMemory...) {
+		if strings.HasPrefix(p.Name, "kworker") {
+			t.Errorf("a kernel thread: %+v", p)
+		}
 	}
 	if len(s.Load.TopMemory) == 0 || s.Load.TopMemory[0].Name != "firefox" || s.Load.TopMemory[2].Name != "Web Content (x)" {
 		t.Errorf("top memory %+v", s.Load.TopMemory)

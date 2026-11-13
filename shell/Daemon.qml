@@ -26,6 +26,9 @@ Singleton {
     signal fingerprintEvent(var e)
     // WhiteRose updates: the Updates page's whole status, whenever it changes.
     signal updatesEvent(var status)
+    // Settings › About › Report a problem: the island's report flow, in this
+    // session's shell (`from`: a crash record to start on, or "").
+    signal reportRequested(string from)
     signal lockRequested()
     signal unlockRequested()
 
@@ -88,6 +91,7 @@ Singleton {
         case "fingerprint": root.fingerprintEvent(msg); break;
         case "updates": root.updatesEvent(msg.status); break;
         case "unlock": root.unlockRequested(); break;
+        case "report_show": root.reportRequested(msg.from ?? ""); break;
         }
     }
 

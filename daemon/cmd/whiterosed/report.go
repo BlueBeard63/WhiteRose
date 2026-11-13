@@ -20,6 +20,7 @@ import (
 
 	"whiterose/daemon/internal/crash"
 	"whiterose/daemon/internal/launch"
+	"whiterose/daemon/internal/report"
 	"whiterose/daemon/internal/server"
 	"whiterose/daemon/internal/snapshot"
 	"whiterose/daemon/internal/update"
@@ -200,6 +201,35 @@ type snapshotView struct {
 	HasOutput bool   `json:"has_output"`
 }
 
+func (r *reports) draftFile() string {
+	return filepath.Join(r.state, "whiterose", "report-draft.json")
+}
+
+// input gathers what a report is made from: the draft, its record and
+// snapshot, and the build.
+func (r *reports) input(raw json.RawMessage) (report.Input, error) {
+	var d report.Draft
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return report.Input{}, err
+	}
+	rec, err := crash.Load(r.state, d.Snapshot)
+	if err != nil {
+		return report.Input{}, errors.New("that snapshot is gone (only the last 5 are kept): pick another")
+	}
+	in := report.Input{Draft: d, Record: rec, Now: time.Now(), MaxLines: 400}
+	if b, err := os.ReadFile(crash.File(r.state, rec.ID, "snapshot.json")); err == nil {
+		in.Snap = report.Load(b)
+	}
+	if b, err := os.ReadFile(crash.File(r.state, rec.ID, "output.txt")); err == nil {
+		in.Output = string(b)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	bv := r.checkBuild(ctx)
+	in.Build, in.BuildID, in.Repo = bv.State, bv.ID, bv.Repo
+	return in, nil
+}
+
 func (r *reports) list() []snapshotView {
 	out := []snapshotView{}
 	for _, rec := range crash.List(r.state) {
@@ -214,6 +244,72 @@ func (r *reports) list() []snapshotView {
 func (r *reports) ops() map[string]func(server.Request) (any, error) {
 	return map[string]func(server.Request) (any, error){
 		"report_snapshots": func(server.Request) (any, error) { return r.list(), nil },
+		// Open the report flow in this session's island (Settings › About,
+		// which runs apart from the shell); Name: a record to start on.
+		"report_show": func(req server.Request) (any, error) {
+			if r.broadcast != nil {
+				r.broadcast(map[string]any{"event": "report_show", "from": req.Name})
+			}
+			return nil, nil
+		},
+		// The report flow's draft (kept here so a shell restart keeps it).
+		"report_draft": func(server.Request) (any, error) {
+			b, err := os.ReadFile(r.draftFile())
+			if err != nil {
+				return nil, nil
+			}
+			return json.RawMessage(b), nil
+		},
+		"report_draft_save": func(req server.Request) (any, error) {
+			var d report.Draft
+			if err := json.Unmarshal(req.Value, &d); err != nil {
+				return nil, err
+			}
+			b, _ := json.Marshal(d)
+			return nil, os.WriteFile(r.draftFile(), b, 0o600)
+		},
+		"report_draft_clear": func(server.Request) (any, error) {
+			os.Remove(r.draftFile())
+			return nil, nil
+		},
+		// The last step: each section's exact text.
+		"report_preview": func(req server.Request) (any, error) {
+			in, err := r.input(req.Value)
+			if err != nil {
+				return nil, err
+			}
+			out := []map[string]string{}
+			for _, s := range report.Sections {
+				if t := report.Section(in, s); t != "" {
+					out = append(out, map[string]string{"key": s, "text": t})
+				}
+			}
+			return out, nil
+		},
+		// Open report: the file in Downloads, and the prefilled form (only
+		// for a verified build); the draft is done with.
+		"report_open": func(req server.Request) (any, error) {
+			in, err := r.input(req.Value)
+			if err != nil {
+				return nil, err
+			}
+			home, _ := os.UserHomeDir()
+			dir := report.DownloadsDir(home)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return nil, err
+			}
+			name := "whiterose-report-" + in.Now.Format("20060102-150405") + ".txt"
+			path := filepath.Join(dir, name)
+			if err := os.WriteFile(path, []byte(report.File(in)), 0o600); err != nil {
+				return nil, err
+			}
+			out := map[string]string{"file": path, "build": in.Build, "url": ""}
+			if in.Build == update.BuildVerified {
+				out["url"] = report.FormURL(in, name)
+			}
+			os.Remove(r.draftFile())
+			return out, nil
+		},
 		// Whether a report may go to the repository (only a verified build's).
 		"report_build": func(server.Request) (any, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

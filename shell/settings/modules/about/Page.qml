@@ -34,6 +34,19 @@ Column {
 
     PageHeader { title: "About"; subtitle: page.host }
 
+    // A bug report, step by step in the island (ReportView.qml).
+    Card {
+        SettingRow {
+            divider: false
+            title: "Report a problem"
+            subtitle: "A few short steps. What WhiteRose recorded is filled in for you, and you see everything before it's sent."
+            Button {
+                text: "Report"
+                icon: "alert"
+                onClicked: Daemon.request({ op: "report_show" }, () => {})
+            }
+        }
+    }
     Card {
         SettingRow { title: "Computer"; divider: false; Text { text: page.model || "Unknown"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }
         SettingRow { title: "Processor"; Text { text: page.cpu + (page.cores ? " · " + page.cores + " threads" : ""); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }

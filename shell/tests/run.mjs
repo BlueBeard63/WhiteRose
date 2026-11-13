@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
@@ -26,6 +26,7 @@ const Ag = load("Agenda.js", ["timed", "next", "when", "span", "at", "blocks"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
+const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn"]);
 const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
@@ -1231,6 +1232,39 @@ test("UI text follows the copy rules", () => {
         });
     }
     assert.deepEqual(problems, []);
+});
+
+// ---- the bug report flow (Report.js) -------------------------------------------
+test("report flow guesses", () => {
+    const now = Date.UTC(2026, 10, 13, 14, 0);
+    const list = [
+        { id: "b", what: "manual", time: now - 60_000, ready: true, title: "Snapshot you took" },
+        { id: "a", what: "shell", time: now - 3_600_000, ready: true, title: "The shell crashed (signal 11, SIGSEGV)" },
+    ];
+    assert.equal(Rep.pickSnapshot(list, "a", now), "a");
+    assert.equal(Rep.pickSnapshot(list, "gone", now), "b");
+    assert.equal(Rep.pickSnapshot(list.slice(1), "", now), "", "an hour old: take one now");
+    assert.equal(Rep.kindFor({ what: "shell" }, null), "crashed");
+    assert.equal(Rep.kindFor({ what: "memory" }, null), "slow");
+    assert.equal(Rep.kindFor({ what: "manual" }, { load: { mem_used_mb: 950, mem_total_mb: 1000 } }), "slow");
+    assert.equal(Rep.kindFor({ what: "manual" }, { load: { mem_used_mb: 500, mem_total_mb: 1000 } }), "wrong");
+    assert.equal(Rep.whereFor({ what: "compositor" }, null), "The whole desktop");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "whiterose-files" } }), "Files");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "firefox" } }), "firefox");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "(no app ID)" } }), "The whole desktop");
+    const opts = Rep.areaOptions({ windows: { apps: { firefox: 2, "whiterose-files": 1, "(no app ID)": 1 } } }, "Custom place");
+    assert.ok(opts.includes("firefox") && opts.filter(o => o === "Files").length === 1 && opts.at(-1) === "Custom place");
+    assert.equal(Rep.titleFor("froze", "Files", ""), "Files froze");
+    assert.equal(Rep.titleFor("crashed", "The bar", "The shell crashed (signal 11, SIGSEGV)"), "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(Rep.titleFor("wrong", "Displays", ""), "Displays doesn't do what it should");
+    // Filling keeps what you chose and a title you edited.
+    let d = Rep.fill(Rep.newDraft(list, "a", now), { what: "shell" }, null, "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(d.kind + "|" + d.where + "|" + d.title, "crashed|The bar|The shell crashed (signal 11, SIGSEGV)");
+    d = Rep.fill(Object.assign(d, { kind: "froze", title: "My title", edited: true }), { what: "shell" }, null, "");
+    assert.equal(d.title, "My title");
+    assert.equal(Rep.canGoOn({ step: 4, what: "short" }), false);
+    assert.equal(Rep.canGoOn({ step: 4, what: "the bar went away" }), true);
+    assert.equal(Rep.canGoOn({ step: 3, title: "  " }), false);
 });
 
 // ---- the old-version issue workflow (.github/scripts/old-version.js) ------------

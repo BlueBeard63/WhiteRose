@@ -143,6 +143,18 @@ Singleton {
         function edit(monitor: string, ws: string, tool: string): void { root.editZones(monitor, ws, tool) }
         function done(): void { root.endZones() }
     }
+    // The bug report flow (island/report.qml): `from` is the crash record
+    // (snapshot) it starts on, "" to pick.
+    property string reportFrom: ""
+    function report(from) { reportFrom = from ?? ""; show("report") }
+    Connections {
+        target: Daemon
+        function onReportRequested(from) { root.report(from) }
+    }
+    IpcHandler {
+        target: "report"
+        function open(from: string): void { root.report(from) }
+    }
     IpcHandler {
         target: "session"
         function lock(): void { root.lock() }

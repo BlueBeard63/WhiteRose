@@ -13,6 +13,17 @@ body:
       placeholder: 0.3.0-alpha.3
     validations:
       required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: >-
+        Filled in when you report from WhiteRose (SUPER+SHIFT+B, or Settings ›
+        About › Report a problem). Reports from builds that don't match a
+        release, forks included, are closed automatically: report those to
+        whoever made the build.
+    validations:
+      required: true
   - type: textarea
     id: what
     attributes:
@@ -29,9 +40,15 @@ body:
         2. Drag the second screen to the left
         3. The bar moves to the wrong screen
   - type: textarea
+    id: system
+    attributes:
+      label: System
+      description: Filled in by WhiteRose (version, distribution, hardware, what was open).
+      render: text
+  - type: textarea
     id: logs
     attributes:
       label: Logs or screenshots
       description: >-
-        If WhiteRose failed to start after an update, attach
-        ~/.local/state/whiterose/update-<version>.log.
+        Drag in the whiterose-report-….txt file WhiteRose saved in Downloads
+        (it opens in Files next to this page).
