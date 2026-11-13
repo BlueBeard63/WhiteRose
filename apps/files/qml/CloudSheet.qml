@@ -132,7 +132,7 @@ Column {
         Box { visible: root.kind === "iclouddrive"; label: "Password"; Field { id: applePassword; anchors.fill: parent; secret: true } }
         Note {
             visible: root.kind === "iclouddrive"
-            text: "Advanced Data Protection must be off for iCloud Drive to be reachable. A code will come to your Apple devices next."
+            text: "Advanced Data Protection must be off for iCloud Drive to be reachable. Apple sends a code to your devices next."
         }
         Item {
             visible: root.kind === "s3"

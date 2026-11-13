@@ -185,7 +185,7 @@ frame first, as for the other pages):
   when it loses focus. Add (with Terminal filled in from the terminal
   setting) and delete. No dialogs.
 - A key that clashes with another shortcut shows the clash on the card.
-- The Keyboard & Shortcuts page lists the pads' keys in a "Scratchpads"
+- The Keyboard & shortcuts page lists the pads' keys in a "Scratchpads"
   group, which opens the Scratchpads page to change them.
 
 ## Commits (stop after each; the user commits)

@@ -1,5 +1,5 @@
 // Volume, microphone, brightness and media keys (the compositor turns the
-// key presses into actions; see the Media group in Keyboard & Shortcuts).
+// key presses into actions; see the Media group in Keyboard & shortcuts).
 // Volume and brightness move in 5% steps.
 import QtQuick
 import Quickshell

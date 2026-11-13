@@ -89,7 +89,7 @@ fn now_local() -> String {
     }
 }
 
-/// Moves `p` (absolute) to the Trash; returns where it went.
+/// Moves `p` (absolute) to the trash; returns where it went.
 pub fn put(p: &Path) -> Result<PathBuf, String> {
     put_with(p, &home_trash())
 }
@@ -100,7 +100,7 @@ pub fn put_with(p: &Path, home_trash: &Path) -> Result<PathBuf, String> {
     }
     let (trash, relative_to) = trash_for(p, home_trash)?;
     for d in [trash.join("files"), trash.join("info")] {
-        fs::create_dir_all(&d).map_err(|e| format!("can't use the Trash here: {e}"))?;
+        fs::create_dir_all(&d).map_err(|e| format!("can't use the trash here: {e}"))?;
     }
     if relative_to.is_some() {
         let _ = fs::set_permissions(&trash, fs::Permissions::from_mode(0o700));
@@ -152,13 +152,13 @@ pub fn put_with(p: &Path, home_trash: &Path) -> Result<PathBuf, String> {
             }
         };
     }
-    Err("the Trash is full of things with this name".into())
+    Err("the trash is full of things with this name".into())
 }
 
 /// Something in a Trash.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Trashed {
-    /// Where it is now (in the Trash's `files`).
+    /// Where it is now (in the trash's `files`).
     pub path: PathBuf,
     /// Where it came from.
     pub origin: PathBuf,
@@ -305,7 +305,7 @@ pub fn inside(p: &Path) -> Option<(PathBuf, Vec<String>)> {
 /// Puts a trashed item back where it came from (renamed if something's
 /// there now; the folder made again if it's gone). Returns where it went.
 pub fn restore(p: &Path) -> Result<PathBuf, String> {
-    let info = info_of(p).ok_or("this isn't something in the Trash")?;
+    let info = info_of(p).ok_or("this isn't something in the trash")?;
     let text = fs::read_to_string(&info).map_err(|e| e.to_string())?;
     let trash = trash_of(p).ok_or("not in a Trash")?;
     let (origin, _) =

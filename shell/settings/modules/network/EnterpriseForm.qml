@@ -130,7 +130,7 @@ Column {
         SettingRow {
             visible: form.method !== "tls"
             title: "Password"
-            subtitle: form.joining ? "" : form.eap?.has_password ? "Saved: type to change it" : "Not saved: asked when connecting"
+            subtitle: form.joining ? "" : form.eap?.has_password ? "Saved: type to change it" : "Not saved: asks when connecting"
             Field {
                 implicitWidth: 240
                 secret: true

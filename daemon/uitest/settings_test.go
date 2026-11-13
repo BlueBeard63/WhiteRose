@@ -15,7 +15,7 @@ import (
 	"whiterose/daemon/internal/uitest"
 )
 
-// Turning on Seconds (Top Bar) stores it and the bar's clock shows them.
+// Turning on Seconds (Top bar) stores it and the bar's clock shows them.
 func TestSettingsSecondsShowInTheBarClock(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	bar := s.Bar()
@@ -104,7 +104,7 @@ func TestSettingsWorkspaceLayoutTilesItsWindows(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	dir := filepath.Join(s.Home, "tiles")
 	os.MkdirAll(dir, 0o755)
-	files := s.Open(filesBinary(s)+" "+dir, "tiles — Files")
+	files := s.Open(filesBinary(s)+" "+dir, "tiles - Files")
 	settings := s.Settings("windows")
 	// (A dropdown's items report places inside the popup, not the window,
 	// so they're picked through their accessible action, not clicked.)
@@ -136,7 +136,7 @@ func TestSettingsSplitZoneTakesASnappedWindow(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	dir := filepath.Join(s.Home, "zones")
 	os.MkdirAll(dir, 0o755)
-	files := s.Open(filesBinary(s)+" "+dir, "zones — Files")
+	files := s.Open(filesBinary(s)+" "+dir, "zones - Files")
 	settings := s.Settings("snapping")
 	// (Maximised, so the end of the page is on the test's small screen.)
 	settings.Click(uitest.Named("Maximise").Role("push button"))
@@ -175,7 +175,7 @@ func TestSettingsNarrowRailOpensTheSidebarOverThePage(t *testing.T) {
 	settings.WaitFor(uitest.Named("Windows").Role("page tab"))
 	dir := filepath.Join(s.Home, "beside")
 	os.MkdirAll(dir, 0o755)
-	s.Open(filesBinary(s)+" "+dir, "beside — Files")
+	s.Open(filesBinary(s)+" "+dir, "beside - Files")
 	screen := s.Layer("whiterose-wallpaper").Geometry()
 	if !uitest.WaitUntil(func() bool { return settings.Geometry()[2] < screen[2]*2/3 }) {
 		t.Fatalf("Settings isn't a half tile: %v on %v", settings.Geometry(), screen)
@@ -281,7 +281,7 @@ func TestSettingsAddARuleFromAnOpenWindow(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	dir := filepath.Join(s.Home, "ruled")
 	os.MkdirAll(dir, 0o755)
-	s.Open(filesBinary(s)+" "+dir, "ruled — Files")
+	s.Open(filesBinary(s)+" "+dir, "ruled - Files")
 	settings := s.Settings("rules")
 	settings.Click(uitest.Named("Maximise").Role("push button"))
 	settings.WaitFor(uitest.Named("Add a blank rule").Role("push button"))
@@ -374,7 +374,7 @@ func TestSettingsScratchpadIsAddedAndItsKeyStartsIt(t *testing.T) {
 	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Log(), "scratchpad window opened") }) {
 		t.Fatalf("the key didn't start a scratchpad:\n%s", s.Log())
 	}
-	if s.HasWindow("padded — Files") {
+	if s.HasWindow("padded - Files") {
 		t.Fatal("the scratchpad's window is in the window list")
 	}
 	// Hidden and shown again: still the one window, nothing new started.
@@ -404,7 +404,7 @@ func TestSettingsMakesTheSearchIndexWithoutFiles(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if s.HasWindow("Home — Files") || s.HasWindow("Files") {
+	if s.HasWindow("Home - Files") || s.HasWindow("Files") {
 		t.Error("a Files window opened")
 	}
 	// Done: the button's back (it's off while the index is being made).
@@ -416,7 +416,7 @@ func TestSettingsMakesTheSearchIndexWithoutFiles(t *testing.T) {
 	}
 }
 
-// Mouse & Touchpad: the mouse scrolls naturally once picked, and tap to
+// Mouse & touchpad: the mouse scrolls naturally once picked, and tap to
 // click and shake to find turn off; all stored for the compositor.
 func TestSettingsMouseAndTouchpad(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
@@ -433,7 +433,7 @@ func TestSettingsMouseAndTouchpad(t *testing.T) {
 	}
 }
 
-// Mouse & Touchpad › Faster while you hold: Ctrl+Shift to start with;
+// Mouse & touchpad › Faster while you hold: Ctrl+Shift to start with;
 // another pick is stored, and how much faster follows a click and then
 // the wheel.
 func TestSettingsFasterPointer(t *testing.T) {
@@ -459,7 +459,7 @@ func TestSettingsPicksWithFiles(t *testing.T) {
 
 	settings := s.Settings("files/search")
 	settings.Click(uitest.Named("Leave a folder out…").Role("push button"))
-	picker := s.WaitWindow("A folder to leave out of the index — Files")
+	picker := s.WaitWindow("A folder to leave out of the index - Files")
 	picker.Press("ctrl+2")
 	picker.Click(uitest.Named("Documents").Role("list item"))
 	picker.Click(uitest.Named("Choose folder").Role("push button"))
@@ -467,7 +467,7 @@ func TestSettingsPicksWithFiles(t *testing.T) {
 
 	settings = s.Settings("appearance")
 	settings.Click(uitest.Named("Add a wallpaper").Role("push button"))
-	picker = s.WaitWindow("Choose a wallpaper — Files")
+	picker = s.WaitWindow("Choose a wallpaper - Files")
 	picker.Press("ctrl+2")
 	picker.Click(uitest.Named("dunes.png").Role("list item"))
 	picker.Click(uitest.Named("Open").Role("push button"))

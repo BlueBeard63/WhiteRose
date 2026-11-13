@@ -695,9 +695,9 @@ mod tests {
     #[test]
     fn a_title_that_fits_is_drawn_whole() {
         // Not the same picture as the title cut short with an ellipsis.
-        let t = titles(&["Pictures — Files"]);
+        let t = titles(&["Pictures - Files"]);
         let l = layout(600.0, &t);
-        let w = text_width("Pictures — Files", FONT_SIZE as f32) as f64;
+        let w = text_width("Pictures - Files", FONT_SIZE as f32) as f64;
         assert!(l.tabs[0].1 - l.tabs[0].0 - 2.0 * TAB_PAD >= w + 1.0, "room for it all");
         let (a, b) = (draw(600, 58, 1.0, &t, 0), draw(600, 58, 1.0, &titles(&["Pictures — Fil…"]), 0));
         assert_ne!(a, b);

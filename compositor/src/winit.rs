@@ -115,7 +115,7 @@ pub fn init_winit(
                     backend.borrow().window().set_cursor(*icon);
                 }
             }
-            // Night Light toggled: the whole frame must be redrawn and re-tinted.
+            // Night light toggled: the whole frame must be redrawn and re-tinted.
             if state.night_light != night_applied {
                 night_applied = state.night_light;
                 damage_tracker = OutputDamageTracker::from_output(&output);

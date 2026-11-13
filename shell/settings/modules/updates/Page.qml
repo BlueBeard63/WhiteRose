@@ -353,12 +353,12 @@ Column {
         }
         SettingRow {
             title: "Settings snapshot"
-            subtitle: "Your settings are copied before a new version first starts, and put back if it fails"
+            subtitle: "WhiteRose copies your settings before a new version first starts, and puts them back if it fails"
             Badge { dot: false; text: page.st?.snapshot ? "Taken " + Up.ago(page.st.snapshot, page.now) : "None yet" }
         }
         SettingRow {
             title: "Check for updates"
-            subtitle: "Downloads are skipped on metered connections"
+            subtitle: "No downloads on metered connections"
             Choice {
                 value: Daemon.setting("update.check", "daily")
                 options: [{ label: "Daily", value: "daily" }, { label: "Weekly", value: "weekly" }, { label: "Manually", value: "manual" }]

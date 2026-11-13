@@ -1,4 +1,4 @@
-//! Night Light's GL pass on a real (or Mesa software) GPU: every pixel is
+//! Night light's GL pass on a real (or Mesa software) GPU: every pixel is
 //! multiplied by the colour of the chosen temperature, and the renderer's own
 //! blending still works afterwards.
 

@@ -1,4 +1,4 @@
-// The top bar (Figma: "Top Bar" component + idle island), one per screen.
+// The top bar (Figma: "Top bar" component + idle island), one per screen.
 // A Top-layer panel that reserves 26px; the island hangs below that and the
 // input mask keeps clicks outside the visible shapes passing through.
 // With a fullscreen window on its screen the bar isn't drawn, but the
@@ -94,7 +94,7 @@ PanelWindow {
             // The bell: a rose dot when something arrived since the panel was last open.
             Trigger {
                 label: "Notifications"
-                shows: QuickState.doNotDisturb ? "Do Not Disturb" : Notifications.unread ? "unread" : ""
+                shows: QuickState.doNotDisturb ? "Do not disturb" : Notifications.unread ? "unread" : ""
                 anchors.verticalCenter: parent.verticalCenter
                 visible: Daemon.setting("bar.bell", true)
                 active: notifications.open
@@ -102,7 +102,7 @@ PanelWindow {
                 Item {
                     y: Math.round((parent.height - height) / 2)
                     width: 16; height: 16
-                    // Do Not Disturb: the bell struck through (as in Quick
+                    // Do not disturb: the bell struck through (as in Quick
                     // Settings and the notifications panel).
                     Glyph { name: QuickState.doNotDisturb ? "bellOff" : "bell" }
                     Rectangle {

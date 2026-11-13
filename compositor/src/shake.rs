@@ -1,4 +1,4 @@
-//! Shake to find (Settings › Mouse & Touchpad): shaking the pointer makes
+//! Shake to find (Settings › Mouse & touchpad): shaking the pointer makes
 //! it big for a moment, so you can see where it is. A shake is quick
 //! back-and-forth strokes: four turns of direction, each after a stroke of
 //! at least `MIN_STROKE`, within `WINDOW`. It grows over `GROW_MS`, stays

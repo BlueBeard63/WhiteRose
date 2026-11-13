@@ -13,19 +13,19 @@ import (
 	"whiterose/daemon/internal/uitest"
 )
 
-// Quick settings: the tile turns Do Not Disturb on (stored, and the bell
+// Quick settings: the tile turns Do not disturb on (stored, and the bell
 // says so), and again off.
 func TestQuickSettingsDoNotDisturb(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	bar := s.Bar()
 	bar.Click(uitest.Named("Quick settings").Role("push button"))
-	dnd := uitest.Named("Do Not Disturb").Role("push button")
+	dnd := uitest.Named("Do not disturb").Role("push button")
 	if bar.WaitFor(dnd).Checked() {
-		t.Fatal("Do Not Disturb starts on")
+		t.Fatal("Do not disturb starts on")
 	}
 	bar.Click(dnd)
 	s.WaitSetting("quick.doNotDisturb", true)
-	bar.WaitFor(uitest.Named("Notifications").Role("push button").Described("Do Not Disturb"))
+	bar.WaitFor(uitest.Named("Notifications").Role("push button").Described("Do not disturb"))
 	bar.WaitFor(dnd.Described("On"))
 	bar.Click(dnd)
 	s.WaitSetting("quick.doNotDisturb", false)
@@ -40,7 +40,7 @@ func TestQuickSettingsOpensSettings(t *testing.T) {
 	bar.Click(uitest.Named("All settings").Role("link"))
 	s.WaitWindow("Settings")
 	// (Opening another window closes the panel.)
-	bar.Gone(uitest.Named("Do Not Disturb").Role("push button"))
+	bar.Gone(uitest.Named("Do not disturb").Role("push button"))
 }
 
 // SUPER opens the launcher; a sum shows its answer; Esc closes it.
@@ -83,7 +83,7 @@ func TestSnapPickerPutsTheWindowInACell(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	dir := filepath.Join(s.Home, "snap")
 	os.MkdirAll(dir, 0o755)
-	files := s.Open(filesBinary(s)+" "+dir, "snap — Files")
+	files := s.Open(filesBinary(s)+" "+dir, "snap - Files")
 	screen := s.Bar().Geometry()
 	files.Press("super+z")
 	picker := s.Layer("whiterose-snap-picker")
@@ -105,7 +105,7 @@ func TestRestingOnMaximiseShowsTheSnapLayouts(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	dir := filepath.Join(s.Home, "snap")
 	os.MkdirAll(dir, 0o755)
-	files := s.Open(filesBinary(s)+" "+dir, "snap — Files")
+	files := s.Open(filesBinary(s)+" "+dir, "snap - Files")
 	screen := s.Bar().Geometry()
 	files.Hover(uitest.Named("Maximise").Role("push button"))
 	picker := s.Layer("whiterose-snap-picker")

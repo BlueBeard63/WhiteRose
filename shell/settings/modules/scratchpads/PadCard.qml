@@ -51,7 +51,7 @@ Card {
     SettingRow {
         visible: card.open
         title: "Name"
-        subtitle: "What it's called here and in Keyboard & Shortcuts"
+        subtitle: "What it's called here and in Keyboard & shortcuts"
         Field {
             id: nameField
             placeholder: P.name(card.pad)
@@ -85,8 +85,8 @@ Card {
         visible: card.open
         title: "Key"
         subtitle: keyRec.problem ? keyRec.problem
-            : keyRec.clash ? K.spoken(keyRec.captured) + " is used by “" + keyRec.clash.name + "” · enter to take it, esc to cancel"
-            : keyRec.recording ? "Press the keys; esc to cancel"
+            : keyRec.clash ? K.spoken(keyRec.captured) + " is used by “" + keyRec.clash.name + "” · Enter to take it, Esc to cancel"
+            : keyRec.recording ? "Press the keys, or Esc to cancel"
             : (card.pad.keys ?? []).length > 0 ? "Click to record a new one" : "No key: it can't be shown until it has one"
         subtitleColor: keyRec.problem || keyRec.clash || ((card.pad.keys ?? []).length === 0 && !keyRec.recording) ? Theme.rose : Theme.muted
         KeyRecorder {

@@ -49,8 +49,8 @@ function note(r, st) {
     case "downloaded": return "Installs beside " + st.running + ", which stays to go back to. Asks for your password.";
     case "installing": return "Installing beside " + st.running + "…";
     case "ready": return st.launcher
-        ? "No reboot needed — the session restarts and your apps will close."
-        : "No reboot needed — log out and in again to switch.";
+        ? "No restart needed: the session restarts and your apps close."
+        : "No restart needed. Log out and back in to switch.";
     }
     return "";
 }

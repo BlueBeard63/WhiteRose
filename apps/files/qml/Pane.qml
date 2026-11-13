@@ -36,7 +36,7 @@ FocusScope {
     // The Storage page ("drives:"): every drive, how full.
     readonly property bool inDrives: path === "drives:"
     // Not a real folder: nothing can be made, pasted or dropped here.
-    // The Start page ("start:"): StartMode draws it.
+    // The start page ("start:"): StartMode draws it.
     readonly property bool inStart: path === "start:"
     // Inside an archive ("archive:<file>!/<folder>"): looked at, not changed.
     readonly property bool inArchive: path.startsWith("archive:")

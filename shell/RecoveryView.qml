@@ -59,8 +59,8 @@ Item {
                     wrapMode: Text.Wrap
                     text: (root.gaveUp
                             ? "It failed to start twice, so you're back on " + (root.f?.back_on ?? "") + "."
-                            : "It didn't start, so you're back on " + (root.f?.back_on ?? "") + ". It'll be tried once more at your next login.")
-                        + " Your settings were restored from the snapshot taken before the update — nothing was lost."
+                            : "It didn't start, so you're back on " + (root.f?.back_on ?? "") + ". WhiteRose tries it once more at your next login.")
+                        + " Your settings came back from the snapshot taken before the update, so nothing was lost."
                     color: Theme.muted
                     font { family: Theme.font; pointSize: Theme.pt(11.5) }
                 }

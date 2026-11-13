@@ -192,7 +192,7 @@ Column {
         visible: page.apps.length > 0
         width: parent.width
         wrapMode: Text.Wrap
-        text: "Zsh comes with Oh My Zsh and your theme, and becomes your shell. VS Code comes with your extensions. Community builds are packaged by others than the app's makers."
+        text: "Zsh comes with Oh My Zsh and your theme, and becomes your shell. VS Code comes with your extensions. Community builds come from people other than the app's makers."
         color: Theme.faint
         font { family: Theme.font; pointSize: Theme.pt(11.5) }
     }

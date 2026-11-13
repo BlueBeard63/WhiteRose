@@ -88,7 +88,7 @@ func shootSettings(t *testing.T, out string) {
 			files := func(name string) {
 				dir := filepath.Join(s.Home, name)
 				os.MkdirAll(dir, 0o755)
-				s.Open(filesBinary(s)+" "+dir, name+" — Files")
+				s.Open(filesBinary(s)+" "+dir, name+" - Files")
 			}
 			// The first window is the master; the next go into the stack.
 			if size.short {

@@ -92,7 +92,7 @@ Column {
         Text {
             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
             text: page.trying ? "Going back to the previous settings in " + page.secondsLeft + " s unless you keep these"
-                : page.dirty ? "Changes are tested first, then revert after " + page.trialSeconds + " s unless you confirm"
+                : page.dirty ? "Changes revert after " + page.trialSeconds + " s unless you keep them"
                 : ""
             color: page.trying ? Theme.text : Theme.faint
             font { family: Theme.font; pointSize: Theme.pt(11.5) }
@@ -112,12 +112,12 @@ Column {
 
     PageHeader {
         title: "Displays"
-        subtitle: "Monitors are matched by their EDID identity, not by the port they use."
+        subtitle: "WhiteRose recognises each monitor by its EDID, not the port it's plugged into."
         Choice {
             visible: page.several && page.caps.position
             value: page.profile
             options: page.profiles.map(p => ({ label: "Profile · " + p.name, value: p.name }))
-                .concat(page.profiles.some(p => p.name === page.profile) ? [] : [{ label: "Profile · New", value: page.profile }])
+                .concat(page.profiles.some(p => p.name === page.profile) ? [] : [{ label: "Profile · new", value: page.profile }])
             onPicked: v => page.useProfile(v)
         }
         Button { text: "Identify"; onClicked: Compositor.identifyOutputs() }

@@ -1,4 +1,4 @@
-// Notifications: Do Not Disturb, how long popups stay, and per-app muting
+// Notifications: Do not disturb, how long popups stay, and per-app muting
 // (a muted app's notifications go quietly into the panel). The app list is
 // every app that has sent a notification.
 import QtQuick
@@ -18,7 +18,7 @@ Column {
     Card {
         SettingRow {
             divider: false
-            title: "Do Not Disturb"
+            title: "Do not disturb"
             subtitle: "Notifications wait quietly in the panel; critical ones still show"
             Toggle { checked: QuickState.doNotDisturb; onToggled: on => QuickState.setDoNotDisturb(on) }
         }

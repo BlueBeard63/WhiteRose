@@ -95,7 +95,7 @@ pub enum Event {
         capabilities: crate::outputs::Capabilities,
         trial_until: Option<u64>,
     },
-    /// Every shortcut and its keys (Keyboard & Shortcuts page).
+    /// Every shortcut and its keys (Keyboard & shortcuts page).
     Shortcuts {
         shortcuts: Vec<crate::keyboard::ShortcutView>,
     },
@@ -239,13 +239,13 @@ pub enum Request {
     },
     /// Send the window list (with where each window is) now.
     WindowsList,
-    /// Night Light from the quick settings: warm the screen to `temperature` K.
+    /// Night light from the quick settings: warm the screen to `temperature` K.
     NightLight {
         on: bool,
         #[serde(default = "neutral")]
         temperature: u32,
     },
-    /// End the session (Log Out).
+    /// End the session (Log out).
     Quit,
     /// Start the session again (whiterose-launch), e.g. to switch to an update.
     Restart,

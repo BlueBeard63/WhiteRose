@@ -1,4 +1,4 @@
-// Mouse & Touchpad: scroll direction, pointer speed and acceleration for
+// Mouse & touchpad: scroll direction, pointer speed and acceleration for
 // each, tap to click, shake to find (the pointer grows when shaken), and
 // modifiers to hold for a faster pointer (only while they're held; apps
 // still get them, so their own shortcuts keep working). The compositor applies them through libinput to
@@ -12,7 +12,7 @@ Column {
     id: page
     spacing: 16
 
-    PageHeader { title: "Mouse & Touchpad"; subtitle: "How the pointer moves and which way things scroll." }
+    PageHeader { title: "Mouse & touchpad"; subtitle: "How the pointer moves and which way things scroll." }
 
     Section { text: "Mouse" }
     Card {

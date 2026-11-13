@@ -218,7 +218,7 @@ Column {
         function openFor(u) { user = u; pw1.text = ""; pw2.text = ""; error = ""; waiting = false; open(); pw1.focusField() }
         readonly property string problem: U.passwordProblem(pw1.text, pw2.text)
         title: user?.me ? "Change your password" : "Set a password for " + (user ? page.label(user) : "")
-        subtitle: user?.me ? "You'll be asked for your current one" : "They can change it after signing in"
+        subtitle: user?.me ? "It asks for your current one first" : "They can change it after signing in"
         icon: "lock"
         Field { id: pw1; width: parent.width; secret: true; placeholder: "New password"; onAccepted: pw2.focusField() }
         Field { id: pw2; width: parent.width; secret: true; placeholder: "Again"; error: pw2.text !== "" && pw2.text !== pw1.text; onAccepted: saveBtn.clicked() }
@@ -325,7 +325,7 @@ Column {
         property string error: ""
         function openFor(u) { user = u; keepFiles.checked = true; error = ""; waiting = false; open() }
         title: "Remove " + (user ? page.label(user) : "") + "?"
-        subtitle: "They won't be able to sign in any more"
+        subtitle: "They can't sign in any more"
         icon: "trash"
         SettingRow {
             divider: false

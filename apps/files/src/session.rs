@@ -80,7 +80,7 @@ pub fn clean(s: Session, home: &Path) -> Session {
     Session { windows }
 }
 
-/// Places that aren't folders on disk: the Trash, Start, Recent, the
+/// Places that aren't folders on disk: the trash, Start, Recent, the
 /// Storage page, a tag's files.
 fn special(p: &str) -> bool {
     [
@@ -273,7 +273,7 @@ mod tests {
         assert!(second.second.is_none(), "a side doesn't split again");
         assert_eq!((t.vertical, t.active), (true, 1));
         let plain = &c.windows[0].tabs[1];
-        assert_eq!(plain.path, "trash:", "the Trash stays the Trash");
+        assert_eq!(plain.path, "trash:", "the trash stays the trash");
         assert_eq!(
             (plain.vertical, plain.active),
             (false, 0),

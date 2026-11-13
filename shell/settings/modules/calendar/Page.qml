@@ -1,4 +1,4 @@
-// Calendar & Weather: the calendars the clock panel shows (iCal links, kept
+// Calendar & weather: the calendars the clock panel shows (iCal links, kept
 // in the keyring, or .ics files) and where the weather is for.
 import QtQuick
 import Quickshell
@@ -18,7 +18,7 @@ Column {
         function onSettingsChanged() { page.refresh() }
     }
 
-    PageHeader { title: "Calendar & Weather"; subtitle: "What the clock panel shows." }
+    PageHeader { title: "Calendar & weather"; subtitle: "What the clock panel shows." }
 
     Section { text: "Calendars" }
     Card {

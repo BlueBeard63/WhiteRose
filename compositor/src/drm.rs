@@ -11,7 +11,7 @@
 //!   when something changed, at most once per refresh (the next frame waits
 //!   for the vblank of the last). Smithay's DRM compositor puts the cursor and
 //!   suitable windows straight on hardware planes.
-//! - Night Light loads the colour into the screen's gamma table: no extra
+//! - Night light loads the colour into the screen's gamma table: no extra
 //!   drawing at all.
 //! - Input: libinput.
 
@@ -93,7 +93,7 @@ struct Screen {
     /// Lit (false once turned off for being disabled in the settings).
     lit: bool,
     vrr_support: VrrSupport,
-    /// The Night Light last loaded into the gamma table (None: unknown, as
+    /// The Night light last loaded into the gamma table (None: unknown, as
     /// after starting or coming back from another console).
     gamma: Option<NightLight>,
     gamma_size: usize,
@@ -630,7 +630,7 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
         }
     }
 
-    // Night Light, through the gamma table.
+    // Night light, through the gamma table.
     if s.gamma != Some(state.night_light) && s.gamma_size > 1 {
         let lut = gamma_ramp(s.gamma_size, state.night_light.multiplier().unwrap_or([1.0; 3]));
         match b.manager.device().set_gamma(crtc, &lut[0], &lut[1], &lut[2]) {

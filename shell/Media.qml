@@ -8,7 +8,7 @@ Trigger {
     readonly property var player: NowPlaying.player
     readonly property bool playing: player !== null && player.isPlaying
 
-    // Turned off in Settings > Top Bar: hidden (and its EQ stops).
+    // Turned off in Settings > Top bar: hidden (and its EQ stops).
     visible: enabled && player !== null && (player.trackTitle ?? "") !== ""
     // What's playing, in the island (the Music module on); else play / pause.
     onClicked: {

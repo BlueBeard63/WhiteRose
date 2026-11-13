@@ -244,7 +244,7 @@ pub fn detect(dir: &Path) -> Vec<Project> {
 /// how it ended and waits, so its output can be read.
 pub fn wrapped(command: &str) -> String {
     format!(
-        "( {command} ); s=$?; echo; if [ $s -eq 0 ]; then echo '— done —'; else echo \"— stopped with code $s —\"; fi; printf 'Press Enter to close'; read _"
+        "( {command} ); s=$?; echo; if [ $s -eq 0 ]; then echo 'Done.'; else echo \"Stopped with code $s.\"; fi; printf 'Press Enter to close'; read _"
     )
 }
 
@@ -344,6 +344,6 @@ mod tests {
             .stdin(std::process::Stdio::null())
             .output()
             .unwrap();
-        assert!(String::from_utf8_lossy(&out.stdout).contains("stopped with code 3"));
+        assert!(String::from_utf8_lossy(&out.stdout).contains("Stopped with code 3."));
     }
 }

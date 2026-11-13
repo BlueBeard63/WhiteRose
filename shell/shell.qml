@@ -6,7 +6,7 @@ ShellRoot {
     // The wallpaper, behind everything.
     Background {}
 
-    // One bar per monitor, or only on the main one (Settings > Top Bar):
+    // One bar per monitor, or only on the main one (Settings > Top bar):
     // the built-in screen, else the first.
     readonly property var mainScreen: {
         const first = Compositor.outputs.find(o => o.enabled);

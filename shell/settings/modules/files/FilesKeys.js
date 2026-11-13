@@ -43,7 +43,7 @@ var list = [
     { id: "copy", label: "Copy", keys: "Ctrl+C" },
     { id: "cut", label: "Cut", keys: "Ctrl+X" },
     { id: "paste", label: "Paste", keys: "Ctrl+V" },
-    { id: "trash", label: "Move to Trash", keys: "Delete" },
+    { id: "trash", label: "Move to trash", keys: "Delete" },
     { id: "delete", label: "Delete permanently", keys: "Shift+Del" },
     { id: "rename", label: "Rename", keys: "F2" },
     { id: "new-folder", label: "New folder", keys: "Ctrl+Shift+N" },

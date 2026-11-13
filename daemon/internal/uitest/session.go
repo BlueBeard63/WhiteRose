@@ -6,7 +6,7 @@
 // reading back what they show.
 //
 //	s := uitest.Start(t, uitest.Options{})
-//	files := s.Open("whiterose-files", "blk — Files", dir)
+//	files := s.Open("whiterose-files", "blk - Files", dir)
 //	files.Click(uitest.Named("Rename"))
 //	files.Type("IMG_")
 //	files.WaitFor(uitest.Named("IMG_0412.JPG").Described("→ lab-day 0412.jpg"))

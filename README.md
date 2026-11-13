@@ -26,7 +26,7 @@ WhiteRose is a complete desktop. It isn't a theme on GNOME or KDE, and it isn't 
     <td><img src="docs/screenshots/settings-displays.png" alt="Settings, Displays"><br><sub><b>Settings › Displays</b>: monitors known by their EDID, not the port they're in</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/settings-keyboard.png" alt="Settings, Keyboard and Shortcuts"><br><sub><b>Settings › Keyboard & Shortcuts</b>: every shortcut is an action, so anything can be remapped</sub></td>
+    <td><img src="docs/screenshots/settings-keyboard.png" alt="Settings, Keyboard and Shortcuts"><br><sub><b>Settings › Keyboard & shortcuts</b>: every shortcut is an action, so anything can be remapped</sub></td>
     <td><img src="docs/screenshots/settings-updates.png" alt="Settings, Updates, with a release ready to apply"><br><sub><b>Settings › Updates</b>: signed, installed beside the running version, switched with a health check</sub></td>
   </tr>
 </table>
@@ -59,21 +59,21 @@ Every screen starts in Figma, and the code follows the frames closely. A few of 
 - **Launcher (SUPER):** apps ranked by use, files, commands, and a calculator, with tabs to narrow it down.
 - **Switchers:** ALT+TAB between apps, SUPER+TAB between windows, with live previews.
 - **Dock:** pinned and running apps, with window previews on hover.
-- **Quick settings:** Wi-Fi, Bluetooth, Do Not Disturb, Night Light, airplane mode, power mode, brightness, battery.
-- **Notifications:** WhiteRose is the notification server: popups, a history panel, actions, Do Not Disturb.
+- **Quick settings:** Wi-Fi, Bluetooth, Do not disturb, Night light, airplane mode, power mode, brightness, battery.
+- **Notifications:** WhiteRose is the notification server: popups, a history panel, actions, Do not disturb.
 - **Calendar and weather:** a month view with events from your calendars (ICS files and URLs), plus the forecast.
 - **Clipboard history:** text, images and files, and drag an entry straight into another app.
 - **Screenshots:** region, window or screen, a toolbar in the island, a "saved" toast with open / show / delete, and a tray of recent ones.
 - **Lock screen:** password, or a fingerprint at the same time when a finger is enrolled. Locks on suspend and after idle.
 - **Password prompts:** the shell is the polkit agent, with fingerprint support when the system's PAM asks for one.
-- **Night Light:** warmer colours, on until a time you pick.
+- **Night light:** warmer colours, on until a time you pick.
 
 ### Settings
 - **One module per page**, with sub-pages, search across every setting, and a Modules page to turn optional ones off.
 - **Displays:** drag to arrange with edge snapping, resolution, refresh rate, fractional scaling, rotation, variable refresh rate, Identify. Monitors are matched by their EDID, so plugging into another port doesn't change anything.
 - **Appearance:** dark, light, or automatic (following sunset and sunrise); accent colour; wallpapers, folders of them, rotation; fonts.
-- **Keyboard & Shortcuts:** layouts, repeat, and every shortcut remappable, with clashes caught.
-- **Network, Bluetooth, Sound, Power & Battery:** including per-connection details, security and IPv4, and a battery charge limit.
+- **Keyboard & shortcuts:** layouts, repeat, and every shortcut remappable, with clashes caught.
+- **Network, Bluetooth, Sound, Power & battery:** including per-connection details, security and IPv4, and a battery charge limit.
 - **Users:** names, pictures, passwords, administrators, adding and removing people (AccountsService), plus **Fingerprints** (add, remove, and fingerprint sign-in for sudo and admin prompts).
 - **Privacy:** lock and screen-off timing, and what history is kept.
 - **Apps:** the apps WhiteRose comes with, installed from the right place for the distribution (repository, vendor, or Flathub).

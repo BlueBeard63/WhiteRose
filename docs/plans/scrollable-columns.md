@@ -167,7 +167,7 @@ position, as tiling and snapping do. Animations come with 0.4's overview.
    - SUPER+W, SUPER+SHIFT+W, SUPER+[ and SUPER+].
    - SUPER+arrows and SUPER+SHIFT+arrows on columns.
    - Resize mode on columns.
-   - The Keyboard & Shortcuts page lists the new keys (from the `Def`
+   - The Keyboard & shortcuts page lists the new keys (from the `Def`
      table).
    - Tests.
 4. **Mouse and touchpad:**
@@ -273,8 +273,8 @@ Settings and zone-editor work added to this branch, before the docs commit:
   placed on whole pixels. Lucide outlines stay for Settings and panels.
   Figma first.
 - (bar icons) `shell/Glyph.qml` holds the bar's solid glyphs (Figma:
-  Components › "Bar Icons — 16px", Bar/*; the Top Bar component uses
-  them). Do Not Disturb shows the moon: a solid bell can't show a slash
+  Components › "Bar Icons — 16px", Bar/*; the Top bar component uses
+  them). Do not disturb shows the moon: a solid bell can't show a slash
   through it in one colour. `Trigger` now centres its row on whole pixels.
 
 ## Settings at narrow widths (2026-11-12)
@@ -291,7 +291,7 @@ Settings and zone-editor work added to this branch, before the docs commit:
   (cards 3/2/1, workspaces 3/2/1 columns), Power (chart under the charge,
   modes one per row), Modules (figures one per row, descriptions cut short
   before the switch), Users (buttons under the name), Displays (ID under the
-  name), Keyboard (filters wrap under the search box), Top Bar (preview
+  name), Keyboard (filters wrap under the search box), Top bar (preview
   leaves out the music), Apps, Bluetooth, Appearance (Wallpaper is a
   SettingRow now).
 - `TestQuickSettingsOpensSettings` never failed in the shell: the harness's

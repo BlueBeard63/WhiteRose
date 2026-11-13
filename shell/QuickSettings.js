@@ -30,7 +30,7 @@ function batteryLine(percent, state, timeToEmpty, timeToFull) {
     return t ? `${percent}% · ${t} left` : `${percent}%`;
 }
 
-// When Night Light switched on at `now` (ms) turns itself off: the next 07:00.
+// When Night light switched on at `now` (ms) turns itself off: the next 07:00.
 function nightLightUntil(now) {
     const d = new Date(now);
     const until = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7, 0, 0, 0);
@@ -47,7 +47,7 @@ function nextProfile(current, hasPerformance) {
     return 0;
 }
 
-function profileName(p) { return p === 0 ? "Power Saver" : p === 2 ? "Performance" : "Balanced" }
+function profileName(p) { return p === 0 ? "Power saver" : p === 2 ? "Performance" : "Balanced" }
 
 // Initials for the avatar fallback: "bluebeard" -> "b", "Jack Morrison" -> "JM".
 function initials(name) {

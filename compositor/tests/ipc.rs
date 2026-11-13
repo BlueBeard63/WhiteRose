@@ -87,7 +87,7 @@ fn shell_ipc_round_trip() {
         let lock = shell.recv();
         assert_eq!(lock, serde_json::json!({"event": "lock", "locked": false}), "a new shell learns the lock state");
         let shortcuts = shell.recv();
-        assert_eq!(shortcuts["event"], "shortcuts", "Keyboard & Shortcuts learns the shortcuts");
+        assert_eq!(shortcuts["event"], "shortcuts", "Keyboard & shortcuts learns the shortcuts");
         let close = shortcuts["shortcuts"].as_array().unwrap().iter().find(|s| s["id"] == "close-window").unwrap();
         assert_eq!(close["keys"], serde_json::json!(["SUPER+Q"]));
         assert_eq!(shell.recv()["event"], "keyboard", "and the keyboard layouts");

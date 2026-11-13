@@ -1,8 +1,8 @@
-//! Night Light: warms the screen by multiplying every pixel by the colour of
+//! Night light: warms the screen by multiplying every pixel by the colour of
 //! a lower colour temperature.
 //!
 //! Nested mode does it with one GL pass after each frame (blend: dst * colour),
-//! which only runs while Night Light is on. The DRM backend will load the same
+//! which only runs while Night light is on. The DRM backend will load the same
 //! colour into the display's gamma table instead, which is free.
 //! Screenshots and window previews render separately, so they stay untinted.
 

@@ -1,6 +1,6 @@
 {
   "id": "topbar",
-  "name": "Top Bar",
+  "name": "Top bar",
   "description": "What the bar shows: workspaces, status icons, the clock",
   "icon": "panelTop",
   "category": "desktop",

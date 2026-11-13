@@ -26,7 +26,7 @@ Column {
         Daemon.set("settings.modules.disabled", on ? page.disabled.filter(d => d !== id) : [...page.disabled, id]);
     }
 
-    PageHeader { title: "Modules"; subtitle: "Every settings page is a module. Pages load only when opened and unload when closed." }
+    PageHeader { title: "Modules"; subtitle: "Every settings page is a module. A page loads when you open it and unloads when you close it." }
 
     // Narrow (a tiled window): one figure per row.
     readonly property bool narrow: width < 560

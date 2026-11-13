@@ -85,9 +85,9 @@ Singleton {
     function focusApp(appId) { send({ cmd: "focus_app", app_id: appId }) }
     function focusWindow(id) { send({ cmd: "focus_window", id: id }) }
     // Re-sends the history, re-checking copied files on disk.
-    // Night Light: warm the screen to `kelvin` while on.
+    // Night light: warm the screen to `kelvin` while on.
     function nightLight(on, kelvin) { send({ cmd: "night_light", on: on, temperature: kelvin }) }
-    // Ends the session (Log Out).
+    // Ends the session (Log out).
     function quit() { send({ cmd: "quit" }) }
     // Shows each monitor's number and name on it (Displays page).
     function identifyOutputs() { send({ cmd: "identify_outputs" }) }

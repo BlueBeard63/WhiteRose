@@ -1,5 +1,5 @@
 //! Workspaces: the open windows, their tabs and split panes, saved under a
-//! name (☰ › Workspaces, and the Start page) and opened again later, in
+//! name (☰ › Workspaces, and the start page) and opened again later, in
 //! $XDG_STATE_HOME/whiterose/files/workspaces.json. The views of the
 //! folders in it (grid or list, sorting, grouping...) are saved with it and
 //! put back when it opens.

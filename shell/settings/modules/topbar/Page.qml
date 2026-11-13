@@ -1,4 +1,4 @@
-// Top Bar: what the bar shows, left to right. A preview at the top follows
+// Top bar: what the bar shows, left to right. A preview at the top follows
 // the switches; the real bar changes at the same moment.
 import QtQuick
 import qs
@@ -15,7 +15,7 @@ Column {
     // A fixed moment for the preview, so it doesn't tick.
     readonly property date sample: new Date(2026, 10, 9, 14, 32, 7)
 
-    PageHeader { title: "Top Bar"; subtitle: "What the bar shows. Changes apply as you make them." }
+    PageHeader { title: "Top bar"; subtitle: "What the bar shows. Changes apply as you make them." }
 
     // ---- preview ------------------------------------------------------------------
     Rectangle {
