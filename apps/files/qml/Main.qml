@@ -1283,7 +1283,14 @@ AppWindow {
             return;
         }
         const info = JSON.parse(Fs.runInfo(entry.path, entry.mime ?? ""));
-        if (info.kind === "none") { Qt.openUrlExternally(F.fileUrl(entry.path)); return }
+        if (info.kind === "none") {
+            // On a network drive: by its GVfs address, so the app reads it
+            // through GVfs (much faster than the FUSE folder).
+            const r = Fs.openRemote(entry.path);
+            if (r === "local") Qt.openUrlExternally(F.fileUrl(entry.path));
+            else if (r !== "") { win.notice = "Couldn't open “" + entry.name + "”: " + r; Qt.openUrlExternally(F.fileUrl(entry.path)) }
+            return;
+        }
         runDialog.ask(entry, info);
     }
     // As text, in Notepad (or the code editor).

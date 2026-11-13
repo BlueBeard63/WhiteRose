@@ -239,7 +239,11 @@ pub fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+            // (From the bytes: slicing the str there could split a character.)
+            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+            {
                 out.push(v);
                 i += 3;
                 continue;
@@ -671,6 +675,76 @@ pub fn remote_in(mountinfo: &str, path: &str) -> bool {
     best.is_some_and(|(_, r)| r)
 }
 
+/// A file in a GVfs mount as GVfs's own address ("davs://jack@cloud/
+/// remote.php/webdav/Uni/a.pdf"): apps that take addresses (GNOME's) then
+/// read it through GVfs directly, much faster than through the FUSE
+/// folder. None outside a GVfs mount, or for a kind it can't be told for.
+pub fn gvfs_uri(path: &str, runtime: &Path) -> Option<String> {
+    let base = runtime.join("gvfs").to_string_lossy().into_owned();
+    let rest = path.strip_prefix(&format!("{base}/"))?;
+    let (mount, inside) = rest.split_once('/').unwrap_or((rest, ""));
+    let (kind, opts) = mount.split_once(':')?;
+    let get = |k: &str| -> String {
+        opts.split(',')
+            .find_map(|kv| {
+                kv.split_once('=')
+                    .filter(|(key, _)| *key == k)
+                    .map(|(_, v)| v.to_string())
+            })
+            .map(|v| percent_decode(&v))
+            .unwrap_or_default()
+    };
+    let user = |u: String| {
+        if u.is_empty() {
+            String::new()
+        } else {
+            format!("{}@", percent_encode(&u))
+        }
+    };
+    let port = |p: String| {
+        if p.is_empty() {
+            String::new()
+        } else {
+            format!(":{p}")
+        }
+    };
+    let base_uri = match kind {
+        "dav" | "davs" => format!(
+            "{}://{}{}{}{}",
+            if get("ssl") == "true" || kind == "davs" {
+                "davs"
+            } else {
+                "dav"
+            },
+            user(get("user")),
+            get("host"),
+            port(get("port")),
+            get("prefix").trim_end_matches('/')
+        ),
+        "smb-share" => format!(
+            "smb://{}{}/{}",
+            user(get("user")),
+            get("server"),
+            get("share")
+        ),
+        "sftp" | "ftp" | "ftps" => format!(
+            "{kind}://{}{}{}",
+            user(get("user")),
+            get("host"),
+            port(get("port"))
+        ),
+        _ => return None,
+    };
+    if get("host").is_empty() && get("server").is_empty() {
+        return None;
+    }
+    Some(if inside.is_empty() {
+        base_uri
+    } else {
+        format!("{base_uri}/{}", percent_encode(inside))
+    })
+}
+
 /// `crumbs`, with $XDG_RUNTIME_DIR given (tests).
 pub fn crumbs_in(path: &str, home: &Path, runtime: Option<&Path>) -> Vec<Crumb> {
     // A network or cloud drive: from its own top, by its name.
@@ -860,6 +934,51 @@ mod tests {
             Some("fuseblk")
         );
         assert_eq!(fs_type_in(m, "/home/me").as_deref(), Some("ext4"));
+    }
+
+    #[test]
+    fn gvfs_addresses() {
+        let run = Path::new("/run/user/1000");
+        let nc = "/run/user/1000/gvfs/dav:host=storage.bluebeard.site,ssl=true,user=jack,prefix=%2Fremote.php%2Fwebdav";
+        assert_eq!(
+            gvfs_uri(&format!("{nc}/Uni/Group Form #1.pdf"), run).as_deref(),
+            Some(
+                "davs://jack@storage.bluebeard.site/remote.php/webdav/Uni/Group%20Form%20%231.pdf"
+            )
+        );
+        assert_eq!(
+            gvfs_uri(nc, run).as_deref(),
+            Some("davs://jack@storage.bluebeard.site/remote.php/webdav")
+        );
+        assert_eq!(
+            gvfs_uri(
+                "/run/user/1000/gvfs/smb-share:server=nas,share=photos/2026/a.jpg",
+                run
+            )
+            .as_deref(),
+            Some("smb://nas/photos/2026/a.jpg")
+        );
+        assert_eq!(
+            gvfs_uri(
+                "/run/user/1000/gvfs/sftp:host=build,port=2222,user=jack/srv/x",
+                run
+            )
+            .as_deref(),
+            Some("sftp://jack@build:2222/srv/x")
+        );
+        assert_eq!(gvfs_uri("/home/me/a.pdf", run), None);
+        assert_eq!(
+            percent_decode("a%é%2Fb"),
+            "a%é/b",
+            "a stray % before a non-ASCII letter"
+        );
+        assert_eq!(
+            gvfs_uri(
+                "/run/user/1000/gvfs/google-drive:host=gmail.com,user=j/x",
+                run
+            ),
+            None
+        );
     }
 
     #[test]

@@ -33,6 +33,7 @@ mod places;
 mod prefs;
 mod projects;
 mod recent;
+mod remotecopy;
 mod run;
 mod search;
 mod secure;

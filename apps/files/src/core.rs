@@ -193,6 +193,13 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "runInfo"]
         fn run_info(self: &Fs, path: &QString, mime: &QString) -> QString;
+        /// Opens a file on a GVfs drive by GVfs's own address (`gio open`):
+        /// GNOME's apps read it through GVfs directly, others still get the
+        /// path. "local" for a file that isn't on one (opened as before),
+        /// "" when started, or why it couldn't be.
+        #[qinvokable]
+        #[cxx_name = "openRemote"]
+        fn open_remote(self: &Fs, path: &QString) -> QString;
         /// Runs a program or script (asked first, in Files): "" or what went wrong.
         #[qinvokable]
         #[cxx_name = "runProgram"]
@@ -1389,6 +1396,22 @@ impl qobject::Fs {
             untrusted_why(&p)
         };
         q(json!({"kind": kind, "why": why}))
+    }
+
+    pub fn open_remote(&self, path: &QString) -> QString {
+        let path = path.to_string();
+        let run = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let Some(uri) = places::gvfs_uri(&path, &run) else {
+            return QString::from("local");
+        };
+        let r = launch::spawn(
+            "gio",
+            &["open".to_string(), uri],
+            &places::home().to_string_lossy(),
+        );
+        QString::from(r.err().unwrap_or_default().as_str())
     }
 
     pub fn run_command(&self, dir: &QString, command: &QString) -> QString {

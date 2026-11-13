@@ -27,8 +27,35 @@ pub enum Kind {
 
 pub fn kind_of(path: &Path, mime: &str) -> Kind {
     let real = crate::places::permissions_mean_something(&path.to_string_lossy());
+    if !real {
+        // Permissions mean nothing there (a network drive, FAT): what it is
+        // is told by its name and type alone, without asking the drive
+        // (a trip to the server before every open).
+        return by_type(path, mime);
+    }
     kind_with(path, mime, real)
 }
+
+/// A launcher or a program by name and type, without looking at the file.
+fn by_type(path: &Path, mime: &str) -> Kind {
+    if mime == "application/x-desktop" || path.extension().is_some_and(|e| e == "desktop") {
+        return Kind::Launcher;
+    }
+    if PROGRAM_TYPES.contains(&mime) {
+        return Kind::Program;
+    }
+    Kind::None
+}
+
+const PROGRAM_TYPES: [&str; 7] = [
+    "application/x-executable",
+    "application/x-pie-executable",
+    "application/x-sharedlib",
+    "application/vnd.appimage",
+    "application/x-appimage",
+    "application/x-ms-dos-executable",
+    "application/x-msdownload",
+];
 
 /// `kind_of`, told whether the drive's run permissions are real (a network
 /// drive, FAT or NTFS shows every file as runnable).
@@ -43,16 +70,7 @@ pub fn kind_with(path: &Path, mime: &str, permissions_real: bool) -> Kind {
         return Kind::Launcher;
     }
     let exec = m.permissions().mode() & 0o111 != 0;
-    let program_type = [
-        "application/x-executable",
-        "application/x-pie-executable",
-        "application/x-sharedlib",
-        "application/vnd.appimage",
-        "application/x-appimage",
-        "application/x-ms-dos-executable",
-        "application/x-msdownload",
-    ]
-    .contains(&mime);
+    let program_type = PROGRAM_TYPES.contains(&mime);
     if program_type {
         return Kind::Program;
     }

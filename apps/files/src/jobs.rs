@@ -292,6 +292,17 @@ pub mod qobject {
         #[cxx_name = "cloudAct"]
         fn cloud_act(self: &Ops, what: &QString, paths: &QString) -> QString;
 
+        /// A file on a network drive copied to a local cache in the
+        /// background, for the preview (its readers then never wait on the
+        /// server); `copyFetched` brings {local} or {error} ("big": over
+        /// 50 MB, not copied).
+        #[qinvokable]
+        #[cxx_name = "fetchCopy"]
+        fn fetch_copy(self: &Ops, path: &QString);
+        #[qsignal]
+        #[cxx_name = "copyFetched"]
+        fn copy_fetched(self: Pin<&mut Ops>, path: QString, result: QString);
+
         /// A folder on a network drive listed in the background (Fs.list's
         /// answer, without the window waiting on the server); `folderListed`
         /// brings it with the request (to drop answers for folders left).
@@ -1091,6 +1102,22 @@ impl qobject::Ops {
             Ok(()) => QString::from(""),
             Err(e) => QString::from(e.as_str()),
         }
+    }
+
+    pub fn fetch_copy(&self, path: &QString) {
+        let path = path.to_string();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let r = match crate::remotecopy::fetch(&path) {
+                Ok(local) => json!({"local": local}),
+                Err(e) => json!({"error": e}),
+            }
+            .to_string();
+            let _ = thread.queue(move |mut obj| {
+                obj.as_mut()
+                    .copy_fetched(QString::from(path.as_str()), QString::from(r.as_str()))
+            });
+        });
     }
 
     pub fn list_folder(
