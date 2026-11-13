@@ -33,7 +33,7 @@ use smithay::{
     },
     xwayland::{
         xwm::{Reorder, ResizeEdge as X11ResizeEdge, WmWindowProperty, XwmId},
-        X11Surface, X11Wm, XWayland, XWaylandEvent, XWaylandSockets, XwmHandler,
+        X11Surface, X11Wm, XWayland, XWaylandClientData, XWaylandEvent, XWaylandSockets, XwmHandler,
     },
 };
 
@@ -62,8 +62,9 @@ pub struct XState {
     sockets: Option<XWaylandSockets>,
     /// Watching the sockets for the first X11 app (while Xwayland isn't running).
     watches: Vec<RegistrationToken>,
-    /// The running Xwayland's startup source.
+    /// The running Xwayland's startup source, and its Wayland client.
     server: Option<RegistrationToken>,
+    client: Option<smithay::reexports::wayland_server::Client>,
     /// Starts that failed in a row (it stops trying after a few).
     failures: u32,
     /// How often (seconds) a running Xwayland is asked whether any X11 app
@@ -73,8 +74,14 @@ pub struct XState {
     idle: u32,
     /// The idle check's timer, while Xwayland runs.
     check: Option<RegistrationToken>,
-    /// Where idle checks (on a worker thread) send their answer.
-    checked: Option<calloop::channel::Sender<bool>>,
+    /// Where idle checks (on a worker thread) send their answer, with the
+    /// Xwayland it's about.
+    checked: Option<calloop::channel::Sender<(u32, bool)>>,
+    /// Which Xwayland this is (counts starts), so a late answer about the
+    /// last one is ignored.
+    generation: u32,
+    /// Drag and drop with X11 apps (xdnd.rs).
+    pub dnd: crate::xdnd::DndState,
     /// The Wayland clipboard's types, announced to an Xwayland that starts
     /// after the copy (None: nothing copied, or an X11 app's copy).
     pub clipboard: Option<Vec<String>>,
@@ -89,11 +96,14 @@ impl XState {
             sockets: None,
             watches: Vec::new(),
             server: None,
+            client: None,
             failures: 0,
             linger: 10,
             idle: 0,
             check: None,
             checked: None,
+            generation: 0,
+            dnd: Default::default(),
             clipboard: None,
         }
     }
@@ -130,10 +140,12 @@ impl WhiteRose {
         // (Before the daemon and shell start: they and what they launch inherit it.)
         std::env::set_var("DISPLAY", format!(":{n}"));
         tracing::info!(display = n, "X11 apps can connect (Xwayland starts with the first)");
-        let (tx, rx) = calloop::channel::channel::<bool>();
+        let (tx, rx) = calloop::channel::channel::<(u32, bool)>();
         let _ = self.loop_handle.insert_source(rx, |event, _, state| {
-            if let calloop::channel::Event::Msg(idle) = event {
-                state.x11_checked(idle);
+            if let calloop::channel::Event::Msg((generation, idle)) = event {
+                if generation == state.xwayland.generation {
+                    state.x11_checked(idle);
+                }
             }
         });
         self.xwayland.checked = Some(tx);
@@ -158,6 +170,11 @@ impl WhiteRose {
 
     /// An X11 app is connecting: starts Xwayland, which takes it.
     fn start_xwayland(&mut self) {
+        // (Both sockets may wake the loop at once.)
+        if self.xwayland.server.is_some() {
+            return;
+        }
+        self.xwayland.generation += 1;
         for token in std::mem::take(&mut self.xwayland.watches) {
             self.loop_handle.remove(token);
         }
@@ -178,6 +195,7 @@ impl WhiteRose {
                 return;
             }
         };
+        self.xwayland.client = Some(client.clone());
         let inserted = self.loop_handle.insert_source(xwayland, move |event, _, state| match event {
             XWaylandEvent::Ready { x11_socket, display_number } => {
                 match X11Wm::start_wm(state.loop_handle.clone(), x11_socket, client.clone()) {
@@ -188,6 +206,7 @@ impl WhiteRose {
                         let _ = wm.new_selection(SelectionTarget::Clipboard, state.xwayland.clipboard.clone());
                         state.xwayland.wm = Some(wm);
                         state.start_x11_checks();
+                        state.start_xdnd(display_number);
                     }
                     Err(err) => {
                         tracing::warn!(%err, "the X11 window manager didn't start");
@@ -227,9 +246,10 @@ impl WhiteRose {
             let (Some(n), Some(tx)) = (state.xwayland.display, state.xwayland.checked.clone()) else {
                 return TimeoutAction::Drop;
             };
+            let (ours, generation) = (state.xwayland.dnd.base, state.xwayland.generation);
             std::thread::spawn(move || {
-                if let Some(idle) = x11_idle(n) {
-                    let _ = tx.send(idle);
+                if let Some(idle) = x11_idle(n, ours) {
+                    let _ = tx.send((generation, idle));
                 }
             });
             TimeoutAction::ToDuration(every)
@@ -254,7 +274,17 @@ impl WhiteRose {
     /// Xwayland is gone (stopped when no X11 app was left, or failed): its
     /// windows go, its copy leaves the clipboard.
     fn stop_xwayland(&mut self) {
+        // Ended at once: until it has exited, it would still take X11 apps
+        // connecting now on the sockets it shares with us, and they'd lose
+        // it. (Killed, the next Xwayland takes them.) Gone already after a
+        // crash: then it has no pid.
+        let pid = self.xwayland.client.take().and_then(|c| c.get_data::<XWaylandClientData>().and_then(|d| d.pid()));
+        if let Some(pid) = pid {
+            // SAFETY: a plain kill(2) of our own child, not yet reaped.
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+        }
         self.xwayland.wm = None;
+        self.stop_xdnd();
         self.xwayland.idle = 0;
         if let Some(token) = self.xwayland.check.take() {
             self.loop_handle.remove(token);
@@ -578,14 +608,17 @@ fn in_path(program: &str) -> bool {
 }
 
 /// Whether no X11 app is connected to display `n`: only the X server
-/// itself, our window manager and this question are. None if X didn't
-/// answer.
-fn x11_idle(n: u32) -> Option<bool> {
+/// itself, our window manager, our drag-and-drop client (`ours`) and this
+/// question are. None if X didn't answer.
+fn x11_idle(n: u32, ours: Option<u32>) -> Option<bool> {
     use x11rb::{connection::Connection as _, protocol::res::ConnectionExt as _};
     let (conn, _) = x11rb::connect(Some(&format!(":{n}"))).ok()?;
     let me = conn.setup().resource_id_base;
     let clients = conn.res_query_clients().ok()?.reply().ok()?.clients;
-    let others = clients.iter().filter(|c| c.resource_base != 0 && c.resource_base != me).count();
+    let others = clients
+        .iter()
+        .filter(|c| c.resource_base != 0 && c.resource_base != me && Some(c.resource_base) != ours)
+        .count();
     // One of them is our window manager.
     Some(others <= 1)
 }

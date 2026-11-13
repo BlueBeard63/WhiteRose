@@ -1,0 +1,149 @@
+--- a/src/wayland/selection/data_device/dnd_grab.rs
++++ b/src/wayland/selection/data_device/dnd_grab.rs
+@@ -45,6 +45,9 @@ pub struct DnDGrab<D: SeatHandler> {
+     icon: Option<WlSurface>,
+     origin: WlSurface,
+     seat: Seat<D>,
++    /// WhiteRose patch: `current_focus` is a surface the compositor carries
++    /// the drag to itself (`ClientDndGrabHandler::dnd_foreign`).
++    foreign: bool,
+ }
+ 
+ impl<D: SeatHandler + 'static> fmt::Debug for DnDGrab<D> {
+@@ -84,6 +87,7 @@ impl<D: SeatHandler> DnDGrab<D> {
+             origin,
+             icon,
+             seat,
++            foreign: false,
+         }
+     }
+ 
+@@ -106,6 +110,7 @@ impl<D: SeatHandler> DnDGrab<D> {
+             origin,
+             icon,
+             seat,
++            foreign: false,
+         }
+     }
+ }
+@@ -118,11 +123,31 @@ where
+ {
+     fn update_focus<F: WaylandFocus>(
+         &mut self,
++        data: &mut D,
+         focus: Option<(F, Point<f64, Logical>)>,
+         location: Point<f64, Logical>,
+         serial: Serial,
+         time: u32,
+     ) {
++        // WhiteRose patch: a surface the compositor carries the drag to itself.
++        let surface = focus.as_ref().and_then(|(s, _)| s.wl_surface().map(|s| s.into_owned()));
++        if self.foreign && surface.as_ref() != self.current_focus.as_ref() {
++            self.foreign = false;
++            self.current_focus = None;
++            ClientDndGrabHandler::dnd_foreign_leave(data, self.seat.clone());
++        }
++        if let (Some(source), Some(surface)) = (self.data_source.clone(), surface) {
++            if self.foreign || (self.current_focus.as_ref() != Some(&surface) && data.dnd_foreign(&surface)) {
++                if !self.foreign {
++                    // Leaving a Wayland surface for it.
++                    self.update_focus::<F>(data, None, location, serial, time);
++                    self.foreign = true;
++                    self.current_focus = Some(surface.clone());
++                }
++                ClientDndGrabHandler::dnd_foreign_motion(data, &surface, location, &source, self.seat.clone());
++                return;
++            }
++        }
+         let seat_data = self
+             .seat
+             .user_data()
+@@ -225,6 +250,21 @@ where
+     }
+ 
+     fn drop(&mut self, data: &mut D) {
++        // WhiteRose patch: dropped on a surface the compositor carries it to.
++        if self.foreign {
++            self.foreign = false;
++            if let Some(source) = self.data_source.clone() {
++                let validated = ClientDndGrabHandler::dnd_foreign_drop(data, &source, self.seat.clone());
++                if !validated {
++                    source.cancelled();
++                } else if source.version() >= wl_data_source::EVT_DND_DROP_PERFORMED_SINCE {
++                    source.dnd_drop_performed();
++                }
++                ClientDndGrabHandler::dropped(data, self.current_focus.clone(), validated, self.seat.clone());
++            }
++            self.icon = None;
++            return;
++        }
+         // the user dropped, proceed to the drop
+         let seat_data = self
+             .seat
+@@ -294,7 +334,7 @@ where
+         // While the grab is active, no client has pointer focus
+         handle.motion(data, None, event);
+ 
+-        self.update_focus(focus, event.location, event.serial, event.time);
++        self.update_focus(data, focus, event.location, event.serial, event.time);
+     }
+ 
+     fn relative_motion(
+@@ -438,7 +478,7 @@ where
+ 
+     fn motion(
+         &mut self,
+-        _data: &mut D,
++        data: &mut D,
+         _handle: &mut crate::input::touch::TouchInnerHandle<'_, D>,
+         focus: Option<(<D as SeatHandler>::TouchFocus, Point<f64, Logical>)>,
+         event: &crate::input::touch::MotionEvent,
+@@ -448,7 +488,7 @@ where
+             return;
+         }
+ 
+-        self.update_focus(focus, event.location, SERIAL_COUNTER.next_serial(), event.time);
++        self.update_focus(data, focus, event.location, SERIAL_COUNTER.next_serial(), event.time);
+     }
+ 
+     fn frame(
+diff --git a/src/wayland/selection/data_device/mod.rs b/src/wayland/selection/data_device/mod.rs
+index 4a7ff74..d5001bb 100644
+--- a/src/wayland/selection/data_device/mod.rs
++++ b/src/wayland/selection/data_device/mod.rs
+@@ -145,6 +145,35 @@ pub trait ClientDndGrabHandler: SeatHandler + Sized {
+     ///   was cancelled or otherwise not successful.
+     /// * `seat` - The seat on which the DnD action was finished.
+     fn dropped(&mut self, target: Option<WlSurface>, validated: bool, seat: Seat<Self>) {}
++
++    /// WhiteRose patch: whether the compositor itself carries drags over
++    /// `surface` to its client (an X11 window: the compositor speaks XDND to
++    /// it), instead of a wl_data_device offer.
++    fn dnd_foreign(&mut self, surface: &WlSurface) -> bool {
++        false
++    }
++
++    /// WhiteRose patch: a drag of `source` is over the foreign `surface`, the
++    /// pointer at `location` (global).
++    fn dnd_foreign_motion(
++        &mut self,
++        surface: &WlSurface,
++        location: crate::utils::Point<f64, crate::utils::Logical>,
++        source: &WlDataSource,
++        seat: Seat<Self>,
++    ) {
++    }
++
++    /// WhiteRose patch: the drag left the foreign surface.
++    fn dnd_foreign_leave(&mut self, seat: Seat<Self>) {}
++
++    /// WhiteRose patch: dropped on the foreign surface; whether it takes the
++    /// drop. If it does, the source has been told `dnd_drop_performed`, and
++    /// the compositor tells it `dnd_finished` (or `cancelled`) when the
++    /// target is done.
++    fn dnd_foreign_drop(&mut self, source: &WlDataSource, seat: Seat<Self>) -> bool {
++        false
++    }
+ }
+ 
+ /// Event generated by the interactions of clients with a server initiated drag'n'drop

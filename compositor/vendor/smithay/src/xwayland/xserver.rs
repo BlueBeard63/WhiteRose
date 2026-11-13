@@ -449,6 +449,14 @@ impl XWaylandClientData {
     pub fn user_data(&self) -> &UserDataMap {
         &self.data_map
     }
+
+    /// WhiteRose patch: the Xwayland process's id, until its Wayland
+    /// connection is gone (then it's reaped), so a compositor stopping an
+    /// idle Xwayland can end it at once: until it exits, it would still take
+    /// new X11 clients on the shared sockets.
+    pub fn pid(&self) -> Option<u32> {
+        self.child.lock().unwrap().as_ref().map(|c| c.id())
+    }
 }
 
 /// Removes the `O_CLOEXEC` flag from a `RawFd`, causing it to leak when we

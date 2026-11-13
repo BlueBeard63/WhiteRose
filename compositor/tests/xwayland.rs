@@ -634,3 +634,285 @@ fn a_crashed_xwayland_starts_again_for_the_next_x11_app() {
         });
     });
 }
+
+// ---------------------------------------------------------------- drag and drop
+
+mod drag {
+    //! A Wayland app dragging: its pointer, data device and source, on
+    //! their own queue.
+    use wayland_client::{
+        globals::GlobalListContents,
+        protocol::{
+            wl_data_device::{self, WlDataDevice},
+            wl_data_device_manager::WlDataDeviceManager,
+            wl_data_offer::WlDataOffer,
+            wl_data_source::{self, WlDataSource},
+            wl_pointer::{self, WlPointer},
+            wl_registry::WlRegistry,
+            wl_seat::WlSeat,
+            wl_surface::WlSurface,
+        },
+        Connection, Dispatch, QueueHandle,
+    };
+
+    #[derive(Default)]
+    pub struct Drag {
+        pub pointer_on: Option<WlSurface>,
+        pub button_serial: Option<u32>,
+        /// What the drop target accepts (the source's `target` events).
+        pub target: Option<Option<String>>,
+        /// Mime types the drop target asked for.
+        pub sent: Vec<String>,
+        pub finished: bool,
+        pub cancelled: bool,
+        pub payload: &'static [u8],
+    }
+
+    impl Dispatch<WlRegistry, GlobalListContents> for Drag {
+        fn event(
+            _: &mut Self,
+            _: &WlRegistry,
+            _: wayland_client::protocol::wl_registry::Event,
+            _: &GlobalListContents,
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+    }
+    impl Dispatch<WlSeat, ()> for Drag {
+        fn event(
+            _: &mut Self,
+            _: &WlSeat,
+            _: wayland_client::protocol::wl_seat::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+    }
+    impl Dispatch<WlDataDeviceManager, ()> for Drag {
+        fn event(
+            _: &mut Self,
+            _: &WlDataDeviceManager,
+            _: <WlDataDeviceManager as wayland_client::Proxy>::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+    }
+    impl Dispatch<WlPointer, ()> for Drag {
+        fn event(d: &mut Self, _: &WlPointer, event: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+            match event {
+                wl_pointer::Event::Enter { surface, .. } => d.pointer_on = Some(surface),
+                wl_pointer::Event::Leave { .. } => d.pointer_on = None,
+                wl_pointer::Event::Button { serial, .. } => d.button_serial = Some(serial),
+                _ => {}
+            }
+        }
+    }
+    impl Dispatch<WlDataDevice, ()> for Drag {
+        fn event(
+            _: &mut Self,
+            _: &WlDataDevice,
+            _: wl_data_device::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+        wayland_client::event_created_child!(Drag, WlDataDevice, [
+            wl_data_device::EVT_DATA_OFFER_OPCODE => (WlDataOffer, ()),
+        ]);
+    }
+    impl Dispatch<WlDataOffer, ()> for Drag {
+        fn event(
+            _: &mut Self,
+            _: &WlDataOffer,
+            _: wayland_client::protocol::wl_data_offer::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+    }
+    impl Dispatch<WlDataSource, ()> for Drag {
+        fn event(
+            d: &mut Self,
+            _: &WlDataSource,
+            event: wl_data_source::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+            match event {
+                wl_data_source::Event::Target { mime_type } => d.target = Some(mime_type),
+                wl_data_source::Event::Send { mime_type, fd } => {
+                    use std::io::Write;
+                    let _ = std::fs::File::from(fd).write_all(d.payload);
+                    d.sent.push(mime_type);
+                }
+                wl_data_source::Event::DndFinished => d.finished = true,
+                wl_data_source::Event::Cancelled => d.cancelled = true,
+                _ => {}
+            }
+        }
+    }
+}
+
+const URIS: &[u8] = b"file:///home/me/Pictures/cat.png\r\n";
+
+/// An X11 app that takes drops (XdndAware), accepting a copy, on its own
+/// connection and thread: the types it was offered and what it got.
+fn x11_drop_target(display: u32) -> std::thread::JoinHandle<(Vec<String>, Vec<u8>)> {
+    std::thread::spawn(move || {
+        let (conn, screen) = x11rb::connect(Some(&format!(":{display}"))).unwrap();
+        let root = conn.setup().roots[screen].root;
+        let atom = |n: &str| conn.intern_atom(false, n.as_bytes()).unwrap().reply().unwrap().atom;
+        let name = |a: Atom| String::from_utf8(conn.get_atom_name(a).unwrap().reply().unwrap().name).unwrap();
+        let (aware, enter, position, status, drop, finished, selection, copy) = (
+            atom("XdndAware"),
+            atom("XdndEnter"),
+            atom("XdndPosition"),
+            atom("XdndStatus"),
+            atom("XdndDrop"),
+            atom("XdndFinished"),
+            atom("XdndSelection"),
+            atom("XdndActionCopy"),
+        );
+        let win = conn.generate_id().unwrap();
+        let aux = CreateWindowAux::new().background_pixel(0x0040_80ff);
+        conn.create_window(COPY_DEPTH_FROM_PARENT, win, root, 0, 0, 400, 300, 0, WindowClass::INPUT_OUTPUT, 0, &aux)
+            .unwrap();
+        conn.change_property8(PropMode::REPLACE, win, AtomEnum::WM_CLASS, AtomEnum::STRING, b"x\0Target\0").unwrap();
+        conn.change_property8(PropMode::REPLACE, win, AtomEnum::WM_NAME, AtomEnum::STRING, b"target").unwrap();
+        conn.change_property32(PropMode::REPLACE, win, aware, AtomEnum::ATOM, &[5]).unwrap();
+        conn.map_window(win).unwrap();
+        conn.flush().unwrap();
+        let send = |to: u32, kind: Atom, data: [u32; 5]| {
+            let ev = x11rb::protocol::xproto::ClientMessageEvent::new(32, to, kind, data);
+            conn.send_event(false, to, EventMask::NO_EVENT, ev).unwrap();
+            conn.flush().unwrap();
+        };
+        let mut types = Vec::new();
+        let mut source = 0;
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while Instant::now() < deadline {
+            let Some(event) = conn.poll_for_event().unwrap() else {
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            };
+            match event {
+                Event::ClientMessage(m) if m.type_ == enter => {
+                    let d = m.data.as_data32();
+                    source = d[0];
+                    types = d[2..5].iter().filter(|a| **a != 0).map(|a| name(*a)).collect();
+                }
+                Event::ClientMessage(m) if m.type_ == position => {
+                    send(m.data.as_data32()[0], status, [win, 1, 0, 0, copy]);
+                }
+                Event::ClientMessage(m) if m.type_ == drop => {
+                    let time = m.data.as_data32()[2];
+                    conn.convert_selection(win, selection, atom("text/uri-list"), atom("WR_DROP"), time).unwrap();
+                    conn.flush().unwrap();
+                }
+                Event::SelectionNotify(n) if n.property != x11rb::NONE => {
+                    let got =
+                        conn.get_property(true, win, n.property, AtomEnum::ANY, 0, 1 << 20).unwrap().reply().unwrap();
+                    send(source, finished, [win, 1, copy, 0, 0]);
+                    // (Before it goes: closing at once can lose the message.)
+                    conn.sync().unwrap();
+                    return (types, got.value);
+                }
+                _ => {}
+            }
+        }
+        panic!("no drop (offered {types:?})");
+    })
+}
+
+#[test]
+fn a_wayland_app_drags_a_file_onto_an_x11_app() {
+    use wayland_client::protocol::{
+        wl_data_device_manager::DndAction, wl_data_device_manager::WlDataDeviceManager, wl_seat::WlSeat,
+    };
+    with_x11(|h| {
+        set(&mut h.state, "windows.layout", json!("dwindle"));
+        h.drive(|conn, ask| {
+            let mut c = Client::connect(&conn);
+            c.open_bar();
+            let (window, _t) = open(&mut c);
+            c.attach_buffer(&window, LEFT.2, LEFT.3);
+            // The X11 app takes the right half.
+            X::connect(&ask);
+            let display = ask.run(|s| s.xwayland.display.unwrap());
+            let target = x11_drop_target(display);
+            opened(&ask, "Target");
+            until(&ask, "they tile", |s| by_class(s, "Target").is_some_and(|w| rect(s, &w) == Some(RIGHT)));
+
+            let (globals, mut q) = wayland_client::globals::registry_queue_init::<drag::Drag>(&conn).unwrap();
+            let qh = q.handle();
+            let seat: WlSeat = globals.bind(&qh, 1..=7, ()).unwrap();
+            let manager: WlDataDeviceManager = globals.bind(&qh, 3..=3, ()).unwrap();
+            let _pointer = seat.get_pointer(&qh, ());
+            let device = manager.get_data_device(&seat, &qh, ());
+            let mut d = drag::Drag { payload: URIS, ..Default::default() };
+            let wait = |q: &mut wayland_client::EventQueue<drag::Drag>,
+                        d: &mut drag::Drag,
+                        what: &str,
+                        done: &dyn Fn(&drag::Drag) -> bool| {
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while !done(d) {
+                    assert!(Instant::now() < deadline, "never: {what}");
+                    q.roundtrip(d).unwrap();
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            };
+            let time = Arc::new(std::sync::atomic::AtomicU32::new(0));
+            let at = |x: i32, y: i32| (x as f64 + 0.5, y as f64 + 0.5);
+            let mv = |p: (f64, f64)| {
+                let t = time.fetch_add(10, Ordering::Relaxed);
+                ask.run(move |s| s.on_pointer_motion(p.into(), t));
+            };
+            let button = |pressed: bool| {
+                let t = time.fetch_add(10, Ordering::Relaxed);
+                let state = if pressed {
+                    smithay::backend::input::ButtonState::Pressed
+                } else {
+                    smithay::backend::input::ButtonState::Released
+                };
+                ask.run(move |s| s.on_pointer_button(BTN_LEFT, state, t));
+            };
+
+            // Press on the Wayland window and start dragging a file.
+            q.roundtrip(&mut d).unwrap();
+            mv(at(LEFT.0 + LEFT.2 / 2, LEFT.1 + LEFT.3 / 2));
+            wait(&mut q, &mut d, "the pointer on the Wayland window", &|d| d.pointer_on.as_ref() == Some(&window));
+            button(true);
+            wait(&mut q, &mut d, "the press", &|d| d.button_serial.is_some());
+            let source = manager.create_data_source(&qh, ());
+            source.offer("text/uri-list".into());
+            source.offer("text/plain;charset=utf-8".into());
+            source.set_actions(DndAction::Copy);
+            device.start_drag(Some(&source), &window, None, d.button_serial.unwrap());
+            q.roundtrip(&mut d).unwrap();
+
+            // Over the X11 app, which takes it.
+            for step in 0..4 {
+                // (Inside the 400x300 it drew before it was tiled.)
+                mv(at(RIGHT.0 + 100 + step * 5, RIGHT.1 + 100));
+                std::thread::sleep(Duration::from_millis(30));
+            }
+            wait(&mut q, &mut d, "the X11 app to accept", &|d| matches!(d.target, Some(Some(_))));
+
+            // Drop: the X11 app reads the file list and says it's done.
+            button(false);
+            wait(&mut q, &mut d, "dnd_finished", &|d| d.finished || d.cancelled);
+            assert!(d.finished, "the Wayland app heard the drop finished, not cancelled");
+            assert_eq!(d.sent, ["text/uri-list"]);
+            let (types, got) = target.join().unwrap();
+            assert_eq!(types, ["text/uri-list", "text/plain;charset=utf-8"]);
+            assert_eq!(got, URIS);
+        });
+    });
+}

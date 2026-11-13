@@ -121,6 +121,33 @@ impl ClientDndGrabHandler for WhiteRose {
         self.dnd_icon = None;
         self.schedule_redraw();
     }
+
+    // A drag over an X11 window goes to it through XDND (xdnd.rs).
+    fn dnd_foreign(&mut self, surface: &WlSurface) -> bool {
+        self.dnd_is_x11(surface)
+    }
+
+    fn dnd_foreign_motion(
+        &mut self,
+        surface: &WlSurface,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
+        source: &smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource,
+        _seat: Seat<Self>,
+    ) {
+        self.xdnd_motion(surface, location, source);
+    }
+
+    fn dnd_foreign_leave(&mut self, _seat: Seat<Self>) {
+        self.xdnd_leave();
+    }
+
+    fn dnd_foreign_drop(
+        &mut self,
+        _source: &smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource,
+        _seat: Seat<Self>,
+    ) -> bool {
+        self.xdnd_drop()
+    }
 }
 impl ServerDndGrabHandler for WhiteRose {}
 delegate_data_device!(WhiteRose);
