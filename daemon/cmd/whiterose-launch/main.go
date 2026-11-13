@@ -9,9 +9,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -19,6 +21,38 @@ import (
 	"whiterose/daemon/internal/launch"
 	"whiterose/daemon/internal/update"
 )
+
+// The variables the session puts in the systemd user manager (the
+// compositor's -c dbus-update-activation-environment), and the portal
+// services started with them. The manager outlives a login: left as they
+// are, the next desktop (GNOME, after WhiteRose) gets portals talking to a
+// display that's gone, and every app that asks a portal something waits
+// 25 s for an answer that never comes.
+var (
+	sessionVars    = []string{"WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "WHITEROSE_DIR"}
+	portalServices = []string{"xdg-desktop-portal.service", "xdg-desktop-portal-gtk.service", "xdg-desktop-portal-gnome.service", "xdg-document-portal.service"}
+)
+
+// tidyUserManager stops the portals (D-Bus starts them again, fresh, when
+// next asked) and takes the session's variables out of the user manager.
+// Before the session (a previous desktop's may be left over) and after.
+func tidyUserManager() {
+	run := func(args ...string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = exec.CommandContext(ctx, "systemctl", append([]string{"--user"}, args...)...).Run()
+	}
+	run(append([]string{"stop"}, portalServices...)...)
+	run(append([]string{"unset-environment"}, sessionVars...)...)
+	// (dbus-daemon keeps its own copy for what it starts itself.)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	args := []string{}
+	for _, v := range sessionVars {
+		args = append(args, v+"=")
+	}
+	_ = exec.CommandContext(ctx, "dbus-update-activation-environment", args...).Run()
+}
 
 func main() {
 	backend := flag.String("backend", "drm", "the compositor's backend")
@@ -70,6 +104,7 @@ func main() {
 		Installed: update.Installed, Newer: update.Newer,
 		Ready: 20 * time.Second, Survive: 60 * time.Second, Stop: 5 * time.Second,
 		Logf: logf,
+		Tidy: tidyUserManager,
 	})
 	if err != nil {
 		logf("%v", err)

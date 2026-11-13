@@ -287,6 +287,19 @@ exit 3
 	}
 }
 
+// Tidy (the user manager's portals and variables) runs before the session
+// and after it, whatever the outcome.
+func TestRunTidies(t *testing.T) {
+	c := setup(t)
+	version(t, c.Root, "0.5.0", comesUp+"exit 101\n")
+	n := 0
+	c.Tidy = func() { n++ }
+	Run(c)
+	if n != 2 {
+		t.Errorf("tidied %d times", n)
+	}
+}
+
 // The session's output goes to session.log; the session before is kept as
 // session.1.log (the one that crashed, after a crash).
 func TestSessionLog(t *testing.T) {

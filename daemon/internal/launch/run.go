@@ -41,6 +41,11 @@ type Config struct {
 	LogMax  int64         // the session log's size limit (0: LogMax)
 
 	Logf func(format string, args ...any)
+
+	// Tidy runs before the session starts and after it ends, to leave the
+	// user's systemd manager as another desktop expects it (the portals,
+	// the environment: main.go). nil: nothing.
+	Tidy func()
 }
 
 func (c Config) dir() string             { return filepath.Join(c.StateHome, "whiterose") }
@@ -62,6 +67,10 @@ func (c Config) logf(format string, args ...any) {
 // Run starts sessions until one ends other than by restarting, and returns
 // its exit code.
 func Run(c Config) (int, error) {
+	if c.Tidy != nil {
+		c.Tidy()
+		defer c.Tidy()
+	}
 	stateFile := StateFile(c.StateHome)
 	for {
 		s := Load(stateFile)
