@@ -1,10 +1,11 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js and the Window rules page's Rules.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // `deps`: what its `.import "…" as Name` lines bring in, by Name.
@@ -1230,6 +1231,21 @@ test("UI text follows the copy rules", () => {
         });
     }
     assert.deepEqual(problems, []);
+});
+
+// ---- the old-version issue workflow (.github/scripts/old-version.js) ------------
+test("old-version reports: versions", () => {
+    const Old = createRequire(import.meta.url)(join(here, "..", "..", ".github", "scripts", "old-version.js"));
+    const order = ["0.2.0", "0.2.1", "0.3.0-alpha", "0.3.0-alpha.2", "0.3.0-alpha.10", "0.3.0-beta.1", "0.3.0", "v0.3.1", "1.0.0"];
+    for (let i = 0; i < order.length; i++)
+        for (let j = 0; j < order.length; j++)
+            assert.equal(Old.compare(order[i], order[j]), Math.sign(i - j), order[i] + " vs " + order[j]);
+    assert.equal(Old.compare("0.3.0~alpha.3", "0.3.0-alpha.3"), 0);
+    const form = v => "### WhiteRose version\n\n" + v + "\n\n### What happened\n\nIt broke";
+    assert.equal(Old.reportedVersion(form("0.3.0-alpha.3")), "0.3.0-alpha.3");
+    assert.equal(Old.reportedVersion(form("WhiteRose v0.2.1")), "0.2.1");
+    assert.equal(Old.reportedVersion(form("latest")), "");
+    assert.equal(Old.reportedVersion("no form at all"), "");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

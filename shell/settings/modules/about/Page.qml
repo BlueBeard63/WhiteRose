@@ -42,7 +42,34 @@ Column {
     Card {
         SettingRow { title: "Operating system"; divider: false; Text { text: page.os; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }
         SettingRow { title: "Kernel"; Text { text: page.kernel; color: Theme.muted; font { family: Theme.mono; pointSize: Theme.pt(12) } } }
-        SettingRow { title: "Desktop"; Text { text: "WhiteRose (development)"; color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(12.5) } } }
+        SettingRow {
+            id: desktopRow
+            // The version the session launcher started (none in a build
+            // being worked on). Bug reports ask for it: Copy puts it on the
+            // clipboard.
+            readonly property string version: Quickshell.env("WHITEROSE_VERSION") ?? ""
+            property bool copied: false
+            title: "Desktop"
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: desktopRow.version ? "WhiteRose " + desktopRow.version : "WhiteRose (development)"
+                color: Theme.muted
+                font { family: Theme.font; pointSize: Theme.pt(12.5) }
+            }
+            Button {
+                visible: desktopRow.version !== ""
+                text: desktopRow.copied ? "Copied" : "Copy"
+                label: "Copy WhiteRose version"
+                icon: desktopRow.copied ? "check" : "copy"
+                kind: "ghost"
+                onClicked: {
+                    Quickshell.clipboardText = desktopRow.version;
+                    desktopRow.copied = true;
+                    copiedTimer.restart();
+                }
+                Timer { id: copiedTimer; interval: 2000; onTriggered: desktopRow.copied = false }
+            }
+        }
         SettingRow {
             title: "Up for"
             Text {

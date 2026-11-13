@@ -1,0 +1,37 @@
+name: Bug report
+description: Something in WhiteRose doesn't work the way it should
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: WhiteRose version
+      description: >-
+        In Settings › About, next to Desktop (Copy puts it on the clipboard).
+        Reports from a version older than the newest release are closed
+        automatically: update first (Settings › Updates) and check it still happens.
+      placeholder: 0.3.0-alpha.3
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Open Settings › Displays
+        2. Drag the second screen to the left
+        3. The bar moves to the wrong screen
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: >-
+        If WhiteRose failed to start after an update, attach
+        ~/.local/state/whiterose/update-<version>.log.

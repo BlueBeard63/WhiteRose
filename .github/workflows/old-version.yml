@@ -1,0 +1,25 @@
+name: old-version reports
+
+# Bug reports from a version older than the newest release are closed with
+# a note to update first (the rule is in .github/scripts/old-version.js;
+# Settings › Updates › Releases warns about it before switching back).
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const run = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/old-version.js`);
+            await run({ github, context });
