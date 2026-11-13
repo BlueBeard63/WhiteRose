@@ -26,11 +26,13 @@ import (
 
 // Saved is what's remembered between runs ($XDG_STATE_HOME/whiterose/updates.json).
 type Saved struct {
-	Checked    int64           `json:"checked"`
-	Release    *update.Release `json:"release,omitempty"`
-	Downloaded string          `json:"downloaded,omitempty"` // the version in Dir(), verified
-	Steps      []update.Step   `json:"steps,omitempty"`
-	Error      string          `json:"error,omitempty"`
+	Checked int64           `json:"checked"`
+	Release *update.Release `json:"release,omitempty"`
+	// Every published release (for the Releases tab), newest first.
+	Releases   []update.Release `json:"releases,omitempty"`
+	Downloaded string           `json:"downloaded,omitempty"` // the version in Dir(), verified
+	Steps      []update.Step    `json:"steps,omitempty"`
+	Error      string           `json:"error,omitempty"`
 }
 
 type Manager struct {
@@ -50,8 +52,10 @@ type Manager struct {
 	// Restart asks the compositor to restart the session.
 	Restart func() error
 	Metered func() bool
-	Emit    func(any)
-	Now     func() time.Time
+	// Pre: pre-releases (alpha, beta) are offered too (update.prerelease).
+	Pre  func() bool
+	Emit func(any)
+	Now  func() time.Time
 
 	mu       sync.Mutex
 	saved    Saved
@@ -68,6 +72,8 @@ func (m *Manager) now() time.Time {
 	}
 	return time.Now()
 }
+
+func (m *Manager) pre() bool { return m.Pre != nil && m.Pre() }
 
 func (m *Manager) savedFile() string  { return filepath.Join(m.State, "whiterose", "updates.json") }
 func (m *Manager) launchFile() string { return launch.StateFile(m.State) }
@@ -254,6 +260,60 @@ func (m *Manager) status() View {
 	return v
 }
 
+// ---- the Releases tab -------------------------------------------------------------------
+
+type ReleaseEntry struct {
+	Version   string   `json:"version"`
+	Published int64    `json:"published"`
+	Pre       bool     `json:"pre"`
+	Changes   []string `json:"changes"`
+	// running | next (starts at the next login) | installed | available
+	State string `json:"state"`
+}
+
+// Series is one major.minor ("0.3") and its releases, newest first.
+type Series struct {
+	Name     string         `json:"name"`
+	Releases []ReleaseEntry `json:"releases"`
+}
+
+// Releases is every known release grouped by series, newest first.
+// Pre-releases only show with the pre-release switch on, or when they're
+// installed.
+func (m *Manager) Releases() []Series {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.load()
+	installed := update.Installed(m.Root)
+	next := ""
+	if plan, _, err := launch.Decide(launch.Load(m.launchFile()), installed, update.Newer); err == nil && plan.Version != m.Running {
+		next = plan.Version
+	}
+	pre := m.pre()
+	out := []Series{}
+	for _, r := range m.saved.Releases {
+		v := r.Version()
+		e := ReleaseEntry{Version: v, Published: r.Published.Unix(), Pre: r.Pre, Changes: r.Changes(), State: "available"}
+		switch {
+		case v == m.Running:
+			e.State = "running"
+		case v == next:
+			e.State = "next"
+		case slices.Contains(installed, v):
+			e.State = "installed"
+		}
+		if r.Pre && !pre && e.State == "available" {
+			continue
+		}
+		name := update.Series(v)
+		if n := len(out); n == 0 || out[n-1].Name != name {
+			out = append(out, Series{Name: name})
+		}
+		out[len(out)-1].Releases = append(out[len(out)-1].Releases, e)
+	}
+	return out
+}
+
 func (m *Manager) emit() {
 	if m.Emit != nil {
 		v := m.status()
@@ -306,11 +366,16 @@ func (m *Manager) Check(ctx context.Context, fetch bool) error {
 	}
 	m.mu.Unlock()
 
-	r, err := m.Src.Latest(ctx)
+	list, err := m.Src.List(ctx)
+	r, ok := update.Newest(list, m.pre())
+	if err == nil && !ok {
+		err = errors.New("there are no releases yet")
+	}
 
 	m.mu.Lock()
 	m.saved.Checked = m.now().Unix()
 	if err == nil {
+		m.saved.Releases = list
 		m.saved.Release = &r
 		if m.saved.Downloaded != "" && m.saved.Downloaded != r.Version() {
 			// An older download: not needed any more.

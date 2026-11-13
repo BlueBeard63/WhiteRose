@@ -186,3 +186,24 @@ func TestPackageName(t *testing.T) {
 		t.Error("rpm")
 	}
 }
+
+func TestNewestAndSeries(t *testing.T) {
+	rs := []Release{
+		{Tag: "v0.2.1"}, {Tag: "v0.3.0-alpha.9", Pre: true}, {Tag: "v0.3.0-alpha.10", Pre: true},
+		{Tag: "v0.4.0", Draft: true},
+	}
+	if r, ok := Newest(rs, false); !ok || r.Version() != "0.2.1" {
+		t.Errorf("stable: %v %v", r.Tag, ok)
+	}
+	if r, ok := Newest(rs, true); !ok || r.Version() != "0.3.0-alpha.10" {
+		t.Errorf("pre: %v %v", r.Tag, ok)
+	}
+	if _, ok := Newest(nil, true); ok {
+		t.Error("none, yet found")
+	}
+	for v, want := range map[string]string{"0.3.0-alpha.2": "0.3", "v1.12.4": "1.12", "0.3.0~alpha.1": "0.3", "2": "2"} {
+		if got := Series(v); got != want {
+			t.Errorf("Series(%q) = %q, want %q", v, got, want)
+		}
+	}
+}

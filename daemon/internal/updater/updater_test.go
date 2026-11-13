@@ -16,8 +16,9 @@ import (
 	"whiterose/daemon/internal/update"
 )
 
-// A fake GitHub with release `ver`, signed by `priv`.
-func fakeGitHub(t *testing.T, ver, priv string) update.Source {
+// A fake GitHub with release `ver`, signed by `priv`, and `others` (no
+// packages) in the list.
+func fakeGitHub(t *testing.T, ver, priv string, others ...update.Release) update.Source {
 	t.Helper()
 	dir := t.TempDir()
 	names := []string{"whiterose-core-" + ver + "_" + ver + "_amd64.deb", "whiterose_" + ver + "_amd64.deb"}
@@ -32,12 +33,17 @@ func fakeGitHub(t *testing.T, ver, priv string) update.Source {
 	files["SHA256SUMS"], files["SHA256SUMS.sig"] = sums, []byte(sig)
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/me/whiterose/releases/latest" {
-			var assets []update.Asset
-			for n, b := range files {
-				assets = append(assets, update.Asset{Name: n, Size: int64(len(b)), URL: srv.URL + "/dl/" + n})
-			}
-			json.NewEncoder(w).Encode(update.Release{Tag: "v" + ver, Notes: "- New window switcher\n- Faster", Published: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), Assets: assets})
+		var assets []update.Asset
+		for n, b := range files {
+			assets = append(assets, update.Asset{Name: n, Size: int64(len(b)), URL: srv.URL + "/dl/" + n})
+		}
+		main := update.Release{Tag: "v" + ver, Notes: "- New window switcher\n- Faster", Published: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), Assets: assets}
+		switch r.URL.Path {
+		case "/repos/me/whiterose/releases/latest":
+			json.NewEncoder(w).Encode(main)
+			return
+		case "/repos/me/whiterose/releases":
+			json.NewEncoder(w).Encode(append([]update.Release{main}, others...))
 			return
 		}
 		if b, ok := files[strings.TrimPrefix(r.URL.Path, "/dl/")]; ok {
@@ -175,6 +181,56 @@ func TestInstallRefusesTamperedDownload(t *testing.T) {
 	}
 	if v := m.Status(); v.Release.State != "downloaded" || v.Error == "" {
 		t.Errorf("%+v %q", v.Release, v.Error)
+	}
+}
+
+// Pre-releases: offered only with the switch on; the Releases tab groups
+// by series and hides pre-releases you haven't installed while it's off.
+func TestPreReleasesAndList(t *testing.T) {
+	priv, pub, _ := update.NewKey()
+	day := func(d int) time.Time { return time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC) }
+	pre := false
+	m := &Manager{
+		Src: fakeGitHub(t, "0.5.0", priv,
+			update.Release{Tag: "v0.6.0-alpha.2", Pre: true, Published: day(12)},
+			update.Release{Tag: "v0.6.0-alpha.10", Pre: true, Published: day(13)},
+			update.Release{Tag: "v0.4.2", Published: day(1)},
+			update.Release{Tag: "v0.4.3-draft", Draft: true}),
+		Public: pub, Kind: "deb", Root: t.TempDir(), State: t.TempDir(), Cache: t.TempDir(),
+		Running: "0.5.0", Pre: func() bool { return pre },
+	}
+	installVersion(t, m.Root, "0.5.0")
+	installVersion(t, m.Root, "0.6.0-alpha.2")
+	ctx := context.Background()
+	if err := m.Check(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if r := m.Status().Release; r != nil {
+		t.Errorf("switch off, offered %+v", r)
+	}
+	names := func() (out []string) {
+		for _, g := range m.Releases() {
+			var vs []string
+			for _, e := range g.Releases {
+				vs = append(vs, e.Version+":"+e.State)
+			}
+			out = append(out, g.Name+"="+strings.Join(vs, ","))
+		}
+		return
+	}
+	// alpha.2 is installed (and newer than 0.5.0: it starts next); alpha.10 isn't shown.
+	if got := strings.Join(names(), " "); got != "0.6=0.6.0-alpha.2:next 0.5=0.5.0:running 0.4=0.4.2:available" {
+		t.Errorf("switch off: %s", got)
+	}
+	pre = true
+	if err := m.Check(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if r := m.Status().Release; r == nil || r.Version != "0.6.0-alpha.10" {
+		t.Errorf("switch on, offered %+v", r)
+	}
+	if got := strings.Join(names(), " "); got != "0.6=0.6.0-alpha.10:available,0.6.0-alpha.2:next 0.5=0.5.0:running 0.4=0.4.2:available" {
+		t.Errorf("switch on: %s", got)
 	}
 }
 

@@ -228,8 +228,13 @@ func newUpdater(st *store.Store, cache string, broadcast func(any)) *updater.Man
 		Running:  runningVersion(),
 		Launcher: os.Getenv("WHITEROSE_LAUNCHER") == "1",
 		Metered:  metered,
-		Restart:  restartSession,
-		Emit:     broadcast,
+		Pre: func() bool {
+			var on bool
+			_ = st.GetInto("update.prerelease", &on)
+			return on
+		},
+		Restart: restartSession,
+		Emit:    broadcast,
 		Install: func(ctx context.Context, dir, keep string, line func(string)) error {
 			self, err := rootSelf()
 			if err != nil {
@@ -315,6 +320,7 @@ func updateOps(m *updater.Manager) map[string]func(server.Request) (any, error) 
 			defer cancel()
 			return status(m.InstallNow(ctx))
 		},
+		"update_releases":      func(server.Request) (any, error) { return m.Releases(), nil },
 		"update_apply":         func(server.Request) (any, error) { return status(m.Apply()) },
 		"update_restart":       func(server.Request) (any, error) { return status(m.RestartSession()) },
 		"update_rollback":      func(server.Request) (any, error) { return status(m.Rollback()) },
