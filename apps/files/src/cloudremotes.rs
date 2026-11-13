@@ -1,6 +1,12 @@
 //! Cloud drives without a desktop client on Linux (Google Drive, OneDrive,
-//! Dropbox, iCloud Drive, S3-compatible storage), through rclone, opened
-//! as folders with `rclone mount`.
+//! Dropbox, iCloud Drive, Nextcloud, S3-compatible storage), through
+//! rclone, opened as folders with `rclone mount`.
+//!
+//! Nextcloud signs in its own way (Login Flow v2, `nextcloud_login`): the
+//! server gives a link to approve in the browser and, once approved, a
+//! login name and an app password (never your own password), which become
+//! an rclone WebDAV account (vendor nextcloud). Accounts added before (a
+//! pCloud one) still open; they just aren't offered for new ones.
 //!
 //! Adding an account drives rclone's own setup in its non-interactive
 //! mode: each step, rclone says what it needs next as JSON (a question,
@@ -27,19 +33,193 @@ pub const PROVIDERS: [(&str, &str); 6] = [
     ("onedrive", "OneDrive"),
     ("dropbox", "Dropbox"),
     ("iclouddrive", "iCloud Drive"),
+    ("nextcloud", "Nextcloud"),
     (
         "s3",
         "S3-compatible storage (Amazon S3, Backblaze B2, Wasabi, MinIO…)",
     ),
-    ("pcloud", "pCloud"),
 ];
 
 pub fn provider_name(kind: &str) -> &str {
-    PROVIDERS
-        .iter()
-        .find(|(k, _)| *k == kind)
-        .map(|(_, n)| *n)
-        .unwrap_or(kind)
+    match kind {
+        // (An account added before pCloud was taken off the list.)
+        "pcloud" => "pCloud",
+        "webdav" => "Nextcloud",
+        _ => PROVIDERS
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, n)| *n)
+            .unwrap_or(kind),
+    }
+}
+
+// ---- Nextcloud: Login Flow v2 --------------------------------------------------------
+
+/// The server's address as typed ("cloud.example.org", "https://x/nc/")
+/// made into its base URL ("https://cloud.example.org"). Plain http only
+/// for this computer (the app password would cross the network readable).
+pub fn nextcloud_server(typed: &str) -> Result<String, String> {
+    let t = typed.trim().trim_end_matches('/');
+    if t.is_empty() {
+        return Err("Type your Nextcloud server's address".into());
+    }
+    let url = if t.contains("://") {
+        t.to_string()
+    } else {
+        format!("https://{t}")
+    };
+    let host = url
+        .split("://")
+        .nth(1)
+        .unwrap_or("")
+        .split(['/', ':'])
+        .next()
+        .unwrap_or("");
+    if host.is_empty() || host.contains(char::is_whitespace) {
+        return Err("That isn't a server address".into());
+    }
+    if url.starts_with("http://") && !matches!(host, "localhost" | "127.0.0.1" | "[::1]") {
+        return Err(
+            "Use the server's https:// address: the sign-in would cross the network unencrypted"
+                .into(),
+        );
+    }
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("That isn't a server address".into());
+    }
+    Ok(url)
+}
+
+/// A curl POST: (HTTP status, body). `data` goes on stdin, so tokens never
+/// show in the process list.
+fn post(curl: &str, url: &str, data: &str) -> Result<(u16, String), String> {
+    use std::io::Write;
+    let mut child = Command::new(curl)
+        .args([
+            "-sS",
+            "--max-time",
+            "20",
+            "-A",
+            "WhiteRose Files",
+            "-X",
+            "POST",
+            "--data-binary",
+            "@-",
+            "-w",
+            "\n%{http_code}",
+            url,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Can't run curl: {e}"))?;
+    if let Some(mut i) = child.stdin.take() {
+        let _ = i.write_all(data.as_bytes());
+    }
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let (body, code) = text.rsplit_once('\n').unwrap_or(("", text.as_str()));
+    match code.trim().parse::<u16>() {
+        Ok(c) if c > 0 => Ok((c, body.to_string())),
+        _ => Err(format!(
+            "Couldn't reach the server: {}",
+            String::from_utf8_lossy(&out.stderr)
+                .trim()
+                .trim_start_matches("curl: ")
+                .split(") ")
+                .last()
+                .unwrap_or("no answer")
+        )),
+    }
+}
+
+/// Signs in to Nextcloud at `server` (nextcloud_server's form): opens the
+/// approval page (`open`, and `note` with its link), then waits for it
+/// (up to 10 minutes, or `stop`). (server URL, login name, app password).
+pub fn nextcloud_login(
+    curl: &str,
+    server: &str,
+    stop: &AtomicBool,
+    note: &mut dyn FnMut(String),
+    open: &dyn Fn(&str),
+    every: Duration,
+) -> Result<(String, String, String), String> {
+    let (code, body) = post(curl, &format!("{server}/index.php/login/v2"), "")?;
+    if code != 200 {
+        return Err(format!(
+            "{server} didn't start a sign-in (HTTP {code}): is it a Nextcloud server?"
+        ));
+    }
+    let v: Value = serde_json::from_str(&body)
+        .map_err(|_| format!("{server} didn't answer like a Nextcloud server"))?;
+    let (login, token, endpoint) = (
+        text(&v["login"]),
+        text(&v["poll"]["token"]),
+        text(&v["poll"]["endpoint"]),
+    );
+    if login.is_empty() || token.is_empty() || !endpoint.starts_with("http") {
+        return Err(format!("{server} didn't answer like a Nextcloud server"));
+    }
+    open(&login);
+    note(login);
+    let until = Instant::now() + Duration::from_secs(600);
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return Err("Cancelled".into());
+        }
+        if Instant::now() > until {
+            return Err("It took too long (the sign-in wasn't finished)".into());
+        }
+        std::thread::sleep(every);
+        // 404 until you've approved it.
+        let (code, body) = post(curl, &endpoint, &format!("token={token}"))?;
+        if code == 200 {
+            let r: Value = serde_json::from_str(&body)
+                .map_err(|_| "The server's answer wasn't readable".to_string())?;
+            let (url, user, pass) = (
+                text(&r["server"]),
+                text(&r["loginName"]),
+                text(&r["appPassword"]),
+            );
+            if user.is_empty() || pass.is_empty() {
+                return Err("The server didn't give a login".into());
+            }
+            return Ok((
+                if url.is_empty() {
+                    server.to_string()
+                } else {
+                    url.trim_end_matches('/').to_string()
+                },
+                user,
+                pass,
+            ));
+        }
+    }
+}
+
+/// rclone's `config create` for a signed-in Nextcloud account (WebDAV).
+pub fn nextcloud_args(name: &str, server: &str, user: &str, pass: &str) -> Vec<String> {
+    let enc: String = user
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'@' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect();
+    vec![
+        "config".into(),
+        "create".into(),
+        name.into(),
+        "webdav".into(),
+        "vendor=nextcloud".into(),
+        format!("url={server}/remote.php/dav/files/{enc}/"),
+        format!("user={user}"),
+        // (rclone stores it obscured.)
+        format!("pass={pass}"),
+    ]
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -236,9 +416,32 @@ pub fn setup(
                     error: format!("{kind} accounts aren't offered"),
                 };
             }
-            let mut a = vec!["config".into(), "create".into(), name.clone(), kind.into()];
-            a.extend(params.iter().map(|(k, v)| format!("{k}={v}")));
-            a
+            if kind == "nextcloud" {
+                let typed = params
+                    .iter()
+                    .find(|(k, _)| k == "server")
+                    .map(|(_, v)| v.as_str())
+                    .unwrap_or("");
+                let server = match nextcloud_server(typed) {
+                    Ok(s) => s,
+                    Err(e) => return Step::Failed { error: e },
+                };
+                let open = |u: &str| {
+                    let _ = Command::new("xdg-open")
+                        .arg(u)
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn();
+                };
+                match nextcloud_login("curl", &server, stop, note, &open, Duration::from_secs(2)) {
+                    Ok((url, user, pass)) => nextcloud_args(&name, &url, &user, &pass),
+                    Err(e) => return Step::Failed { error: e },
+                }
+            } else {
+                let mut a = vec!["config".into(), "create".into(), name.clone(), kind.into()];
+                a.extend(params.iter().map(|(k, v)| format!("{k}={v}")));
+                a
+            }
         }
         Some((st, ans)) => continue_args(&name, st, ans),
     };
@@ -460,6 +663,10 @@ mod tests {
         );
     }
 
+    /// Tests that write a stand-in program and run it take turns: writing
+    /// one while another test forks can leave it "busy" (ETXTBSY) to exec.
+    static SCRIPTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// A stand-in rclone: config create asks whether to use a browser
     /// (answered by Files), then for a two-factor code (asked of you),
     /// then is done; it says a sign-in link on the way.
@@ -495,6 +702,7 @@ esac
 
     #[test]
     fn sets_up_an_account_step_by_step() {
+        let _turn = SCRIPTS.lock().unwrap_or_else(|e| e.into_inner());
         let d = std::env::temp_dir().join(format!("wr-rclone-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
@@ -571,6 +779,7 @@ esac
 
     #[test]
     fn cancelling_stops_a_sign_in() {
+        let _turn = SCRIPTS.lock().unwrap_or_else(|e| e.into_inner());
         let d = std::env::temp_dir().join(format!("wr-rclone-stop-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
@@ -602,5 +811,147 @@ esac
         );
         assert!(t.elapsed() < Duration::from_secs(3));
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn nextcloud_addresses() {
+        assert_eq!(
+            nextcloud_server(" cloud.example.org/ ").unwrap(),
+            "https://cloud.example.org"
+        );
+        assert_eq!(
+            nextcloud_server("https://x.org/nc").unwrap(),
+            "https://x.org/nc"
+        );
+        assert_eq!(
+            nextcloud_server("http://localhost:8080").unwrap(),
+            "http://localhost:8080"
+        );
+        assert!(
+            nextcloud_server("http://cloud.example.org").is_err(),
+            "plain http over the network"
+        );
+        assert!(nextcloud_server("").is_err());
+        assert!(nextcloud_server("ftp://x").is_err());
+    }
+
+    /// A stand-in curl: starting the sign-in gives a link and a token; the
+    /// first poll says "not yet" (404), the next gives the login. It
+    /// insists the token comes on stdin.
+    fn fake_curl(dir: &Path, start_code: u16) -> String {
+        let p = dir.join("curl");
+        let polls = dir.join("polls");
+        std::fs::write(
+            &p,
+            format!(
+                r#"#!/bin/sh
+in=$(cat)
+for a; do url="$a"; done
+case "$url" in
+  */index.php/login/v2)
+    printf '{{"poll":{{"token":"tok123","endpoint":"https://c.example.org/login/v2/poll"}},"login":"https://c.example.org/login/v2/flow/abc"}}\n{start_code}' ;;
+  */login/v2/poll)
+    [ "$in" = "token=tok123" ] || {{ printf 'no token\n400'; exit 0; }}
+    if [ -e {polls} ]; then
+      printf '{{"server":"https://c.example.org","loginName":"jack m","appPassword":"app-pass-1"}}\n200'
+    else
+      : > {polls}; printf 'not yet\n404'
+    fi ;;
+esac
+"#,
+                polls = polls.display()
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn signs_in_to_nextcloud() {
+        let _turn = SCRIPTS.lock().unwrap_or_else(|e| e.into_inner());
+        let d = std::env::temp_dir().join(format!("wr-nc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let curl = fake_curl(&d, 200);
+        let stop = AtomicBool::new(false);
+        let mut notes = vec![];
+        let opened = std::cell::RefCell::new(String::new());
+        let r = nextcloud_login(
+            &curl,
+            "https://c.example.org",
+            &stop,
+            &mut |n| notes.push(n),
+            &|u| *opened.borrow_mut() = u.to_string(),
+            Duration::from_millis(10),
+        );
+        assert_eq!(
+            r,
+            Ok((
+                "https://c.example.org".into(),
+                "jack m".into(),
+                "app-pass-1".into()
+            ))
+        );
+        assert_eq!(*opened.borrow(), "https://c.example.org/login/v2/flow/abc");
+        assert_eq!(
+            notes,
+            vec!["https://c.example.org/login/v2/flow/abc".to_string()]
+        );
+        let a = nextcloud_args("Work", "https://c.example.org", "jack m", "app-pass-1");
+        assert_eq!(
+            a[..5],
+            ["config", "create", "Work", "webdav", "vendor=nextcloud"]
+        );
+        assert_eq!(
+            a[5],
+            "url=https://c.example.org/remote.php/dav/files/jack%20m/"
+        );
+        assert_eq!(a[6], "user=jack m");
+
+        // Not a Nextcloud server.
+        let d2 = d.join("other");
+        std::fs::create_dir_all(&d2).unwrap();
+        let curl2 = fake_curl(&d2, 404);
+        let e = nextcloud_login(
+            &curl2,
+            "https://c.example.org",
+            &stop,
+            &mut |_| {},
+            &|_| {},
+            Duration::from_millis(10),
+        )
+        .unwrap_err();
+        assert!(e.contains("is it a Nextcloud server"), "{e}");
+
+        // Cancelled while waiting.
+        let d3 = d.join("cancel");
+        std::fs::create_dir_all(&d3).unwrap();
+        std::fs::write(d3.join("polls-never"), "").unwrap();
+        let curl3 = fake_curl(&d3, 200);
+        let stop = AtomicBool::new(true);
+        assert_eq!(
+            nextcloud_login(
+                &curl3,
+                "https://c.example.org",
+                &stop,
+                &mut |_| {},
+                &|_| {},
+                Duration::from_millis(10)
+            ),
+            Err("Cancelled".into())
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn old_accounts_keep_their_names() {
+        assert_eq!(provider_name("pcloud"), "pCloud");
+        assert_eq!(provider_name("nextcloud"), "Nextcloud");
+        assert!(
+            !PROVIDERS.iter().any(|(k, _)| *k == "pcloud"),
+            "not offered for new accounts"
+        );
     }
 }
