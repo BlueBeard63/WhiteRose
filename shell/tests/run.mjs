@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
@@ -30,6 +30,7 @@ const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whe
 const Mem = load("Memory.js", ["size", "warningText", "appName", "closedText"]);
 const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
+const Ph = load("../apps/notepad/qml/Placeholder.js", ["text"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
 const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
@@ -1260,6 +1261,14 @@ test("memory warning words", () => {
     const [t, x] = Mem.warningText({ app: { bytes: 2.1 * GB, reason: "biggest" } }, "Files");
     assert.equal(t, "Memory is nearly full");
     assert.ok(x.startsWith("Files is using the most (2.1 GB)."));
+});
+
+test("notepad's empty documents say what they are", () => {
+    assert.equal(Ph.text({ scratch: true }), "Notes, lists, anything. It saves itself.");
+    assert.ok(Ph.text({ path: "" }).startsWith("Start typing."));
+    assert.equal(Ph.text({ path: "/home/x/todo.txt", syntax: "" }), "todo.txt is empty.");
+    assert.equal(Ph.text({ path: "/home/x/README.md", syntax: "Markdown", language: "Markdown" }), "README.md is empty. # starts a heading, - starts a list.");
+    assert.equal(Ph.text({ path: "/src/main.go", syntax: "Go", language: "Go" }), "main.go is empty. It's highlighted as Go.");
 });
 
 // ---- the bug report flow (Report.js) -------------------------------------------
