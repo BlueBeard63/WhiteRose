@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
@@ -40,6 +40,7 @@ const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "t
 const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect", "monitorName", "shown", "save"]);
 const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "zoneCount", "offers"]);
 const P = load("settings/modules/scratchpads/Pads.js", ["ownInstance", "complete", "newId", "make", "name", "place", "size", "summary", "set"], { R });
+const Sc = load("Shortcuts.js", ["groups"], { K });
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -1344,6 +1345,36 @@ test("old-version reports: versions", () => {
     assert.equal(Old.listsBuild(sums, "0.3.1", id), true);
     assert.equal(Old.listsBuild(sums, "0.3.2", id), false, "another version's build");
     assert.equal(Old.listsBuild(sums, "0.3.1", "ef".repeat(32)), false);
+});
+
+// ---- Shortcuts (the SUPER+K sheet) ---------------------------------------------
+test("shortcut sheet: live keys, turned-off ones left out, yours last", () => {
+    const list = [
+        { id: "close-window", keys: ["SUPER+W"] },               // changed from SUPER+Q
+        { id: "fullscreen", keys: [] },                          // turned off
+        { id: "workspace", keys: ["SUPER+1-9"] },
+        { id: "move-direction", keys: ["SUPER+SHIFT+ARROWS", "SUPER+SHIFT+H"] },
+        { id: "launcher", keys: ["SUPER"] },
+        { id: "custom-1", name: "Open Spotify", command: "spotify", keys: ["SUPER+SHIFT+P"] },
+        { id: "custom-2", name: "Off", command: "x", keys: [] },
+        { id: "scratchpad:term", name: "Terminal pad", keys: ["SUPER+GRAVE"] },
+    ];
+    const g = Sc.groups(list);
+    assert.deepEqual(g.map(x => x.name), ["Windows", "Workspaces", "Desktop", "Yours"]);
+    const w = Object.fromEntries(g[0].rows.map(r => [r.label, r.keys]));
+    assert.deepEqual(w["Close"], ["SUPER", "W"]);
+    assert.equal(w["Fullscreen"], undefined);
+    assert.deepEqual(w["Move"], ["SUPER", "DRAG"]);
+    assert.deepEqual(w["Snap to a side"], ["SUPER", "SHIFT", "←→↑↓"]);
+    assert.deepEqual(g[1].rows[0], { label: "Go to workspace", keys: ["SUPER", "1–9"] });
+    assert.deepEqual(g[2].rows[0], { label: "Launcher", keys: ["SUPER"] });
+    assert.deepEqual(g[3].rows, [
+        { label: "Open Spotify", keys: ["SUPER", "SHIFT", "P"] },
+        { label: "Terminal pad", keys: ["SUPER", "`"] },
+    ]);
+    // Before the compositor has sent its list: the mouse moves only.
+    assert.deepEqual(Sc.groups([]).map(x => x.name), ["Windows"]);
+    assert.deepEqual(Sc.groups(undefined)[0].rows.length, 2);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

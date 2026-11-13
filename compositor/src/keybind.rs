@@ -61,6 +61,8 @@ pub enum Action {
     Agenda,
     /// What's playing, in the island (SUPER+SHIFT+M; the Music module).
     Music,
+    /// The keyboard shortcut sheet, in the island (SUPER+K).
+    Shortcuts,
     ScreenshotRegion,
     // Handled by the compositor.
     /// PrtSc: capture the whole screen straight away.
@@ -155,6 +157,7 @@ impl Action {
                 | Action::ReportSnapshot
                 | Action::Agenda
                 | Action::Music
+                | Action::Shortcuts
                 | Action::ScreenshotRegion
                 | Action::Media(_)
         )
@@ -352,6 +355,7 @@ impl Def {
             "report" => Action::ReportSnapshot,
             "agenda" => Action::Agenda,
             "music" => Action::Music,
+            "shortcuts" => Action::Shortcuts,
             "lock" => Action::Lock,
             "screenshot-region" => Action::ScreenshotRegion,
             "screenshot-screen" => Action::ScreenshotScreen,
@@ -405,6 +409,7 @@ pub const CATALOG: &[Def] = &[
     def("agenda", "Today's agenda", "Shell", &["SUPER+A"]),
     def("music", "Now playing", "Shell", &["SUPER+SHIFT+M"]),
     def("report", "Snapshot for a bug report", "Shell", &["SUPER+SHIFT+B"]),
+    def("shortcuts", "Keyboard shortcuts", "Shell", &["SUPER+K"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
     def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
@@ -667,6 +672,7 @@ mod tests {
             (SUPER, keysyms::KEY_a, Action::Agenda),
             (SUPER_SHIFT, keysyms::KEY_m, Action::Music),
             (SUPER_SHIFT, keysyms::KEY_b, Action::ReportSnapshot),
+            (SUPER, keysyms::KEY_k, Action::Shortcuts),
             (SUPER_ALT, keysyms::KEY_Left, Action::MoveToWorkspaceStep(Dir::Left)),
             (SUPER_ALT, keysyms::KEY_Down, Action::MoveToWorkspaceStep(Dir::Down)),
             (SUPER_CTRL, keysyms::KEY_Right, Action::MoveToOutput(Dir::Right)),
@@ -835,11 +841,11 @@ mod tests {
     #[test]
     fn a_range_shortcut_needs_its_range_key() {
         let mut o = std::collections::HashMap::new();
-        o.insert("focus-direction".to_string(), vec!["SUPER+1-9".to_string(), "SUPER+K".to_string()]);
+        o.insert("focus-direction".to_string(), vec!["SUPER+1-9".to_string(), "SUPER+Y".to_string()]);
         o.insert("workspace".to_string(), vec!["SUPER+ARROWS".to_string()]);
         let (b, errors) = Bindings::build("true", &o, &[]);
         assert_eq!(errors.len(), 3, "{errors:?}");
-        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_k)), None);
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_y)), None);
         assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_Left)), None);
     }
 }

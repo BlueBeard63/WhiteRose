@@ -32,6 +32,8 @@ ShellRoot {
             else if (name === "music" && !Daemon.setting("settings.modules.disabled", []).includes("music")) ShellState.toggle("music");
             // SUPER+A: the agenda, if its module is on.
             else if (name === "agenda" && !Daemon.setting("settings.modules.disabled", []).includes("agenda")) ShellState.toggle("agenda");
+            // SUPER+K: the keyboard shortcut sheet.
+            else if (name === "shortcuts") ShellState.toggle("shortcuts");
             else if (name === "lock") ShellState.lock();
             // SUPER+SHIFT+B: a snapshot for a bug report, then "Report" / "Later".
             else if (name === "report_snapshot") ShellState.snapshotNow();

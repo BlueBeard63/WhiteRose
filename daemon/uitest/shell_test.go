@@ -319,3 +319,17 @@ func TestSuperLLocksWithTheLockScreen(t *testing.T) {
 		}
 	}
 }
+
+// SUPER+K shows the shortcut sheet in the island, each shortcut on the
+// keys it's on now; Esc closes it.
+func TestSuperKShowsTheShortcutSheet(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	bar.Press("super+k")
+	bar.WaitFor(uitest.Named("Keyboard shortcuts"))
+	bar.WaitFor(uitest.Named("Close").Described("SUPER + Q"))
+	bar.WaitFor(uitest.Named("Go to workspace").Described("SUPER + 1–9"))
+	bar.WaitFor(uitest.Named("Move").Described("SUPER + DRAG"))
+	bar.Press("Escape")
+	bar.Gone(uitest.Named("Keyboard shortcuts"))
+}
