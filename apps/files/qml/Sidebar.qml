@@ -181,7 +181,7 @@ Rectangle {
             width: 18; height: 18
             sourceSize: Qt.size(36, 36)
             // (An icon theme's file, or one of Files' own: qrc:.)
-            source: !pr.icon ? "" : pr.icon.startsWith("qrc:") ? pr.icon : "file://" + pr.icon
+            source: !pr.icon ? "" : pr.icon.startsWith("qrc:") ? pr.icon : F.fileUrl(pr.icon)
             visible: !pr.look && pr.dot.a === 0 && pr.glyph === ""
         }
         Icon {

@@ -508,6 +508,99 @@ pub struct Crumb {
 
 /// "/home/me/Code/app" -> Home › Code › app (or / › etc › …).
 pub fn crumbs(path: &str, home: &Path) -> Vec<Crumb> {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from);
+    crumbs_in(path, home, runtime.as_deref())
+}
+
+/// A network or cloud drive's folder: its mount point (where its own
+/// crumbs start) and the name people know it by. GVfs mounts are folders
+/// in $XDG_RUNTIME_DIR/gvfs named for gio ("dav:host=x,ssl=true,
+/// prefix=%2Fremote.php%2Fwebdav"); WhiteRose's rclone drives are in
+/// $XDG_RUNTIME_DIR/whiterose/cloud/<account name>.
+pub fn mount_place(path: &str, runtime: &Path) -> Option<(String, String)> {
+    for (base, gvfs) in [
+        (runtime.join("gvfs"), true),
+        (runtime.join("whiterose/cloud"), false),
+    ] {
+        let base = base.to_string_lossy().into_owned();
+        let Some(rest) = path.strip_prefix(&format!("{base}/")) else {
+            continue;
+        };
+        let mount = rest.split('/').next().filter(|m| !m.is_empty())?;
+        let name = if gvfs {
+            gvfs_name(mount)
+        } else {
+            mount.to_string()
+        };
+        return Some((format!("{base}/{mount}"), name));
+    }
+    None
+}
+
+/// A GVfs mount folder's name for people: "Nextcloud" (WebDAV at
+/// /remote.php/), "photos on nas" (SMB), the host (SFTP, FTP, WebDAV),
+/// "Google Drive", "OneDrive".
+pub fn gvfs_name(mount: &str) -> String {
+    let (kind, rest) = mount.split_once(':').unwrap_or((mount, ""));
+    let decode = |v: &str| {
+        let b = v.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] == b'%' && i + 2 < b.len() {
+                if let Some(n) = std::str::from_utf8(&b[i + 1..i + 3])
+                    .ok()
+                    .and_then(|h| u8::from_str_radix(h, 16).ok())
+                {
+                    out.push(n);
+                    i += 3;
+                    continue;
+                }
+            }
+            out.push(b[i]);
+            i += 1;
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    };
+    let get = |k: &str| {
+        rest.split(',')
+            .find_map(|kv| {
+                kv.split_once('=')
+                    .filter(|(key, _)| *key == k)
+                    .map(|(_, v)| decode(v))
+            })
+            .unwrap_or_default()
+    };
+    let host = get("host");
+    match kind {
+        "dav" | "davs" if get("prefix").contains("/remote.php/") => "Nextcloud".into(),
+        "smb-share" if !get("share").is_empty() => format!("{} on {}", get("share"), get("server")),
+        "smb-server" => get("server"),
+        "google-drive" => "Google Drive".into(),
+        "onedrive" => "OneDrive".into(),
+        _ if !host.is_empty() => host,
+        _ => mount.to_string(),
+    }
+}
+
+/// `crumbs`, with $XDG_RUNTIME_DIR given (tests).
+pub fn crumbs_in(path: &str, home: &Path, runtime: Option<&Path>) -> Vec<Crumb> {
+    // A network or cloud drive: from its own top, by its name.
+    if let Some((root, name)) = runtime.and_then(|r| mount_place(path, r)) {
+        let mut out = vec![Crumb {
+            name,
+            path: root.clone(),
+        }];
+        let mut acc = root.clone();
+        for part in path[root.len()..].split('/').filter(|p| !p.is_empty()) {
+            acc = format!("{acc}/{part}");
+            out.push(Crumb {
+                name: part.into(),
+                path: acc.clone(),
+            });
+        }
+        return out;
+    }
     let home_s = home.to_string_lossy();
     let (mut out, rest, mut acc) = if path == home_s || path.starts_with(&format!("{home_s}/")) {
         (
@@ -651,6 +744,48 @@ mod tests {
                 ("/mnt/backup".into(), "/dev/sdb1".into())
             ]
         );
+    }
+
+    #[test]
+    fn drives_by_their_names() {
+        let h = Path::new("/home/me");
+        let run = Path::new("/run/user/1000");
+        let nc = "/run/user/1000/gvfs/dav:host=storage.bluebeard.site,ssl=true,user=jack,prefix=%2Fremote.php%2Fwebdav";
+        let c = crumbs_in(&format!("{nc}/Photos/2026"), h, Some(run));
+        assert_eq!(
+            c.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["Nextcloud", "Photos", "2026"]
+        );
+        assert_eq!(c[0].path, nc);
+        assert_eq!(c[2].path, format!("{nc}/Photos/2026"));
+        assert_eq!(
+            gvfs_name("smb-share:server=nas,share=photos"),
+            "photos on nas"
+        );
+        assert_eq!(gvfs_name("sftp:host=build.local,user=jack"), "build.local");
+        assert_eq!(
+            gvfs_name("davs:host=files.example.org,ssl=true,prefix=%2Fdav"),
+            "files.example.org"
+        );
+        assert_eq!(
+            gvfs_name("google-drive:host=gmail.com,user=jack"),
+            "Google Drive"
+        );
+        assert_eq!(gvfs_name("odd"), "odd");
+        assert_eq!(gvfs_name("sftp:host=h%C3%A9,user=x"), "hé");
+        assert_eq!(
+            gvfs_name("sftp:host=%é,user=x"),
+            "%é",
+            "a stray % before a non-ASCII letter"
+        );
+        let cloud = crumbs_in("/run/user/1000/whiterose/cloud/Work/Docs", h, Some(run));
+        assert_eq!(
+            cloud.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["Work", "Docs"]
+        );
+        // The gvfs folder itself, and anything else: as before.
+        assert_eq!(crumbs_in("/run/user/1000/gvfs", h, Some(run))[0].name, "/");
+        assert_eq!(crumbs_in("/home/me/x", h, Some(run))[0].name, "Home");
     }
 
     #[test]

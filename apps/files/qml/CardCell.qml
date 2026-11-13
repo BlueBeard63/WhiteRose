@@ -47,7 +47,7 @@ Item {
             Image {
                 anchors { fill: parent; margins: cell.photo ? 0 : 4 }
                 visible: !cell.modelData.look
-                source: cell.photo ? "file://" + cell.modelData.path : cell.modelData.icon ? "file://" + cell.modelData.icon : ""
+                source: cell.photo ? F.fileUrl(cell.modelData.path) : cell.modelData.icon ? F.fileUrl(cell.modelData.icon) : ""
                 sourceSize: Qt.size(width * 2, height * 2)
                 fillMode: cell.photo ? Image.PreserveAspectCrop : Image.PreserveAspectFit
                 asynchronous: true

@@ -41,7 +41,7 @@ GridView {
                 anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
                 width: 44; height: 44
                 sourceSize: Qt.size(88, 88)
-                source: cell.modelData.icon ? "file://" + cell.modelData.icon : ""
+                source: cell.modelData.icon ? F.fileUrl(cell.modelData.icon) : ""
             }
             Column {
                 anchors { left: ic.right; leftMargin: 14; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }

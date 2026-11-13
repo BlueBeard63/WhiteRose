@@ -1282,7 +1282,7 @@ AppWindow {
             return;
         }
         const info = JSON.parse(Fs.runInfo(entry.path, entry.mime ?? ""));
-        if (info.kind === "none") { Qt.openUrlExternally("file://" + entry.path); return }
+        if (info.kind === "none") { Qt.openUrlExternally(F.fileUrl(entry.path)); return }
         runDialog.ask(entry, info);
     }
     // As text, in Notepad (or the code editor).
@@ -1428,8 +1428,8 @@ AppWindow {
         id: exportDialog
         title: "Export Files' settings"
         fileMode: FileDialog.SaveFile
-        currentFolder: "file://" + Fs.home()
-        selectedFile: "file://" + Fs.home() + "/whiterose-files-settings.json"
+        currentFolder: F.fileUrl(Fs.home())
+        selectedFile: F.fileUrl(Fs.home()) + "/whiterose-files-settings.json"
         nameFilters: ["Files settings (*.json)"]
         onAccepted: {
             const err = Ops.exportSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")));
@@ -1439,7 +1439,7 @@ AppWindow {
     FileDialog {
         id: importDialog
         title: "Import Files' settings"
-        currentFolder: "file://" + Fs.home()
+        currentFolder: F.fileUrl(Fs.home())
         nameFilters: ["Files settings (*.json)"]
         onAccepted: {
             const r = JSON.parse(Ops.importSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, ""))));

@@ -29,7 +29,7 @@ const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem",
 const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn", "crashToPrompt", "promptText"]);
 const Mem = load("Memory.js", ["size", "warningText", "appName", "closedText"]);
 const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
-const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
+const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName", "fileUrl"]);
 const Ph = load("../apps/notepad/qml/Placeholder.js", ["text"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
@@ -1269,6 +1269,13 @@ test("notepad's empty documents say what they are", () => {
     assert.equal(Ph.text({ path: "/home/x/todo.txt", syntax: "" }), "todo.txt is empty.");
     assert.equal(Ph.text({ path: "/home/x/README.md", syntax: "Markdown", language: "Markdown" }), "README.md is empty. # starts a heading, - starts a list.");
     assert.equal(Ph.text({ path: "/src/main.go", syntax: "Go", language: "Go" }), "main.go is empty. It's highlighted as Go.");
+});
+
+test("files: file addresses keep names with % # ?", () => {
+    assert.equal(F.fileUrl("/run/user/1000/gvfs/dav:host=s,prefix=%2Fremote.php%2Fwebdav/a b.jpg"),
+        "file:///run/user/1000/gvfs/dav%3Ahost%3Ds%2Cprefix%3D%252Fremote.php%252Fwebdav/a%20b.jpg");
+    assert.equal(decodeURIComponent(F.fileUrl("/x/#1?.png").split("/").pop()), "#1?.png");
+    assert.equal(F.fileUrl(""), "");
 });
 
 // ---- the bug report flow (Report.js) -------------------------------------------

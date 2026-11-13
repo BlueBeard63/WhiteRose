@@ -14,6 +14,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Window
 import WhiteRose.Kit
 import WhiteRose.Files
+import "Format.js" as Fmt
 
 Item {
     id: root
@@ -70,7 +71,7 @@ Item {
         width: root.natural.width > 0 ? root.natural.width * root.fit : root.width
         height: root.natural.height > 0 ? root.natural.height * root.fit : root.height
         visible: root.kind === "image" && status === Image.Ready
-        source: root.kind === "image" ? "file://" + root.path : ""
+        source: root.kind === "image" ? Fmt.fileUrl(root.path) : ""
         // Decoded at the size it's shown, not the file's (memory).
         sourceSize: Qt.size(Math.max(16, width) * Screen.devicePixelRatio, Math.max(16, height) * Screen.devicePixelRatio)
         fillMode: Image.PreserveAspectFit
@@ -217,7 +218,7 @@ Item {
         sourceSize: Qt.size(width * 2, height * 2)
         // The theme's large one (the listing's is 48 px: blurry blown up).
         readonly property string large: root.entry ? Fs.typeIcon(root.mime, root.entry.dir, 256) : ""
-        source: large ? "file://" + large : root.entry?.icon ? "file://" + root.entry.icon : ""
+        source: large ? Fmt.fileUrl(large) : root.entry?.icon ? Fmt.fileUrl(root.entry.icon) : ""
         asynchronous: true
     }
 }

@@ -1,6 +1,13 @@
 // Sizes, dates and kinds the way the file manager shows them.
 .pragma library
 
+// A local path as a file:// address for QML (Image, MediaPlayer, dialogs):
+// each part encoded, so a name with %, # or ? still points at the file
+// (a GVfs mount's folder is named with %2F in it).
+function fileUrl(path) {
+    return path ? "file://" + String(path).split("/").map(encodeURIComponent).join("/") : "";
+}
+
 function size(bytes) {
     if (bytes < 1000) return bytes + " B";
     const units = ["kB", "MB", "GB", "TB"];

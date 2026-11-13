@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
 import WhiteRose.Files
+import "Format.js" as Fmt
 
 FocusScope {
     id: root
@@ -72,7 +73,7 @@ FocusScope {
                         x: 8; anchors.verticalCenter: parent.verticalCenter
                         width: 18; height: 18
                         sourceSize: Qt.size(36, 36)
-                        source: row.modelData.icon ? "file://" + row.modelData.icon : ""
+                        source: row.modelData.icon ? Fmt.fileUrl(row.modelData.icon) : ""
                         asynchronous: true
                         opacity: row.modelData.hidden ? 0.55 : 1
                     }
