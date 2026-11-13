@@ -99,6 +99,8 @@ impl WhiteRose {
                 self.shake.motion(pos.x - from.x, pos.y - from.y, crate::shake::now_ms());
             }
         }
+        // An X11 app dragging off its windows: catch it for Wayland ones.
+        self.xdnd_pointer(pos);
         // The drag icon follows the pointer, and so does a pointer we draw.
         if self.dnd_icon.is_some() || self.draws_cursor {
             self.schedule_redraw();
@@ -155,6 +157,9 @@ impl WhiteRose {
         }
         pointer.button(self, &ButtonEvent { button, state: button_state, serial, time });
         pointer.frame(self);
+        // (Released: an X11 drag's drop catcher goes.)
+        let at = pointer.current_location();
+        self.xdnd_pointer(at);
     }
 
     /// SUPER+left-drag moves a window and SUPER+right-drag resizes it from

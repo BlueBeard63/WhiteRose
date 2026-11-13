@@ -440,6 +440,34 @@ pub fn start_dnd<D>(
     }
 }
 
+/// WhiteRose patch: as `start_dnd` with a pointer, for a drag that began in
+/// a client that drags by itself (an X11 app, through Xwayland): the pointer
+/// stays with the surface the press began on (`pointer_start_data.focus`),
+/// so it still sees the motion and the release, while other clients' surfaces
+/// get the compositor's offer.
+pub fn start_dnd_keeping_focus<D>(
+    dh: &DisplayHandle,
+    seat: &Seat<D>,
+    data: &mut D,
+    serial: Serial,
+    pointer_start_data: PointerGrabStartData<D>,
+    metadata: SourceMetadata,
+) where
+    D: SeatHandler + DataDeviceHandler + 'static,
+    <D as SeatHandler>::PointerFocus: WaylandFocus,
+{
+    seat.user_data()
+        .insert_if_missing(|| RefCell::new(SeatData::<D::SelectionUserData>::new()));
+    if let Some(pointer) = seat.get_pointer() {
+        pointer.set_grab(
+            data,
+            server_dnd_grab::ServerDnDGrab::new_pointer_keeping_focus(dh, pointer_start_data, metadata, seat.clone()),
+            serial,
+            Focus::Keep,
+        );
+    }
+}
+
 mod handlers {
     use std::cell::RefCell;
 

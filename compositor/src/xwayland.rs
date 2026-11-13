@@ -415,6 +415,10 @@ impl XwmHandler for WhiteRose {
     }
 
     fn mapped_override_redirect_window(&mut self, _: XwmId, x: X11Surface) {
+        // Our own drop catcher (xdnd.rs): never drawn, never in the way.
+        if self.xwayland.dnd.proxy == Some(x.window_id()) {
+            return;
+        }
         let geo = x.geometry();
         let window = Window::new_x11_window(x);
         window.user_data().insert_if_missing(|| Unmanaged);

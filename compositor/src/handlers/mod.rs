@@ -149,7 +149,33 @@ impl ClientDndGrabHandler for WhiteRose {
         self.xdnd_drop()
     }
 }
-impl ServerDndGrabHandler for WhiteRose {}
+/// The compositor's own drags: an X11 app's carried on into Wayland ones
+/// (xdnd.rs).
+impl ServerDndGrabHandler for WhiteRose {
+    fn accept(&mut self, mime_type: Option<String>, _seat: Seat<Self>) {
+        self.xdnd_in_accept(mime_type);
+    }
+
+    fn action(
+        &mut self,
+        action: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
+        _seat: Seat<Self>,
+    ) {
+        self.xdnd_in_action(action);
+    }
+
+    fn send(&mut self, mime_type: String, fd: std::os::fd::OwnedFd, _seat: Seat<Self>) {
+        self.xdnd_in_send(mime_type, fd);
+    }
+
+    fn cancelled(&mut self, _seat: Seat<Self>) {
+        self.xdnd_in_result(false);
+    }
+
+    fn finished(&mut self, _seat: Seat<Self>) {
+        self.xdnd_in_result(true);
+    }
+}
 delegate_data_device!(WhiteRose);
 
 impl OutputHandler for WhiteRose {}
