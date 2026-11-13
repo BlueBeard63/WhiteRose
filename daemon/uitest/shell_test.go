@@ -7,6 +7,7 @@ package uitest_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -299,5 +300,22 @@ func TestNowPlayingPausesWithTheMusicModuleOff(t *testing.T) {
 	}
 	if _, ok := bar.Lookup(uitest.Named("Next").Role("push button")); ok {
 		t.Error("the music island opened with its module off")
+	}
+}
+
+// SUPER+L locks the session with the shell's lock screen, and its
+// unlocking (Auth) loads and starts listening without errors.
+func TestSuperLLocksWithTheLockScreen(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	s.Bar().Press("super+l")
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Log(), "session locked") }) {
+		t.Fatal("the session didn't lock")
+	}
+	time.Sleep(time.Second)
+	for _, line := range strings.Split(s.Log(), "\n") {
+		lock := strings.Contains(line, "LockView.qml") || strings.Contains(line, "LockScreen.qml")
+		if strings.Contains(line, "Auth.qml") || lock && (strings.Contains(line, "Error") || strings.Contains(line, "is not")) {
+			t.Error(line)
+		}
 	}
 }

@@ -407,6 +407,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		secrets.Delete(id)
 		return nil, nil
 	}
+	srv.Ops["keyring_unlock"] = keyringUnlock(secrets, store.UnlockKeyring, stderr)
 	// Files' key for sealing its index and history (made the first time;
 	// kept in the keyring when there is one).
 	srv.Ops["files_key"] = func(server.Request) (any, error) {
@@ -699,4 +700,25 @@ func shareSecretID(args json.RawMessage) (string, error) {
 		return "", errors.New("share secrets have ids starting share:")
 	}
 	return x.ID, nil
+}
+
+// keyringUnlock is the keyring_unlock op: the lock screen, after your
+// password unlocked it, hands it over so the keyring opens too (a
+// fingerprint login leaves it locked). The password is never kept or
+// logged; a keyring with another password stays locked.
+func keyringUnlock(secrets *store.Resolver, unlock func(password string) error, stderr io.Writer) func(server.Request) (any, error) {
+	return func(r server.Request) (any, error) {
+		var x struct {
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(r.Args, &x); err != nil || x.Password == "" {
+			return nil, errors.New("no password")
+		}
+		if err := unlock(x.Password); err != nil {
+			fmt.Fprintln(stderr, "whiterosed: the keyring stays locked:", err)
+			return nil, errors.New("the keyring stays locked")
+		}
+		secrets.Retry()
+		return nil, nil
+	}
 }

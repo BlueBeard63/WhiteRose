@@ -1,6 +1,8 @@
 // Unlocking the lock screen (PAM, configs in shell/pam, installed in
 // /etc/pam.d). Two conversations side by side, as either one unlocks:
-//   - the password (whiterose-lock), one try at a time, never kept;
+//   - the password (whiterose-lock), one try at a time, never kept. Once
+//     PAM takes it, it's handed to whiterosed once to unlock the keyring
+//     too (a fingerprint login leaves it locked: no password to open it);
 //   - a fingerprint (whiterose-fingerprint, fprintd), listening while the
 //     lock screen shows. With no reader or no enrolled finger it fails at
 //     once and isn't offered. It gives up after 30 s or three misses (the
@@ -18,6 +20,8 @@ Singleton {
     // True between a correct password and the lock going away.
     property bool unlocking: false
     property string pending: ""
+    // The password PAM is checking, until it answers.
+    property string checking: ""
 
     // ---- fingerprint ----------------------------------------------------------------------
     // Seen a reader with a finger enrolled (since the shell started).
@@ -75,18 +79,21 @@ Singleton {
         onResponseRequiredChanged: {
             if (!responseRequired) return;
             respond(root.pending);
+            root.checking = root.pending;
             root.pending = "";
         }
         onCompleted: result => {
-            root.pending = "";
+            const password = root.checking;
+            root.pending = root.checking = "";
             if (result === PamResult.Success) {
+                Daemon.request({ op: "keyring_unlock", args: { password: password } });
                 root.unlocked();
             } else {
                 root.error = result === PamResult.MaxTries ? "Too many tries. Wait a moment and try again." : "Wrong password";
             }
         }
         onError: err => {
-            root.pending = "";
+            root.pending = root.checking = "";
             root.error = "Can't check the password (" + PamError.toString(err) + ")";
         }
     }
