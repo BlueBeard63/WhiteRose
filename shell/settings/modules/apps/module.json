@@ -9,6 +9,8 @@
   "core": true,
   "keywords": ["apps", "install", "software", "setup", "ghostty", "vscode", "code", "thunderbird", "bitwarden", "libreoffice", "vlc", "calculator", "zapzap", "discord", "signal", "zsh", "oh my zsh", "git", "github"],
   "pages": [
+    { "id": "defaults", "name": "Default apps", "icon": "open", "file": "DefaultApps.qml",
+      "keywords": ["default apps", "default app", "open with", "opens with", "file types", "file associations", "mime", "browser", "email", "pdf", "office", "libreoffice", "word", "excel", "docx", "xlsx"] },
     { "id": "memory", "name": "Memory", "icon": "gauge", "file": "Memory.qml",
       "keywords": ["memory", "ram", "out of memory", "oom", "leak", "memory leak", "close apps", "keep running", "protected", "frozen", "slow"] }
   ]

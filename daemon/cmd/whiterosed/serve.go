@@ -420,6 +420,10 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		srv.Ops[name] = op
 	}
 	go reps.watch()
+	// Settings › Apps › Default apps.
+	for name, op := range defaultAppsOps() {
+		srv.Ops[name] = op
+	}
 	// Memory running out: name (and later close) the app at fault.
 	mem := newMemWatch(st, srv.Broadcast)
 	for name, op := range mem.ops() {

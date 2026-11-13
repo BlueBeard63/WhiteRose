@@ -30,11 +30,18 @@ Item {
     property string localCopy: ""
     property bool fetching: false
     property bool tooBig: false
+    // (A moment later: in the change itself `remote` and `kind` can still be
+    // the last entry's.)
     onEntryChanged: {
         root.localCopy = "";
         root.tooBig = false;
-        root.fetching = root.remote && root.kind !== "other";
-        if (root.fetching) Ops.fetchCopy(root.entry.path);
+        root.fetching = false;
+        const asked = root.entry?.path ?? "";
+        Qt.callLater(() => {
+            if (!root.entry || root.entry.path !== asked) return;
+            root.fetching = root.remote && root.kind !== "other";
+            if (root.fetching) Ops.fetchCopy(asked);
+        });
     }
     Connections {
         target: Ops

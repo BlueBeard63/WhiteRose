@@ -868,7 +868,7 @@ impl qobject::Fs {
     }
 
     pub fn set_default_app(&self, mime: &QString, id: &QString) -> bool {
-        let file = crate::apps::list_files().remove(0);
+        let file = crate::apps::user_list();
         let ok = crate::apps::set_default(&file, &mime.to_string(), &id.to_string()).is_ok();
         crate::apps::forget();
         ok
