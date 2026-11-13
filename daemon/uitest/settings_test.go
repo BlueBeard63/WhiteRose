@@ -508,3 +508,28 @@ func TestSettingsSlidersTakeTheWheelOnlyOnceClicked(t *testing.T) {
 		t.Errorf("clicked, the wheel didn't move it (still %s)", clicked)
 	}
 }
+
+// A floating window gets smaller when its bottom-right corner is dragged in:
+// Settings (a shell window) and Files (the apps' AppWindow), each on its own.
+func TestFloatingWindowsResizeFromTheirCorner(t *testing.T) {
+	t.Run("Settings", func(t *testing.T) {
+		s := uitest.Start(t, uitest.Options{})
+		dragCornerIn(t, s, s.Settings(""))
+	})
+	t.Run("Files", func(t *testing.T) {
+		s := uitest.Start(t, uitest.Options{})
+		dragCornerIn(t, s, s.Open(filesBinary(s)+" "+s.Home, "Home - Files"))
+	})
+}
+
+func dragCornerIn(t *testing.T, s *uitest.Session, w *uitest.Window) {
+	t.Helper()
+	g := w.Geometry()
+	// 4px in from the corner: on the corner grip, inside the window.
+	x, y := float64(g[0]+g[2]-4), float64(g[1]+g[3]-4)
+	s.Drag(x, y, x-120, y-80)
+	var now [4]int
+	if !uitest.WaitUntil(func() bool { now = w.Geometry(); return now[2] < g[2]-60 && now[3] < g[3]-40 }) {
+		t.Errorf("dragging the corner didn't resize it: %v, then %v", g, now)
+	}
+}

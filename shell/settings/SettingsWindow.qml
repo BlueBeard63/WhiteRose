@@ -464,4 +464,22 @@ FloatingWindow {
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
     Shortcut { sequence: "Ctrl+W"; onActivated: Qt.quit() }
 
+    // ---- resizing from the edges (not while maximised), as in the apps' AppWindow ----
+    component Edge: MouseArea {
+        property int edges
+        enabled: !win.maximized
+        z: 100
+        cursorShape: edges === (Qt.LeftEdge | Qt.TopEdge) || edges === (Qt.RightEdge | Qt.BottomEdge) ? Qt.SizeFDiagCursor
+            : edges === (Qt.RightEdge | Qt.TopEdge) || edges === (Qt.LeftEdge | Qt.BottomEdge) ? Qt.SizeBDiagCursor
+            : edges & (Qt.LeftEdge | Qt.RightEdge) ? Qt.SizeHorCursor : Qt.SizeVerCursor
+        onPressed: win.startSystemResize(edges)
+    }
+    readonly property int grab: 6
+    Edge { edges: Qt.LeftEdge; anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: 12; bottomMargin: 12 } width: win.grab }
+    Edge { edges: Qt.RightEdge; anchors { right: parent.right; top: parent.top; bottom: parent.bottom; topMargin: 12; bottomMargin: 12 } width: win.grab }
+    Edge { edges: Qt.BottomEdge; anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 12; rightMargin: 12 } height: win.grab }
+    Edge { edges: Qt.TopEdge; anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 12; rightMargin: 150 } height: 4 }
+    Edge { edges: Qt.LeftEdge | Qt.BottomEdge; anchors { left: parent.left; bottom: parent.bottom } width: 12; height: 12 }
+    Edge { edges: Qt.RightEdge | Qt.BottomEdge; anchors { right: parent.right; bottom: parent.bottom } width: 12; height: 12 }
+    Edge { edges: Qt.LeftEdge | Qt.TopEdge; anchors { left: parent.left; top: parent.top } width: 12; height: 12 }
 }
