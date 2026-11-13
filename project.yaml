@@ -14,9 +14,41 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.3.0-alpha.3
+version: 0.3.0-alpha.4
 
 releases:
+  - version: 0.3.0-alpha.4
+    date: 2026-11-13
+    title: Reports, memory and releases (alpha)
+    summary: >-
+      The fourth 0.3 alpha: report a problem from the island, a session that survives memory running out, any release installable from Settings, default apps, and Files fast on Nextcloud and other network drives. Install it by hand with its install.sh; from this release on, pre-releases can come through Settings › Updates.
+    added:
+      - "Report a problem, step by step in the island: what WhiteRose recorded is filled in for you, and you see everything before it's sent (SUPER+SHIFT+B, Settings › About, or after a crash)"
+      - "Crashes are recorded with a snapshot of the moment (load, open windows, the session log), and the island offers to report them"
+      - "Running out of memory no longer ends the session: each app runs on its own, the one at fault is named in the island, and closed if memory is critical. Your terminal and the apps you choose are kept (Settings › Apps › Memory)"
+      - "Settings › Updates › Releases: every release by version, alphas under their release, a search, and installing any of them (older ones too)"
+      - "Pre-releases switch: alpha and beta versions offered as updates"
+      - "Default apps (Settings › Apps › Default apps): what opens each kind of file, by category or by file type; LibreOffice for office files and Notepad for text out of the box"
+      - "Nextcloud accounts in Files, signing in with Nextcloud's own browser sign-in"
+      - "Notepad says what an empty document is (and how saving names it)"
+    changed:
+      - "Files is fast on network drives: folders load in the background, open at once when you've been there, and the next ones are read ahead; files open and preview without waiting on the server"
+      - "Network drives show by name in Files (Nextcloud, photos on nas), not by their mount folder"
+      - "Bug reports on GitHub ask for the version and build; reports from older versions or builds that don't match a release are closed with a note"
+      - "pCloud is no longer offered in Add cloud account (accounts already added keep working)"
+    fixed:
+      - "A newly installed version is started at the next login even when an older one was still waiting to be tried"
+      - "Settings › Updates shows a version installed but not running yet, instead of calling the running one the newest"
+      - "Logging into GNOME after WhiteRose: apps took 25 s to start (WhiteRose's desktop portal and settings were left behind)"
+      - "Files froze (\"not responding\") opening folders and files on Nextcloud"
+      - "Files on a network drive, USB stick or NTFS disk asked to be run instead of opening"
+      - "Pictures in folders with % # or ? in their path didn't show"
+      - "Settings › About said \"development\" instead of the version"
+      - "Prompts arriving while the shell starts (a crash, the update failure) could be lost"
+    notes: |
+      Install it with this release's `install.sh`; alpha.3's updater only follows full releases. Your settings carry over. From this release on, Settings › Updates › Releases can install alphas (switch on Pre-releases), and bug reports can be sent from WhiteRose: earlier versions weren't built with the build IDs a report needs.
+    contributors: [BlueBeard63]
+
   - version: 0.3.0-alpha.3
     date: 2026-11-13
     title: X11 apps (alpha)
