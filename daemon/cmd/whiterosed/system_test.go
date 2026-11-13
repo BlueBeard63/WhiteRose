@@ -51,7 +51,7 @@ func TestSettingsAndCalendarCommandsTalkToTheDaemon(t *testing.T) {
 	}
 	defer st.Close()
 	d := calendar.Dirs{Data: filepath.Join(root, "data"), Cache: filepath.Join(root, "cache"), Home: root}
-	srv := &server.Server{Store: st, Secrets: store.Resolver{Fallback: st.Fallback()}, Dirs: d}
+	srv := &server.Server{Store: st, Secrets: &store.Resolver{Fallback: st.Fallback()}, Dirs: d}
 	sock := filepath.Join(root, "d.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {

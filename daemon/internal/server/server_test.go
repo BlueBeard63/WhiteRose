@@ -2,11 +2,16 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -77,7 +82,7 @@ func setup(t *testing.T) (*Server, string, calendar.Dirs) {
 	}
 	t.Cleanup(func() { st.Close() })
 	d := calendar.Dirs{Config: filepath.Join(root, "c"), Data: filepath.Join(root, "d"), Cache: filepath.Join(root, "k"), Home: root}
-	s := &Server{Store: st, Secrets: store.Resolver{Fallback: st.Fallback()}, Dirs: d}
+	s := &Server{Store: st, Secrets: &store.Resolver{Fallback: st.Fallback()}, Dirs: d}
 	sock := filepath.Join(root, "d.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
@@ -234,5 +239,96 @@ func TestSlowOpsDontBlockOtherRequests(t *testing.T) {
 	slow := c.until(func(m map[string]any) bool { return m["reply"] == float64(99) })
 	if slow["value"] != "done" {
 		t.Fatalf("slow op reply: %v", slow)
+	}
+}
+
+// lockable is a keyring that can be locked (a fingerprint login).
+type lockable struct {
+	mu     sync.Mutex
+	m      map[string]string
+	locked bool
+}
+
+func (k *lockable) Name() string { return "keyring" }
+func (k *lockable) Get(id string) (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.locked {
+		return "", store.ErrLocked
+	}
+	v, ok := k.m[id]
+	if !ok {
+		return "", store.ErrNoSecret
+	}
+	return v, nil
+}
+func (k *lockable) Set(id, v string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.locked {
+		return store.ErrLocked
+	}
+	k.m[id] = v
+	return nil
+}
+func (k *lockable) Delete(id string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.m, id)
+	return nil
+}
+func (k *lockable) lock(v bool) { k.mu.Lock(); k.locked = v; k.mu.Unlock() }
+
+// A calendar whose link is in a locked keyring stays listed (said to be
+// locked, so it doesn't look lost) and its last download still shows.
+func TestCalendarInALockedKeyringKeepsShowing(t *testing.T) {
+	s, sock, d := setup(t)
+	kr := &lockable{m: map[string]string{}}
+	s.Secrets.Keyring = kr // before anything uses it
+	s.CalendarsChanged = func() {}
+	c := dial(t, sock)
+	c.next()
+	if r := c.do(map[string]any{"op": "add_calendar", "name": "Personal", "url": "https://cal.example/private-abc123/basic.ics"}); r["error"] != nil {
+		t.Fatal(r)
+	}
+	if len(kr.m) != 1 {
+		t.Fatal("the link didn't go in the keyring")
+	}
+	// Its last download, where a fetch puts it.
+	srcs := s.CalendarSources()
+	if len(srcs) != 1 || srcs[0].ID == "" {
+		t.Fatalf("sources: %+v", srcs)
+	}
+	ics := "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:1\r\nSUMMARY:Gym\r\nDTSTART:20261109T183000\r\nDTEND:20261109T193000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(ics)) }))
+	defer srv.Close()
+	srcs[0].URL = srv.URL
+	if _, errs := calendar.Refresh(context.Background(), d, srcs, srv.Client()); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	kr.lock(true)
+	list := c.do(map[string]any{"op": "calendars"})["value"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["locked"] != true {
+		t.Fatalf("calendars: %v", list)
+	}
+	ev := c.do(map[string]any{"op": "calendar_events", "from": "2026-11-09", "to": "2026-11-10"})["value"].([]any)
+	if len(ev) != 1 || ev[0].(map[string]any)["title"] != "Gym" {
+		t.Fatalf("events while locked: %v", ev)
+	}
+	if srcs := s.CalendarSources(); len(srcs) != 1 || srcs[0].URL != "" {
+		t.Fatalf("a locked link is read: %+v", srcs)
+	}
+	if err := s.CalendarLinksUnread()["Personal"]; !errors.Is(err, store.ErrLocked) {
+		t.Fatalf("unread: %v", err)
+	}
+
+	kr.lock(false)
+	list = c.do(map[string]any{"op": "calendars"})["value"].([]any)
+	if list[0].(map[string]any)["locked"] != nil {
+		t.Fatalf("still locked: %v", list)
+	}
+	if srcs := s.CalendarSources(); srcs[0].URL != "https://cal.example/private-abc123/basic.ics" {
+		t.Fatalf("unlocked: %+v", srcs)
 	}
 }

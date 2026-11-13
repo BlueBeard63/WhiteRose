@@ -30,6 +30,22 @@ type Source struct {
 	URL   string
 	Path  string
 	Color string
+	// ID names a linked calendar's downloaded copy (its secret's id), so
+	// the copy can be read while the link can't (the keyring is locked).
+	// Without one the copy is named by the link.
+	ID string
+}
+
+// copyPath is where a linked calendar's last download is kept ("" for a
+// file).
+func (s Source) copyPath(d Dirs) string {
+	switch {
+	case s.ID != "":
+		return cachePath(d, "id:"+s.ID)
+	case s.URL != "":
+		return cachePath(d, s.URL)
+	}
+	return ""
 }
 
 // Palette for calendars without a colour (the Figma accents).
@@ -80,10 +96,10 @@ func Sources(d Dirs, configured []Source) []Source {
 	return out
 }
 
-// cachePath is where a link's last download is kept (named by a hash: the
+// cachePath is where a download is kept, named by a hash of `key` (the
 // link itself is a secret for most providers).
-func cachePath(d Dirs, url string) string {
-	h := sha256.Sum256([]byte(url))
+func cachePath(d Dirs, key string) string {
+	h := sha256.Sum256([]byte(key))
 	return filepath.Join(d.Cache, "calendars", hex.EncodeToString(h[:8])+".ics")
 }
 
@@ -98,7 +114,7 @@ func Refresh(ctx context.Context, d Dirs, srcs []Source, client *http.Client) (c
 		if s.URL == "" {
 			continue
 		}
-		ok, err := fetch(ctx, client, s.URL, cachePath(d, s.URL))
+		ok, err := fetch(ctx, client, s.URL, s.copyPath(d))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("calendar %q: %w", s.Name, err))
 		}
@@ -192,8 +208,8 @@ func Events(d Dirs, srcs []Source, from, to time.Time, loc *time.Location) []Eve
 	out := []Event{}
 	for _, s := range srcs {
 		p := s.Path
-		if s.URL != "" {
-			p = cachePath(d, s.URL)
+		if c := s.copyPath(d); c != "" {
+			p = c
 		}
 		f, err := os.Open(p)
 		if err != nil {
@@ -230,8 +246,8 @@ func Version(d Dirs, srcs []Source) int64 {
 	bump(filepath.Join(d.Data, "calendars"))
 	bump(filepath.Join(d.Cache, "calendars"))
 	for _, s := range srcs {
-		if s.URL != "" {
-			bump(cachePath(d, s.URL))
+		if c := s.copyPath(d); c != "" {
+			bump(c)
 		} else {
 			bump(s.Path)
 		}

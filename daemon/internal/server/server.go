@@ -37,7 +37,7 @@ import (
 
 type Server struct {
 	Store   *store.Store
-	Secrets store.Resolver
+	Secrets *store.Resolver
 	Dirs    calendar.Dirs
 	// Called after calendars are added or removed (to fetch them).
 	CalendarsChanged func()
@@ -282,23 +282,40 @@ func (s *Server) Handle(r Request) (any, error) {
 }
 
 // CalendarSources resolves the configured calendars' links from the secret
-// store (a link that can't be read is skipped) and adds dropped-in files.
+// store and adds dropped-in files. A calendar whose link can't be read
+// (the keyring is locked) is still listed, without its link: its last
+// download shows, and it isn't fetched until the link can be read.
 func (s *Server) CalendarSources() []calendar.Source {
+	srcs, _ := s.calendarSources()
+	return srcs
+}
+
+// calendarSources is CalendarSources, and the calendars whose links
+// couldn't be read and why.
+func (s *Server) calendarSources() ([]calendar.Source, map[string]error) {
 	var stored []store.CalendarSource
 	_ = s.Store.GetInto("calendar.sources", &stored)
 	var out []calendar.Source
+	unread := map[string]error{}
 	for _, c := range stored {
-		src := calendar.Source{Name: c.Name, Color: c.Color, Path: c.Path}
+		src := calendar.Source{Name: c.Name, Color: c.Color, Path: c.Path, ID: c.Secret}
 		if c.Secret != "" {
 			url, err := s.Secrets.Get(c.Secret)
 			if err != nil {
-				continue
+				unread[c.Name] = err
 			}
 			src.URL = url
 		}
 		out = append(out, src)
 	}
-	return calendar.Sources(s.Dirs, out)
+	return calendar.Sources(s.Dirs, out), unread
+}
+
+// CalendarLinksUnread is why each calendar whose link can't be read now
+// can't (logged when calendars are fetched).
+func (s *Server) CalendarLinksUnread() map[string]error {
+	_, unread := s.calendarSources()
+	return unread
 }
 
 // calendarView is a calendar as clients see it: never the link itself.
@@ -307,6 +324,8 @@ type calendarView struct {
 	Color   string `json:"color"`
 	Path    string `json:"path,omitempty"`
 	HasLink bool   `json:"has_link"`
+	// The link is in the keyring, which is locked: it can't be fetched.
+	Locked bool `json:"locked,omitempty"`
 }
 
 func (s *Server) calendarList() ([]calendarView, error) {
@@ -320,7 +339,12 @@ func (s *Server) calendarList() ([]calendarView, error) {
 		if color == "" {
 			color = calendar.Palette[i%len(calendar.Palette)]
 		}
-		out = append(out, calendarView{Name: c.Name, Color: color, Path: c.Path, HasLink: c.Secret != ""})
+		v := calendarView{Name: c.Name, Color: color, Path: c.Path, HasLink: c.Secret != ""}
+		if v.HasLink {
+			_, err := s.Secrets.Get(c.Secret)
+			v.Locked = errors.Is(err, store.ErrLocked)
+		}
+		out = append(out, v)
 	}
 	return out, nil
 }

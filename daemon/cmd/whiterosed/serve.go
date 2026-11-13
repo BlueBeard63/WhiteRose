@@ -108,16 +108,33 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	}
 	defer st.Close()
 
-	secrets := store.Resolver{Fallback: st.Fallback()}
-	if kr, err := store.Keyring(); err == nil {
-		secrets.Keyring = kr
+	// The keyring may not be usable yet (locked after a fingerprint login,
+	// or not started): it's tried again when a secret is wanted and when
+	// it changes, and once it opens, what was kept in the database while
+	// it was locked moves in and the calendars are fetched again.
+	var keyringOpened func()
+	secrets := &store.Resolver{Fallback: st.Fallback(), Open: store.Keyring}
+	moveSecrets := func(kr store.Secrets) {
 		if n, err := st.MoveToKeyring(kr); err != nil {
 			fmt.Fprintln(stderr, "whiterosed:", err)
 		} else if n > 0 {
 			fmt.Fprintf(stderr, "whiterosed: moved %d secret(s) into the keyring\n", n)
 		}
+	}
+	if !secrets.Retry() {
+		fmt.Fprintln(stderr, "whiterosed: secrets kept in the settings database until the keyring opens:", secrets.Closed())
 	} else {
-		fmt.Fprintln(stderr, "whiterosed: secrets kept in the settings database:", err)
+		moveSecrets(secrets.Keyring)
+	}
+	secrets.Opened = func(kr store.Secrets) {
+		fmt.Fprintln(stderr, "whiterosed: the keyring is open")
+		moveSecrets(kr)
+		if keyringOpened != nil {
+			go keyringOpened()
+		}
+	}
+	if err := store.WatchKeyring(func() { secrets.Retry() }); err != nil {
+		fmt.Fprintln(stderr, "whiterosed: not watching the keyring:", err)
 	}
 
 	rep := migrate.Run(st, secrets, migrate.DefaultDirs())
@@ -196,6 +213,9 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		for _, e := range errs {
 			fmt.Fprintln(stderr, "whiterosed:", e)
 		}
+		for name, err := range srv.CalendarLinksUnread() {
+			fmt.Fprintf(stderr, "whiterosed: calendar %q not fetched, its link can't be read: %v\n", name, err)
+		}
 		poke()
 	}
 	refreshWeather := func() {
@@ -207,6 +227,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		poke()
 	}
 	srv.CalendarsChanged = refreshCalendars
+	keyringOpened = refreshCalendars
 	setup := &appSetup{
 		broadcast: srv.Broadcast,
 		done:      func() { _ = st.Set("apps.setupDone", json.RawMessage(`true`)) },
@@ -390,14 +411,20 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	// kept in the keyring when there is one).
 	srv.Ops["files_key"] = func(server.Request) (any, error) {
 		const id = "files:seal-key"
-		if k, err := secrets.Get(id); err == nil && len(k) == 64 {
+		k, err := secrets.Get(id)
+		if err == nil && len(k) == 64 {
 			return map[string]string{"key": k}, nil
+		}
+		// Its key may be in the locked keyring: a new one now would take
+		// its place later and make what Files sealed unreadable.
+		if errors.Is(err, store.ErrLocked) {
+			return nil, err
 		}
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
 			return nil, err
 		}
-		k := hex.EncodeToString(b)
+		k = hex.EncodeToString(b)
 		where, err := secrets.Set(id, k)
 		if err != nil {
 			return nil, err

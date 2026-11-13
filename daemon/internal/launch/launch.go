@@ -267,16 +267,25 @@ func Snapshot(home, dir string) error {
 }
 
 // Restore puts the snapshot back (what it holds replaces what's there;
-// what it lacks is removed, as it didn't exist then).
+// what it lacks is removed, as it didn't exist then). What it replaces is
+// kept in ReplacedDir(dir), the last time's only: settings changed while
+// the failed version ran (a calendar added) aren't lost for good.
 func Restore(home, dir string) error {
 	if _, err := os.Stat(dir); err != nil {
 		return errors.New("no snapshot")
 	}
+	aside := ReplacedDir(dir)
+	os.RemoveAll(aside)
 	for _, it := range snapshotItems {
 		dst := filepath.Join(home, it)
 		src := filepath.Join(dir, it)
-		if err := os.RemoveAll(dst); err != nil {
-			return err
+		if _, err := os.Lstat(dst); err == nil {
+			to := filepath.Join(aside, it)
+			if os.MkdirAll(filepath.Dir(to), 0o700) != nil || os.Rename(dst, to) != nil {
+				if err := os.RemoveAll(dst); err != nil {
+					return err
+				}
+			}
 		}
 		if _, err := os.Lstat(src); err != nil {
 			continue
@@ -287,6 +296,9 @@ func Restore(home, dir string) error {
 	}
 	return nil
 }
+
+// ReplacedDir is where Restore keeps what it replaced.
+func ReplacedDir(snapshot string) string { return snapshot + "-replaced" }
 
 func copyTree(src, dst string) error {
 	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {

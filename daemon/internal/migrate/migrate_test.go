@@ -34,7 +34,7 @@ func TestOldFilesAreImportedOnceAndKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	secrets := store.Resolver{Fallback: st.Fallback()}
+	secrets := &store.Resolver{Fallback: st.Fallback()}
 	r := Run(st, secrets, d)
 	if len(r.Failed) != 0 || len(r.Imported) != 6 {
 		t.Fatalf("imported %v, failed %v", r.Imported, r.Failed)
@@ -100,7 +100,7 @@ func TestBrokenFilesStayWhereTheyAre(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	r := Run(st, store.Resolver{Fallback: st.Fallback()}, d)
+	r := Run(st, &store.Resolver{Fallback: st.Fallback()}, d)
 	if len(r.Imported) != 0 || len(r.Failed) != 3 {
 		t.Fatalf("%+v", r)
 	}

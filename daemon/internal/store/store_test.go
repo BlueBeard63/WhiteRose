@@ -323,7 +323,7 @@ func TestSecretsPreferTheKeyringAndMoveThere(t *testing.T) {
 	s, _ := open(t)
 	fb := s.Fallback()
 	// No keyring yet: secrets go in the database.
-	r := Resolver{Fallback: fb}
+	r := &Resolver{Fallback: fb}
 	id := NewSecretID()
 	if where, err := r.Set(id, "https://cal.example/private-abc"); err != nil || where != "settings database" {
 		t.Fatalf("%s %v", where, err)
@@ -336,7 +336,7 @@ func TestSecretsPreferTheKeyringAndMoveThere(t *testing.T) {
 	if _, err := fb.Get(id); !errors.Is(err, ErrNoSecret) {
 		t.Fatal("secret left in the database after moving")
 	}
-	r = Resolver{Keyring: k, Fallback: fb}
+	r = &Resolver{Keyring: k, Fallback: fb}
 	if v, err := r.Get(id); err != nil || v != "https://cal.example/private-abc" {
 		t.Fatalf("%q %v", v, err)
 	}
@@ -377,5 +377,75 @@ func TestSnapZoneGridsAreChecked(t *testing.T) {
 	// Gaps in a grid are fine.
 	if err := s.Set("windows.snap.zones", json.RawMessage(`{"builtin":[[0,0,0.4,1],[0.6,0,0.4,1]]}`)); err != nil {
 		t.Error(err)
+	}
+}
+
+// A keyring that's locked at the start (a fingerprint login) is tried
+// again: a wanted secret says it's locked rather than missing, and once the
+// keyring opens it's used, and Opened runs once.
+func TestResolverOpensTheKeyringLate(t *testing.T) {
+	s, _ := open(t)
+	k := &fakeKeyring{m: map[string]string{"cal": "https://cal.example/x"}}
+	locked := true
+	tries, opened := 0, 0
+	r := &Resolver{Fallback: s.Fallback(), Open: func() (Secrets, error) {
+		tries++
+		if locked {
+			return nil, ErrLocked
+		}
+		return k, nil
+	}}
+	r.Opened = func(Secrets) { opened++ }
+	if r.Retry() {
+		t.Fatal("opened a locked keyring")
+	}
+	if _, err := r.Get("cal"); !errors.Is(err, ErrLocked) {
+		t.Fatalf("want ErrLocked, got %v", err)
+	}
+	if _, err := r.Get("other"); !errors.Is(err, ErrLocked) {
+		t.Fatalf("want ErrLocked, got %v", err)
+	}
+	if !errors.Is(r.Closed(), ErrLocked) {
+		t.Fatalf("closed: %v", r.Closed())
+	}
+	// Gets in between don't each knock on the keyring.
+	if tries != 1 {
+		t.Fatalf("tried %d times", tries)
+	}
+	locked = false
+	if !r.Retry() {
+		t.Fatal("didn't open once unlocked")
+	}
+	if v, err := r.Get("cal"); err != nil || v != "https://cal.example/x" {
+		t.Fatalf("%q %v", v, err)
+	}
+	r.Retry()
+	if opened != 1 || r.Closed() != nil {
+		t.Fatalf("opened %d times, closed: %v", opened, r.Closed())
+	}
+	// No keyring at all (none running): missing is missing.
+	r = &Resolver{Fallback: s.Fallback(), Open: func() (Secrets, error) { return nil, errors.New("no keyring running") }}
+	if _, err := r.Get("cal"); !errors.Is(err, ErrNoSecret) {
+		t.Fatalf("want ErrNoSecret, got %v", err)
+	}
+}
+
+// What the keyring already has stays: a copy kept in the database while it
+// was locked doesn't replace it (Files' key: what it sealed needs the
+// original).
+func TestMoveToKeyringKeepsTheKeyringsOwn(t *testing.T) {
+	s, _ := open(t)
+	fb := s.Fallback()
+	_ = fb.Set("files:seal-key", "made-while-locked")
+	_ = fb.Set("cal", "https://cal.example/new")
+	k := &fakeKeyring{m: map[string]string{"files:seal-key": "original"}}
+	if n, err := s.MoveToKeyring(k); err != nil || n != 1 {
+		t.Fatalf("moved %d: %v", n, err)
+	}
+	if k.m["files:seal-key"] != "original" || k.m["cal"] != "https://cal.example/new" {
+		t.Fatalf("keyring: %v", k.m)
+	}
+	if _, err := fb.Get("files:seal-key"); !errors.Is(err, ErrNoSecret) {
+		t.Fatal("the database copy is left behind")
 	}
 }

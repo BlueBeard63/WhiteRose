@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -28,6 +30,10 @@ func NewSecretID() string {
 
 // ErrNoSecret: no secret with that id.
 var ErrNoSecret = errors.New("secret not found")
+
+// ErrLocked: the keyring is there but locked, so what it keeps can't be
+// read yet (a fingerprint login has no password to unlock it with).
+var ErrLocked = errors.New("keyring is locked")
 
 // ---- fallback: the database itself (0600, only the user can read it) ----
 
@@ -127,7 +133,7 @@ func Keyring() (Secrets, error) {
 	}
 	if locked {
 		conn.Close()
-		return nil, errors.New("keyring is locked")
+		return nil, ErrLocked
 	}
 	return &keyring{conn: conn, session: session}, nil
 }
@@ -143,7 +149,7 @@ func (k *keyring) find(id string) (dbus.ObjectPath, error) {
 	}
 	if len(unlocked) == 0 {
 		if len(locked) > 0 {
-			return "", errors.New("keyring is locked")
+			return "", ErrLocked
 		}
 		return "", ErrNoSecret
 	}
@@ -204,6 +210,12 @@ func (s *Store) MoveToKeyring(k Secrets) (int, error) {
 		if err != nil {
 			continue
 		}
+		// Already in the keyring (kept while it was locked): the keyring's
+		// stays, since it's the one things were made with (Files' key).
+		if _, err := k.Get(id); err == nil {
+			_ = fb.Delete(id)
+			continue
+		}
 		if err := k.Set(id, v); err != nil {
 			return moved, fmt.Errorf("moving a secret to the keyring: %w", err)
 		}
@@ -216,35 +228,173 @@ func (s *Store) MoveToKeyring(k Secrets) (int, error) {
 	return moved, nil
 }
 
-// Resolver finds a secret wherever it is: the keyring first, then the fallback.
+// Resolver finds a secret wherever it is: the keyring first, then the
+// fallback. A keyring that wasn't usable at login (not running yet, or
+// locked after a fingerprint login) is tried again later: when a secret is
+// wanted, and whenever WatchKeyring says it may have changed.
 type Resolver struct {
 	Keyring  Secrets // may be nil
 	Fallback Secrets
+	// Open connects to the keyring (Keyring); nil: only Keyring is used.
+	Open func() (Secrets, error)
+	// Opened runs (once) when the keyring opens after the start.
+	Opened func(Secrets)
+
+	mu      sync.Mutex
+	tried   time.Time
+	openErr error // why the keyring isn't open
 }
 
-func (r Resolver) Get(id string) (string, error) {
+// retryEvery is how often a wanted secret tries a keyring that wouldn't
+// open (each try is a few D-Bus calls).
+const retryEvery = 30 * time.Second
+
+// keyring is the open keyring, opening it if it's time to try again (or
+// `now`); nil and why if there isn't one.
+func (r *Resolver) keyring(now bool) (Secrets, error) {
+	r.mu.Lock()
+	if r.Keyring != nil || r.Open == nil {
+		k := r.Keyring
+		r.mu.Unlock()
+		return k, nil
+	}
+	if !now && time.Since(r.tried) < retryEvery {
+		err := r.openErr
+		r.mu.Unlock()
+		return nil, err
+	}
+	r.tried = time.Now()
+	k, err := r.Open()
+	if err != nil {
+		r.openErr = err
+		r.mu.Unlock()
+		return nil, err
+	}
+	r.Keyring, r.openErr = k, nil
+	opened := r.Opened
+	r.mu.Unlock()
+	if opened != nil {
+		opened(k)
+	}
+	return k, nil
+}
+
+// Retry tries the keyring again now (WatchKeyring saw it change); whether
+// it's open.
+func (r *Resolver) Retry() bool {
+	k, _ := r.keyring(true)
+	return k != nil
+}
+
+// Closed is why the keyring isn't open (nil when it is, or when there's
+// nothing to open).
+func (r *Resolver) Closed() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.Keyring != nil {
-		if v, err := r.Keyring.Get(id); err == nil {
+		return nil
+	}
+	return r.openErr
+}
+
+// Get is the secret `id`. ErrLocked: it may be in the keyring, which is
+// locked, and it isn't in the fallback.
+func (r *Resolver) Get(id string) (string, error) {
+	k, kerr := r.keyring(false)
+	if k != nil {
+		v, err := k.Get(id)
+		if err == nil {
 			return v, nil
 		}
+		kerr = err
 	}
-	return r.Fallback.Get(id)
+	v, err := r.Fallback.Get(id)
+	if errors.Is(err, ErrNoSecret) && errors.Is(kerr, ErrLocked) {
+		return "", ErrLocked
+	}
+	return v, err
 }
 
 // Set stores in the keyring when there is one, else the fallback.
-func (r Resolver) Set(id, value string) (where string, err error) {
-	if r.Keyring != nil {
-		if err := r.Keyring.Set(id, value); err == nil {
+func (r *Resolver) Set(id, value string) (where string, err error) {
+	if k, _ := r.keyring(false); k != nil {
+		if err := k.Set(id, value); err == nil {
 			_ = r.Fallback.Delete(id)
-			return r.Keyring.Name(), nil
+			return k.Name(), nil
 		}
 	}
 	return r.Fallback.Name(), r.Fallback.Set(id, value)
 }
 
-func (r Resolver) Delete(id string) {
-	if r.Keyring != nil {
-		_ = r.Keyring.Delete(id)
+func (r *Resolver) Delete(id string) {
+	if k, _ := r.keyring(false); k != nil {
+		_ = k.Delete(id)
 	}
 	_ = r.Fallback.Delete(id)
+}
+
+// WatchKeyring calls `changed` whenever the keyring may have become usable:
+// the Secret Service starting, or a collection changing (unlocked). Runs
+// until the session bus goes.
+func WatchKeyring(changed func()) error {
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return err
+	}
+	for _, m := range [][]dbus.MatchOption{
+		{dbus.WithMatchInterface("org.freedesktop.DBus"), dbus.WithMatchMember("NameOwnerChanged"), dbus.WithMatchArg(0, ssName)},
+		{dbus.WithMatchInterface("org.freedesktop.DBus.Properties"), dbus.WithMatchMember("PropertiesChanged"), dbus.WithMatchPathNamespace(ssPath)},
+		{dbus.WithMatchInterface(ssService), dbus.WithMatchMember("CollectionChanged")},
+	} {
+		if err := conn.AddMatchSignal(m...); err != nil {
+			conn.Close()
+			return err
+		}
+	}
+	ch := make(chan *dbus.Signal, 16)
+	conn.Signal(ch)
+	go func() {
+		for range ch {
+			changed()
+		}
+	}()
+	return nil
+}
+
+// UnlockKeyring unlocks the default keyring with the user's password (typed
+// at the lock screen), if it's locked. GNOME Keyring only: it's the one with
+// a way to do that without its own prompt.
+func UnlockKeyring(password string) error {
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	svc := conn.Object(ssName, ssPath)
+	var coll dbus.ObjectPath
+	if err := svc.Call(ssService+".ReadAlias", 0, "default").Store(&coll); err != nil || coll == "/" {
+		return errors.New("no default keyring")
+	}
+	locked := func() bool {
+		v, err := conn.Object(ssName, coll).GetProperty("org.freedesktop.Secret.Collection.Locked")
+		b, _ := v.Value().(bool)
+		return err != nil || b
+	}
+	if !locked() {
+		return nil
+	}
+	var out dbus.Variant
+	var session dbus.ObjectPath
+	if err := svc.Call(ssService+".OpenSession", 0, "plain", dbus.MakeVariant("")).Store(&out, &session); err != nil {
+		return err
+	}
+	defer conn.Object(ssName, session).Call("org.freedesktop.Secret.Session.Close", 0)
+	secret := ssSecret{Session: session, Parameters: []byte{}, Value: []byte(password), ContentType: "text/plain"}
+	if err := svc.Call("org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface.UnlockWithMasterPassword", 0, coll, secret).Err; err != nil {
+		return err
+	}
+	if locked() {
+		return errors.New("the keyring didn't take the password")
+	}
+	return nil
 }
