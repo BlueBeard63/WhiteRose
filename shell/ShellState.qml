@@ -11,6 +11,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import "Report.js" as Rep
 import Quickshell.Io
 
 Singleton {
@@ -57,7 +58,16 @@ Singleton {
     function zonesTool(tool) { if (zones) zones = Object.assign({}, zones, { tool }) }
     function endZones() { if (islandView === "zones") close(); zones = null }
     // Another view (or none) taking the island ends the editing.
-    onIslandViewChanged: if (islandView !== "zones") zones = null
+    onIslandViewChanged: {
+        if (islandView !== "zones") zones = null;
+        // A crash's prompt closed without an answer: offered again later.
+        if (islandView !== "reportprompt" && reportPrompt && !promptAnswered && reportPrompt.what !== "manual") {
+            crashWaiting = reportPrompt;
+            reportPrompt = null;
+        }
+        // A crash waiting to be offered: now, if the island is free.
+        offerCrash();
+    }
 
     // The side panel hanging from the bar: "" (none) or "quick". Only one
     // thing is open at a time: opening it returns the island to idle.
@@ -147,9 +157,54 @@ Singleton {
     // (snapshot) it starts on, "" to pick.
     property string reportFrom: ""
     function report(from) { reportFrom = from ?? ""; show("report") }
+    // "Report this" after a crash / "Snapshot saved" (island/reportprompt.qml):
+    // the record ({ id, what, title, time }). A crash waits for the island
+    // to be free (not over the launcher you're typing in, not while locked)
+    // and is offered until it's answered (Report or Not now: whiterosed
+    // remembers, across shell restarts). Closed some other way (another
+    // view, Settings opening), it's offered again once the island is free.
+    property var reportPrompt: null
+    property var crashWaiting: null
+    property bool promptAnswered: false
+    function promptReport(rec) {
+        reportPrompt = rec;
+        promptAnswered = false;
+        show("reportprompt");
+    }
+    // Report (`report` true) or Not now / Later.
+    function answerPrompt(report) {
+        const rec = reportPrompt;
+        promptAnswered = true;
+        if (rec && rec.what !== "manual") Daemon.request({ op: "report_prompted", name: rec.id }, () => {});
+        if (report && rec) root.report(rec.id); else close();
+    }
+    function noteCrashes(list) {
+        const c = Rep.crashToPrompt(list, Date.now());
+        if (c) crashWaiting = c;
+        offerCrash();
+    }
+    function offerCrash() {
+        if (crashWaiting && islandView === "idle" && !locked) {
+            const c = crashWaiting;
+            crashWaiting = null;
+            promptReport(c);
+        }
+    }
+    onLockedChanged: offerCrash()
+    // SUPER+SHIFT+B: a snapshot of this moment, then the offer to report it.
+    function snapshotNow() {
+        Daemon.request({ op: "report_snapshot_now" }, (v, err) => {
+            if (err || !v) return;
+            root.promptReport({ id: v.id, what: "manual", title: "Snapshot you took", time: Date.now() });
+        });
+    }
     Connections {
         target: Daemon
         function onReportRequested(from) { root.report(from) }
+        function onReportSnapshotsEvent(list) { root.noteCrashes(list) }
+        function onConnectedChanged() {
+            if (Daemon.connected) Daemon.request({ op: "report_snapshots" }, v => { if (v) root.noteCrashes(v) });
+        }
     }
     IpcHandler {
         target: "report"

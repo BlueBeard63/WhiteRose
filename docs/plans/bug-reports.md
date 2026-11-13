@@ -1,6 +1,9 @@
 # Plan: bug reports from WhiteRose
 
-**Status: planned** (2026-11-13).
+**Status: done** (2026-11-13), in six commits on this branch. Where it
+ended up differently from below: the report is the island flow (not a
+Settings page); a crash is offered until Report or Not now is pressed
+(closed any other way, it's offered again when the island is free).
 
 Branch: `v0.3/alpha3-fixes` (off `v0.3-release`), after the Releases tab
 and the old-version workflow.

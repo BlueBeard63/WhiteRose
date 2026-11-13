@@ -335,6 +335,7 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
         Action::Notifications => "notifications",
         Action::Clipboard => "clipboard",
         Action::Note => "note",
+        Action::ReportSnapshot => "report_snapshot",
         Action::Agenda => "agenda",
         Action::Music => "music",
         Action::ScreenshotRegion => "screenshot_region",

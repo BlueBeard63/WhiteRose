@@ -33,6 +33,8 @@ ShellRoot {
             // SUPER+A: the agenda, if its module is on.
             else if (name === "agenda" && !Daemon.setting("settings.modules.disabled", []).includes("agenda")) ShellState.toggle("agenda");
             else if (name === "lock") ShellState.lock();
+            // SUPER+SHIFT+B: a snapshot for a bug report, then "Report" / "Later".
+            else if (name === "report_snapshot") ShellState.snapshotNow();
         }
     }
 

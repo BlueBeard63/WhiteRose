@@ -26,7 +26,7 @@ const Ag = load("Agenda.js", ["timed", "next", "when", "span", "at", "blocks"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
-const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn"]);
+const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn", "crashToPrompt", "promptText"]);
 const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
@@ -1258,6 +1258,19 @@ test("report flow guesses", () => {
     assert.equal(Rep.titleFor("crashed", "The bar", "The shell crashed (signal 11, SIGSEGV)"), "The shell crashed (signal 11, SIGSEGV)");
     assert.equal(Rep.titleFor("wrong", "Displays", ""), "Displays doesn't do what it should");
     // Filling keeps what you chose and a title you edited.
+    assert.equal(Rep.newDraft(list, "a", now).step, 2, "opened from a crash: the problem is known");
+    assert.equal(Rep.newDraft(list, "", now).step, 1);
+    const crashes = [
+        { id: "m", what: "manual", time: now - 1000, ready: true },
+        { id: "s2", what: "shell", time: now - 2000, ready: false },
+        { id: "s1", what: "shell", time: now - 3000, ready: true, prompted: true },
+        { id: "c", what: "compositor", time: now - 4000, ready: true, title: "The compositor exited with code 101" },
+    ];
+    assert.equal(Rep.crashToPrompt(crashes, now).id, "c", "not a snapshot you took, not before it's ready, not twice");
+    assert.equal(Rep.crashToPrompt([{ id: "o", what: "shell", time: now - 2 * 86400000, ready: true }], now), null, "too old");
+    assert.equal(Rep.promptText(crashes[3], now)[0], "WhiteRose crashed last time");
+    assert.equal(Rep.promptText({ what: "shell", title: "The shell crashed (signal 11, SIGSEGV)", time: now }, now)[0], "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(Rep.promptText({ what: "manual", time: now }, now)[0], "Snapshot saved");
     let d = Rep.fill(Rep.newDraft(list, "a", now), { what: "shell" }, null, "The shell crashed (signal 11, SIGSEGV)");
     assert.equal(d.kind + "|" + d.where + "|" + d.title, "crashed|The bar|The shell crashed (signal 11, SIGSEGV)");
     d = Rep.fill(Object.assign(d, { kind: "froze", title: "My title", edited: true }), { what: "shell" }, null, "");

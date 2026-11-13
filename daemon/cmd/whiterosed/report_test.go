@@ -54,6 +54,15 @@ func TestReports(t *testing.T) {
 	if len(views) != 2 || views[0].What != crash.Manual || !views[0].Ready || views[1].ID != id || !views[1].HasOutput {
 		t.Errorf("%+v", views)
 	}
+	if _, err := ops["report_prompted"](server.Request{Name: id}); err != nil {
+		t.Fatal(err)
+	}
+	if v := r.list(); !v[1].Prompted || v[0].Prompted {
+		t.Errorf("prompted: %+v", v)
+	}
+	if _, err := ops["report_prompted"](server.Request{Name: "../x"}); err == nil {
+		t.Error("marked a path")
+	}
 	b, _ = os.ReadFile(crash.File(state, views[0].ID, "snapshot.json"))
 	if strings.Contains(string(b), `"late"`) || !strings.Contains(string(b), `"load"`) {
 		t.Errorf("now: %s", b[:min(len(b), 300)])

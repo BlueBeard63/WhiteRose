@@ -77,9 +77,30 @@ function titleFor(kind, where, recTitle) {
     return where + " " + (k ? k.phrase : "has a problem");
 }
 
-// A new draft from the snapshot it starts on.
+// A new draft from the snapshot it starts on. Opened from a crash or a
+// snapshot you took, the problem is known: it starts at step 2.
 function newDraft(list, fromId, nowMs) {
-    return { step: 1, snapshot: pickSnapshot(list, fromId, nowMs), kind: "", where: "", title: "", what: "", off: [], edited: false };
+    const known = !!fromId && (list ?? []).some(s => s.id === fromId);
+    return { step: known ? 2 : 1, snapshot: pickSnapshot(list, fromId, nowMs), kind: "", where: "", title: "", what: "", off: [], edited: false };
+}
+
+// The crash to offer "Report this" for: the newest crash of the
+// compositor, shell or daemon from the last day, snapshotted and not
+// offered before (null for none).
+function crashToPrompt(list, nowMs) {
+    return (list ?? []).find(s => ["compositor", "shell", "daemon"].includes(s.what)
+        && s.ready && !s.prompted && nowMs - s.time < 24 * 3600 * 1000) ?? null;
+}
+
+// The prompt's two lines: [title, text].
+function promptText(s, nowMs) {
+    if (!s) return ["", ""];
+    if (s.what === "manual") return ["Snapshot saved", "Report it now, or later from Settings › About."];
+    const d = new Date(s.time);
+    const hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    if (s.what === "compositor")
+        return ["WhiteRose crashed last time", "Your last session ended at " + hm + ". WhiteRose recorded what it could. Reporting it takes a minute."];
+    return [s.title, "It started again on its own. WhiteRose recorded what happened. Reporting it takes a minute."];
 }
 
 // Fills in what hasn't been chosen, from the record and snapshot. A title

@@ -29,6 +29,8 @@ Singleton {
     // Settings › About › Report a problem: the island's report flow, in this
     // session's shell (`from`: a crash record to start on, or "").
     signal reportRequested(string from)
+    // A crash record got its snapshot (the "Report this" prompt).
+    signal reportSnapshotsEvent(var list)
     signal lockRequested()
     signal unlockRequested()
 
@@ -92,6 +94,7 @@ Singleton {
         case "updates": root.updatesEvent(msg.status); break;
         case "unlock": root.unlockRequested(); break;
         case "report_show": root.reportRequested(msg.from ?? ""); break;
+        case "report_snapshots": root.reportSnapshotsEvent(msg.snapshots ?? []); break;
         }
     }
 

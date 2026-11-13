@@ -199,6 +199,7 @@ type snapshotView struct {
 	Ready     bool   `json:"ready"` // its snapshot is taken
 	Version   string `json:"version"`
 	HasOutput bool   `json:"has_output"`
+	Prompted  bool   `json:"prompted"` // the island has offered to report it
 }
 
 func (r *reports) draftFile() string {
@@ -235,8 +236,9 @@ func (r *reports) list() []snapshotView {
 	for _, rec := range crash.List(r.state) {
 		_, err := os.Stat(crash.File(r.state, rec.ID, "snapshot.json"))
 		_, errOut := os.Stat(crash.File(r.state, rec.ID, "output.txt"))
+		_, errAsked := os.Stat(crash.File(r.state, rec.ID, "prompted"))
 		out = append(out, snapshotView{ID: rec.ID, What: rec.What, Title: rec.Describe(), Time: rec.Time,
-			Ready: err == nil, Version: rec.Version, HasOutput: errOut == nil})
+			Ready: err == nil, Version: rec.Version, HasOutput: errOut == nil, Prompted: errAsked == nil})
 	}
 	return out
 }
@@ -244,6 +246,15 @@ func (r *reports) list() []snapshotView {
 func (r *reports) ops() map[string]func(server.Request) (any, error) {
 	return map[string]func(server.Request) (any, error){
 		"report_snapshots": func(server.Request) (any, error) { return r.list(), nil },
+		// The island offered to report it ("Report this" after a crash):
+		// not again, even after the shell restarts.
+		"report_prompted": func(req server.Request) (any, error) {
+			rec, err := crash.Load(r.state, req.Name)
+			if err != nil {
+				return nil, err
+			}
+			return nil, os.WriteFile(crash.File(r.state, rec.ID, "prompted"), nil, 0o600)
+		},
 		// Open the report flow in this session's island (Settings › About,
 		// which runs apart from the shell); Name: a record to start on.
 		"report_show": func(req server.Request) (any, error) {
