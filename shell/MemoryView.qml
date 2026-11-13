@@ -1,6 +1,8 @@
 // Island view: memory is running out and one app looks like the cause
 // (whiterosed's memory watcher, cmd/whiterosed/memory.go). Close asks it to
 // close (and makes it after 3 s); Not now leaves it alone for 10 minutes.
+// Or, at critical, the watcher already closed it: what and why, with OK and
+// Report (its crash record, in the report flow).
 // Protected apps (Settings, and the terminal) are never named here.
 import QtQuick
 import Quickshell
@@ -17,7 +19,9 @@ Item {
     readonly property string appId: w?.app?.id ?? ""
     readonly property var entry: appId ? (DesktopEntries.byId(appId) ?? DesktopEntries.heuristicLookup(appId)) : null
     readonly property string name: entry?.name || Mem.appName(appId)
-    readonly property var text: Mem.warningText(w, name)
+    // Closed by the watcher (memory_closed), or a warning (memory_warning).
+    readonly property bool closed: w?.event === "memory_closed"
+    readonly property var text: closed ? Mem.closedText(w, name) : Mem.warningText(w, name)
     property string error: ""
 
     function act(op) {
@@ -70,6 +74,7 @@ Item {
                 }
             }
             Row {
+                visible: !root.closed
                 spacing: 8
                 Button {
                     text: "Close " + root.name
@@ -80,6 +85,27 @@ Item {
                     text: "Not now"
                     kind: "ghost"
                     onClicked: root.act("memory_snooze")
+                }
+            }
+            // Closed: report it like a crash (its record), or carry on.
+            Row {
+                visible: root.closed
+                spacing: 8
+                Button {
+                    text: "OK"
+                    kind: "primary"
+                    onClicked: root.act("memory_seen")
+                }
+                Button {
+                    visible: (root.w?.record ?? "") !== ""
+                    text: "Report"
+                    kind: "ghost"
+                    onClicked: {
+                        const rec = root.w.record;
+                        Daemon.request({ op: "memory_seen" }, () => {});
+                        ShellState.memoryWarning = null;
+                        ShellState.report(rec);
+                    }
                 }
             }
         }

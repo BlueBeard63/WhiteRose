@@ -11,6 +11,11 @@ package main
 //     goes to 800, first in line if the kernel has to kill.
 //   - Tight: the island names the worst app ("Firefox is using 6.2 GB and
 //     still growing") with Close and Not now (memory_warning events).
+//   - Critical (everything stalling, or under 3% left) and memory.autoClose
+//     on: the worst unprotected app is closed by itself (asked, then made
+//     after 3 s), a crash record is written (so it can be reported like a
+//     crash), and the island says what was closed and why (memory_closed).
+//     Then 15 s to let the memory come back before closing another.
 //   - Protected apps (memory.protected, and the terminal) are never named,
 //     raised or closed.
 
@@ -28,6 +33,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"whiterose/daemon/internal/crash"
 	"whiterose/daemon/internal/memwatch"
 	"whiterose/daemon/internal/server"
 	"whiterose/daemon/internal/store"
@@ -53,6 +59,10 @@ type memWatch struct {
 	// The warning showing (nil: none): a shell that connects, or restarts,
 	// asks for it (memory_warning).
 	current map[string]any
+	// Where crash records go ($XDG_STATE_HOME), and the last forced close.
+	state      string
+	version    string
+	lastClosed time.Time
 }
 
 func newMemWatch(st *store.Store, broadcast func(any)) *memWatch {
@@ -65,8 +75,26 @@ func newMemWatch(st *store.Store, broadcast func(any)) *memWatch {
 		slice: slice,
 		proc:  "/proc", st: st, broadcast: broadcast, terminal: os.Getenv("TERMINAL"), now: time.Now,
 		raised: map[string]bool{}, snoozed: map[string]time.Time{}, warned: map[string]time.Time{},
-		wake: make(chan struct{}, 1),
+		wake:  make(chan struct{}, 1),
+		state: stateHome(), version: runningVersion(),
 	}
+}
+
+func stateHome() string {
+	if s := os.Getenv("XDG_STATE_HOME"); s != "" {
+		return s
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "state")
+}
+
+// autoClose: the memory.autoClose setting (on unless switched off).
+func (m *memWatch) autoClose() bool {
+	on := true
+	if m.st != nil {
+		_ = m.st.GetInto("memory.autoClose", &on)
+	}
+	return on
 }
 
 // (Trying it out: WHITEROSE_APP_SLICE points the watcher at a made-up
@@ -166,8 +194,11 @@ func (m *memWatch) check() {
 	m.level = memwatch.Judge(psi, avail, total)
 	// (Trying it out: WHITEROSE_MEMORY_LEVEL=tight acts as if memory were
 	// tight, with the real apps and their real sizes.)
-	if os.Getenv("WHITEROSE_MEMORY_LEVEL") == "tight" && m.level < memwatch.Tight {
-		m.level = memwatch.Tight
+	switch os.Getenv("WHITEROSE_MEMORY_LEVEL") {
+	case "tight":
+		m.level = max(m.level, memwatch.Tight)
+	case "critical":
+		m.level = memwatch.Critical
 	}
 	growing := false
 	for _, a := range apps {
@@ -199,11 +230,24 @@ func (m *memWatch) check() {
 		m.current = nil
 		return
 	}
-	if m.current != nil && !hasApp(apps, m.current["app"].(memwatch.Suspect).Unit) {
-		m.current = nil // closed by itself
+	// A warning about an app that has since closed is moot (a notice that
+	// one was closed stays until it's answered).
+	if m.current != nil && m.current["event"] == "memory_warning" && !hasApp(apps, m.current["app"].(memwatch.Suspect).Unit) {
+		m.current = nil
 	}
 	w, ok := m.tr.Worst(apps, total, focused, m.protected)
-	if !ok || now.Before(m.snoozed[w.Unit]) || now.Sub(m.warned[w.Unit]) < 2*time.Minute {
+	if !ok {
+		return
+	}
+	// Critical: closed by itself (not snoozable: the session is at stake).
+	// Right after one, nothing more: the memory needs a moment to come back.
+	if level == memwatch.Critical && m.autoClose() {
+		if now.Sub(m.lastClosed) >= 15*time.Second {
+			m.forceClose(w, now, avail, total)
+		}
+		return
+	}
+	if now.Before(m.snoozed[w.Unit]) || now.Sub(m.warned[w.Unit]) < 2*time.Minute {
 		return
 	}
 	m.warned[w.Unit] = now
@@ -221,6 +265,23 @@ func hasApp(apps []memwatch.App, unit string) bool {
 		}
 	}
 	return false
+}
+
+// forceClose closes app w as memory runs out (called with m.mu held): a
+// crash record for the report flow, then close, then the island told.
+func (m *memWatch) forceClose(w memwatch.Suspect, now time.Time, avail, total int64) {
+	m.lastClosed = now
+	id, err := crash.Write(m.state, crash.Record{What: crash.Memory, App: w.ID, Version: m.version, Time: now.UnixMilli()}, nil)
+	if err != nil {
+		id = ""
+	}
+	if err := m.closeLocked(w.Unit, 3*time.Second); err != nil {
+		return
+	}
+	m.current = map[string]any{"event": "memory_closed", "app": w, "record": id, "available": avail, "total": total}
+	if m.broadcast != nil {
+		m.broadcast(m.current)
+	}
 }
 
 // pids: the processes in an app scope.
@@ -259,6 +320,11 @@ func (m *memWatch) validUnit(unit string) error {
 // close asks an app to close (SIGTERM to each of its processes), and makes
 // it (the scope's cgroup.kill) if it's still there after `wait`.
 func (m *memWatch) close(unit string, wait time.Duration) error {
+	return m.closeLocked(unit, wait)
+}
+
+// closeLocked: close, callable with m.mu held (it takes no lock itself).
+func (m *memWatch) closeLocked(unit string, wait time.Duration) error {
 	if err := m.validUnit(unit); err != nil {
 		return err
 	}
@@ -349,6 +415,11 @@ func (m *memWatch) ops() map[string]func(server.Request) (any, error) {
 			m.mu.Lock()
 			defer m.mu.Unlock()
 			m.snoozed[r.Name] = m.now().Add(10 * time.Minute)
+			return nil, nil
+		},
+		// The notice that an app was closed: seen (OK, or Report).
+		"memory_seen": func(server.Request) (any, error) {
+			m.answered()
 			return nil, nil
 		},
 		// The warning showing, if any (a shell that just connected).

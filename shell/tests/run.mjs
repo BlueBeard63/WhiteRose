@@ -27,7 +27,7 @@ const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "p
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
 const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn", "crashToPrompt", "promptText"]);
-const Mem = load("Memory.js", ["size", "warningText", "appName"]);
+const Mem = load("Memory.js", ["size", "warningText", "appName", "closedText"]);
 const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
@@ -1245,6 +1245,10 @@ test("shell quoting for desktop entries run in a terminal", () => {
 
 test("memory warning words", () => {
     const GB = 1 << 30;
+    const [ct, cx] = Mem.closedText({ app: { bytes: 9 * GB, reason: "half" } }, "Firefox");
+    assert.equal(ct, "Closed Firefox to free memory");
+    assert.ok(cx.includes("Firefox was using 9 GB, more than half of all memory."), cx);
+    assert.ok(Mem.closedText({ app: { bytes: GB, reason: "growing" } }, "Code")[1].includes("Code was using 1 GB and had grown steadily for 10 minutes."));
     assert.equal(Mem.appName("org.mozilla.firefox"), "Firefox");
     assert.equal(Mem.appName("code"), "Code");
     assert.equal(Mem.appName(""), "This app");

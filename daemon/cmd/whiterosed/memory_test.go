@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"whiterose/daemon/internal/crash"
 	"whiterose/daemon/internal/memwatch"
 	"whiterose/daemon/internal/server"
 )
@@ -128,5 +129,53 @@ func TestMemoryClose(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 	if b, _ := os.ReadFile(filepath.Join(m.slice, "app-gnome-sleep-1.scope", "cgroup.kill")); string(b) != "1" {
 		t.Errorf("cgroup.kill %q", b)
+	}
+}
+
+// Critical: the worst unprotected app is closed by itself, once, with a
+// crash record; protected apps never; not with memory.autoClose off.
+func TestMemoryCriticalCloses(t *testing.T) {
+	stall := "some avg10=60.00 avg60=0 avg300=0 total=0\nfull avg10=35.00 avg60=0 avg300=0 total=0\n"
+	apps := map[string][]int{
+		"app-gnome-firefox-1.scope":                {3000},
+		"app-whiterose-org.gnome.Ptyxis-1-0.scope": {6000}, // the terminal: bigger, never closed
+	}
+	m := fakeMemory(t, 4000, stall, apps)
+	m.state = t.TempDir()
+	m.version = "0.3.1"
+	var got []map[string]any
+	m.broadcast = func(e any) { got = append(got, e.(map[string]any)) }
+	m.check()
+	if len(got) != 1 || got[0]["event"] != "memory_closed" {
+		t.Fatalf("%v", got)
+	}
+	if app := got[0]["app"].(memwatch.Suspect); app.ID != "firefox" {
+		t.Errorf("closed %+v", app)
+	}
+	recs := crash.List(m.state)
+	if len(recs) != 1 || recs[0].What != crash.Memory || recs[0].App != "firefox" || got[0]["record"] != recs[0].ID {
+		t.Errorf("records %+v, event %v", recs, got[0]["record"])
+	}
+	if recs[0].Describe() != "Closed firefox to free memory" {
+		t.Errorf("%q", recs[0].Describe())
+	}
+	// Right after: not another one (the memory needs time to come back).
+	m.check()
+	if len(got) != 1 {
+		t.Errorf("closed again straight away: %v", got)
+	}
+	// A shell connecting now hears about it.
+	if cur, _ := m.ops()["memory_warning"](reqName("")); cur.(map[string]any)["event"] != "memory_closed" {
+		t.Errorf("%v", cur)
+	}
+
+	// Only the terminal left: nothing is closed.
+	m2 := fakeMemory(t, 4000, stall, map[string][]int{"app-whiterose-org.gnome.Ptyxis-1-0.scope": {6000}})
+	m2.state = t.TempDir()
+	var got2 []any
+	m2.broadcast = func(e any) { got2 = append(got2, e) }
+	m2.check()
+	if len(got2) != 0 || len(crash.List(m2.state)) != 0 {
+		t.Errorf("closed a protected app: %v", got2)
 	}
 }

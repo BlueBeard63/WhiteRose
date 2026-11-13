@@ -282,6 +282,8 @@ var Known = map[string]Key{
 	// App ids kept running when memory runs out (the terminal always is):
 	// further back in the kill order, and never closed by the watcher.
 	"memory.protected": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](100))},
+	// When memory is critical, the watcher closes the app at fault by itself.
+	"memory.autoClose": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Offer pre-releases (alpha, beta) as updates and list them under Releases.
 	"update.prerelease":        {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},

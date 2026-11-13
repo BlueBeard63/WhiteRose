@@ -98,6 +98,7 @@ Singleton {
         case "report_show": root.reportRequested(msg.from ?? ""); break;
         case "report_snapshots": root.reportSnapshotsEvent(msg.snapshots ?? []); break;
         case "memory_warning": root.memoryWarning(msg); break;
+        case "memory_closed": root.memoryWarning(msg); break;
         }
     }
 

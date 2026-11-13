@@ -16,6 +16,16 @@ function appName(id) {
     return last.charAt(0).toUpperCase() + last.slice(1);
 }
 
+// [title, text] after the watcher closed an app by itself (memory_closed).
+function closedText(w, name) {
+    const a = w?.app ?? {};
+    const why = a.reason === "growing" ? " and had grown steadily for 10 minutes"
+        : a.reason === "half" ? ", more than half of all memory"
+        : ", the most of any app";
+    return ["Closed " + name + " to free memory",
+        "Memory had run out and everything was stalling. " + name + " was using " + size(a.bytes ?? 0) + why + ". Anything unsaved in it is lost."];
+}
+
 // [title, text] for a memory_warning ({ level, app: { id, bytes, growing,
 // reason }, available, total }); `name` is the app's name.
 function warningText(w, name) {
