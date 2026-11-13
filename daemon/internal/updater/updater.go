@@ -278,8 +278,8 @@ type Series struct {
 }
 
 // Releases is every known release grouped by series, newest first.
-// Pre-releases only show with the pre-release switch on, or when they're
-// installed.
+// Pre-releases only show with the pre-release switch on, or when one is
+// the version you're on (or the one starting at the next login).
 func (m *Manager) Releases() []Series {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -302,7 +302,7 @@ func (m *Manager) Releases() []Series {
 		case slices.Contains(installed, v):
 			e.State = "installed"
 		}
-		if r.Pre && !pre && e.State == "available" {
+		if r.Pre && !pre && e.State != "running" && e.State != "next" {
 			continue
 		}
 		name := update.Series(v)

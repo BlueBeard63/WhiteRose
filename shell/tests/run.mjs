@@ -25,7 +25,7 @@ const Ag = load("Agenda.js", ["timed", "next", "when", "span", "at", "blocks"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
-const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction"]);
+const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
 const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
@@ -759,6 +759,29 @@ test("users: suggested usernames, checks, last seen", () => {
     assert.equal(U.lastSeen(new Date(2026, 10, 5).getTime() / 1000, now), "Signed in 4 days ago");
     assert.equal(U.lastSeen(new Date(2026, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct");
     assert.equal(U.lastSeen(new Date(2025, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct 2025");
+});
+
+test("releases tab", () => {
+    const series = [
+        { name: "0.3", releases: [
+            { version: "0.3.0-alpha.3", pre: true, state: "running", published: 1794571000, changes: ["Resize floating windows from any edge"] },
+            { version: "0.3.0-alpha.2", pre: true, state: "installed", published: 1794480000, changes: ["Drag and drop between X11 and Wayland apps"] }] },
+        { name: "0.2", releases: [{ version: "0.2.1", pre: false, state: "available", published: 1794380000, changes: ["One command installs WhiteRose"] }] },
+    ];
+    assert.equal(Up.filterSeries(series, "").length, 2);
+    assert.equal(Up.filterSeries(series, "0.2").map(s => s.name).join(), "0.2");
+    assert.equal(Up.filterSeries(series, "v0.3").map(s => s.releases.length).join(), "2");
+    assert.equal(Up.filterSeries(series, "alpha.2")[0].releases.map(r => r.version).join(), "0.3.0-alpha.2");
+    assert.equal(Up.filterSeries(series, "drag")[0].releases[0].version, "0.3.0-alpha.2");
+    assert.equal(Up.filterSeries(series, "nothing like it").length, 0);
+    assert.equal(Up.seriesNote(series[0]), "2 releases · 0.3.0-alpha.3 running");
+    assert.equal(Up.seriesNote(series[1]), "1 release");
+    assert.equal(Up.releaseFacts(series[0].releases[0], 1794571000000), "alpha · 13 Nov");
+    assert.equal(Up.releaseFacts(series[1].releases[0], 1794571000000), "11 Nov");
+    assert.equal(Up.releaseAction({ state: "installed" }).join("|"), "|Switch to it");
+    assert.equal(Up.releaseAction({ state: "available" }).join("|"), "|Install");
+    assert.equal(Up.newestRelease(series), "0.3.0-alpha.3");
+    assert.equal(Up.newestRelease([]), "");
 });
 
 test("updates page text", () => {

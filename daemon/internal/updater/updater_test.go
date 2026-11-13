@@ -194,6 +194,7 @@ func TestPreReleasesAndList(t *testing.T) {
 		Src: fakeGitHub(t, "0.5.0", priv,
 			update.Release{Tag: "v0.6.0-alpha.2", Pre: true, Published: day(12)},
 			update.Release{Tag: "v0.6.0-alpha.10", Pre: true, Published: day(13)},
+			update.Release{Tag: "v0.5.0-alpha.1", Pre: true, Published: day(5)},
 			update.Release{Tag: "v0.4.2", Published: day(1)},
 			update.Release{Tag: "v0.4.3-draft", Draft: true}),
 		Public: pub, Kind: "deb", Root: t.TempDir(), State: t.TempDir(), Cache: t.TempDir(),
@@ -201,7 +202,9 @@ func TestPreReleasesAndList(t *testing.T) {
 	}
 	installVersion(t, m.Root, "0.5.0")
 	installVersion(t, m.Root, "0.6.0-alpha.2")
+	installVersion(t, m.Root, "0.5.0-alpha.1")
 	ctx := context.Background()
+	// (alpha.2 is installed and starts next; an older installed alpha isn't shown.)
 	if err := m.Check(ctx, false); err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +232,7 @@ func TestPreReleasesAndList(t *testing.T) {
 	if r := m.Status().Release; r == nil || r.Version != "0.6.0-alpha.10" {
 		t.Errorf("switch on, offered %+v", r)
 	}
-	if got := strings.Join(names(), " "); got != "0.6=0.6.0-alpha.10:available,0.6.0-alpha.2:next 0.5=0.5.0:running 0.4=0.4.2:available" {
+	if got := strings.Join(names(), " "); got != "0.6=0.6.0-alpha.10:available,0.6.0-alpha.2:next 0.5=0.5.0:running,0.5.0-alpha.1:installed 0.4=0.4.2:available" {
 		t.Errorf("switch on: %s", got)
 	}
 }
