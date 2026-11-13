@@ -1,6 +1,6 @@
 # XWayland: X11 apps in WhiteRose
 
-Status: in progress (2026-11-12): steps 1 to 5 done (drag and drop between X11 and Wayland is step 7), branch `v0.3/xwayland` (off `v0.3/alpha-fixes`,
+Status: in progress (2026-11-12): steps 1 to 6 done (drag and drop between X11 and Wayland is step 7), branch `v0.3/xwayland` (off `v0.3/alpha-fixes`,
 which touches the same compositor files).
 
 ## Why
