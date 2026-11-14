@@ -89,6 +89,8 @@ install -Dm644 packaging/files/whiterose.portal "$meta/usr/share/xdg-desktop-por
 install -Dm644 packaging/files/org.freedesktop.impl.portal.desktop.whiterose.service "$meta/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.whiterose.service"
 install -Dm644 ARCHITECTURE.md "$meta/usr/share/doc/whiterose/ARCHITECTURE.md"
 install -Dm644 packaging/files/whiterose-autostart.sh "$meta/etc/profile.d/whiterose-autostart.sh"
+# Leftover wr-* folders in /tmp (often RAM) are cleared after a day unused.
+install -Dm644 packaging/files/whiterose-tmpfiles.conf "$meta/usr/lib/tmpfiles.d/whiterose.conf"
 install -Dm644 packaging/files/org.whiterose.apps.policy "$meta/usr/share/polkit-1/actions/org.whiterose.apps.policy"
 # Updates are only installed when signed with this key (internal/update).
 [ -f packaging/release.pub ] && install -Dm644 packaging/release.pub "$meta/usr/share/whiterose/release.pub"
