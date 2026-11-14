@@ -104,7 +104,10 @@ struct Screen {
 pub struct Backend {
     session: LibSeatSession,
     libinput: Libinput,
-    node: DrmNode,
+    /// The card node (/dev/dri/cardN): hotplug events come from it.
+    card: DrmNode,
+    /// The render node, handed to clients for dmabuf.
+    render_node: DrmNode,
     renderer: GlesRenderer,
     manager: Manager,
     scanner: DrmScanner,
@@ -208,7 +211,7 @@ pub fn init_drm(
     event_loop.handle().insert_source(udev, move |event, _, state| match event {
         // (Paused, another console has the screens: what's plugged in can't be
         // read properly then. Getting the session back scans anyway.)
-        UdevEvent::Changed { device_id } if device_id == b.borrow().node.dev_id() => {
+        UdevEvent::Changed { device_id } if device_id == b.borrow().card.dev_id() => {
             if b.borrow().active {
                 scan(&b, state)
             } else {
@@ -279,7 +282,8 @@ fn open_gpu(
     let backend = Backend {
         libinput,
         session,
-        node: render_node.node_with_type(NodeType::Render).and_then(Result::ok).unwrap_or(node),
+        card: node,
+        render_node: render_node.node_with_type(NodeType::Render).and_then(Result::ok).unwrap_or(node),
         renderer,
         manager,
         scanner: DrmScanner::new(),
@@ -295,7 +299,7 @@ fn open_gpu(
 fn init_dmabuf(backend: &Shared, state: &mut WhiteRose) {
     let (formats, node) = {
         let b = backend.borrow();
-        (b.renderer.dmabuf_formats(), b.node)
+        (b.renderer.dmabuf_formats(), b.render_node)
     };
     let dh = state.display_handle.clone();
     let global = match DmabufFeedbackBuilder::new(node.dev_id(), formats.clone()).build() {
@@ -378,6 +382,9 @@ fn scan(backend: &Shared, state: &mut WhiteRose) {
                         backend.borrow_mut().waiting.push((connector.handle(), crtc));
                     }
                 }
+            }
+            DrmScanEvent::Connected { connector, crtc: None } => {
+                tracing::warn!(connector = ?connector.interface(), "a screen is plugged in but no display pipe is free for it");
             }
             DrmScanEvent::Disconnected { crtc: Some(crtc), connector } => {
                 backend.borrow_mut().waiting.retain(|(c, _)| *c != connector.handle());

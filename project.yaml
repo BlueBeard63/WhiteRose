@@ -14,9 +14,22 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.3.0-alpha.5
+version: 0.3.0-alpha.6
 
 releases:
+  - version: 0.3.0-alpha.6
+    date: 2026-11-14
+    title: Screens plugged in later (alpha)
+    summary: >-
+      The sixth 0.3 alpha: a monitor plugged in after you log in now shows up, and screens can be scaled below 100% to fit more on them. If you're on alpha.4 or later with Pre-releases on, it comes through Settings › Updates.
+    added:
+      - "Scale at 75% (Settings › Displays) fits more on a screen; apps that can't scale that small are drawn at 100% and shrunk"
+    fixed:
+      - "A monitor plugged in after logging in never showed up, on screen or in Settings › Displays, until the next login"
+    notes: |
+      With alpha.4 or later and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases. From alpha.3 or earlier, install it with this release's `install.sh`. Your settings carry over.
+    contributors:
+      - BlueBeard63
   - version: 0.3.0-alpha.5
     date: 2026-11-14
     title: Shortcuts and the keyring (alpha)

@@ -434,10 +434,11 @@ Column {
         }
         SettingRow {
             title: "Scale"
-            subtitle: "Fractional scaling"
+            subtitle: "Below 100% fits more on screen"
             Segmented {
+                readonly property var steps: [0.75, 1, 1.25, 1.5, 2]
                 value: page.current?.scale ?? 1
-                options: [1, 1.25, 1.5, 2].concat([1, 1.25, 1.5, 2].includes(page.current?.scale ?? 1) ? [] : [page.current.scale])
+                options: steps.concat(steps.includes(page.current?.scale ?? 1) ? [] : [page.current.scale]).sort((x, y) => x - y)
                     .map(s => ({ label: Math.round(s * 100) + "%", value: s }))
                 onPicked: v => page.edit(page.selected, { scale: v })
             }
