@@ -2,6 +2,22 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.3.0-alpha.6 · Screens plugged in later (alpha) (2026-11-14)
+
+The sixth 0.3 alpha: a monitor plugged in after you log in now shows up, and screens can be scaled below 100% to fit more on them. If you're on alpha.4 or later with Pre-releases on, it comes through Settings › Updates.
+
+### Added
+
+- Scale at 75% (Settings › Displays) fits more on a screen; apps that can't scale that small are drawn at 100% and shrunk
+
+### Fixed
+
+- A monitor plugged in after logging in never showed up, on screen or in Settings › Displays, until the next login
+
+With alpha.4 or later and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases. From alpha.3 or earlier, install it with this release's `install.sh`. Your settings carry over.
+
+Contributors: @BlueBeard63
+
 ## 0.3.0-alpha.5 · Shortcuts and the keyring (alpha) (2026-11-14)
 
 The fifth 0.3 alpha: a shortcut sheet on SUPER+K, the keyring opened after a fingerprint login, pinch to zoom in apps, and fixes for Settings, memory warnings and failed updates. If you're on alpha.4 with Pre-releases on, it comes through Settings › Updates.
