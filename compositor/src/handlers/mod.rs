@@ -193,6 +193,7 @@ impl smithay::wayland::fractional_scale::FractionalScaleHandler for WhiteRose {
 }
 smithay::delegate_fractional_scale!(WhiteRose);
 smithay::delegate_viewporter!(WhiteRose);
+smithay::delegate_pointer_gestures!(WhiteRose);
 
 // wp_cursor_shape_v1: apps name the cursor they want ("text", "pointer")
 // and we draw it from our theme, the same size everywhere, instead of each

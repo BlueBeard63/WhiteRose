@@ -174,6 +174,9 @@ pub struct WhiteRose {
     /// 125%, 150%, ... instead of rounding up to 200% and being scaled down.
     pub fractional_scale_state: smithay::wayland::fractional_scale::FractionalScaleManagerState,
     pub viewporter_state: smithay::wayland::viewporter::ViewporterState,
+    /// Touchpad pinch, swipe and hold gestures for apps (a browser's pinch
+    /// to zoom).
+    pub pointer_gestures_state: smithay::wayland::pointer_gestures::PointerGesturesState,
     pub lock: crate::session_lock::SessionLock,
     /// Restart bookkeeping per supervised process ("shell", "daemon").
     pub restarts: std::collections::HashMap<&'static str, crate::shell_supervisor::RestartPolicy>,
@@ -202,6 +205,7 @@ impl WhiteRose {
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Self>(&dh);
+        let pointer_gestures_state = smithay::wayland::pointer_gestures::PointerGesturesState::new::<Self>(&dh);
         let cursor_shape_state = smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
@@ -331,6 +335,7 @@ impl WhiteRose {
             session_lock_state,
             fractional_scale_state,
             viewporter_state,
+            pointer_gestures_state,
             lock: Default::default(),
             restarts: Default::default(),
             clipboard,
