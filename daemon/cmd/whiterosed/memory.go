@@ -16,8 +16,11 @@ package main
 //     after 3 s), a crash record is written (so it can be reported like a
 //     crash), and the island says what was closed and why (memory_closed).
 //     Then 15 s to let the memory come back before closing another.
-//   - Protected apps (memory.protected, and the terminal) are never named,
-//     raised or closed.
+//     Only an app big enough for that to help (memwatch.WorthClosing): if
+//     the worst one is small, the pressure is coming from elsewhere and it
+//     is named instead, like when memory is tight.
+//   - Protected apps (memory.protected, $TERMINAL and every known terminal
+//     with its tabs, memwatch.Terminals) are never named, raised or closed.
 
 import (
 	"encoding/json"
@@ -75,11 +78,21 @@ func newMemWatch(st *store.Store, broadcast func(any)) *memWatch {
 	}
 	return &memWatch{
 		slice: slice,
-		proc:  "/proc", st: st, broadcast: broadcast, terminal: os.Getenv("TERMINAL"), now: time.Now,
+		proc:  "/proc", st: st, broadcast: broadcast, terminal: defaultTerminal(), now: time.Now,
 		raised: map[string]bool{}, snoozed: map[string]time.Time{}, warned: map[string]time.Time{},
 		wake:  make(chan struct{}, 1),
 		state: stateHome(), version: runningVersion(),
 	}
+}
+
+// defaultTerminal: $TERMINAL, else what the compositor opens when it's
+// unset (compositor/src/main.rs). The daemon isn't always started with the
+// session's environment, so it can't rely on $TERMINAL alone.
+func defaultTerminal() string {
+	if t := os.Getenv("TERMINAL"); t != "" {
+		return t
+	}
+	return "ptyxis --standalone"
 }
 
 func stateHome() string {
@@ -112,7 +125,7 @@ var appSliceOverride string
 // kept: why app id is kept running: "terminal", "list" or "".
 func (m *memWatch) kept(id string) string {
 	switch {
-	case memwatch.Protected(id, nil, m.terminal):
+	case memwatch.Protected(id, nil, m.terminal) || memwatch.IsTerminal(id):
 		return "terminal"
 	case m.protected(id):
 		return "list"
@@ -125,7 +138,7 @@ func (m *memWatch) protected(id string) bool {
 	if m.st != nil {
 		_ = m.st.GetInto("memory.protected", &list)
 	}
-	return memwatch.Protected(id, list, m.terminal)
+	return memwatch.Protected(id, list, m.terminal) || memwatch.IsTerminal(id)
 }
 
 // readApps: every app scope and its own memory now.
@@ -263,7 +276,7 @@ func (m *memWatch) check() {
 	}
 	// Critical: closed by itself (not snoozable: the session is at stake).
 	// Right after one, nothing more: the memory needs a moment to come back.
-	if level == memwatch.Critical && m.autoClose() {
+	if level == memwatch.Critical && m.autoClose() && memwatch.WorthClosing(w.Bytes, total) {
 		if now.Sub(m.lastClosed) >= 15*time.Second {
 			m.forceClose(w, now, avail, total)
 		}

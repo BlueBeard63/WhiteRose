@@ -148,7 +148,7 @@ func TestMemoryCriticalCloses(t *testing.T) {
 		"app-gnome-firefox-1.scope":                {3000},
 		"app-whiterose-org.gnome.Ptyxis-1-0.scope": {6000}, // the terminal: bigger, never closed
 	}
-	m := fakeMemory(t, 4000, stall, apps)
+	m := fakeMemory(t, 1500, stall, apps) // stalling, and under a tenth left
 	m.state = t.TempDir()
 	m.version = "0.3.1"
 	var got []map[string]any
@@ -178,7 +178,7 @@ func TestMemoryCriticalCloses(t *testing.T) {
 	}
 
 	// Only the terminal left: nothing is closed.
-	m2 := fakeMemory(t, 4000, stall, map[string][]int{"app-whiterose-org.gnome.Ptyxis-1-0.scope": {6000}})
+	m2 := fakeMemory(t, 1500, stall, map[string][]int{"app-whiterose-org.gnome.Ptyxis-1-0.scope": {6000}})
 	m2.state = t.TempDir()
 	var got2 []any
 	m2.broadcast = func(e any) { got2 = append(got2, e) }
@@ -218,6 +218,43 @@ func TestMemoryCountsAnAppsOwnMemory(t *testing.T) {
 	for _, a := range m.readApps() {
 		if a.ID == "org.example.Notes" && a.Bytes != 10<<20 {
 			t.Errorf("Notes counted as %d MB", a.Bytes>>20)
+		}
+	}
+}
+
+// 2026-11-14: a test run in a Ptyxis tab started 16 linkers at 1 GB each.
+// Everything stalled with two thirds of memory free, and the watcher closed
+// Resources (195 MB), then 15 s later Ptyxis itself ($TERMINAL said
+// Ghostty), freeing nothing. Now: stalling with memory free only warns; a
+// small app isn't closed even when memory is short; and the terminal and
+// its tab (with the build in it) are never touched.
+func TestMemoryLeavesTheBuildAndBystandersAlone(t *testing.T) {
+	stall := "some avg10=80.00 avg60=0 avg300=0 total=0\nfull avg10=45.00 avg60=0 avg300=0 total=0\n"
+	apps := map[string][]int{
+		"app-whiterose-net.nokyan.Resources-1-2.scope":            {195},
+		"app-whiterose-org.gnome.Ptyxis-1-3.scope":                {155},
+		"ptyxis-spawn-e002a034-f916-4085-9df7-1b0f13625b6d.scope": {10600},
+	}
+	for _, availMB := range []int{10000, 1500, 300} { // free, short, nearly none
+		m := fakeMemory(t, availMB, stall, apps)
+		m.terminal = "ghostty"
+		m.state = t.TempDir()
+		var got []map[string]any
+		m.broadcast = func(e any) { got = append(got, e.(map[string]any)) }
+		m.check()
+		if len(crash.List(m.state)) != 0 {
+			t.Errorf("%d MB free: closed something: %v", availMB, got)
+		}
+		for _, e := range got {
+			if e["event"] == "memory_closed" {
+				t.Errorf("%d MB free: %v", availMB, e)
+			}
+			if id := e["app"].(memwatch.Suspect).ID; id != "net.nokyan.Resources" {
+				t.Errorf("%d MB free: named %s", availMB, id)
+			}
+		}
+		if availMB == 10000 && m.level != memwatch.Tight {
+			t.Errorf("stalling with memory free: %v, want tight", m.level)
 		}
 	}
 }
