@@ -598,3 +598,22 @@ func dragCornerIn(t *testing.T, s *uitest.Session, w *uitest.Window) {
 		t.Errorf("dragging the corner didn't resize it: %v, then %v", g, now)
 	}
 }
+
+// Password fields have their names (screen readers, tests) and show only
+// dots. Opens Users › Change password and cancels: never saves, as it's
+// the real account.
+func TestSettingsPasswordFieldsAreNamed(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("users")
+	settings.Click(uitest.Named("Change password").Role("push button"))
+	first := uitest.Named("New password").Role("text")
+	settings.WaitFor(first)
+	settings.WaitFor(uitest.Named("Again").Role("text"))
+	settings.Type("hunter2")
+	uitest.WaitUntil(func() bool { return settings.Text(first) != "" })
+	if got := settings.Text(first); got == "" || strings.Contains(got, "hunter2") {
+		t.Fatalf("the field reads %q", got)
+	}
+	settings.Click(uitest.Named("Cancel").Role("push button"))
+	settings.Gone(first)
+}

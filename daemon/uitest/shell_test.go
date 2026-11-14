@@ -5,6 +5,8 @@
 package uitest_test
 
 import (
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -313,8 +315,8 @@ func TestSuperLLocksWithTheLockScreen(t *testing.T) {
 	}
 	time.Sleep(time.Second)
 	for _, line := range strings.Split(s.Log(), "\n") {
-		lock := strings.Contains(line, "LockView.qml") || strings.Contains(line, "LockScreen.qml")
-		if strings.Contains(line, "Auth.qml") || lock && (strings.Contains(line, "Error") || strings.Contains(line, "is not")) {
+		// (Any warning: a missing picture used to be one, every lock.)
+		if strings.Contains(line, "Auth.qml") || strings.Contains(line, "LockView.qml") || strings.Contains(line, "LockScreen.qml") || strings.Contains(line, "Avatar.qml") {
 			t.Error(line)
 		}
 	}
@@ -384,5 +386,37 @@ func TestKeyringPromptNotNowAsksNoMore(t *testing.T) {
 	}
 	if !s.KeyringLocked() {
 		t.Fatal("the keyring opened without a password")
+	}
+}
+
+// The profile picture: ~/.face when there is one, else the initials (and
+// no warning in the log either way).
+func TestProfilePictureShowsTheFace(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	avatar := uitest.Named("Profile picture")
+	bar.Click(uitest.Named("Quick settings").Role("push button"))
+	bar.WaitFor(avatar.Described("Initials"))
+	bar.Press("Escape")
+	bar.Gone(avatar)
+
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	for i := range img.Pix {
+		img.Pix[i] = 200
+	}
+	f, err := os.Create(filepath.Join(s.Home, ".face"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	bar.Click(uitest.Named("Quick settings").Role("push button"))
+	bar.WaitFor(avatar.Described("Picture"))
+	for _, line := range strings.Split(s.Log(), "\n") {
+		if strings.Contains(line, "Avatar.qml") || strings.Contains(line, "QuickSettingsPanel.qml") && strings.Contains(line, "Cannot open") {
+			t.Error(line)
+		}
 	}
 }
