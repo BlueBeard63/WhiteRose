@@ -757,6 +757,8 @@ impl WhiteRose {
     /// named (a bar's screen), else where you're working (the focused
     /// window's output, else the pointer's). It changes the workspace's
     /// layout, or the monitor's if that monitor has its own, and saves it.
+    /// Back at the default, the workspace's override goes. The shell shows
+    /// the layout it's on now.
     pub fn next_window_layout(&mut self, output: Option<&str>) {
         let ws = self.workspaces.active();
         let named = output.and_then(|n| self.space.outputs().find(|o| o.name() == n).cloned());
@@ -772,7 +774,13 @@ impl WhiteRose {
                 s.monitors.iter().map(|(m, l)| (m.clone(), Value::from(l.as_str()))).collect();
             ("windows.layout.monitors", map)
         } else {
-            s.workspaces.insert(ws, next);
+            // Back to the default: the override goes, so the workspace
+            // follows Settings again (rather than keeping a copy of it).
+            if next == s.global {
+                s.workspaces.remove(&ws);
+            } else {
+                s.workspaces.insert(ws, next);
+            }
             let map: serde_json::Map<String, Value> =
                 s.workspaces.iter().map(|(w, l)| ((w + 1).to_string(), Value::from(l.as_str()))).collect();
             ("windows.layout.workspaces", map)

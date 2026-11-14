@@ -63,7 +63,8 @@ func TestLauncherCalculates(t *testing.T) {
 }
 
 // The bar's layout button shows this workspace's window layout; clicking
-// it moves to the next one (as SUPER+T) and saves it for the workspace.
+// it moves to the next one (as SUPER+T) and saves it for the workspace;
+// back at the default (Floating here), the workspace's own goes.
 func TestBarLayoutButtonCyclesTheLayout(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	bar := s.Bar()
@@ -76,7 +77,7 @@ func TestBarLayoutButtonCyclesTheLayout(t *testing.T) {
 	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "master"})
 	bar.WaitFor(button.Described("Master"))
 	bar.Click(button)
-	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "floating"})
+	s.WaitSetting("windows.layout.workspaces", map[string]any{})
 	bar.WaitFor(button.Described("Floating"))
 }
 
@@ -418,5 +419,36 @@ func TestProfilePictureShowsTheFace(t *testing.T) {
 		if strings.Contains(line, "Avatar.qml") || strings.Contains(line, "QuickSettingsPanel.qml") && strings.Contains(line, "Cannot open") {
 			t.Error(line)
 		}
+	}
+}
+
+// SUPER+T says which layout the workspace is on now and that it's kept for
+// the workspace; cycling back to the default drops the workspace's own
+// layout, so it follows Settings again.
+func TestSuperTSaysTheLayoutAndBackToDefaultForgetsIt(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	bar.WaitFor(uitest.Named("Layout").Role("push button").Described("Floating"))
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Dwindle"))
+	bar.WaitFor(uitest.Named("Kept for this workspace. Your default is Floating."))
+	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "dwindle"})
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Master"))
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Floating"))
+	bar.WaitFor(uitest.Named("Your default layout"))
+	s.WaitSetting("windows.layout.workspaces", map[string]any{})
+	// It goes by itself.
+	bar.Gone(uitest.Named("Workspace 1: Floating"))
+	// Switching to a workspace on another layout isn't a change of it.
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Dwindle"))
+	bar.Gone(uitest.Named("Workspace 1: Dwindle"))
+	bar.Press("super+2")
+	bar.WaitFor(uitest.Named("Layout").Role("push button").Described("Floating"))
+	time.Sleep(500 * time.Millisecond)
+	if _, shown := bar.Lookup(uitest.Named("Workspace 2: Floating")); shown {
+		t.Error("switching workspaces showed the layout note")
 	}
 }

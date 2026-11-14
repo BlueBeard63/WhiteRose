@@ -39,7 +39,7 @@ func ParseUnit(unit string) (id string, ok bool) {
 	}
 	// <launcher>-<id>-<number>[-<number>]: the launcher has no "-" (an id's
 	// "-" is escaped as \x2d), the numbers are at the end.
-	_, rest, ok = strings.Cut(rest, "-")
+	launcher, rest, ok := strings.Cut(rest, "-")
 	if !ok {
 		return "", false
 	}
@@ -48,6 +48,12 @@ func ParseUnit(unit string) (id string, ok bool) {
 		parts = parts[:len(parts)-1]
 	}
 	id = unescape(strings.Join(parts, "-"))
+	// Ghostty moves each terminal tab into its own scope
+	// (app-ghostty-surface-transient-<pid>.scope): that's Ghostty, the
+	// terminal, not an app called "surface-transient".
+	if id == "surface-transient" {
+		id = launcher
+	}
 	return id, id != ""
 }
 

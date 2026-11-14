@@ -205,6 +205,30 @@ Singleton {
             root.promptReport({ id: v.id, what: "manual", title: "Snapshot you took", time: Date.now() });
         });
     }
+    // The active workspace's layout changed (SUPER+T, the bar's Layout
+    // button, Settings): the island says which it is now and whether it's
+    // kept for this workspace (island/layoutnote.qml). Switching workspaces
+    // isn't a change. { workspace, layout, kept, byDefault }
+    property var layoutNote: null
+    property var layoutSeen: ({ workspace: 0, layouts: {} })
+    function noteLayout() {
+        const ws = Compositor.activeWorkspace, now = Compositor.windowLayouts;
+        const before = layoutSeen;
+        layoutSeen = { workspace: ws, layouts: now };
+        if (before.workspace !== ws) return;
+        const out = Object.keys(now).find(o => before.layouts[o] !== undefined && before.layouts[o] !== now[o]);
+        if (!out) return;
+        const byDefault = Daemon.setting("windows.layout", "floating");
+        layoutNote = { workspace: ws, layout: now[out], kept: now[out] !== byDefault, byDefault: byDefault };
+        if ((islandView === "idle" || islandView === "layoutnote") && !locked) {
+            if (islandView === "layoutnote") close();
+            show("layoutnote");
+        }
+    }
+    Connections {
+        target: Compositor
+        function onWindowLayoutsChanged() { root.noteLayout() }
+    }
     // The keyring is locked after a fingerprint login (island/keyring.qml):
     // asked once a login, over nothing but the idle island. Not now (or
     // clicking away) asks no more; it goes away if the keyring opens anyway
