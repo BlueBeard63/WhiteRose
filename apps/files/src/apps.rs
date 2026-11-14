@@ -491,6 +491,7 @@ pub fn open_with(id: &str, files: &[String], terminal: Option<&str>) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn entry(id: &str, name: &str, exec: &str, mimes: &[&str]) -> Entry {
         Entry {
@@ -535,9 +536,7 @@ mod tests {
         ] {
             apps.insert(e.id.clone(), e);
         }
-        let d = std::env::temp_dir().join(format!("wr-apps-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("apps");
         let mine = d.join("mimeapps.list");
         fs::write(&mine, "[Added Associations]\ntext/markdown=c.desktop;\n[Removed Associations]\ntext/plain=d.desktop;\n").unwrap();
         let sys = d.join("sys.list");
@@ -576,7 +575,6 @@ mod tests {
             2,
             "replaced, not added (one default, one added association)"
         );
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

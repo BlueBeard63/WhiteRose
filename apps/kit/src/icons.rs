@@ -367,6 +367,7 @@ pub fn shared() -> &'static Icons {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn globs() {
@@ -379,9 +380,8 @@ mod tests {
 
     /// A tiny theme tree and mime database, built in a temp dir.
     /// A theme tree of its own per test (tests run in parallel).
-    fn fixture(test: &str) -> (PathBuf, Icons) {
-        let root = std::env::temp_dir().join(format!("wr-icons-{test}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+    fn fixture(test: &str) -> (Scratch, Icons) {
+        let root = Scratch::new(&format!("icons-{test}"));
         let mk = |p: &str, body: &str| {
             let f = root.join(p);
             fs::create_dir_all(f.parent().unwrap()).unwrap();
@@ -399,11 +399,7 @@ mod tests {
         mk("icons/hicolor/48x48/apps/firefox.png", "png");
         mk("mime/globs2", "50:application/pdf:*.pdf\n50:text/x-python:*.py\n10:text/plain:*.txt\n55:application/x-compressed-tar:*.tar.gz\n");
         mk("mime/generic-icons", "text/x-python:text-x-script\n");
-        let icons = Icons::new(
-            "Mine",
-            vec![root.join("icons")],
-            std::slice::from_ref(&root),
-        );
+        let icons = Icons::new("Mine", vec![root.join("icons")], &[root.to_path_buf()]);
         (root, icons)
     }
 
@@ -430,7 +426,6 @@ mod tests {
             Some(root.join("icons/hicolor/48x48/apps/firefox.png"))
         );
         assert_eq!(icons.lookup("nope", 48, 1), None);
-        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -458,6 +453,5 @@ mod tests {
             icons.for_file("Music", true, 48, 1),
             Some(root.join("icons/Mine/48x48/places/folder.png"))
         );
-        let _ = fs::remove_dir_all(root);
     }
 }

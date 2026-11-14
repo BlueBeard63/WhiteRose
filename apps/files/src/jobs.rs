@@ -2012,6 +2012,7 @@ fn bulk_plan(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn labels() {
@@ -2034,7 +2035,7 @@ mod tests {
 
     #[test]
     fn folder_sizes() {
-        let d = std::env::temp_dir().join(format!("wr-sizes-{}", std::process::id()));
+        let d = Scratch::new("sizes");
         std::fs::create_dir_all(d.join("a/b")).unwrap();
         std::fs::write(d.join("a/one"), "12345").unwrap();
         std::fs::write(d.join("a/b/two"), "123").unwrap();

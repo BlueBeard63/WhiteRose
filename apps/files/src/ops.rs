@@ -954,11 +954,10 @@ fn delete<R: Report>(run: &mut Run<R>, p: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-ops-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("ops-{name}"));
         d
     }
 
@@ -1053,7 +1052,6 @@ mod tests {
         );
         // Nothing differs any more.
         assert!(compare(&l, &r, true, &stop, &mut |_| {}).is_empty());
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -1132,7 +1130,6 @@ mod tests {
         );
         assert_eq!(r.asked, 1);
         assert!(d.join("m/b.txt").exists());
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

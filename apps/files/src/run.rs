@@ -160,11 +160,11 @@ pub fn untrusted(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn what_runs() {
-        let d = std::env::temp_dir().join(format!("wr-run-{}", std::process::id()));
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("run");
         let w = |n: &str, mode: u32| {
             let p = d.join(n);
             std::fs::write(&p, "#!/bin/sh\n").unwrap();

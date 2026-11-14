@@ -178,12 +178,10 @@ pub fn save_to(dir: &Path, s: &Session) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d =
-            std::env::temp_dir().join(format!("wr-files-session-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("files-session-{name}"));
         d
     }
 

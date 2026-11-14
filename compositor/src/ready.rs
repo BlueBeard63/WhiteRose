@@ -14,10 +14,10 @@ pub fn mark(name: &str) {
 
 #[cfg(test)]
 mod tests {
+    use crate::scratch::Scratch;
     #[test]
     fn marks_only_when_asked() {
-        let d = std::env::temp_dir().join(format!("wr-ready-{}", std::process::id()));
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("ready");
         // SAFETY: tests in this binary don't read this variable concurrently.
         unsafe { std::env::set_var("WHITEROSE_READY_DIR", &d) };
         super::mark("compositor");

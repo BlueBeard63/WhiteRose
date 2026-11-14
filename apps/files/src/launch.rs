@@ -165,6 +165,7 @@ pub fn git_root(p: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn picking() {
@@ -211,7 +212,7 @@ mod tests {
 
     #[test]
     fn repositories() {
-        let d = std::env::temp_dir().join(format!("wr-git-{}", std::process::id()));
+        let d = Scratch::new("launch-git");
         std::fs::create_dir_all(d.join("repo/.git")).unwrap();
         std::fs::create_dir_all(d.join("repo/src/deep")).unwrap();
         assert_eq!(git_root(&d.join("repo/src/deep")), Some(d.join("repo")));

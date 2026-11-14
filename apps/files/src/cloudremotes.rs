@@ -610,6 +610,7 @@ pub fn remove(rclone: &str, name: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn reads_remotes_and_names() {
@@ -703,9 +704,7 @@ esac
     #[test]
     fn sets_up_an_account_step_by_step() {
         let _turn = SCRIPTS.lock().unwrap_or_else(|e| e.into_inner());
-        let d = std::env::temp_dir().join(format!("wr-rclone-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("rclone");
         let rc = fake_rclone(&d);
         let stop = AtomicBool::new(false);
         let mut notes = vec![];
@@ -774,15 +773,12 @@ esac
             setup(&rc, "a/b", "drive", &[], None, &stop, &mut |_| {}),
             Step::Failed { .. }
         ));
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn cancelling_stops_a_sign_in() {
         let _turn = SCRIPTS.lock().unwrap_or_else(|e| e.into_inner());
-        let d = std::env::temp_dir().join(format!("wr-rclone-stop-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("rclone-stop");
         let p = d.join("rclone");
         std::fs::write(&p, "#!/bin/sh\nexec sleep 30\n").unwrap();
         use std::os::unix::fs::PermissionsExt;
@@ -810,7 +806,6 @@ esac
             }
         );
         assert!(t.elapsed() < Duration::from_secs(3));
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -871,9 +866,7 @@ esac
     #[test]
     fn signs_in_to_nextcloud() {
         let _turn = SCRIPTS.lock().unwrap_or_else(|e| e.into_inner());
-        let d = std::env::temp_dir().join(format!("wr-nc-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("nc");
         let curl = fake_curl(&d, 200);
         let stop = AtomicBool::new(false);
         let mut notes = vec![];
@@ -942,7 +935,6 @@ esac
             ),
             Err("Cancelled".into())
         );
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

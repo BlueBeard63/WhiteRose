@@ -695,6 +695,7 @@ pub fn secret_id(uri: &str, user: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn reads_addresses_as_typed() {
@@ -799,7 +800,7 @@ mod tests {
 
     #[test]
     fn keeps_saved_servers() {
-        let d = std::env::temp_dir().join(format!("wr-shares-{}", std::process::id()));
+        let d = Scratch::new("shares");
         let f = d.join("servers.json");
         let mut l = vec![];
         remember(
@@ -826,7 +827,6 @@ mod tests {
         save(&f, &l).unwrap();
         assert_eq!(load(&f), l);
         assert_eq!(secret_id("smb://nas", "jack"), "share:smb://nas#jack");
-        let _ = std::fs::remove_dir_all(d);
     }
 
     /// A stand-in for gio that asks what gio asks, and records the answers.
@@ -840,9 +840,7 @@ mod tests {
 
     #[test]
     fn answers_the_prompts() {
-        let d = std::env::temp_dir().join(format!("wr-gio-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("gio");
         let log = d.join("answers");
         let mounted = d.join("mounted");
         // `gio info` says where once mounted; `gio mount` asks, checks, mounts.
@@ -923,14 +921,11 @@ touch {m}
             answers.contains("jack HOME wrong") && answers.contains("jack WORKGROUP right"),
             "{answers}"
         );
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn questions_come_back_unless_accepted() {
-        let d = std::env::temp_dir().join(format!("wr-gioq-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("gioq");
         let mounted = d.join("mounted");
         let script = format!(
             r#"if [ "$1" = info ]; then [ -f {m} ] && echo "local path: /x"; exit 0; fi
@@ -975,14 +970,11 @@ touch {m}
             ),
             Mounted::Ok { path: "/x".into() }
         );
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn cancelling_stops_it() {
-        let d = std::env::temp_dir().join(format!("wr-gioc-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("gioc");
         let gio = fake_gio(&d, "[ \"$1\" = info ] && exit 0\nsleep 30\n");
         let stop = std::sync::Arc::new(AtomicBool::new(false));
         let s2 = stop.clone();
@@ -1007,19 +999,15 @@ touch {m}
             }
         );
         assert!(t.elapsed() < Duration::from_secs(3));
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn failures_say_why() {
-        let d = std::env::temp_dir().join(format!("wr-giof-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("giof");
         let gio = fake_gio(&d, "[ \"$1\" = info ] && exit 0\necho 'gio: smb://nas/: Failed to mount Windows share: Connection refused' >&2\nexit 2\n");
         assert_eq!(
             mount(&gio, "smb://nas", "", "", "", false, Duration::from_secs(5), &AtomicBool::new(false)),
             Mounted::Failed { error: "Failed to mount Windows share: Connection refused: the server is there but isn't sharing this way (wrong kind of address or port?)".into() }
         );
-        std::fs::remove_dir_all(&d).unwrap();
     }
 }

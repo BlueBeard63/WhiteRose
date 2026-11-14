@@ -119,6 +119,7 @@ pub fn prune(d: &Path, keep: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn names_change_with_the_file() {
@@ -137,9 +138,7 @@ mod tests {
 
     #[test]
     fn copies_once_and_prunes() {
-        let d = std::env::temp_dir().join(format!("wr-remotecopy-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("remotecopy");
         let src = d.join("src.txt");
         fs::write(&src, "hello").unwrap();
         let cache = d.join("cache");
@@ -163,6 +162,5 @@ mod tests {
             fetch_into(&d.to_string_lossy(), &cache).is_err(),
             "a folder isn't copied"
         );
-        let _ = fs::remove_dir_all(&d);
     }
 }

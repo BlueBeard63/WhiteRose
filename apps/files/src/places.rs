@@ -825,6 +825,7 @@ pub fn suggest(typed: &str, home: &Path, hidden: bool) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn user_dirs_with_home_and_absolute_paths() {
@@ -853,8 +854,7 @@ mod tests {
             vec!["file:///b", "file:///c Cee", "file:///a A"]
         );
         assert_eq!(reorder(text, "file:///zzz", 0).len(), 3);
-        let d = std::env::temp_dir().join(format!("wr-sub-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("sub");
         for p in ["Music/x", "docs", ".hidden", "file10", "file9"] {
             fs::create_dir_all(d.join(p)).unwrap();
         }
@@ -865,7 +865,6 @@ mod tests {
         assert!(s.iter().find(|x| x.name == "Music").unwrap().more);
         assert!(!s.iter().find(|x| x.name == "docs").unwrap().more);
         assert_eq!(subfolders(&d, true).len(), 5);
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -1036,8 +1035,7 @@ mod tests {
 
     #[test]
     fn suggestions_complete_folders() {
-        let d = std::env::temp_dir().join(format!("wr-files-suggest-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("files-suggest");
         for f in ["Documents", "Downloads", "Desktop", ".config", "Music"] {
             fs::create_dir_all(d.join(f)).unwrap();
         }
@@ -1064,7 +1062,6 @@ mod tests {
             [format!("{}/.config", d.display())],
             "or when typed"
         );
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]

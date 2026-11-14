@@ -177,6 +177,7 @@ pub fn main() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn estimates_from_the_last_index() {
@@ -200,8 +201,7 @@ mod tests {
 
     #[test]
     fn running_needs_a_live_writer() {
-        let d = std::env::temp_dir().join(format!("wr-indexer-{}", std::process::id()));
-        fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("indexer");
         let ix = d.join("index");
         assert_eq!(running(&ix), None);
         let mine = Progress {
@@ -221,6 +221,5 @@ mod tests {
             },
         );
         assert_eq!(running(&ix), None);
-        fs::remove_dir_all(&d).unwrap();
     }
 }

@@ -94,11 +94,11 @@ pub fn on_disk(path: &Path) -> std::io::Result<[u8; 32]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn known_sums_and_matching() {
-        let d = std::env::temp_dir().join(format!("wr-hash-{}", std::process::id()));
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("hash");
         let p = d.join("abc");
         std::fs::write(&p, "abc").unwrap();
         let mut seen = 0;
@@ -120,6 +120,5 @@ mod tests {
         assert!(sums(&p, &AtomicBool::new(true), &mut |_| {})
             .unwrap()
             .is_none());
-        std::fs::remove_dir_all(&d).unwrap();
     }
 }

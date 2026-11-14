@@ -35,6 +35,9 @@ mod projects;
 mod recent;
 mod remotecopy;
 mod run;
+#[cfg(test)]
+#[path = "../../scratch.rs"]
+mod scratch;
 mod search;
 mod secure;
 mod session;

@@ -357,6 +357,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn rules() -> Rules {
         Rules {
@@ -511,10 +512,8 @@ mod tests {
         );
     }
 
-    fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-bulk-{}-{name}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn tmp(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("bulk-{name}"));
         d
     }
 
@@ -552,7 +551,6 @@ mod tests {
             .file_name()
             .to_string_lossy()
             .starts_with(".wr-rename")));
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -577,6 +575,5 @@ mod tests {
             "someone else's"
         );
         assert_eq!(fs::read_to_string(d.join("a.txt")).unwrap(), "a");
-        fs::remove_dir_all(&d).unwrap();
     }
 }

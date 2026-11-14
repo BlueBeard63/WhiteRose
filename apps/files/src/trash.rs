@@ -330,11 +330,10 @@ pub fn restore(p: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-trash-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("trash-{name}"));
         d
     }
 

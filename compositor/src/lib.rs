@@ -29,6 +29,8 @@ pub mod protocols;
 pub mod ready;
 pub mod render;
 pub mod rules;
+#[cfg(test)]
+mod scratch;
 pub mod scratchpad;
 pub mod scratchpad_windows;
 pub mod screenshot;

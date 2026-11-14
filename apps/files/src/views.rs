@@ -212,6 +212,7 @@ pub fn change(f: impl FnOnce(&mut Views)) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn view(mode: &str) -> View {
         View {
@@ -322,8 +323,7 @@ mod tests {
 
     #[test]
     fn saved_and_loaded() {
-        let d = std::env::temp_dir().join(format!("wr-views-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
+        let d = Scratch::new("views");
         let f = d.join("views.json");
         assert_eq!(load_from(&f), Views::default());
         let mut v = Views::default();
