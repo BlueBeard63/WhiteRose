@@ -172,12 +172,27 @@ func TestSnapshotRestore(t *testing.T) {
 	if l, _ := os.Readlink(filepath.Join(cfg, "link")); l != "sub/a.conf" {
 		t.Errorf("link %q", l)
 	}
+	// What it replaced is kept, not deleted.
+	aside := ReplacedDir(snap)
+	if read(filepath.Join(aside, ".local/share/whiterose/settings.db")) != "db v2" || read(filepath.Join(aside, ".config/whiterose/added")) != "x" {
+		t.Error("the replaced settings weren't kept")
+	}
 	// Taken again: replaced, one only.
 	if err := Snapshot(home, snap); err != nil {
 		t.Fatal(err)
 	}
-	if left, _ := os.ReadDir(filepath.Dir(snap)); len(left) != 1 {
+	if _, err := os.Stat(snap + ".new"); err == nil {
+		t.Error("a half-made snapshot is left")
+	}
+	if left, _ := os.ReadDir(filepath.Dir(snap)); len(left) != 2 {
 		t.Errorf("snapshots: %v", left)
+	}
+	// Restored again: the last replaced only.
+	if err := Restore(home, snap); err != nil {
+		t.Fatal(err)
+	}
+	if read(filepath.Join(aside, ".local/share/whiterose/settings.db")) != "db v1" {
+		t.Error("the replaced settings are from an earlier time")
 	}
 	if Restore(home, filepath.Join(t.TempDir(), "none")) == nil {
 		t.Error("restored nothing")

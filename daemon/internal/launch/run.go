@@ -300,6 +300,8 @@ func (c Config) failed(plan Plan, stateFile, reason string, out []string) {
 	if s.Snapshot != 0 {
 		if err := Restore(c.Home, c.snapshotDir()); err != nil {
 			c.logf("putting the settings back: %v", err)
+		} else {
+			c.logf("settings put back as they were; the ones it ran with are in %s", ReplacedDir(c.snapshotDir()))
 		}
 	}
 	c.logf("%s failed: %s", plan.Version, reason)

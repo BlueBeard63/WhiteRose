@@ -39,7 +39,7 @@ func ParseUnit(unit string) (id string, ok bool) {
 	}
 	// <launcher>-<id>-<number>[-<number>]: the launcher has no "-" (an id's
 	// "-" is escaped as \x2d), the numbers are at the end.
-	_, rest, ok = strings.Cut(rest, "-")
+	launcher, rest, ok := strings.Cut(rest, "-")
 	if !ok {
 		return "", false
 	}
@@ -48,6 +48,12 @@ func ParseUnit(unit string) (id string, ok bool) {
 		parts = parts[:len(parts)-1]
 	}
 	id = unescape(strings.Join(parts, "-"))
+	// Ghostty moves each terminal tab into its own scope
+	// (app-ghostty-surface-transient-<pid>.scope): that's Ghostty, the
+	// terminal, not an app called "surface-transient".
+	if id == "surface-transient" {
+		id = launcher
+	}
 	return id, id != ""
 }
 
@@ -96,6 +102,22 @@ func Protected(id string, list []string, terminal string) bool {
 		}
 	}
 	return false
+}
+
+// OwnBytes is an app scope's own memory from its memory.stat: "anon", what
+// it allocated and holds in RAM, so what closing it frees. Not the page
+// cache, nor shared memory (files in a RAM /tmp) that can be charged to a
+// scope it doesn't belong to (a swapoff run there brings it back) and that
+// closing the app wouldn't free. ok false: no anon line.
+func OwnBytes(stat string) (n int64, ok bool) {
+	sc := bufio.NewScanner(strings.NewReader(stat))
+	for sc.Scan() {
+		if v, found := strings.CutPrefix(sc.Text(), "anon "); found {
+			n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			return n, err == nil
+		}
+	}
+	return 0, false
 }
 
 // ---- pressure --------------------------------------------------------------------------

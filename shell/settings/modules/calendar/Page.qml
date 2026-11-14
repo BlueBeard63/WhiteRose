@@ -35,7 +35,9 @@ Column {
                 required property int index
                 divider: index > 0
                 title: modelData.name
-                subtitle: modelData.has_link ? "Link · kept in the keyring" : modelData.path
+                subtitle: !modelData.has_link ? modelData.path
+                    : modelData.locked ? "Link · the keyring is locked, so it isn't updated"
+                    : "Link · kept in the keyring"
                 Rectangle { width: 12; height: 12; radius: 6; color: modelData.color; anchors.verticalCenter: parent.verticalCenter }
                 Button {
                     text: "Remove"; kind: "danger"

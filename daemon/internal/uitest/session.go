@@ -467,3 +467,43 @@ func waitUntil(d time.Duration, ok func() bool) bool {
 	}
 	return ok()
 }
+
+// Zombies is how many of the session's processes have exited without
+// being waited for (shown as <defunct> by ps).
+func (s *Session) Zombies() int { return len(s.processes(true)) }
+
+// processes are the pids in the session's process group: the zombies only,
+// or the live ones.
+func (s *Session) processes(zombies bool) []string {
+	var pids []string
+	stats, _ := filepath.Glob("/proc/[0-9]*/stat")
+	for _, p := range stats {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		// pid (comm) state ppid pgrp …: comm can hold spaces, so after its ')'.
+		i := strings.LastIndexByte(string(b), ')')
+		if i < 0 {
+			continue
+		}
+		f := strings.Fields(string(b)[i+1:])
+		if len(f) > 2 && (f[0] == "Z") == zombies && f[2] == strconv.Itoa(s.cmd.Process.Pid) {
+			pids = append(pids, filepath.Base(filepath.Dir(p)))
+		}
+	}
+	return pids
+}
+
+// Running is how many of the session's live processes have `part` in their
+// command line.
+func (s *Session) Running(part string) int {
+	n := 0
+	for _, pid := range s.processes(false) {
+		b, _ := os.ReadFile("/proc/" + pid + "/cmdline")
+		if strings.Contains(strings.ReplaceAll(string(b), "\x00", " "), part) {
+			n++
+		}
+	}
+	return n
+}

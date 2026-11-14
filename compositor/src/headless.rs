@@ -80,6 +80,9 @@ pub fn init_headless(
         if wanted.replace(false) {
             render::send_frame_callbacks(&output, state);
         }
+        // Nothing is drawn, so nothing of the desktop is on screen: a lock
+        // is confirmed at the next tick (SUPER+L in the UI tests).
+        state.frame_presented();
         TimeoutAction::ToDuration(Duration::from_millis(16))
     })?;
     Ok(())

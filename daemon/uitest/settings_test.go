@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/godbus/dbus/v5"
+
 	"whiterose/daemon/internal/uitest"
 )
 
@@ -39,32 +41,12 @@ func TestSettingsSecondsShowInTheBarClock(t *testing.T) {
 func TestSettingsEveryControlHasAName(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("")
-	// The window can be in the tree before its items are (a slow machine).
-	settings.WaitFor(uitest.Named("Apps").Role("page tab"))
-	seen := map[string]bool{}
 	var problems []string
-	for {
-		var next *uitest.Node
-		for _, n := range settings.LaidOut() {
-			if n.Role == "page tab" && !seen[n.Name] {
-				next = &n
-				break
-			}
-		}
-		if next == nil {
-			break
-		}
-		seen[next.Name] = true
-		tab := uitest.Named(next.Name).Role("page tab")
-		settings.Activate(tab)
-		if !uitest.WaitUntil(func() bool { n, _ := settings.Lookup(tab); return n.Selected() }) {
-			problems = append(problems, fmt.Sprintf("%s: its tab didn't open", next.Name))
-			continue
-		}
+	seen := eachPage(t, settings, func(name string) {
 		for _, n := range uitest.Unnamed(settings.LaidOut()) {
-			problems = append(problems, fmt.Sprintf("%s: a %s with no name at %d,%d (%dx%d)", next.Name, n.Role, n.X, n.Y, n.W, n.H))
+			problems = append(problems, fmt.Sprintf("%s: a %s with no name at %d,%d (%dx%d)", name, n.Role, n.X, n.Y, n.W, n.H))
 		}
-	}
+	})
 	if len(seen) < 15 {
 		t.Errorf("only %d pages: %v", len(seen), seen)
 	}
@@ -80,12 +62,92 @@ func TestSettingsEveryControlHasAName(t *testing.T) {
 	}
 }
 
+// eachPage opens every page in Settings' sidebar in turn and calls `visit`
+// on it; the pages it opened.
+func eachPage(t *testing.T, settings *uitest.Window, visit func(name string)) map[string]bool {
+	t.Helper()
+	// The window can be in the tree before its items are (a slow machine).
+	settings.WaitFor(uitest.Named("Apps").Role("page tab"))
+	seen := map[string]bool{}
+	for {
+		var next *uitest.Node
+		for _, n := range settings.LaidOut() {
+			if n.Role == "page tab" && !seen[n.Name] {
+				next = &n
+				break
+			}
+		}
+		if next == nil {
+			return seen
+		}
+		seen[next.Name] = true
+		tab := uitest.Named(next.Name).Role("page tab")
+		settings.Activate(tab)
+		if !uitest.WaitUntil(func() bool { n, _ := settings.Lookup(tab); return n.Selected() }) {
+			t.Errorf("%s: its tab didn't open", next.Name)
+			continue
+		}
+		visit(next.Name)
+	}
+}
+
+// After every page has been open (and started what it watches), the
+// Close button still quits Settings, not just hides it.
+func TestSettingsQuitsAfterEveryPage(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("")
+	if s.Running("settings.qml") == 0 {
+		t.Fatal("can't find Settings' process")
+	}
+	eachPage(t, settings, func(string) {})
+	settings.Click(uitest.Named("Close").Role("push button"))
+	settings.Closed()
+	settingsQuits(t, s)
+}
+
 // The window's own Close button closes Settings.
 func TestSettingsCloses(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("")
 	settings.Click(uitest.Named("Close").Role("push button"))
 	settings.Closed()
+	settingsQuits(t, s)
+}
+
+// settingsQuits fails the test if Settings' process outlives its window.
+func settingsQuits(t *testing.T, s *uitest.Session) {
+	t.Helper()
+	if !uitest.WaitUntil(func() bool { return s.Running("settings.qml") == 0 }) {
+		t.Error("Settings' window closed but its process is still running")
+	}
+}
+
+// Closed from outside (SUPER+Q), Settings quits, so opening it again (from
+// the launcher) brings a window back instead of finding a windowless one.
+func TestSettingsOpensAgainAfterSuperQ(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("")
+	settings.Press("super+q")
+	settings.Closed()
+	settingsQuits(t, s)
+	s.Settings("")
+}
+
+// Opening Settings while it's open behind another window brings it forward.
+func TestSettingsOpenedAgainComesForward(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	s.Settings("")
+	dir := t.TempDir()
+	s.Open(filesBinary(s)+" "+dir, filepath.Base(dir)+" - Files")
+	s.Spawn(filepath.Join(s.Repo, "shell/bin/whiterose-settings"))
+	if !uitest.WaitUntil(func() bool { _, focused, _ := s.Toplevel("Settings"); return focused }) {
+		t.Error("Settings didn't come forward")
+	}
+	// The second whiterose-settings handed off and exited: the compositor
+	// collects it rather than leaving it a zombie.
+	if !uitest.WaitUntil(func() bool { return s.Zombies() == 0 }) {
+		t.Errorf("%d zombie processes left in the session", s.Zombies())
+	}
 }
 
 // On a new install Settings opens by itself on Apps (the app setup).
@@ -536,5 +598,39 @@ func dragCornerIn(t *testing.T, s *uitest.Session, w *uitest.Window) {
 	var now [4]int
 	if !uitest.WaitUntil(func() bool { now = w.Geometry(); return now[2] < g[2]-60 && now[3] < g[3]-40 }) {
 		t.Errorf("dragging the corner didn't resize it: %v, then %v", g, now)
+	}
+}
+
+// Password fields have their names (screen readers, tests) and show only
+// dots. Opens Users › Change password and cancels: never saves, as it's
+// the real account.
+func TestSettingsPasswordFieldsAreNamed(t *testing.T) {
+	needsAccounts(t)
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("users")
+	settings.Click(uitest.Named("Change password").Role("push button"))
+	first := uitest.Named("New password").Role("text")
+	settings.WaitFor(first)
+	settings.WaitFor(uitest.Named("Again").Role("text"))
+	settings.Type("hunter2")
+	uitest.WaitUntil(func() bool { return settings.Text(first) != "" })
+	if got := settings.Text(first); got == "" || strings.Contains(got, "hunter2") {
+		t.Fatalf("the field reads %q", got)
+	}
+	settings.Click(uitest.Named("Cancel").Role("push button"))
+	settings.Gone(first)
+}
+
+// Users lists accounts through AccountsService on the system bus; without
+// it (CI's container) there's no account card to click.
+func needsAccounts(t *testing.T) {
+	t.Helper()
+	bus, err := dbus.ConnectSystemBus()
+	if err != nil {
+		t.Skipf("no system bus: %v", err)
+	}
+	defer bus.Close()
+	if err := bus.Object("org.freedesktop.Accounts", "/org/freedesktop/Accounts").Call("org.freedesktop.DBus.Peer.Ping", 0).Err; err != nil {
+		t.Skipf("AccountsService isn't running: %v", err)
 	}
 }

@@ -14,7 +14,6 @@ Item {
     readonly property string user: Quickshell.env("USER") ?? ""
     FileView { id: passwd; path: "/etc/passwd" }
     readonly property string name: QS.displayName(passwd.text(), user)
-    readonly property var avatars: ["/var/lib/AccountsService/icons/" + user, Quickshell.env("HOME") + "/.face"]
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
@@ -40,33 +39,11 @@ Item {
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: parent.height * 0.18 }
         spacing: 14
 
-        ClippingRectangle {
+        Avatar {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: 64; height: 64; radius: 32
-            Rectangle {
-                anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Theme.rose }
-                    GradientStop { position: 1; color: "#6B4A8C" }
-                }
-            }
-            Text {
-                anchors.centerIn: parent
-                visible: picture.status !== Image.Ready
-                text: QS.initials(root.name)
-                color: Theme.bg
-                font { family: Theme.font; pointSize: Theme.pt(24); weight: Font.DemiBold }
-            }
-            Image {
-                id: picture
-                property int tried: 0
-                anchors.fill: parent
-                source: "file://" + root.avatars[tried]
-                sourceSize: Qt.size(128, 128)
-                fillMode: Image.PreserveAspectCrop
-                visible: status === Image.Ready
-                onStatusChanged: if (status === Image.Error && tried + 1 < root.avatars.length) tried++
-            }
+            width: 64; height: 64
+            name: root.name
+            initialsSize: 24
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter

@@ -5,8 +5,11 @@
 package uitest_test
 
 import (
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,7 +63,8 @@ func TestLauncherCalculates(t *testing.T) {
 }
 
 // The bar's layout button shows this workspace's window layout; clicking
-// it moves to the next one (as SUPER+T) and saves it for the workspace.
+// it moves to the next one (as SUPER+T) and saves it for the workspace;
+// back at the default (Floating here), the workspace's own goes.
 func TestBarLayoutButtonCyclesTheLayout(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true})
 	bar := s.Bar()
@@ -73,7 +77,7 @@ func TestBarLayoutButtonCyclesTheLayout(t *testing.T) {
 	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "master"})
 	bar.WaitFor(button.Described("Master"))
 	bar.Click(button)
-	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "floating"})
+	s.WaitSetting("windows.layout.workspaces", map[string]any{})
 	bar.WaitFor(button.Described("Floating"))
 }
 
@@ -299,5 +303,152 @@ func TestNowPlayingPausesWithTheMusicModuleOff(t *testing.T) {
 	}
 	if _, ok := bar.Lookup(uitest.Named("Next").Role("push button")); ok {
 		t.Error("the music island opened with its module off")
+	}
+}
+
+// SUPER+L locks the session with the shell's lock screen, and its
+// unlocking (Auth) loads and starts listening without errors.
+func TestSuperLLocksWithTheLockScreen(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	s.Bar().Press("super+l")
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Log(), "session locked") }) {
+		t.Fatal("the session didn't lock")
+	}
+	time.Sleep(time.Second)
+	for _, line := range strings.Split(s.Log(), "\n") {
+		// (Any warning: a missing picture used to be one, every lock.)
+		if strings.Contains(line, "Auth.qml") || strings.Contains(line, "LockView.qml") || strings.Contains(line, "LockScreen.qml") || strings.Contains(line, "Avatar.qml") {
+			t.Error(line)
+		}
+	}
+}
+
+// SUPER+K shows the shortcut sheet in the island, each shortcut on the
+// keys it's on now; Esc closes it.
+func TestSuperKShowsTheShortcutSheet(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	bar.Press("super+k")
+	bar.WaitFor(uitest.Named("Keyboard shortcuts"))
+	bar.WaitFor(uitest.Named("Close").Described("SUPER + Q"))
+	bar.WaitFor(uitest.Named("Go to workspace").Described("SUPER + 1–9"))
+	bar.WaitFor(uitest.Named("Move").Described("SUPER + DRAG"))
+	bar.Press("Escape")
+	bar.Gone(uitest.Named("Keyboard shortcuts"))
+}
+
+// The keyring locked (as after a fingerprint login): the island asks for
+// the password. A wrong one says so; the right one opens the keyring and
+// the prompt goes.
+func TestKeyringPromptOpensTheKeyring(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	s.LockedKeyring("right horse")
+	bar := s.Bar()
+	title := uitest.Named("Your keyring is locked")
+	bar.WaitFor(title)
+	field := uitest.Named("Password").Role("text")
+	bar.WaitFor(field)
+	bar.Type("wrong staple")
+	uitest.WaitUntil(func() bool { return bar.Text(field) != "" })
+	if got := bar.Text(field); got == "" || strings.Contains(got, "staple") {
+		t.Fatalf("the password shows in the accessibility tree: %q", got)
+	}
+	bar.Press("Return")
+	bar.WaitFor(uitest.Named("That's not your keyring's password. If you changed your login password, type the old one."))
+	if !s.KeyringLocked() {
+		t.Fatal("a wrong password opened the keyring")
+	}
+	bar.Type("right horse")
+	bar.Click(uitest.Named("Open keyring").Role("push button"))
+	bar.Gone(title)
+	s.WaitKeyring(false)
+	if strings.Contains(s.Log(), "right horse") || strings.Contains(s.Log(), "wrong staple") {
+		t.Fatal("a password is in the log")
+	}
+}
+
+// Not now closes the prompt, and it isn't asked again this login.
+func TestKeyringPromptNotNowAsksNoMore(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	s.LockedKeyring("right horse")
+	bar := s.Bar()
+	title := uitest.Named("Your keyring is locked")
+	bar.WaitFor(title)
+	bar.Click(uitest.Named("Not now").Role("push button"))
+	bar.Gone(title)
+	// The island free again (another view opened and closed): not offered.
+	bar.Press("super+k")
+	bar.WaitFor(uitest.Named("Keyboard shortcuts"))
+	bar.Press("Escape")
+	bar.Gone(uitest.Named("Keyboard shortcuts"))
+	time.Sleep(time.Second)
+	if _, shown := bar.Lookup(title); shown {
+		t.Fatal("asked again after Not now")
+	}
+	if !s.KeyringLocked() {
+		t.Fatal("the keyring opened without a password")
+	}
+}
+
+// The profile picture: ~/.face when there is one, else the initials (and
+// no warning in the log either way).
+func TestProfilePictureShowsTheFace(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	avatar := uitest.Named("Profile picture")
+	bar.Click(uitest.Named("Quick settings").Role("push button"))
+	bar.WaitFor(avatar.Described("Initials"))
+	bar.Press("Escape")
+	bar.Gone(avatar)
+
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	for i := range img.Pix {
+		img.Pix[i] = 200
+	}
+	f, err := os.Create(filepath.Join(s.Home, ".face"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	bar.Click(uitest.Named("Quick settings").Role("push button"))
+	bar.WaitFor(avatar.Described("Picture"))
+	for _, line := range strings.Split(s.Log(), "\n") {
+		if strings.Contains(line, "Avatar.qml") || strings.Contains(line, "QuickSettingsPanel.qml") && strings.Contains(line, "Cannot open") {
+			t.Error(line)
+		}
+	}
+}
+
+// SUPER+T says which layout the workspace is on now and that it's kept for
+// the workspace; cycling back to the default drops the workspace's own
+// layout, so it follows Settings again.
+func TestSuperTSaysTheLayoutAndBackToDefaultForgetsIt(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	bar := s.Bar()
+	bar.WaitFor(uitest.Named("Layout").Role("push button").Described("Floating"))
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Dwindle"))
+	bar.WaitFor(uitest.Named("Kept for this workspace. Your default is Floating."))
+	s.WaitSetting("windows.layout.workspaces", map[string]any{"1": "dwindle"})
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Master"))
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Floating"))
+	bar.WaitFor(uitest.Named("Your default layout"))
+	s.WaitSetting("windows.layout.workspaces", map[string]any{})
+	// It goes by itself.
+	bar.Gone(uitest.Named("Workspace 1: Floating"))
+	// Switching to a workspace on another layout isn't a change of it.
+	bar.Press("super+t")
+	bar.WaitFor(uitest.Named("Workspace 1: Dwindle"))
+	bar.Gone(uitest.Named("Workspace 1: Dwindle"))
+	bar.Press("super+2")
+	bar.WaitFor(uitest.Named("Layout").Role("push button").Described("Floating"))
+	time.Sleep(500 * time.Millisecond)
+	if _, shown := bar.Lookup(uitest.Named("Workspace 2: Floating")); shown {
+		t.Error("switching workspaces showed the layout note")
 	}
 }

@@ -174,6 +174,9 @@ pub struct WhiteRose {
     /// 125%, 150%, ... instead of rounding up to 200% and being scaled down.
     pub fractional_scale_state: smithay::wayland::fractional_scale::FractionalScaleManagerState,
     pub viewporter_state: smithay::wayland::viewporter::ViewporterState,
+    /// Touchpad pinch, swipe and hold gestures for apps (a browser's pinch
+    /// to zoom).
+    pub pointer_gestures_state: smithay::wayland::pointer_gestures::PointerGesturesState,
     pub lock: crate::session_lock::SessionLock,
     /// Restart bookkeeping per supervised process ("shell", "daemon").
     pub restarts: std::collections::HashMap<&'static str, crate::shell_supervisor::RestartPolicy>,
@@ -202,6 +205,7 @@ impl WhiteRose {
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Self>(&dh);
+        let pointer_gestures_state = smithay::wayland::pointer_gestures::PointerGesturesState::new::<Self>(&dh);
         let cursor_shape_state = smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
@@ -331,6 +335,7 @@ impl WhiteRose {
             session_lock_state,
             fractional_scale_state,
             viewporter_state,
+            pointer_gestures_state,
             lock: Default::default(),
             restarts: Default::default(),
             clipboard,
@@ -766,12 +771,42 @@ impl WhiteRose {
         match cmd.spawn() {
             Ok(child) => {
                 tracing::info!(app_id, ?argv, scoped = crate::app_scope::available(), protected, "spawned");
-                Some(child.id())
+                let pid = child.id();
+                self.reap_on_exit(child);
+                Some(pid)
             }
             Err(err) => {
                 tracing::warn!(app_id, ?argv, %err, "failed to spawn");
                 None
             }
+        }
+    }
+
+    /// Collects `child`'s exit status when it ends, so an app that's closed
+    /// (or a launcher script that hands off and exits) doesn't stay behind
+    /// as a zombie. Its pidfd wakes the loop once, at exit: no polling, and
+    /// no SIGCHLD handler to take other waits' children.
+    fn reap_on_exit(&self, mut child: std::process::Child) {
+        use std::os::fd::{FromRawFd, OwnedFd};
+        // SAFETY: pidfd_open takes a pid and flags, and returns a new fd
+        // (ours to own) or -1.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, child.id() as libc::pid_t, 0) };
+        if fd < 0 {
+            // No pidfds (Linux before 5.3): a thread waits instead.
+            std::thread::spawn(move || child.wait());
+            return;
+        }
+        // SAFETY: fd is the pidfd just opened, owned by nothing else.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd as i32) };
+        let mut child = Some(child);
+        let source = Generic::new(fd, Interest::READ, Mode::Level);
+        if let Err(err) = self.loop_handle.insert_source(source, move |_, _, _| {
+            if let Some(mut c) = child.take() {
+                let _ = c.wait();
+            }
+            Ok(PostAction::Remove)
+        }) {
+            tracing::warn!(err = %err.error, "couldn't watch a started app for its exit");
         }
     }
 

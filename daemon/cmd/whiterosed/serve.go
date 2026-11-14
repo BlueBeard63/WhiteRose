@@ -108,16 +108,30 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	}
 	defer st.Close()
 
-	secrets := store.Resolver{Fallback: st.Fallback()}
-	if kr, err := store.Keyring(); err == nil {
-		secrets.Keyring = kr
+	// The keyring may not be usable yet (locked after a fingerprint login,
+	// or not started): it's tried again when a secret is wanted and when
+	// it changes, and once it opens, what was kept in the database while
+	// it was locked moves in and the calendars are fetched again.
+	var keyringOpened func()
+	secrets := &store.Resolver{Fallback: st.Fallback(), Open: store.Keyring}
+	moveSecrets := func(kr store.Secrets) {
 		if n, err := st.MoveToKeyring(kr); err != nil {
 			fmt.Fprintln(stderr, "whiterosed:", err)
 		} else if n > 0 {
 			fmt.Fprintf(stderr, "whiterosed: moved %d secret(s) into the keyring\n", n)
 		}
+	}
+	if !secrets.Retry() {
+		fmt.Fprintln(stderr, "whiterosed: secrets kept in the settings database until the keyring opens:", secrets.Closed())
 	} else {
-		fmt.Fprintln(stderr, "whiterosed: secrets kept in the settings database:", err)
+		moveSecrets(secrets.Keyring)
+	}
+	secrets.Opened = func(kr store.Secrets) {
+		fmt.Fprintln(stderr, "whiterosed: the keyring is open")
+		moveSecrets(kr)
+		if keyringOpened != nil {
+			go keyringOpened()
+		}
 	}
 
 	rep := migrate.Run(st, secrets, migrate.DefaultDirs())
@@ -152,6 +166,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	read := func() SystemState {
 		s := readState(os.DirFS(backlight.Sysfs), os.DirFS(rfkill.Sysfs))
 		s.Weather, s.Calendars = weatherView(st, dirs.Cache), calendar.Version(dirs, localSources(st, dirs))
+		s.KeyringLocked = secrets.Locked()
 		return s
 	}
 	go func() {
@@ -160,6 +175,11 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 			srv.SetState(read())
 		}
 	}()
+	// The keyring started, was locked or opened: try it, and say so (the
+	// shell asks for the password while it's locked).
+	if err := store.WatchKeyring(func() { secrets.Retry(); poke() }); err != nil {
+		fmt.Fprintln(stderr, "whiterosed: not watching the keyring:", err)
+	}
 	if f, err := os.Open(rfkill.Device); err == nil {
 		go func() { _ = rfkill.ReadEvents(f, func(rfkill.Event) { poke() }) }()
 	}
@@ -196,6 +216,9 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		for _, e := range errs {
 			fmt.Fprintln(stderr, "whiterosed:", e)
 		}
+		for name, err := range srv.CalendarLinksUnread() {
+			fmt.Fprintf(stderr, "whiterosed: calendar %q not fetched, its link can't be read: %v\n", name, err)
+		}
 		poke()
 	}
 	refreshWeather := func() {
@@ -207,6 +230,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		poke()
 	}
 	srv.CalendarsChanged = refreshCalendars
+	keyringOpened = refreshCalendars
 	setup := &appSetup{
 		broadcast: srv.Broadcast,
 		done:      func() { _ = st.Set("apps.setupDone", json.RawMessage(`true`)) },
@@ -386,18 +410,25 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		secrets.Delete(id)
 		return nil, nil
 	}
+	srv.Ops["keyring_unlock"] = keyringUnlock(secrets, store.UnlockKeyring, stderr)
 	// Files' key for sealing its index and history (made the first time;
 	// kept in the keyring when there is one).
 	srv.Ops["files_key"] = func(server.Request) (any, error) {
 		const id = "files:seal-key"
-		if k, err := secrets.Get(id); err == nil && len(k) == 64 {
+		k, err := secrets.Get(id)
+		if err == nil && len(k) == 64 {
 			return map[string]string{"key": k}, nil
+		}
+		// Its key may be in the locked keyring: a new one now would take
+		// its place later and make what Files sealed unreadable.
+		if errors.Is(err, store.ErrLocked) {
+			return nil, err
 		}
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
 			return nil, err
 		}
-		k := hex.EncodeToString(b)
+		k = hex.EncodeToString(b)
 		where, err := secrets.Set(id, k)
 		if err != nil {
 			return nil, err
@@ -672,4 +703,25 @@ func shareSecretID(args json.RawMessage) (string, error) {
 		return "", errors.New("share secrets have ids starting share:")
 	}
 	return x.ID, nil
+}
+
+// keyringUnlock is the keyring_unlock op: the lock screen, after your
+// password unlocked it, hands it over so the keyring opens too (a
+// fingerprint login leaves it locked). The password is never kept or
+// logged; a keyring with another password stays locked.
+func keyringUnlock(secrets *store.Resolver, unlock func(password string) error, stderr io.Writer) func(server.Request) (any, error) {
+	return func(r server.Request) (any, error) {
+		var x struct {
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(r.Args, &x); err != nil || x.Password == "" {
+			return nil, errors.New("no password")
+		}
+		if err := unlock(x.Password); err != nil {
+			fmt.Fprintln(stderr, "whiterosed: the keyring stays locked:", err)
+			return nil, errors.New("the keyring stays locked")
+		}
+		secrets.Retry()
+		return nil, nil
+	}
 }

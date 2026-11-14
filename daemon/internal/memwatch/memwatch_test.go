@@ -12,6 +12,8 @@ func TestParseUnit(t *testing.T) {
 		`app-gnome-org.gnome.Evolution\x2dalarm\x2dnotify-3588340.scope`: "org.gnome.Evolution-alarm-notify",
 		`app-flatpak-com.bitwarden.desktop-12.scope`:                     "com.bitwarden.desktop",
 		`app-gnome-firefox-123.scope`:                                    "firefox",
+		// A Ghostty tab, moved to a scope of its own: Ghostty.
+		`app-ghostty-surface-transient-3912112.scope`: "ghostty",
 	} {
 		if got, ok := ParseUnit(unit); !ok || got != want {
 			t.Errorf("%s: %q %v, want %q", unit, got, ok, want)
@@ -115,5 +117,27 @@ func TestGrowingNeedsTime(t *testing.T) {
 	}
 	if tr.Growing("u") {
 		t.Error("growing after 4.5 minutes")
+	}
+}
+
+// A Ghostty tab's own scope is the terminal, so it's protected (it held a
+// build and was closed as "surface-transient", 2026-11-13 and -14).
+func TestGhosttyTabsAreTheTerminal(t *testing.T) {
+	id, ok := ParseUnit("app-ghostty-surface-transient-3930403.scope")
+	if !ok || !Protected(id, nil, "ghostty") || !Protected(id, nil, "/usr/bin/ghostty --gtk-single-instance=true") {
+		t.Fatalf("%q (%v) isn't protected as the terminal", id, ok)
+	}
+	if Protected(id, nil, "foot") {
+		t.Fatal("protected though another terminal is set")
+	}
+}
+
+func TestOwnBytesIsAnon(t *testing.T) {
+	stat := "anon 3158016\nfile 2523820032\nkernel 1048576\nshmem 2520006656\n"
+	if n, ok := OwnBytes(stat); !ok || n != 3158016 {
+		t.Fatalf("%d %v", n, ok)
+	}
+	if _, ok := OwnBytes("file 1\nshmem 2\n"); ok {
+		t.Fatal("no anon line, yet ok")
 	}
 }

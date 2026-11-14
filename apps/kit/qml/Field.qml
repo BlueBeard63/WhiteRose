@@ -29,7 +29,8 @@ Rectangle {
         // (For screen readers and the UI tests.)
         Accessible.role: Accessible.EditableText
         Accessible.name: root.label || root.placeholder
-        Accessible.passwordEdit: root.secret
+        // (Not Accessible.passwordEdit: Qt then drops the name. The echo
+        // mode already keeps what's typed out of the tree, as dots.)
         anchors { fill: parent; leftMargin: 12; rightMargin: root.secret ? 34 : 12 }
         verticalAlignment: TextInput.AlignVCenter
         clip: true

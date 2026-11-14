@@ -74,6 +74,8 @@ fn advertises_core_globals() {
         "wl_data_device_manager",
         "zxdg_output_manager_v1",
         "zwlr_layer_shell_v1",
+        // Touchpad gestures (pinch to zoom in browsers).
+        "zwp_pointer_gestures_v1",
     ] {
         assert!(interfaces.iter().any(|i| i == want), "missing {want}; advertised: {interfaces:?}");
     }

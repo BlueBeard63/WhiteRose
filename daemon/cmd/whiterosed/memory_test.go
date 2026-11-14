@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,5 +185,39 @@ func TestMemoryCriticalCloses(t *testing.T) {
 	m2.check()
 	if len(got2) != 0 || len(crash.List(m2.state)) != 0 {
 		t.Errorf("closed a protected app: %v", got2)
+	}
+}
+
+// An app is judged by its own memory (memory.stat anon), not everything
+// charged to its scope: 12 GB of files in a RAM /tmp brought back by a
+// swapoff run in a terminal tab aren't that tab's, and closing it wouldn't
+// free them (2026-11-14). Firefox, with 3 GB of its own, is named instead.
+func TestMemoryCountsAnAppsOwnMemory(t *testing.T) {
+	calm := "some avg10=0.00 avg60=0 avg300=0 total=0\nfull avg10=0.00 avg60=0 avg300=0 total=0\n"
+	apps := map[string][]int{
+		"app-gnome-firefox-1.scope":           {3000, 101},
+		"app-gnome-org.example.Notes-1.scope": {12000, 102},
+	}
+	var got []any
+	m := fakeMemory(t, 1000, calm, apps)
+	m.broadcast = func(e any) { got = append(got, e) }
+	stat := func(unit string, anonMB, shmemMB int) {
+		s := fmt.Sprintf("anon %d\nfile %d\nshmem %d\n", anonMB<<20, shmemMB<<20, shmemMB<<20)
+		os.WriteFile(filepath.Join(m.slice, unit, "memory.stat"), []byte(s), 0o644)
+	}
+	stat("app-gnome-firefox-1.scope", 2900, 0)
+	stat("app-gnome-org.example.Notes-1.scope", 10, 11900)
+	m.check()
+	if len(got) != 1 {
+		t.Fatalf("warnings: %v", got)
+	}
+	w := got[0].(map[string]any)
+	if app, ok := w["app"].(memwatch.Suspect); !ok || app.ID != "firefox" {
+		t.Fatalf("named %+v, not Firefox", w["app"])
+	}
+	for _, a := range m.readApps() {
+		if a.ID == "org.example.Notes" && a.Bytes != 10<<20 {
+			t.Errorf("Notes counted as %d MB", a.Bytes>>20)
+		}
 	}
 }
