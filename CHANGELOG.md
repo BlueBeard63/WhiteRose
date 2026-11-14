@@ -2,6 +2,150 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.3.0-alpha.5 · Shortcuts and the keyring (alpha) (2026-11-14)
+
+The fifth 0.3 alpha: a shortcut sheet on SUPER+K, the keyring opened after a fingerprint login, pinch to zoom in apps, and fixes for Settings, memory warnings and failed updates. If you're on alpha.4 with Pre-releases on, it comes through Settings › Updates.
+
+### Added
+
+- SUPER+K shows the keyboard shortcuts worth knowing, on the keys they're on now (your own included); Esc or SUPER+K closes it
+- After a fingerprint login, the island asks once for your password to open the keyring, so calendars and other accounts come back
+- Unlocking the lock screen with your password opens the keyring too
+- Touchpad gestures reach apps: pinch to zoom in browsers (and Figma), swipe and hold
+- SUPER+T says which layout the workspace is on and whether it's kept for that workspace; cycling back to the default follows Settings again
+
+### Changed
+
+- Memory warnings count only what an app holds itself: files in a RAM /tmp no longer make the terminal they ran in look like it's leaking
+- The lock screen and quick settings share one profile picture, and a new picture shows without restarting
+
+### Fixed
+
+- Settings didn't open again after being closed with SUPER+Q, the dock or the switcher
+- Apps that had exited were left behind as zombie processes
+- Going back after a failed update deleted the settings changed meanwhile (a calendar added); they're now kept in snapshot-replaced
+- The pointer kept an app's resize arrow over the gaps between windows
+
+With alpha.4 and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases. From alpha.3 or earlier, install it with this release's `install.sh`. Your settings carry over.
+
+Contributors: @BlueBeard63
+
+## 0.3.0-alpha.4 · Reports, memory and releases (alpha) (2026-11-13)
+
+The fourth 0.3 alpha: report a problem from the island, a session that survives memory running out, any release installable from Settings, default apps, and Files fast on Nextcloud and other network drives. Install it by hand with its install.sh; from this release on, pre-releases can come through Settings › Updates.
+
+### Added
+
+- Report a problem, step by step in the island: what WhiteRose recorded is filled in for you, and you see everything before it's sent (SUPER+SHIFT+B, Settings › About, or after a crash)
+- Crashes are recorded with a snapshot of the moment (load, open windows, the session log), and the island offers to report them
+- Running out of memory no longer ends the session: each app runs on its own, the one at fault is named in the island, and closed if memory is critical. Your terminal and the apps you choose are kept (Settings › Apps › Memory)
+- Settings › Updates › Releases: every release by version, alphas under their release, a search, and installing any of them (older ones too)
+- Pre-releases switch: alpha and beta versions offered as updates
+- Default apps (Settings › Apps › Default apps): what opens each kind of file, by category or by file type; LibreOffice for office files and Notepad for text out of the box
+- Nextcloud accounts in Files, signing in with Nextcloud's own browser sign-in
+- Notepad says what an empty document is (and how saving names it)
+
+### Changed
+
+- Files is fast on network drives: folders load in the background, open at once when you've been there, and the next ones are read ahead; files open and preview without waiting on the server
+- Network drives show by name in Files (Nextcloud, photos on nas), not by their mount folder
+- Bug reports on GitHub ask for the version and build; reports from older versions or builds that don't match a release are closed with a note
+- pCloud is no longer offered in Add cloud account (accounts already added keep working)
+
+### Fixed
+
+- A newly installed version is started at the next login even when an older one was still waiting to be tried
+- Settings › Updates shows a version installed but not running yet, instead of calling the running one the newest
+- Logging into GNOME after WhiteRose: apps took 25 s to start (WhiteRose's desktop portal and settings were left behind)
+- Files froze ("not responding") opening folders and files on Nextcloud
+- Files on a network drive, USB stick or NTFS disk asked to be run instead of opening
+- Pictures in folders with % # or ? in their path didn't show
+- Settings › About said "development" instead of the version
+- Prompts arriving while the shell starts (a crash, the update failure) could be lost
+
+Install it with this release's `install.sh`; alpha.3's updater only follows full releases. Your settings carry over. From this release on, Settings › Updates › Releases can install alphas (switch on Pre-releases), and bug reports can be sent from WhiteRose: earlier versions weren't built with the build IDs a report needs.
+
+Contributors: @BlueBeard63
+
+## 0.3.0-alpha.3 · X11 apps (alpha) (2026-11-13)
+
+Fixes for alpha.2, which could crash at login and go back to alpha.1. Everything else is as in alpha.2. Still installed by hand; the in-app updater stays on full releases.
+
+### Fixed
+
+- Shaking the pointer to find it could crash WhiteRose, so alpha.2 often failed to start and went back to alpha.1
+- The pointer grown by shaking it was cut off instead of drawn bigger
+- Settings couldn't be resized by dragging its edges while floating
+
+Install it with this release's `install.sh`. If alpha.2 went back to alpha.1 for you, remove it first (`sudo apt remove whiterose-core-0.3.0-alpha.2`, or `sudo dnf remove` on Fedora) so alpha.3 is the one tried at your next login. Your settings carry over.
+
+Contributors: @BlueBeard63
+
+## 0.3.0-alpha.2 · X11 apps (alpha) (2026-11-13)
+
+The second 0.3 alpha: X11 apps such as Spotify and Steam open, the island gets a note, an agenda and music, and the fixes from alpha.1's notes are in. Still installed by hand; the in-app updater stays on full releases.
+
+### Added
+
+- X11 apps (Spotify, Steam, older tools) open through XWayland and work like any other window: tiling, snapping, rules, scratchpads, the switchers and the dock. Xwayland only runs while an X11 app is open
+- Copy and paste between X11 and Wayland apps, and drag and drop both ways; X11 copies go into the clipboard history
+- Note in the island (SUPER+SHIFT+N): a title, then your lines; lines starting [ ] are tasks to tick, and Tab switches between writing and the list
+- Agenda in the island (SUPER+A, or click the clock): today's next event and the day as a line; click the day for the month
+- Music in the island (SUPER+SHIFT+M, or Now playing in the bar): the cover, the track and its controls, following whichever player is playing, browsers included
+- Clipboard history on SUPER+V
+- SUPER+ALT+arrow moves a window to the previous or next workspace, and SUPER+CTRL+arrow to the monitor on that side
+- Mouse & touchpad settings: scroll direction, speed, acceleration and tap to click; shake the pointer to find it; hold CTRL+SHIFT to move it faster
+- Open and save dialogs in other apps use Files (through the desktop portal), and so does choosing your account picture
+- ALT+TAB can show apps from every workspace or only this one (Settings › Windows)
+
+### Changed
+
+- Tabbed groups look like a small island, with each app's icon, and animate as windows join or leave
+- Files builds its search index in the background, and Settings › Files shows how far it's got
+- The music view moves with the music: song changes slide in, the cover fades, pausing dims it
+- Sliders only take the scroll wheel once you've clicked them, so scrolling a page doesn't move them
+- Do not disturb shows a bell with a line through it in the bar, not a moon
+- Plainer wording in sentence case across the shell, Settings and the apps
+- The packages depend on Xwayland
+
+### Fixed
+
+- The screenshot toast's buttons didn't take clicks
+- The Security tab of a Wi-Fi network's settings was laid out badly
+- Files and Notepad from a development build could hide the installed ones; the installer offers to remove them
+
+Install it with this release's `install.sh` (it installs this version, checked against the release key). Your settings carry over. X11 apps need Xwayland, which the packages now bring with them.
+
+Contributors: @BlueBeard63
+
+## 0.3.0-alpha.1 · Layouts (alpha) (2026-11-12)
+
+A first look at 0.3 Layouts, for trying out: windows can tile themselves, snap to edges and zones, follow per-app rules, and drop down as scratchpads. Expect rough edges; the in-app updater stays on full releases, so this is installed by hand.
+
+### Added
+
+- Tiling: dwindle and master-stack layouts with gaps, chosen for everything and overridden per workspace or monitor (Settings › Windows, SUPER+T, or the button on the bar)
+- Tabbed groups: several windows in one tile with a tab strip (SUPER+G, SUPER+. and SUPER+,)
+- Snapping: drag a floating window to an edge or corner, or pick a layout from SUPER+Z, a drag to the top, or a WhiteRose app's maximise button
+- Snap zones: your own grid per monitor or per workspace, used with SHIFT while dragging; edit it in Settings › Snapping or at full size on the monitor, with the tools in the island
+- Window rules: by app and title, open a window on a workspace or monitor, floating or tiled, at a size, in a snap zone, see-through or always on top (Settings › Window rules)
+- Scratchpads: apps shown and hidden with a key, sliding down from the island, like a drop-down terminal (Settings › Scratchpads)
+- Keyboard control of tiles: focus, move and resize with SUPER and the arrows, SUPER+R to resize, SUPER+J to flip a split, SUPER+M to make master
+
+### Changed
+
+- The window switcher is SUPER+TAB (was SUPER+ALT+TAB); ALT+TAB still switches apps
+- Settings fits narrow windows: the sidebar folds away and pages reflow
+- Sharper bar icons
+
+### Fixed
+
+- A panel or overlay layer could be drawn under one in a lower layer that opened after it
+
+Install it with this release's `install.sh` (it installs this version, checked against the release key). Your settings carry over, and moving to 0.3.0 when it's out is a normal update.
+
+Contributors: @BlueBeard63
+
 ## 0.2.1 · Island views, one-command install (2026-11-11)
 
 A smaller release: an easier way to install WhiteRose, and the centre island's views reworked so new ones are one file each.
