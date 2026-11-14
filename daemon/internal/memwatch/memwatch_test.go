@@ -131,3 +131,13 @@ func TestGhosttyTabsAreTheTerminal(t *testing.T) {
 		t.Fatal("protected though another terminal is set")
 	}
 }
+
+func TestOwnBytesIsAnon(t *testing.T) {
+	stat := "anon 3158016\nfile 2523820032\nkernel 1048576\nshmem 2520006656\n"
+	if n, ok := OwnBytes(stat); !ok || n != 3158016 {
+		t.Fatalf("%d %v", n, ok)
+	}
+	if _, ok := OwnBytes("file 1\nshmem 2\n"); ok {
+		t.Fatal("no anon line, yet ok")
+	}
+}

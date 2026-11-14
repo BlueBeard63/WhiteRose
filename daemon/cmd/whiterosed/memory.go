@@ -128,7 +128,7 @@ func (m *memWatch) protected(id string) bool {
 	return memwatch.Protected(id, list, m.terminal)
 }
 
-// readApps: every app scope and its memory now.
+// readApps: every app scope and its own memory now.
 func (m *memWatch) readApps() []memwatch.App {
 	entries, _ := os.ReadDir(m.slice)
 	var out []memwatch.App
@@ -137,11 +137,20 @@ func (m *memWatch) readApps() []memwatch.App {
 		if !ok || !e.IsDir() {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(m.slice, e.Name(), "memory.current"))
-		if err != nil {
-			continue
+		// Its own memory (memwatch.OwnBytes), else everything charged to it.
+		var n int64
+		if b, err := os.ReadFile(filepath.Join(m.slice, e.Name(), "memory.stat")); err == nil {
+			n, ok = memwatch.OwnBytes(string(b))
+		} else {
+			ok = false
 		}
-		n, _ := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+		if !ok {
+			b, err := os.ReadFile(filepath.Join(m.slice, e.Name(), "memory.current"))
+			if err != nil {
+				continue
+			}
+			n, _ = strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+		}
 		out = append(out, memwatch.App{Unit: e.Name(), ID: id, Bytes: n})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Bytes > out[j].Bytes })

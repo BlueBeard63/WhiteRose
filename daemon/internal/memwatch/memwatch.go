@@ -104,6 +104,22 @@ func Protected(id string, list []string, terminal string) bool {
 	return false
 }
 
+// OwnBytes is an app scope's own memory from its memory.stat: "anon", what
+// it allocated and holds in RAM, so what closing it frees. Not the page
+// cache, nor shared memory (files in a RAM /tmp) that can be charged to a
+// scope it doesn't belong to (a swapoff run there brings it back) and that
+// closing the app wouldn't free. ok false: no anon line.
+func OwnBytes(stat string) (n int64, ok bool) {
+	sc := bufio.NewScanner(strings.NewReader(stat))
+	for sc.Scan() {
+		if v, found := strings.CutPrefix(sc.Text(), "anon "); found {
+			n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			return n, err == nil
+		}
+	}
+	return 0, false
+}
+
 // ---- pressure --------------------------------------------------------------------------
 
 // PSI is /proc/pressure/memory's averages (% of time stalled, last 10 s).
