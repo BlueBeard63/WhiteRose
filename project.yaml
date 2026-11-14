@@ -14,9 +14,32 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.3.0-alpha.4
+version: 0.3.0-alpha.5
 
 releases:
+  - version: 0.3.0-alpha.5
+    date: 2026-11-14
+    title: Shortcuts and the keyring (alpha)
+    summary: >-
+      The fifth 0.3 alpha: a shortcut sheet on SUPER+K, the keyring opened after a fingerprint login, pinch to zoom in apps, and fixes for Settings, memory warnings and failed updates. If you're on alpha.4 with Pre-releases on, it comes through Settings › Updates.
+    added:
+      - "SUPER+K shows the keyboard shortcuts worth knowing, on the keys they're on now (your own included); Esc or SUPER+K closes it"
+      - "After a fingerprint login, the island asks once for your password to open the keyring, so calendars and other accounts come back"
+      - "Unlocking the lock screen with your password opens the keyring too"
+      - "Touchpad gestures reach apps: pinch to zoom in browsers (and Figma), swipe and hold"
+      - "SUPER+T says which layout the workspace is on and whether it's kept for that workspace; cycling back to the default follows Settings again"
+    changed:
+      - "Memory warnings count only what an app holds itself: files in a RAM /tmp no longer make the terminal they ran in look like it's leaking"
+      - "The lock screen and quick settings share one profile picture, and a new picture shows without restarting"
+    fixed:
+      - "Settings didn't open again after being closed with SUPER+Q, the dock or the switcher"
+      - "Apps that had exited were left behind as zombie processes"
+      - "Going back after a failed update deleted the settings changed meanwhile (a calendar added); they're now kept in snapshot-replaced"
+      - "The pointer kept an app's resize arrow over the gaps between windows"
+    notes: |
+      With alpha.4 and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases. From alpha.3 or earlier, install it with this release's `install.sh`. Your settings carry over.
+    contributors: [BlueBeard63]
+
   - version: 0.3.0-alpha.4
     date: 2026-11-13
     title: Reports, memory and releases (alpha)
