@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/godbus/dbus/v5"
+
 	"whiterose/daemon/internal/uitest"
 )
 
@@ -603,6 +605,7 @@ func dragCornerIn(t *testing.T, s *uitest.Session, w *uitest.Window) {
 // dots. Opens Users › Change password and cancels: never saves, as it's
 // the real account.
 func TestSettingsPasswordFieldsAreNamed(t *testing.T) {
+	needsAccounts(t)
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("users")
 	settings.Click(uitest.Named("Change password").Role("push button"))
@@ -616,4 +619,18 @@ func TestSettingsPasswordFieldsAreNamed(t *testing.T) {
 	}
 	settings.Click(uitest.Named("Cancel").Role("push button"))
 	settings.Gone(first)
+}
+
+// Users lists accounts through AccountsService on the system bus; without
+// it (CI's container) there's no account card to click.
+func needsAccounts(t *testing.T) {
+	t.Helper()
+	bus, err := dbus.ConnectSystemBus()
+	if err != nil {
+		t.Skipf("no system bus: %v", err)
+	}
+	defer bus.Close()
+	if err := bus.Object("org.freedesktop.Accounts", "/org/freedesktop/Accounts").Call("org.freedesktop.DBus.Peer.Ping", 0).Err; err != nil {
+		t.Skipf("AccountsService isn't running: %v", err)
+	}
 }
