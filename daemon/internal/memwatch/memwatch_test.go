@@ -14,12 +14,15 @@ func TestParseUnit(t *testing.T) {
 		`app-gnome-firefox-123.scope`:                                    "firefox",
 		// A Ghostty tab, moved to a scope of its own: Ghostty.
 		`app-ghostty-surface-transient-3912112.scope`: "ghostty",
+		// Ptyxis and VTE tabs (GNOME Terminal, Console): their terminal.
+		`ptyxis-spawn-e002a034-f916-4085-9df7-1b0f13625b6d.scope`: "org.gnome.Ptyxis",
+		`vte-spawn-1c538dbb-a71e-4a11-bd5f-bb828e5c548c.scope`:    "vte-terminal",
 	} {
 		if got, ok := ParseUnit(unit); !ok || got != want {
 			t.Errorf("%s: %q %v, want %q", unit, got, ok, want)
 		}
 	}
-	for _, not := range []string{`app-gnome\x2dsession\x2dmanager.slice`, "session-3.scope", "app-.scope", "app-gnome.scope"} {
+	for _, not := range []string{`app-gnome\x2dsession\x2dmanager.slice`, "session-3.scope", "app-.scope", "app-gnome.scope", "ptyxis-spawn-x.slice"} {
 		if id, ok := ParseUnit(not); ok {
 			t.Errorf("%s: %q", not, id)
 		}
@@ -45,7 +48,11 @@ func TestJudge(t *testing.T) {
 		{PSI{}, 8 * gb, Calm},
 		{PSI{Some10: 12}, 8 * gb, Tight},
 		{PSI{}, gb + gb/2, Tight}, // 9% of 16 GB
-		{PSI{Some10: 40, Full10: 25}, 4 * gb, Critical},
+		// Stalling with memory still free (a big build): tight, not critical.
+		{PSI{Some10: 40, Full10: 25}, 4 * gb, Tight},
+		{PSI{Some10: 40, Full10: 25}, 10 * gb, Tight},
+		// Stalling and memory short: critical.
+		{PSI{Some10: 40, Full10: 25}, 2 * gb, Critical},
 		{PSI{}, gb / 4, Critical},
 	} {
 		if got := Judge(c.p, c.avail, 16*gb); got != c.want {
@@ -139,5 +146,41 @@ func TestOwnBytesIsAnon(t *testing.T) {
 	}
 	if _, ok := OwnBytes("file 1\nshmem 2\n"); ok {
 		t.Fatal("no anon line, yet ok")
+	}
+}
+
+// Every common terminal is kept, whatever $TERMINAL says: on 2026-11-14
+// Ptyxis, running a build, was closed because $TERMINAL named Ghostty (and
+// the daemon didn't have it at all).
+func TestTerminalsAreProtected(t *testing.T) {
+	for _, id := range []string{"org.gnome.Ptyxis", "ptyxis", "org.gnome.Console", "org.kde.konsole", "kitty",
+		"com.mitchellh.ghostty", "ghostty", "foot", "org.wezfurlong.wezterm", "vte-terminal"} {
+		if !IsTerminal(id) {
+			t.Errorf("%s: not a terminal", id)
+		}
+	}
+	for _, id := range []string{"firefox", "net.nokyan.Resources", "org.gnome.Calculator", ""} {
+		if IsTerminal(id) {
+			t.Errorf("%s: a terminal", id)
+		}
+	}
+}
+
+func TestWorthClosing(t *testing.T) {
+	const gb = 1 << 30
+	for _, c := range []struct {
+		bytes, total int64
+		want         bool
+	}{
+		{195 << 20, 15 * gb, false}, // Resources, 2026-11-14
+		{900 << 20, 15 * gb, false},
+		{gb, 15 * gb, true},
+		{3 * gb, 16 * gb, true},
+		{300 << 20, 4 * gb, false},
+		{500 << 20, 4 * gb, true}, // a tenth of a small machine
+	} {
+		if got := WorthClosing(c.bytes, c.total); got != c.want {
+			t.Errorf("%d of %d: %v, want %v", c.bytes, c.total, got, c.want)
+		}
 	}
 }

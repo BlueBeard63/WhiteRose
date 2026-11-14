@@ -245,11 +245,10 @@ pub fn icon(app_id: &str, px: u32) -> Option<Arc<Icon>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-icons-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("icons-{name}"));
         d
     }
 
@@ -278,13 +277,12 @@ mod tests {
         fs::write(apps.join("org.gnome.Calculator.desktop"), "[Desktop Entry]\nIcon=calc\n").unwrap();
         fs::write(apps.join("signal-desktop.desktop"), "[Desktop Entry]\nIcon=signal\nStartupWMClass=Signal\n")
             .unwrap();
-        let e = Entries::scan(std::slice::from_ref(&d));
+        let e = Entries::scan(&[d.to_path_buf()]);
         assert_eq!(e.icon_of("code"), Some("vscode"));
         assert_eq!(e.icon_of("Code"), Some("vscode"), "any case");
         assert_eq!(e.icon_of("signal"), Some("signal"), "its window class");
         assert_eq!(e.icon_of("calculator"), Some("calc"), "its last part");
         assert_eq!(e.icon_of("nothing"), None);
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -294,7 +292,7 @@ mod tests {
         fs::write(d.join("icons/Mine/index.theme"), "[Icon Theme]\nInherits=Base,Other\n").unwrap();
         fs::create_dir_all(d.join("icons/Base")).unwrap();
         fs::write(d.join("icons/Base/index.theme"), "[Icon Theme]\nInherits=hicolor\n").unwrap();
-        let dirs = vec![d.clone()];
+        let dirs = vec![d.to_path_buf()];
         assert_eq!(theme_chain("Mine", &dirs), vec!["Mine", "Base", "hicolor", "Other"]);
         write_png(&d.join("icons/hicolor/16x16/apps/app.png"), 16, [255, 0, 0, 255]);
         write_png(&d.join("icons/hicolor/48x48/apps/app.png"), 48, [255, 0, 0, 255]);
@@ -311,7 +309,6 @@ mod tests {
         );
         assert_eq!(find_png("old", 16, &chain, &dirs), Some(d.join("pixmaps/old.png")));
         assert_eq!(find_png("none", 16, &chain, &dirs), None);
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -324,6 +321,5 @@ mod tests {
         assert_eq!(i.bgra.len(), 16 * 16 * 4);
         // B, G, R premultiplied by alpha 128/255, then alpha.
         assert_eq!(&i.bgra[..4], &[25, 50, 100, 128]);
-        fs::remove_dir_all(&d).unwrap();
     }
 }

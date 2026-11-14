@@ -285,6 +285,7 @@ fn now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn reads_within_the_cap_and_rejects_larger() {
@@ -305,11 +306,10 @@ mod tests {
 
     #[test]
     fn identical_images_share_one_file() {
-        let dir = std::env::temp_dir().join(format!("wr-clipimg-{}", std::process::id()));
+        let dir = Scratch::new("clipimg");
         let a = store_image(&dir, "image/png", b"\x89PNG fake").unwrap();
         let b = store_image(&dir, "image/png", b"\x89PNG fake").unwrap();
         assert_eq!(a, b);
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

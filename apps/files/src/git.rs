@@ -130,6 +130,7 @@ pub fn status(dir: &Path) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn reads_the_branch() {
@@ -143,8 +144,7 @@ mod tests {
 
     #[test]
     fn a_repository_without_running_git() {
-        let d = std::env::temp_dir().join(format!("wr-git-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("git");
         fs::create_dir_all(d.join(".git")).unwrap();
         fs::create_dir_all(d.join("src/deep")).unwrap();
         fs::write(d.join(".git/HEAD"), "ref: refs/heads/work\n").unwrap();
@@ -179,6 +179,5 @@ mod tests {
             status(&std::env::temp_dir().join("wr-git-none-here")),
             Status::default()
         );
-        fs::remove_dir_all(&d).unwrap();
     }
 }

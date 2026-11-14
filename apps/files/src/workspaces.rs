@@ -176,6 +176,7 @@ pub fn rename(file: &Path, from: &str, to: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use crate::session::Window;
 
     fn tab(p: &str) -> Tab {
@@ -187,8 +188,7 @@ mod tests {
 
     #[test]
     fn save_list_open_rename_delete() {
-        let d = std::env::temp_dir().join(format!("wr-ws-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("ws");
         fs::create_dir_all(d.join("code/site")).unwrap();
         fs::create_dir_all(d.join("docs")).unwrap();
         let f = d.join("workspaces.json");
@@ -278,6 +278,5 @@ mod tests {
             list(&f).iter().map(|x| x.name.as_str()).collect::<Vec<_>>(),
             vec!["Site"]
         );
-        fs::remove_dir_all(&d).unwrap();
     }
 }

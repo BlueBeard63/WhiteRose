@@ -327,6 +327,7 @@ impl WhiteRose {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use chrono::TimeZone;
 
     #[test]
@@ -375,15 +376,13 @@ mod tests {
 
     #[test]
     fn never_overwrites_an_existing_screenshot() {
-        let dir = std::env::temp_dir().join(format!("wr-shot-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = Scratch::new("shot-test");
         let name = "Screenshot 2026-11-09 14-32-07.png";
         assert_eq!(unique_path(&dir, name), dir.join(name));
         std::fs::write(dir.join(name), b"x").unwrap();
         assert_eq!(unique_path(&dir, name), dir.join("Screenshot 2026-11-09 14-32-07 (2).png"));
         std::fs::write(dir.join("Screenshot 2026-11-09 14-32-07 (2).png"), b"x").unwrap();
         assert_eq!(unique_path(&dir, name), dir.join("Screenshot 2026-11-09 14-32-07 (3).png"));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -407,7 +406,8 @@ mod tests {
 
     #[test]
     fn saves_into_a_new_directory() {
-        let dir = std::env::temp_dir().join(format!("wr-shot-save-{}", std::process::id())).join("Screenshots");
+        let scratch = Scratch::new("shot-save");
+        let dir = scratch.join("Screenshots");
         let t = Local.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
         match encode_and_save(&[255; 16], 2, 2, &dir, t) {
             Outcome::Saved { path, width, height, png } => {
@@ -417,6 +417,5 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 }

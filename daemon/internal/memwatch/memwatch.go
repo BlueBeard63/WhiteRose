@@ -29,6 +29,14 @@ type App struct {
 // ParseUnit: an app scope's app id ("app-whiterose-org.gnome.Calculator-123-0.scope"
 // → "org.gnome.Calculator"); ok false for anything else (slices, services).
 func ParseUnit(unit string) (id string, ok bool) {
+	// A terminal's tab (Ptyxis: ptyxis-spawn-<uuid>.scope; GNOME Terminal
+	// and Console, through VTE: vte-spawn-<uuid>.scope) is the terminal: a
+	// build run in one is the terminal's work, and is kept like it.
+	for prefix, term := range spawnScopes {
+		if strings.HasPrefix(unit, prefix) && strings.HasSuffix(unit, ".scope") {
+			return term, true
+		}
+	}
 	rest, ok := strings.CutPrefix(unit, "app-")
 	if !ok {
 		return "", false
@@ -77,6 +85,27 @@ func unescape(s string) string {
 	}
 	return b.String()
 }
+
+// spawnScopes: terminals that put each tab in a scope of its own, by the
+// scope's prefix, and the terminal's app id.
+var spawnScopes = map[string]string{
+	"ptyxis-spawn-": "org.gnome.Ptyxis",
+	"vte-spawn-":    "vte-terminal",
+}
+
+// Terminals are never closed, whichever is the default: what runs in them
+// (a build, an editor, a session like this one) is work that closing the
+// window would lose, and their own memory is small. Matched like
+// memory.protected (the last part of a reverse-DNS id, without case).
+var Terminals = []string{
+	"org.gnome.Ptyxis", "org.gnome.Console", "kgx", "gnome-terminal", "org.gnome.Terminal",
+	"vte-terminal", "org.kde.konsole", "kitty", "alacritty", "foot", "footclient",
+	"org.wezfurlong.wezterm", "com.mitchellh.ghostty", "xterm", "com.gexperts.Tilix",
+	"terminator", "io.elementary.terminal", "blackbox", "com.raggesilver.BlackBox",
+}
+
+// IsTerminal: app id is a known terminal (see Terminals).
+func IsTerminal(id string) bool { return Protected(id, Terminals, "") }
 
 // Protected: in `list` (memory.protected) or the terminal, matched as the
 // compositor matches (app_scope.rs is_protected): without case, and by
@@ -165,18 +194,32 @@ const (
 func (l Level) String() string { return [...]string{"calm", "tight", "critical"}[l] }
 
 // Judge: how tight memory is, from the pressure and what's available.
+//
+// Stalling alone is only Tight: a big parallel build (16 linkers at 1 GB
+// each) stalls everything for a while with most of memory still free, and
+// closing an app then frees nothing that matters (2026-11-14: Resources
+// and the terminal running the build were closed). Critical, where an app
+// is closed by itself, needs memory to be short as well.
 func Judge(p PSI, availBytes, totalBytes int64) Level {
 	frac := 1.0
 	if totalBytes > 0 {
 		frac = float64(availBytes) / float64(totalBytes)
 	}
 	switch {
-	case p.Full10 >= 20 || frac < 0.03:
+	case frac < 0.03 || (p.Full10 >= 20 && frac < 0.15):
 		return Critical
-	case p.Some10 >= 10 || frac < 0.10:
+	case p.Full10 >= 20 || p.Some10 >= 10 || frac < 0.10:
 		return Tight
 	}
 	return Calm
+}
+
+// WorthClosing: closing an app holding `bytes` would make a real
+// difference: a tenth of memory, or 1 GB on machines with more than 10.
+// Below that the pressure is coming from somewhere else (something not in
+// an app scope, or many small things), and closing it only loses work.
+func WorthClosing(bytes, totalBytes int64) bool {
+	return bytes >= min(totalBytes/10, 1<<30)
 }
 
 // ---- leaks -------------------------------------------------------------------------------

@@ -42,12 +42,12 @@ pub fn snap_picker() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use std::{io::BufRead, os::unix::net::UnixListener};
 
     #[test]
     fn sends_one_line_and_waits_for_the_compositor() {
-        let dir = std::env::temp_dir().join(format!("wr-kit-compositor-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = Scratch::new("kit-compositor");
         let path = dir.join("sock");
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path).unwrap();
@@ -61,6 +61,5 @@ mod tests {
             .unwrap();
         assert_eq!(line, "{\"cmd\":\"snap_picker\",\"under_pointer\":true}\n");
         assert!(!send(&dir.join("nothing"), "{}"), "no compositor there");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

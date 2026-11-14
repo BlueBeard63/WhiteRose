@@ -423,6 +423,7 @@ pub fn load(dir: &Path) -> History {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
@@ -530,8 +531,7 @@ mod tests {
 
     #[test]
     fn files_are_checked_against_the_disk() {
-        let dir = std::env::temp_dir().join(format!("wr-clip-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = Scratch::new("clip");
         let alive = dir.join("still here.txt");
         std::fs::write(&alive, b"x").unwrap();
         let gone = dir.join("deleted.txt");
@@ -553,7 +553,6 @@ mod tests {
         std::fs::remove_file(&alive).unwrap();
         assert!(!h.view(&dir, &dir)[0].available);
         assert!(payloads(h.get(id).unwrap(), &dir).is_none());
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -567,7 +566,7 @@ mod tests {
 
     #[test]
     fn saves_and_loads_and_survives_corruption() {
-        let dir = std::env::temp_dir().join(format!("wr-clip-save-{}", std::process::id()));
+        let dir = Scratch::new("clip-save");
         let mut h = History::default();
         h.add(text("persist me"), 7);
         h.add(Content::Files { paths: vec!["/a b/c".into()] }, 8);
@@ -579,7 +578,6 @@ mod tests {
         // ids keep increasing after a reload, so a restored history never reuses one.
         let reloaded = History::from_json(&h.to_json());
         assert_eq!(reloaded.next_id, 2);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -596,8 +594,7 @@ mod tests {
 
     #[test]
     fn prune_keeps_the_newest_files() {
-        let dir = std::env::temp_dir().join(format!("wr-prune-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = Scratch::new("prune");
         for i in 0..5 {
             let p = dir.join(format!("{i}"));
             std::fs::write(&p, b"x").unwrap();
@@ -609,7 +606,6 @@ mod tests {
             std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         left.sort();
         assert_eq!(left, vec!["3", "4"]);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

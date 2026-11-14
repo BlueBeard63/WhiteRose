@@ -11,4 +11,7 @@ pub mod compositor;
 pub mod daemon;
 pub mod desktop;
 pub mod icons;
+#[cfg(test)]
+#[path = "../../scratch.rs"]
+mod scratch;
 pub mod sun;

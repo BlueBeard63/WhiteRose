@@ -291,12 +291,11 @@ pub fn plan(left: &Path, right: &Path, entries: &[Entry], mode: &str, towards: &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use std::time::{Duration, SystemTime};
 
-    fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-compare-{}-{name}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn tmp(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("compare-{name}"));
         d
     }
 
@@ -316,7 +315,7 @@ mod tests {
         e.iter().map(|x| (x.rel.clone(), x.state)).collect()
     }
 
-    fn sample(n: &str) -> (PathBuf, PathBuf, PathBuf) {
+    fn sample(n: &str) -> (Scratch, PathBuf, PathBuf) {
         let d = tmp(n);
         let (l, r) = (d.join("l"), d.join("r"));
         write(&l.join("same.txt"), "same", 100);
@@ -336,7 +335,7 @@ mod tests {
 
     #[test]
     fn lists_what_differs() {
-        let (d, l, r) = sample("list");
+        let (_d, l, r) = sample("list");
         let stop = AtomicBool::new(false);
         let e = compare(&l, &r, false, &stop, &mut |_| {});
         assert_eq!(
@@ -359,7 +358,6 @@ mod tests {
             .clone()
             .unwrap();
         assert!(f.dir && f.files == 2 && f.size == 3, "{f:?}");
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -381,12 +379,11 @@ mod tests {
             states(&compare(&l, &r, true, &stop, &mut |_| {})),
             vec![("a.bin".into(), State::Differs)]
         );
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
     fn plans_for_each_mode() {
-        let (d, l, r) = sample("plan");
+        let (_d, l, r) = sample("plan");
         let stop = AtomicBool::new(false);
         let e = compare(&l, &r, false, &stop, &mut |_| {});
         let up = plan(&l, &r, &e, "update", "right");
@@ -431,6 +428,5 @@ mod tests {
             ]
         );
         assert_eq!(back.trash_left, ["folder-left", "only-left.txt"]);
-        fs::remove_dir_all(d).unwrap();
     }
 }

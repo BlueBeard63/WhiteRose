@@ -915,11 +915,10 @@ pub fn index_age(file: &Path) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-search-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("search-{name}"));
         d
     }
 
@@ -1176,7 +1175,6 @@ mod tests {
         assert_eq!(run(true), ["invoice-0412.pdf.txt", "timesheet.md"]);
         // Both at once: neither has both.
         assert!(run(false).is_empty());
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -1256,7 +1254,7 @@ mod tests {
         fs::create_dir_all(d.join("Work")).unwrap();
         fs::write(d.join("Work/bank-statement.pdf"), "x").unwrap();
         let f = d.join("index");
-        build(std::slice::from_ref(&d), &f, &AtomicBool::new(false)).unwrap();
+        build(&[d.to_path_buf()], &f, &AtomicBool::new(false)).unwrap();
         let plain = fs::read(&f).unwrap();
         crate::secure::set_key_for_tests([3u8; 32]);
         fs::write(&f, crate::secure::seal_with(&[3u8; 32], &plain)).unwrap();

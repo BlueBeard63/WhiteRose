@@ -2,6 +2,23 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.3.0-alpha.7 · Memory protection that picks the right app (alpha) (2026-11-14)
+
+The seventh 0.3 alpha: when memory runs short, WhiteRose no longer closes apps that aren't the cause, and never closes a terminal. If you're on alpha.4 or later with Pre-releases on, it comes through Settings › Updates.
+
+### Fixed
+
+- When memory got tight, apps that weren't the cause could be closed, even the terminal running the work; now only an app big enough to help is closed, and terminals never are
+- A heavy but brief slowdown, like a big build, with most of memory still free no longer closes anything by itself; WhiteRose only names the biggest app
+- Terminals other than the default one (Ptyxis, Console, Konsole, kitty, foot, Ghostty and more), and everything running in their tabs, are kept running like the default one
+- Leftover WhiteRose folders in /tmp are cleared after a day unused, so they don't sit in memory and swap
+
+If you switched off closing apps by itself (Settings › Apps › Memory) because of this, it's safe to switch back on after updating.
+
+With alpha.4 or later and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases. From alpha.3 or earlier, install it with this release's `install.sh`. Your settings carry over.
+
+Contributors: @BlueBeard63
+
 ## 0.3.0-alpha.6 · Screens plugged in later (alpha) (2026-11-14)
 
 The sixth 0.3 alpha: a monitor plugged in after you log in now shows up, and screens can be scaled below 100% to fit more on them. If you're on alpha.4 or later with Pre-releases on, it comes through Settings › Updates.

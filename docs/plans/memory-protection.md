@@ -31,9 +31,12 @@ WHITEROSE_APP_SLICE (a made-up app.slice, so nothing real is touched).
    apps the watcher suspects +800. The session's own processes stay at 0,
    last in line. Scopes get `ManagedOOMPreference=avoid` for protected
    apps.
-3. **Protected apps:** the terminal (`$TERMINAL`, the SUPER+RETURN one) by
-   default, and any app you mark "Keep running" (Settings, and the window
-   menu).
+3. **Protected apps:** the terminal (`$TERMINAL`, the SUPER+RETURN one;
+   Ptyxis when unset), every known terminal (`memwatch.Terminals`: Ptyxis,
+   Console, GNOME Terminal, Konsole, kitty, Alacritty, foot, WezTerm,
+   Ghostty, ...) with its tab scopes (`ptyxis-spawn-*`, `vte-spawn-*`,
+   Ghostty's `surface-transient`), and any app you mark "Keep running"
+   (Settings, and the window menu).
 4. **The watcher (whiterosed):**
    - Reads `/proc/pressure/memory` (a PSI trigger, no polling while
      calm) and, under pressure, each app scope's `memory.current` every few
@@ -41,12 +44,20 @@ WHITEROSE_APP_SLICE (a made-up app.slice, so nothing real is touched).
    - **Leak suspicion:** an app whose memory has grown steadily for 10
      minutes while it wasn't the focused one, or that holds more than half
      of memory.
-   - **Tight** (some pressure for 10 s, or less than 10% available): the
+   - **Tight** (some pressure for 10 s, full pressure with memory still
+     free, or less than 10% available): the
      island says which app and how much ("Firefox is using 6.2 GB and still
      growing") with Close and Not now.
-   - **Critical** (full pressure for 2 s, or less than 3% available):
-     closes the worst unprotected app itself (asks it to close, then kills
-     it after 3 s), and the island says which and why.
+   - **Critical** (full pressure with less than 15% available, or less
+     than 3% available): closes the worst unprotected app itself (asks it
+     to close, then kills it after 3 s), and the island says which and
+     why. Only if it's big enough for that to help (a tenth of memory, at
+     most 1 GB needed): otherwise it's only named, as when Tight.
+   - (2026-11-14: full pressure alone counted as Critical. A parallel
+     build in a Ptyxis tab, 16 linkers at 1 GB, stalled everything with
+     two thirds of memory free; the build's tab scope wasn't seen, so
+     Resources (195 MB) and then Ptyxis itself were closed, freeing
+     nothing.)
    - Each forced close writes a crash record with a snapshot, so it can be
      reported like a crash.
 5. **Settings › Apps (or Power & battery) › Memory:** the protected list,
