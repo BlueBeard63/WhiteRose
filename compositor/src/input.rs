@@ -169,9 +169,18 @@ impl WhiteRose {
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         let from = pointer.current_location();
         let under = self.surface_under(pos);
+        let over_nothing = under.is_none();
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
         pointer.frame(self);
         if !pointer.is_grabbed() {
+            // Over nothing (a gap between windows): the arrow. Apps set
+            // their cursor as the pointer enters them, but nothing does
+            // here, so the last app's (a resize arrow at its edge) stayed.
+            let arrow = smithay::input::pointer::CursorImageStatus::default_named();
+            if over_nothing && self.cursor_status != arrow {
+                self.cursor_status = arrow;
+                self.schedule_redraw();
+            }
             self.picker_pointer(pos);
             // (Dragging something is never a shake.)
             if self.draws_cursor {
