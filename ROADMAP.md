@@ -2,7 +2,7 @@
 
 # WhiteRose Roadmap
 
-![The WhiteRose roadmap: eleven milestones from 0.1 Foundations to 1.2 Module API stable; 0.1 and 0.2 shipped](docs/roadmap.png)
+![The WhiteRose roadmap: eleven milestones from 0.1 Foundations to 1.2 Module API stable; 0.1 and 0.2 shipped, 0.3 in testing](docs/roadmap.png)
 
 </div>
 
@@ -14,7 +14,7 @@ Each feature lists where the idea comes from: Windows, Hyprland, niri, GNOME, KD
 |---|---|---|---|
 | ✅ | [**0.1**](#01--foundations) | Foundations | What WhiteRose is today. |
 | ✅ | [**0.2**](#02--files) | Files | Online drives, network shares, and no dialogs. |
-| 🔨 | [**0.3**](#03--layouts) | Layouts | How windows are arranged: three models, one global choice with overrides. |
+| 🧪 | [**0.3**](#03--layouts) | Layouts | How windows are arranged, plus the basics a daily desktop needs. In testing as 0.3.0-alpha.7. |
 | 🗓️ | [**0.4**](#04--overview--gestures) | Overview & gestures | Seeing everything at once, and moving around with gestures. |
 | 🗓️ | [**0.5**](#05--look--feel) | Look & feel | Making it yours, and making every app match. |
 | 🗓️ | [**0.6**](#06--login) | Login | WhiteRose from the first frame: its own display manager. |
@@ -94,7 +94,9 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 
 ## 0.3 · Layouts
 
-**In progress.** How windows are arranged: three models, one global choice with overrides.
+**In testing** (0.3.0-alpha.7). How windows are arranged: floating, snapped or tiled, one global choice with overrides.
+
+Everything planned for 0.3 is in. Using WhiteRose every day while building it turned up more that a daily desktop can't do without (X11 apps, crash reports, memory protection), so that came into 0.3 too: see [Also in 0.3](#also-in-03). From here 0.3 only takes fixes; 0.3.0 follows a stretch of daily use with nothing new going wrong.
 
 <details>
 <summary>✅ <b>Click-and-check tests</b>: Tests that use WhiteRose like a person would, without guessing where things are on screen. <sub>· Qt Test, Playwright</sub></summary>
@@ -156,6 +158,66 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 </details>
 
 
+❌ **Scrollable columns** (niri's endless strip of columns) was built and then dropped: it isn't a way of working WhiteRose is aiming at. What came with it stays (tiles cut to their size, the Snapping tools). The design is kept in [docs/plans/scrollable-columns.md](docs/plans/scrollable-columns.md).
+
+### Also in 0.3
+
+Not on the plan for 0.3, added because daily use needed them.
+
+<details>
+<summary>✅ <b>X11 apps</b>: Spotify, Steam and older tools open through XWayland and behave like any other window. <sub>· WhiteRose's own</sub></summary>
+
+- Tiling, snapping, window rules, scratchpads and the switchers all work with them.
+- Copy and paste both ways between X11 and Wayland apps, drag and drop both ways, and X11 copies in the clipboard history.
+
+</details>
+
+<details>
+<summary>✅ <b>Island views</b>: A note, the agenda and music, each a module you can turn off. <sub>· WhiteRose's own</sub></summary>
+
+- Note (SUPER+SHIFT+N): a title and lines, where lines starting `[ ]` are tasks to tick.
+- Agenda (SUPER+A, or the clock): today's next event and the day as a line; the month a click away.
+- Music (SUPER+SHIFT+M): the cover, the track and controls for whichever player is playing.
+- Clipboard history on SUPER+V.
+
+</details>
+
+<details>
+<summary>✅ <b>Problems reported, crashes recorded</b>: A report flow in the island, filled in from what WhiteRose recorded. <sub>· WhiteRose's own</sub></summary>
+
+- SUPER+SHIFT+B reports a problem step by step; you see everything before it's sent.
+- A crash is recorded with a snapshot of the moment (load, windows, the session log), and the island offers to report it.
+
+</details>
+
+<details>
+<summary>✅ <b>Memory protection</b>: Running out of memory no longer ends the session. <sub>· WhiteRose's own</sub></summary>
+
+- Each app runs in its own scope, so the kernel takes the app at fault, not the session.
+- When memory gets tight, the island names the app growing or holding the most; when it's critical, an app big enough to help is closed. Terminals and the apps you mark are never closed.
+- Settings › Apps › Memory: the apps to keep, and whether WhiteRose may close apps itself.
+
+</details>
+
+<details>
+<summary>✅ <b>Releases and pre-releases</b>: Every release in Settings › Updates, alphas and betas when you want them. <sub>· WhiteRose's own</sub></summary>
+
+- Settings › Updates › Releases: every version with its notes and a search, and installing any of them, older ones too.
+- A Pre-releases switch offers alpha and beta versions as updates.
+
+</details>
+
+<details>
+<summary>✅ <b>Smaller things</b>: Dialogs, default apps, the pointer, gestures and screens.</summary>
+
+- Open and save dialogs in other apps use Files (through the desktop portal).
+- Default apps by category or file type (Settings › Apps › Default apps), and Nextcloud accounts in Files.
+- Mouse & touchpad settings, shake the pointer to find it, and touchpad gestures passed to apps (pinch to zoom).
+- SUPER+K shows the keyboard shortcuts worth knowing; the keyring opens after a fingerprint login.
+- Monitors plugged in after login, and 75% scaling.
+
+</details>
+
 ## 0.4 · Overview & gestures
 
 **Planned.** Seeing everything at once, and moving around with gestures.
@@ -188,8 +250,9 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 <details>
 <summary><b>Touchpad gestures</b>: Swipe for workspaces, pinch for the overview, three-finger drag; configurable. <sub>· Hyprland, GNOME</sub></summary>
 
-- 1:1 swipe between workspaces/columns, pinch for the overview, three-finger window drag.
+- 1:1 swipe between workspaces, pinch for the overview, three-finger window drag.
 - Settings › Touchpad: gestures to actions.
+- Already in 0.3: gestures reach apps (pinch to zoom in browsers, swipe and hold).
 
 </details>
 
@@ -369,7 +432,7 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 <details>
 <summary><b>Polish everything above</b>: Stable, finished and pleasant to use every day. <sub>· WhiteRose's own</sub></summary>
 
-- Bug bash across all milestones; first-run experience; release notes in the Updates page.
+- Bug bash across all milestones; first-run experience. (Release notes in the Updates page came early, in 0.3.)
 
 </details>
 
