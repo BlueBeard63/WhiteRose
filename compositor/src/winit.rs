@@ -230,4 +230,9 @@ fn render(
     crate::toplevel_export::process(backend.renderer(), output, state);
 
     render::send_frame_callbacks(output, state);
+
+    // Something moving: the next frame too (the host paces them).
+    if state.animating() {
+        state.schedule_redraw();
+    }
 }

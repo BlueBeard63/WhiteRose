@@ -178,11 +178,6 @@ pub fn output_elements(
             space_elements(renderer, output, state, &mut elements);
         }
     }
-    // A scratchpad sliding or a tab strip moving: the next frame too,
-    // until it ends.
-    if state.scratchpads.animating() || crate::tab_strip::animating(state) {
-        state.schedule_redraw();
-    }
     (elements, CLEAR)
 }
 
@@ -272,7 +267,7 @@ fn sliding_pad(
     let Some(slide) = state.scratchpads.slide_of(w) else { return false };
     let Some(geo) = state.space.element_geometry(w) else { return false };
     let scale = output.current_scale().fractional_scale();
-    let shown = slide.shown(std::time::Instant::now(), state.scratchpads.slide_length);
+    let shown = slide.shown(std::time::Instant::now());
     let top = state.usable_area_on(output).loc.y;
     let dy = crate::scratchpad::slide_offset(shown, geo.loc.y + geo.size.h, top);
     let below = (top - out.loc.y).clamp(0, out.size.h);

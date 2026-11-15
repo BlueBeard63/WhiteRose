@@ -8,12 +8,31 @@
 //! Only where the compositor draws the pointer (real hardware): nested,
 //! the host desktop draws it.
 
-use std::{collections::VecDeque, sync::OnceLock, time::Instant};
+use std::{
+    collections::VecDeque,
+    sync::OnceLock,
+    time::{Duration, Instant},
+};
+
+use crate::anim::{Curve, Value};
+
+fn start() -> Instant {
+    static START: OnceLock<Instant> = OnceLock::new();
+    *START.get_or_init(Instant::now)
+}
 
 /// Milliseconds on a clock that only goes forward (since first asked).
 pub fn now_ms() -> u64 {
-    static START: OnceLock<Instant> = OnceLock::new();
-    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+    start().elapsed().as_millis() as u64
+}
+
+/// The moment `ms` on that clock.
+fn instant(ms: u64) -> Instant {
+    start() + Duration::from_millis(ms)
+}
+
+fn ms(n: f64) -> Duration {
+    Duration::from_secs_f64(n.max(0.0) / 1000.0)
 }
 
 /// How big it gets.
@@ -40,11 +59,8 @@ pub struct Shake {
     turns: VecDeque<u64>,
     /// Big until then (ms).
     until: u64,
-    /// 0 (usual size) to 1 (MAX), and when it was last worked out.
-    level: f64,
-    at: u64,
-    /// A frame is on its way (the backend's timer while animating).
-    pub tick_armed: bool,
+    /// 0 (usual size) to 1 (MAX), growing and shrinking at a steady pace.
+    level: Value,
 }
 
 impl Default for Shake {
@@ -54,9 +70,7 @@ impl Default for Shake {
             strokes: [Stroke::default(); 2],
             turns: VecDeque::new(),
             until: 0,
-            level: 0.0,
-            at: 0,
-            tick_armed: false,
+            level: Value::new(0.0),
         }
     }
 }
@@ -86,8 +100,12 @@ impl Shake {
         }
         let shaking = self.turns.len() >= TURNS;
         if shaking {
-            self.advance(now);
             self.until = now + HOLD_MS;
+            if self.level.target() < 1.0 {
+                let t = instant(now);
+                let way = 1.0 - self.level.get(t);
+                self.level.animate_to(1.0, ms(GROW_MS * way), Curve::Linear, t);
+            }
         }
         shaking
     }
@@ -98,27 +116,24 @@ impl Shake {
         self.turns.clear();
     }
 
-    fn advance(&mut self, now: u64) {
-        let dt = now.saturating_sub(self.at) as f64;
-        self.at = now;
-        self.level = if now < self.until {
-            (self.level + dt / GROW_MS).min(1.0)
-        } else {
-            (self.level - dt / SHRINK_MS).max(0.0)
-        };
-    }
-
     /// How big the pointer is at `now`: 1 usually, up to MAX.
     pub fn factor(&mut self, now: u64) -> f64 {
-        self.advance(now);
-        let l = self.level;
+        // The shaking stopped: it shrinks back from then.
+        if now >= self.until && self.level.target() > 0.0 {
+            let t = instant(self.until);
+            let way = self.level.get(t);
+            self.level.animate_to(0.0, ms(SHRINK_MS * way), Curve::Linear, t);
+        }
+        let t = instant(now);
+        let l = self.level.get(t);
+        self.level.settle(t);
         // Eased: quick to start, gentle to settle.
-        1.0 + (MAX - 1.0) * l * l * (3.0 - 2.0 * l)
+        1.0 + (MAX - 1.0) * Curve::EaseInOut.at(l)
     }
 
     /// Still changing size or big: keep drawing frames.
     pub fn animating(&self) -> bool {
-        self.level > 0.0
+        self.level.target() > 0.0 || self.level.ends().is_some()
     }
 }
 

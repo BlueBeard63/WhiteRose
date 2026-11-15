@@ -99,6 +99,8 @@ struct Screen {
     gamma_size: usize,
     /// Frame callbacks are due after a frame with nothing to show.
     callbacks_armed: bool,
+    /// A frame for an animation is on its way on a timer.
+    tick_armed: bool,
 }
 
 pub struct Backend {
@@ -512,6 +514,7 @@ fn connected(backend: &Shared, state: &mut WhiteRose, conn: &connector::Info, cr
         gamma: None,
         gamma_size,
         callbacks_armed: false,
+        tick_armed: false,
     })
 }
 
@@ -679,18 +682,26 @@ fn draw(backend: &Shared, state: &mut WhiteRose, crtc: crtc::Handle) {
     };
     s.pending = queued;
     let refresh = s.mode.vrefresh().max(1);
-    // Shake to find: a frame each refresh while the pointer is bigger than
-    // usual (on a timer: a still, big pointer damages nothing, so frames
-    // alone wouldn't come).
-    if state.shake.animating() && !std::mem::replace(&mut state.shake.tick_armed, true) {
-        let _ = state.loop_handle.insert_source(
-            Timer::from_duration(Duration::from_micros(1_000_000 / refresh as u64)),
-            |_, _, state| {
-                state.shake.tick_armed = false;
-                state.schedule_redraw();
-                TimeoutAction::Drop
-            },
-        );
+    // Something moving (anim.rs), or the pointer bigger than usual (shake
+    // to find): a frame each refresh until it stops. After a queued frame
+    // its vblank draws the next; after one with nothing new to show (a
+    // still, big pointer damages nothing) a timer does, so it never spins.
+    if state.animating() || state.shake.animating() {
+        if queued {
+            s.dirty = true;
+        } else if !std::mem::replace(&mut s.tick_armed, true) {
+            let b = backend.clone();
+            let _ = state.loop_handle.insert_source(
+                Timer::from_duration(Duration::from_micros(1_000_000 / refresh as u64)),
+                move |_, _, state| {
+                    if let Some(s) = b.borrow_mut().screens.get_mut(&crtc) {
+                        s.tick_armed = false;
+                    }
+                    draw(&b, state, crtc);
+                    TimeoutAction::Drop
+                },
+            );
+        }
     }
     let arm_callbacks = !queued && !std::mem::replace(&mut s.callbacks_armed, true);
     if queued {

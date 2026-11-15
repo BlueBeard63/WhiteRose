@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::{layout::Rect, rules::Len};
+use crate::{anim, layout::Rect, rules::Len};
 
 /// How long a start may take to open its window before it's given up.
 pub const START_TIMEOUT: Duration = Duration::from_secs(10);
@@ -180,59 +180,43 @@ impl<W, M: PartialEq> State<W, M> {
 pub const SLIDE: Duration = Duration::from_millis(150);
 
 /// A scratchpad sliding down from the island (showing) or back up
-/// (hiding). Its progress is linear from 0 (hidden) to 1 (shown); what's
-/// drawn is that eased.
+/// (hiding): how much of it shows, 0 (hidden) to 1 (shown), eased out.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Slide {
     pub showing: bool,
-    start: Instant,
-    /// The progress it started from: 0 or 1, or where a slide the other
-    /// way was when the key turned it round.
-    from: f32,
+    shown: anim::Value,
 }
 
 impl Slide {
-    /// A slide from fully hidden (showing) or fully shown (hiding).
-    pub fn new(showing: bool, now: Instant) -> Slide {
-        Slide { showing, start: now, from: if showing { 0.0 } else { 1.0 } }
+    /// A slide from fully hidden (showing) or fully shown (hiding), over
+    /// `length`.
+    pub fn new(showing: bool, now: Instant, length: Duration) -> Slide {
+        Slide { showing: !showing, shown: anim::Value::new(if showing { 0.0 } else { 1.0 }) }.turn(showing, now, length)
     }
 
     /// A slide `showing` (or not) from where this one is now: turned
-    /// round mid-way, it goes back from there without a jump.
+    /// round mid-way, it goes back from there without a jump, taking as
+    /// much of `length` as it has of the way to go.
     pub fn turn(&self, showing: bool, now: Instant, length: Duration) -> Slide {
-        Slide { showing, start: now, from: self.progress(now, length) }
+        let mut shown = self.shown;
+        let to = if showing { 1.0 } else { 0.0 };
+        let way = (to - shown.get(now)).abs();
+        shown.animate_to(to, length.mul_f64(way), anim::Curve::EaseOut, now);
+        Slide { showing, shown }
     }
 
-    /// Linear progress, 0 (hidden) to 1 (shown).
-    pub fn progress(&self, now: Instant, length: Duration) -> f32 {
-        let step = if length.is_zero() {
-            1.0
-        } else {
-            now.saturating_duration_since(self.start).as_secs_f32() / length.as_secs_f32()
-        };
-        let p = if self.showing { self.from + step } else { self.from - step };
-        p.clamp(0.0, 1.0)
+    /// How much of it shows at `now`: 0 to 1.
+    pub fn shown(&self, now: Instant) -> f32 {
+        self.shown.get(now) as f32
     }
 
-    /// How much of it shows, eased (fast, then settling): 0 to 1.
-    pub fn shown(&self, now: Instant, length: Duration) -> f32 {
-        let p = self.progress(now, length);
-        1.0 - (1.0 - p).powi(3)
-    }
-
-    pub fn done(&self, now: Instant, length: Duration) -> bool {
-        let p = self.progress(now, length);
-        if self.showing {
-            p >= 1.0
-        } else {
-            p <= 0.0
-        }
+    pub fn done(&self, now: Instant) -> bool {
+        !self.shown.moving(now)
     }
 
     /// How long until it's done.
-    pub fn left(&self, now: Instant, length: Duration) -> Duration {
-        let p = self.progress(now, length);
-        length.mul_f32(if self.showing { 1.0 - p } else { p })
+    pub fn left(&self, now: Instant) -> Duration {
+        self.shown.ends().map(|e| e.saturating_duration_since(now)).unwrap_or_default()
     }
 }
 
@@ -376,22 +360,26 @@ mod tests {
     fn slides_ease_in_and_turn_round_without_a_jump() {
         let t0 = Instant::now();
         let ms = Duration::from_millis;
-        let show = Slide::new(true, t0);
-        assert_eq!(show.progress(t0, SLIDE), 0.0);
-        assert_eq!(show.shown(t0 + ms(75), SLIDE), 1.0 - 0.5f32.powi(3), "eased: most of it by half way");
-        assert!(!show.done(t0 + ms(149), SLIDE));
-        assert!(show.done(t0 + ms(150), SLIDE));
-        assert!(show.left(t0 + ms(50), SLIDE).abs_diff(ms(100)) <= ms(1));
+        let show = Slide::new(true, t0, SLIDE);
+        assert_eq!(show.shown(t0), 0.0);
+        assert_eq!(show.shown(t0 + ms(75)), 0.875, "eased: most of it by half way");
+        assert!(!show.done(t0 + ms(149)));
+        assert!(show.done(t0 + ms(150)));
+        assert!(show.left(t0 + ms(50)).abs_diff(ms(100)) <= ms(1));
 
-        // Hidden a third of the way in: back up from there, for that long.
-        let hide = show.turn(false, t0 + ms(50), SLIDE);
-        assert!((hide.progress(t0 + ms(50), SLIDE) - 1.0 / 3.0).abs() < 1e-4);
-        assert!(hide.left(t0 + ms(50), SLIDE).abs_diff(ms(50)) <= ms(1));
-        assert!(hide.done(t0 + ms(100), SLIDE));
+        // Hidden partway in: back up from where it is, for as much of the
+        // time as it has of the way to go.
+        let at = t0 + ms(50);
+        let was = show.shown(at);
+        let hide = show.turn(false, at, SLIDE);
+        assert!((hide.shown(at) - was).abs() < 1e-6, "no jump");
+        assert!(hide.left(at).abs_diff(SLIDE.mul_f32(was)) <= ms(1));
+        assert!(hide.done(at + hide.left(at)));
+        assert_eq!(hide.shown(at + SLIDE), 0.0);
 
         // No length: done at once.
-        assert!(Slide::new(false, t0).done(t0, Duration::ZERO));
-        assert_eq!(Slide::new(true, t0).shown(t0, Duration::ZERO), 1.0);
+        assert!(Slide::new(false, t0, Duration::ZERO).done(t0));
+        assert_eq!(Slide::new(true, t0, Duration::ZERO).shown(t0), 1.0);
     }
 
     #[test]
