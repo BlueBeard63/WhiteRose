@@ -40,7 +40,7 @@ use smithay::{
     utils::{Logical, Point, Rectangle, Transform},
 };
 
-use crate::{render::OutputElement, state::WhiteRose};
+use crate::{anim, render::OutputElement, state::WhiteRose};
 
 /// The strip of one grouped tile on screen.
 #[derive(Debug, Clone)]
@@ -57,10 +57,11 @@ pub struct Strip {
 /// How long a strip takes to appear, change or go.
 pub const ANIM: Duration = Duration::from_millis(220);
 
-/// A strip changing: since when, and what it was (None: it's new).
+/// A strip changing: how far along (0 to 1), and what it was (None:
+/// it's new).
 #[derive(Debug, Clone)]
 pub struct Anim {
-    pub start: Instant,
+    pub along: anim::Value,
     pub from: Option<(Vec<Window>, usize)>,
 }
 
@@ -71,14 +72,16 @@ pub struct Leaving {
     pub rect: Rectangle<i32, Logical>,
     pub labels: Vec<Label>,
     pub shown: usize,
-    pub start: Instant,
+    /// How much is left of it: 1 to 0.
+    pub left: anim::Value,
 }
 
-/// How far along something started at `start` is at `now`, eased out
-/// (quick to start, gentle to settle): 0 to 1.
-pub fn eased(start: Instant, now: Instant) -> f64 {
-    let p = (now.saturating_duration_since(start).as_secs_f64() / ANIM.as_secs_f64()).clamp(0.0, 1.0);
-    1.0 - (1.0 - p).powi(3)
+/// A change starting at `now`: 0 to 1 over `ANIM`, eased out (quick to
+/// start, gentle to settle).
+pub fn along(now: Instant) -> anim::Value {
+    let mut v = anim::Value::new(0.0);
+    v.animate_to(1.0, ANIM, anim::Curve::EaseOut, now);
+    v
 }
 
 impl Strip {
@@ -570,11 +573,21 @@ fn buffer(pixels: &[u8], (w, h): (i32, i32)) -> MemoryRenderBuffer {
 /// The tab strips on `output`, ready to draw (behind the windows).
 pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose) -> Vec<OutputElement> {
     let scale = output.current_scale().fractional_scale();
-    let Some(origin) = state.space.output_geometry(output).map(|g| g.loc) else { return Vec::new() };
+    let Some(geo) = state.space.output_geometry(output) else { return Vec::new() };
+    let origin = geo.loc;
     let strips = &state.tiling.strip_images;
     let now = Instant::now();
+    // Sliding in with their workspace.
+    let dx = state.workspace_shift(Some(state.workspaces.active()), geo.size.w, now);
     let mut out = Vec::new();
     for s in state.tiling.strips.iter().filter(|s| s.output == *output) {
+        let moved;
+        let s = if dx == 0 {
+            s
+        } else {
+            moved = Strip { rect: Rectangle::new(s.rect.loc + Point::from((dx, 0)), s.rect.size), ..s.clone() };
+            &moved
+        };
         let size = ((s.rect.size.w as f64 * scale).round() as i32, (s.rect.size.h as f64 * scale).round() as i32);
         let labels: Vec<Label> = s.tabs.iter().map(label_of).collect();
         for (w, l) in s.tabs.iter().zip(&labels) {
@@ -583,8 +596,8 @@ pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose)
         let px = (ICON * scale).round() as u32;
         let lw = s.rect.size.w as f64;
         // Moving: drawn afresh each frame.
-        if let Some(a) = s.anim.as_ref().filter(|a| now < a.start + ANIM) {
-            let t = eased(a.start, now);
+        if let Some(a) = s.anim.as_ref().filter(|a| a.along.moving(now)) {
+            let t = a.along.get(now);
             let tabs = tabs_from(&labels, px);
             let to = still(lw, &layout(lw, &tabs), s.shown);
             let (scene, all) = match &a.from {
@@ -621,11 +634,11 @@ pub fn leaving_elements(renderer: &mut GlesRenderer, output: &Output, state: &Wh
     let Some(origin) = state.space.output_geometry(output).map(|g| g.loc) else { return Vec::new() };
     let now = Instant::now();
     let mut out = Vec::new();
-    for l in state.tiling.leaving.iter().filter(|l| l.output == *output && now < l.start + ANIM) {
+    for l in state.tiling.leaving.iter().filter(|l| l.output == *output && l.left.moving(now)) {
         let size = ((l.rect.size.w as f64 * scale).round() as i32, (l.rect.size.h as f64 * scale).round() as i32);
         let lw = l.rect.size.w as f64;
         let tabs = tabs_from(&l.labels, (ICON * scale).round() as u32);
-        let scene = appearing(&still(lw, &layout(lw, &tabs), l.shown), 1.0 - eased(l.start, now));
+        let scene = appearing(&still(lw, &layout(lw, &tabs), l.shown), l.left.get(now));
         let pixels = draw_scene(size.0, size.1, scale, &tabs, Some(l.shown), &scene);
         out.extend(element(renderer, origin, scale, l.rect, size, &buffer(&pixels, size)));
     }
@@ -635,8 +648,8 @@ pub fn leaving_elements(renderer: &mut GlesRenderer, output: &Output, state: &Wh
 /// Whether a strip is moving now (frames keep coming until it stops).
 pub fn animating(state: &WhiteRose) -> bool {
     let now = Instant::now();
-    state.tiling.strips.iter().any(|s| s.anim.as_ref().is_some_and(|a| now < a.start + ANIM))
-        || state.tiling.leaving.iter().any(|l| now < l.start + ANIM)
+    state.tiling.strips.iter().any(|s| s.anim.as_ref().is_some_and(|a| a.along.moving(now)))
+        || state.tiling.leaving.iter().any(|l| l.left.moving(now))
 }
 
 #[cfg(test)]
@@ -782,10 +795,12 @@ mod tests {
     #[test]
     fn eases_out_over_the_animation() {
         let s = Instant::now();
-        assert_eq!(eased(s, s), 0.0);
-        assert!(eased(s, s + ANIM / 2) > 0.5, "quick to start");
-        assert_eq!(eased(s, s + ANIM), 1.0);
-        assert_eq!(eased(s, s + ANIM * 3), 1.0);
+        let a = along(s);
+        assert_eq!(a.get(s), 0.0);
+        assert!(a.get(s + ANIM / 2) > 0.5, "quick to start");
+        assert_eq!(a.get(s + ANIM), 1.0);
+        assert_eq!(a.get(s + ANIM * 3), 1.0);
+        assert!(a.moving(s + ANIM / 2) && !a.moving(s + ANIM));
     }
 
     #[test]

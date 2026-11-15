@@ -497,6 +497,17 @@ func TestSettingsMouseAndTouchpad(t *testing.T) {
 	}
 }
 
+// Windows › Workspaces: the slide when switching is on to start with,
+// and the switch turns it off.
+func TestSettingsWorkspaceSlideSwitch(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("windows")
+	settings.Click(uitest.Named("Slide when switching").Role("check box"))
+	s.WaitSetting("animations.workspaceSwitch", false)
+	settings.Click(uitest.Named("Slide when switching").Role("check box"))
+	s.WaitSetting("animations.workspaceSwitch", true)
+}
+
 // Mouse & touchpad › Faster while you hold: Ctrl+Shift to start with;
 // another pick is stored, and how much faster follows a click and then
 // the wheel.

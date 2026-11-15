@@ -31,7 +31,7 @@ use crate::{
     layout::{self, Axis, Dir, Drop, Layout, Rect, Side, Tiling, TAB_STRIP},
     outputs,
     state::WhiteRose,
-    tab_strip::{Anim, Leaving, Strip, StripImages, ANIM},
+    tab_strip::{along, Anim, Leaving, Strip, StripImages, ANIM},
 };
 
 /// The states that tell a client it's tiled: it drops its shadows and
@@ -888,7 +888,7 @@ impl WhiteRose {
         let now = std::time::Instant::now();
         let same_ws = self.tiling.strips_workspace.replace(ws) == Some(ws);
         let old = std::mem::take(&mut self.tiling.strips);
-        self.tiling.leaving.retain(|l| now < l.start + ANIM);
+        self.tiling.leaving.retain(|l| l.left.moving(now));
         if !same_ws {
             return;
         }
@@ -896,8 +896,8 @@ impl WhiteRose {
         for s in strips.iter_mut() {
             s.anim = match old.iter().find(|o| same(o, s)) {
                 Some(o) if o.tabs == s.tabs && o.shown == s.shown => o.anim.clone(),
-                Some(o) => Some(Anim { start: now, from: Some((o.tabs.clone(), o.shown)) }),
-                None => Some(Anim { start: now, from: None }),
+                Some(o) => Some(Anim { along: along(now), from: Some((o.tabs.clone(), o.shown)) }),
+                None => Some(Anim { along: along(now), from: None }),
             };
         }
         for o in old.iter().filter(|o| !strips.iter().any(|s| same(o, s))) {
@@ -907,7 +907,11 @@ impl WhiteRose {
                 rect: o.rect,
                 labels,
                 shown: o.shown,
-                start: now,
+                left: {
+                    let mut v = crate::anim::Value::new(1.0);
+                    v.animate_to(0.0, ANIM, crate::anim::Curve::EaseOut, now);
+                    v
+                },
             });
         }
     }

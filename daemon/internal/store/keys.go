@@ -374,6 +374,8 @@ var Known = map[string]Key{
 		}
 		return nil
 	})},
+	// Switching workspace slides (the compositor's workspace_slide.rs).
+	"animations.workspaceSwitch": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Window layout (the compositor's layout/ module). The global default,
 	// then overrides per workspace ("1"-"9") and per monitor (its ID, as in
 	// "displays"); a monitor's beats a workspace's.

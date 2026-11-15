@@ -121,10 +121,10 @@ impl Scratchpads {
         }
         let slide = match old {
             Some(old) => old.turn(showing, now, length),
-            None => Slide::new(showing, now),
+            None => Slide::new(showing, now, length),
         };
         self.slides.push((w.clone(), output.clone(), slide));
-        slide.left(now, length)
+        slide.left(now)
     }
 
     fn pad(&self, id: &str) -> Option<&Pad> {
@@ -302,9 +302,9 @@ impl WhiteRose {
     /// Forgets the slides that are done; a window that slid out is
     /// unmapped now.
     pub fn finish_slides(&mut self) {
-        let (now, length) = (Instant::now(), self.scratchpads.slide_length);
+        let now = Instant::now();
         let (done, going): (Vec<_>, Vec<_>) =
-            std::mem::take(&mut self.scratchpads.slides).into_iter().partition(|(_, _, s)| s.done(now, length));
+            std::mem::take(&mut self.scratchpads.slides).into_iter().partition(|(_, _, s)| s.done(now));
         self.scratchpads.slides = going;
         for (w, _, slide) in done {
             if !slide.showing && !self.scratchpads.is_shown(&w) && self.space.element_location(&w).is_some() {

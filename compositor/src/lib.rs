@@ -1,6 +1,7 @@
 //! WhiteRose compositor library. The binary (`whiterose-wm`) is a thin
 //! wrapper; integration tests drive the same state directly.
 
+pub mod anim;
 pub mod app_icons;
 pub mod app_scope;
 pub mod clipboard;
@@ -48,6 +49,7 @@ pub mod window_rules;
 pub mod window_state;
 pub mod winit;
 pub mod workspace;
+pub mod workspace_slide;
 pub mod xdnd;
 pub mod xwayland;
 

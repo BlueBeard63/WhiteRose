@@ -98,7 +98,9 @@ pub fn output_elements(
         );
     }
 
-    match state.fullscreen_on(output) {
+    // While workspaces slide, a fullscreen window slides with the rest.
+    let sliding = state.workspace_sliding(std::time::Instant::now()).is_some();
+    match state.fullscreen_on(output).filter(|_| !sliding) {
         Some(window) => {
             {
                 let map = layer_map_for_output(output);
@@ -178,11 +180,6 @@ pub fn output_elements(
             space_elements(renderer, output, state, &mut elements);
         }
     }
-    // A scratchpad sliding or a tab strip moving: the next frame too,
-    // until it ends.
-    if state.scratchpads.animating() || crate::tab_strip::animating(state) {
-        state.schedule_redraw();
-    }
     (elements, CLEAR)
 }
 
@@ -222,6 +219,10 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
     layer_elements(renderer, false, elements);
     // Strips of groups that just ended, going away over their windows.
     elements.extend(crate::tab_strip::leaving_elements(renderer, output, state));
+    // Switching workspace: each workspace's windows drawn across by how
+    // far it has slid (workspace_slide.rs).
+    let now = std::time::Instant::now();
+    let shift = |w: &Window| state.workspace_shift(state.workspaces.workspace_of(w), out.size.w, now);
     for w in state.space.elements().rev() {
         let Some(bbox) = state.space.element_bbox(w) else { continue };
         if !bbox.overlaps(out) || !state.shows_on(w, output) {
@@ -232,6 +233,7 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
         if sliding_pad(renderer, output, out, state, w, loc, elements) {
             continue;
         }
+        let loc = loc + Point::from((shift(w), 0));
         // (A rule's opacity, focused or not.)
         let alpha = state.window_alpha(w);
         match state.clip_of(w) {
@@ -246,13 +248,56 @@ fn space_elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRos
                 .map(OutputElement::Surface),
             ),
             Some(clip) => {
-                let crop = Rectangle::new(clip.loc - out.loc, clip.size).to_physical_precise_round(scale);
+                let crop = Rectangle::new(clip.loc - out.loc + Point::from((shift(w), 0)), clip.size)
+                    .to_physical_precise_round(scale);
                 clipped_window(renderer, w, loc.to_physical_precise_round(scale), scale, alpha, crop, elements);
             }
         }
     }
+    hidden_workspace_elements(renderer, output, out, state, now, elements);
     elements.extend(crate::tab_strip::elements(renderer, output, state));
     layer_elements(renderer, true, elements);
+}
+
+/// The windows of the workspace being slid away from (or, turned round,
+/// back to): they're out of the space, so drawn from where they were,
+/// across by how far it has slid. Behind the active workspace's windows;
+/// minimised windows and a group's hidden tabs stay hidden.
+fn hidden_workspace_elements(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    out: Rectangle<i32, Logical>,
+    state: &WhiteRose,
+    now: std::time::Instant,
+    elements: &mut Vec<OutputElement>,
+) {
+    let Some(slide) = state.workspace_sliding(now) else { return };
+    let scale = output.current_scale().fractional_scale();
+    let active = state.workspaces.active();
+    for ws in [slide.from, slide.to].into_iter().filter(|ws| *ws != active) {
+        let dx = state.workspace_shift(Some(ws), out.size.w, now);
+        // Stacking order is bottom to top; elements go front to back.
+        for w in state.workspaces.windows(ws).iter().rev() {
+            if state.minimized.contains(w) || state.tiling.groups.is_hidden(w) {
+                continue;
+            }
+            let Some(at) = state.hidden_at.iter().find(|(h, _)| h == w).map(|(_, at)| *at) else { continue };
+            if !Rectangle::new(at, w.geometry().size).overlaps(out) {
+                continue;
+            }
+            let loc = at - w.geometry().loc - out.loc + Point::from((dx, 0));
+            elements.extend(
+                w.render_elements::<WaylandSurfaceRenderElement<_>>(
+                    renderer,
+                    loc.to_physical_precise_round(scale),
+                    Scale::from(scale),
+                    state.window_alpha(w),
+                )
+                .into_iter()
+                .map(OutputElement::Surface),
+            );
+        }
+    }
 }
 
 /// A scratchpad sliding from the island: drawn `shown` of the way down
@@ -272,7 +317,7 @@ fn sliding_pad(
     let Some(slide) = state.scratchpads.slide_of(w) else { return false };
     let Some(geo) = state.space.element_geometry(w) else { return false };
     let scale = output.current_scale().fractional_scale();
-    let shown = slide.shown(std::time::Instant::now(), state.scratchpads.slide_length);
+    let shown = slide.shown(std::time::Instant::now());
     let top = state.usable_area_on(output).loc.y;
     let dy = crate::scratchpad::slide_offset(shown, geo.loc.y + geo.size.h, top);
     let below = (top - out.loc.y).clamp(0, out.size.h);
