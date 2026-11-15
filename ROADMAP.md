@@ -2,7 +2,7 @@
 
 # WhiteRose Roadmap
 
-![The WhiteRose roadmap: eleven milestones from 0.1 Foundations to 1.2 Module API stable; 0.1 and 0.2 shipped, 0.3 in testing](docs/roadmap.png)
+![The WhiteRose roadmap: eleven milestones from 0.1 Foundations to 1.2 Module API stable; 0.1, 0.2 and 0.3 shipped](docs/roadmap.png)
 
 </div>
 
@@ -14,7 +14,7 @@ Each feature lists where the idea comes from: Windows, Hyprland, niri, GNOME, KD
 |---|---|---|---|
 | ✅ | [**0.1**](#01--foundations) | Foundations | What WhiteRose is today. |
 | ✅ | [**0.2**](#02--files) | Files | Online drives, network shares, and no dialogs. |
-| 🧪 | [**0.3**](#03--layouts) | Layouts | How windows are arranged, plus the basics a daily desktop needs. In testing as 0.3.0-alpha.7. |
+| ✅ | [**0.3**](#03--layouts) | Layouts | How windows are arranged, plus the basics a daily desktop needs. |
 | 🗓️ | [**0.4**](#04--overview--gestures) | Overview & gestures | Seeing everything at once, and moving around with gestures. |
 | 🗓️ | [**0.5**](#05--look--feel) | Look & feel | Making it yours, and making every app match. |
 | 🗓️ | [**0.6**](#06--login) | Login | WhiteRose from the first frame: its own display manager. |
@@ -94,9 +94,9 @@ All of it is described in the [README](README.md) and [ARCHITECTURE.md](ARCHITEC
 
 ## 0.3 · Layouts
 
-**In testing** (0.3.0-alpha.7). How windows are arranged: floating, snapped or tiled, one global choice with overrides.
+**Shipped** in 0.3.0, after seven alphas. How windows are arranged: floating, snapped or tiled, one global choice with overrides.
 
-Everything planned for 0.3 is in. Using WhiteRose every day while building it turned up more that a daily desktop can't do without (X11 apps, crash reports, memory protection), so that came into 0.3 too: see [Also in 0.3](#also-in-03). From here 0.3 only takes fixes; 0.3.0 follows a stretch of daily use with nothing new going wrong.
+Everything planned for 0.3 is in. Using WhiteRose every day while building it turned up more that a daily desktop can't do without (X11 apps, crash reports, memory protection), so that came into 0.3 too: see [Also in 0.3](#also-in-03). The full list is in the [changelog](CHANGELOG.md).
 
 <details>
 <summary>✅ <b>Click-and-check tests</b>: Tests that use WhiteRose like a person would, without guessing where things are on screen. <sub>· Qt Test, Playwright</sub></summary>

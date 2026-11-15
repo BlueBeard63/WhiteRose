@@ -137,7 +137,7 @@ make package      # the .deb and .rpm, built in Ubuntu and Fedora containers
 
 ## Roadmap
 
-0.3 (layouts, X11 apps, memory protection) is in testing. Next come the overview and gestures, look and feel, WhiteRose's own login screen, online accounts and more distributions. **1.0 is a complete daily driver**, and a sandboxed Go / Rust / QML module API follows in 1.x.
+0.3 (layouts, X11 apps, memory protection) is out. Next come the overview and gestures, look and feel, WhiteRose's own login screen, online accounts and more distributions. **1.0 is a complete daily driver**, and a sandboxed Go / Rust / QML module API follows in 1.x.
 
 [![The WhiteRose roadmap](docs/roadmap.png)](ROADMAP.md)
 

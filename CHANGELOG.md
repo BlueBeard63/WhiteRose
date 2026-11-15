@@ -2,6 +2,72 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.3.0 · Layouts (2026-11-15)
+
+Windows that arrange themselves: tiled, snapped to edges and your own zones, placed by per-app rules, or dropped down as scratchpads. 0.3 also brings what a daily desktop can't do without: X11 apps, a session that survives running out of memory, problem reports from the island, and every release in Settings › Updates.
+
+### Added
+
+- Tiling: dwindle and master-stack layouts with gaps, chosen for everything and overridden per workspace or monitor (Settings › Windows, SUPER+T, or the button on the bar)
+- Snapping: drag a window to an edge or corner, or pick a layout from SUPER+Z, a drag to the top, or a WhiteRose app's maximise button. Snap zones are your own grid per monitor or workspace, used with SHIFT while dragging (Settings › Snapping)
+- Window rules: by app and title, open a window on a workspace or monitor, floating or tiled, at a size, in a snap zone, see-through or always on top (Settings › Window rules)
+- Scratchpads: apps shown and hidden with a key, sliding down from the island, like a drop-down terminal (Settings › Scratchpads)
+- X11 apps (Spotify, Steam, older tools) open through XWayland and work like any other window, with copy and paste and drag and drop both ways. Xwayland only runs while an X11 app is open
+- Running out of memory no longer ends the session: each app runs on its own, the island names the one at fault, and when memory is critical an app big enough to help is closed. Terminals and the apps you choose are never closed (Settings › Apps › Memory)
+- Report a problem step by step in the island (SUPER+SHIFT+B, Settings › About, or after a crash): what WhiteRose recorded is filled in, and you see everything before it's sent
+- Crashes are recorded with a snapshot of the moment (load, open windows, the session log), and the island offers to report them
+- Settings › Updates › Releases: every release with its notes and a search, and installing any of them (older ones too). A Pre-releases switch offers alphas and betas as updates
+- Tabbed groups: several windows in one tile with a strip of their icons (SUPER+G, SUPER+. and SUPER+,)
+- Keyboard control of tiles: focus, move and resize with SUPER and the arrows, SUPER+R to resize, SUPER+J to flip a split, SUPER+M to make master
+- SUPER+ALT+arrow moves a window to the previous or next workspace, and SUPER+CTRL+arrow to the monitor on that side
+- In the island: a note with tasks (SUPER+SHIFT+N), the agenda (SUPER+A, or click the clock), music for whichever player is playing (SUPER+SHIFT+M) and clipboard history (SUPER+V)
+- SUPER+K shows the keyboard shortcuts worth knowing, on the keys they're on now (your own included)
+- Open and save dialogs in other apps use Files (through the desktop portal), and so does choosing your account picture
+- Default apps (Settings › Apps › Default apps): what opens each kind of file, by category or by file type
+- Nextcloud accounts in Files, signing in with Nextcloud's own browser sign-in
+- Mouse & touchpad settings: scroll direction, speed, acceleration and tap to click; shake the pointer to find it; hold CTRL+SHIFT to move it faster
+- Touchpad gestures reach apps: pinch to zoom in browsers (and Figma), swipe and hold
+- After a fingerprint login, the island asks once for your password to open the keyring, so calendars and other accounts come back; unlocking with your password opens it too
+- Monitors plugged in after logging in show up straight away, and screens can be scaled to 75%
+- ALT+TAB can show apps from every workspace or only this one (Settings › Windows)
+
+### Changed
+
+- The window switcher is SUPER+TAB (was SUPER+ALT+TAB); ALT+TAB still switches apps
+- Files is fast on network drives: folders load in the background, open at once when you've been there, and files open and preview without waiting on the server. Network drives show by name, not by their mount folder
+- Files builds its search index in the background, and Settings › Files shows how far it's got
+- Settings fits narrow windows: the sidebar folds away and pages reflow
+- Sliders only take the scroll wheel once you've clicked them, so scrolling a page doesn't move them
+- Do not disturb shows a bell with a line through it in the bar, and the bar's icons are sharper
+- The lock screen and quick settings share one profile picture, and a new picture shows without restarting
+- Plainer wording in sentence case across the shell, Settings and the apps
+- pCloud is no longer offered in Add cloud account (accounts already added keep working)
+- The packages depend on Xwayland
+
+### Fixed
+
+- Files froze ("not responding") opening folders and files on Nextcloud
+- Files on a network drive, USB stick or NTFS disk asked to be run instead of opening
+- Pictures in folders with % # or ? in their path didn't show
+- Logging into GNOME after WhiteRose: apps took 25 s to start (WhiteRose's desktop portal and settings were left behind)
+- Settings didn't open again after being closed with SUPER+Q, the dock or the switcher
+- Apps that had exited were left behind as zombie processes
+- Going back after a failed update deleted the settings changed meanwhile; they're now kept in snapshot-replaced
+- A newly installed version is started at the next login even when an older one was still waiting to be tried
+- Settings › About said "development" instead of the version
+- The screenshot toast's buttons didn't take clicks
+- The Security tab of a Wi-Fi network's settings was laid out badly
+- A panel or overlay layer could be drawn under one in a lower layer that opened after it
+- Leftover WhiteRose folders in /tmp are cleared after a day unused
+
+From 0.2.1, this comes through Settings › Updates like any update. From a 0.3 alpha, it's offered in Settings › Updates (alpha.4 or later), or install it with this release's `install.sh`. Your settings carry over.
+
+The window switcher moved from SUPER+ALT+TAB to SUPER+TAB, and windows float as they did in 0.2 until you pick a tiling layout (SUPER+T or Settings › Windows). X11 apps need Xwayland, which the packages bring with them.
+
+Each 0.3 alpha's own notes are in [CHANGELOG.md](https://github.com/BlueBeard63/WhiteRose/blob/master/CHANGELOG.md).
+
+Contributors: @BlueBeard63
+
 ## 0.3.0-alpha.7 · Memory protection that picks the right app (alpha) (2026-11-14)
 
 The seventh 0.3 alpha: when memory runs short, WhiteRose no longer closes apps that aren't the cause, and never closes a terminal. If you're on alpha.4 or later with Pre-releases on, it comes through Settings › Updates.
