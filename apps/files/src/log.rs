@@ -117,12 +117,12 @@ pub fn tail_of(file: &Path, n: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use std::os::unix::fs::MetadataExt;
 
     #[test]
     fn writes_rolls_and_tails() {
-        let d = std::env::temp_dir().join(format!("wr-log-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("log");
         let f = d.join("files.log");
         write_to(&f, "info", "copied 3 items\nto Documents");
         let t = tail_of(&f, 10);

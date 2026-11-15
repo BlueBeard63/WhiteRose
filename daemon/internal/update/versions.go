@@ -3,6 +3,7 @@ package update
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -42,7 +43,11 @@ func Installed(root string) []string {
 // Keep is what stays installed: the newest version, and the one being run
 // (if it's another), or else the one before the newest, to go back to.
 // Never more than two: old versions don't pile up. `running` may be "".
-func Keep(installed []string, running string) []string {
+//
+// `chosen`: a version picked under Settings › Updates › Releases (older
+// ones too): kept as well, so three at most. The newest always stays: the
+// whiterose package (the session, the commands) depends on it.
+func Keep(installed []string, running string, chosen ...string) []string {
 	if len(installed) == 0 {
 		return nil
 	}
@@ -64,12 +69,17 @@ func Keep(installed []string, running string) []string {
 	case len(sorted) > 1:
 		keep = append(keep, sorted[len(sorted)-2])
 	}
+	for _, c := range chosen {
+		if c != "" && has(c) && !slices.Contains(keep, c) {
+			keep = append(keep, c)
+		}
+	}
 	return keep
 }
 
 // Remove is what Keep leaves out (to uninstall), oldest first.
-func Remove(installed []string, running string) []string {
-	keep := Keep(installed, running)
+func Remove(installed []string, running string, chosen ...string) []string {
+	keep := Keep(installed, running, chosen...)
 	var out []string
 	for _, v := range installed {
 		kept := false

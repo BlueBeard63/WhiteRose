@@ -26,7 +26,7 @@ type Point struct {
 	Charging bool    `json:"charging"`
 }
 
-// Battery is what the Power & Battery page shows beyond QuickShell's data.
+// Battery is what the Power & battery page shows beyond QuickShell's data.
 type Battery struct {
 	Model           string  `json:"model"`
 	Cycles          int32   `json:"cycles"` // -1 when unknown

@@ -99,5 +99,40 @@ else
     $as_root dnf install -y "$work/$core" "$work/$meta"
 fi
 
+# ---- your own copies of the apps ------------------------------------------------------
+# Launcher entries in ~/.local (`make dev-apps` writes them, running a
+# checkout's builds) hide the installed ones: opening Files would still run
+# that copy, not this version's. Offer to take them out.
+apps="$HOME/.local/share/applications"
+shadows=""
+for a in files notepad settings; do
+    f="$apps/whiterose-$a.desktop"
+    [ -f "$f" ] || continue
+    grep -q "^Exec=whiterose-$a\( \|$\)" "$f" || shadows="$shadows $a"
+done
+if [ -n "$shadows" ]; then
+    step "Your own copies of$(echo "$shadows" | sed 's/ \([a-z]*\)/ \u\1,/g; s/,$//') are in $apps"
+    note "They run another build, so the launcher won't open this version's."
+    answer=n
+    # (Asked on the terminal: with `curl … | sh`, stdin is the script.)
+    if (: < /dev/tty) 2>/dev/null; then
+        printf '  Use the installed ones instead? [Y/n] '
+        read -r answer < /dev/tty || answer=n
+        answer=${answer:-y}
+    fi
+    case "$answer" in
+    [Yy]*)
+        for a in $shadows; do
+            rm -f "$apps/whiterose-$a.desktop" "$HOME"/.local/share/icons/hicolor/*/apps/"whiterose-$a.png"
+        done
+        # (`make dev-apps` links Settings' command too.)
+        [ -L "$HOME/.local/bin/whiterose-settings" ] && rm -f "$HOME/.local/bin/whiterose-settings"
+        command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$apps" 2>/dev/null || true
+        note "Removed: the launcher now opens WhiteRose $VERSION's apps."
+        ;;
+    *) note "Kept. Remove them later with: make dev-apps-remove (in the checkout)" ;;
+    esac
+fi
+
 printf '\n%s✓%s WhiteRose %s is installed.\n' "$rose" "$off" "$VERSION"
 note "Log out and pick WhiteRose at the login screen. Updates come through Settings › Updates."

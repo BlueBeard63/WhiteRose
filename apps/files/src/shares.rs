@@ -430,11 +430,18 @@ fn parse_mounts(text: &str) -> Vec<(String, String)> {
         .filter_map(|r| {
             let (name, uri) = r.rsplit_once(" -> ")?;
             let scheme = uri.split("://").next()?;
+            // (gio names a Nextcloud "jack@storage.example.org".)
+            let name = if is_nextcloud(uri) { "Nextcloud" } else { name };
             SCHEMES
                 .contains(&scheme)
                 .then(|| (uri.trim_end_matches('/').to_string(), name.to_string()))
         })
         .collect()
+}
+
+/// A WebDAV address that's a Nextcloud (its files are at /remote.php/).
+pub fn is_nextcloud(uri: &str) -> bool {
+    uri.starts_with("dav") && uri.contains("/remote.php/")
 }
 
 /// An online account's drive (GNOME Online Accounts: Nextcloud, OneDrive,
@@ -569,7 +576,7 @@ fn parse_accounts(text: &str) -> Vec<Account> {
     let Some(volumes) = parts.get(1).and_then(|v| unwrap(v, '[', ']')) else {
         return vec![];
     };
-    split_top(volumes)
+    let mut out: Vec<Account> = split_top(volumes)
         .into_iter()
         .filter_map(|t| {
             let f = split_top(unwrap(t, '(', ')')?);
@@ -581,7 +588,34 @@ fn parse_accounts(text: &str) -> Vec<Account> {
                 uri: uri.trim_end_matches('/').to_string(),
             })
         })
-        .collect()
+        .collect();
+    // A Nextcloud account is named "jack@storage.example.org" by GOA:
+    // "Nextcloud" (with its server when there's more than one).
+    let nextcloud = |a: &Account| is_nextcloud(&a.uri);
+    let several = out.iter().filter(|a| nextcloud(a)).count() > 1;
+    for a in out.iter_mut().filter(|a| nextcloud(a)) {
+        let host = a
+            .uri
+            .split("://")
+            .nth(1)
+            .unwrap_or("")
+            .split('/')
+            .next()
+            .unwrap_or("");
+        let host = host
+            .rsplit('@')
+            .next()
+            .unwrap_or(host)
+            .split(':')
+            .next()
+            .unwrap_or(host);
+        a.name = if several {
+            format!("Nextcloud ({host})")
+        } else {
+            "Nextcloud".into()
+        };
+    }
+    out
 }
 
 /// The hosts named in an SSH config ("Host build nas", not patterns like
@@ -661,6 +695,7 @@ pub fn secret_id(uri: &str, user: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn reads_addresses_as_typed() {
@@ -710,12 +745,16 @@ mod tests {
 
     #[test]
     fn lists_network_mounts_only() {
-        let text = "Drive(0): WDSN740\n  Type: GProxyDrive\nMount(0): photos on nas -> smb://nas/photos/\n  Type: GDaemonMount\nMount(1): Boot -> file:///boot\nMount(2): jack on build -> sftp://jack@build/\n";
+        let text = "Drive(0): WDSN740\n  Type: GProxyDrive\nMount(0): photos on nas -> smb://nas/photos/\n  Type: GDaemonMount\nMount(1): Boot -> file:///boot\nMount(2): jack on build -> sftp://jack@build/\nMount(3): jack@storage.bluebeard.site -> davs://jack@storage.bluebeard.site/remote.php/webdav/\n";
         assert_eq!(
             parse_mounts(text),
             vec![
                 ("smb://nas/photos".into(), "photos on nas".into()),
-                ("sftp://jack@build".into(), "jack on build".into())
+                ("sftp://jack@build".into(), "jack on build".into()),
+                (
+                    "davs://jack@storage.bluebeard.site/remote.php/webdav".into(),
+                    "Nextcloud".into()
+                )
             ]
         );
     }
@@ -729,7 +768,7 @@ mod tests {
             vec![
                 Account {
                     id: "0x7387680041c0".into(),
-                    name: "jack@storage.bluebeard.site".into(),
+                    name: "Nextcloud".into(),
                     uri: "davs://jack@storage.bluebeard.site/remote.php/webdav".into()
                 },
                 Account {
@@ -761,7 +800,7 @@ mod tests {
 
     #[test]
     fn keeps_saved_servers() {
-        let d = std::env::temp_dir().join(format!("wr-shares-{}", std::process::id()));
+        let d = Scratch::new("shares");
         let f = d.join("servers.json");
         let mut l = vec![];
         remember(
@@ -788,7 +827,6 @@ mod tests {
         save(&f, &l).unwrap();
         assert_eq!(load(&f), l);
         assert_eq!(secret_id("smb://nas", "jack"), "share:smb://nas#jack");
-        let _ = std::fs::remove_dir_all(d);
     }
 
     /// A stand-in for gio that asks what gio asks, and records the answers.
@@ -802,9 +840,7 @@ mod tests {
 
     #[test]
     fn answers_the_prompts() {
-        let d = std::env::temp_dir().join(format!("wr-gio-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("gio");
         let log = d.join("answers");
         let mounted = d.join("mounted");
         // `gio info` says where once mounted; `gio mount` asks, checks, mounts.
@@ -885,14 +921,11 @@ touch {m}
             answers.contains("jack HOME wrong") && answers.contains("jack WORKGROUP right"),
             "{answers}"
         );
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn questions_come_back_unless_accepted() {
-        let d = std::env::temp_dir().join(format!("wr-gioq-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("gioq");
         let mounted = d.join("mounted");
         let script = format!(
             r#"if [ "$1" = info ]; then [ -f {m} ] && echo "local path: /x"; exit 0; fi
@@ -937,14 +970,11 @@ touch {m}
             ),
             Mounted::Ok { path: "/x".into() }
         );
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn cancelling_stops_it() {
-        let d = std::env::temp_dir().join(format!("wr-gioc-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("gioc");
         let gio = fake_gio(&d, "[ \"$1\" = info ] && exit 0\nsleep 30\n");
         let stop = std::sync::Arc::new(AtomicBool::new(false));
         let s2 = stop.clone();
@@ -969,19 +999,15 @@ touch {m}
             }
         );
         assert!(t.elapsed() < Duration::from_secs(3));
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn failures_say_why() {
-        let d = std::env::temp_dir().join(format!("wr-giof-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("giof");
         let gio = fake_gio(&d, "[ \"$1\" = info ] && exit 0\necho 'gio: smb://nas/: Failed to mount Windows share: Connection refused' >&2\nexit 2\n");
         assert_eq!(
             mount(&gio, "smb://nas", "", "", "", false, Duration::from_secs(5), &AtomicBool::new(false)),
             Mounted::Failed { error: "Failed to mount Windows share: Connection refused: the server is there but isn't sharing this way (wrong kind of address or port?)".into() }
         );
-        std::fs::remove_dir_all(&d).unwrap();
     }
 }

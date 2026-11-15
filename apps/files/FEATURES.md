@@ -8,7 +8,7 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Reorder, duplicate, tear off and restore tabs (MVP) — drag or Ctrl+Shift+PgUp/PgDn; tab menu; drag out of the bar for a new window, or onto another Files window's title bar to move it there (across processes too); Ctrl+Shift+T, and every window's tabs come back next launch
 - [x] Dual-pane browsing, horizontal and vertical (MVP) — per tab (F3), side by side or one above the other, resizable; restored with the tabs
 - [x] Copy/move files between panes using shortcuts or drag and drop (MVP) — F5 / F6, the right-click menu, or dragging
-- [x] Compare folders and one-way/two-way/mirror sync (Advanced) — ☰ › This folder › Compare with… (the other side when split) opens the Sheet's Compare and Sync tabs: only-here/only-there/newer/different, all the way down, marked with coloured dots on the files in both panes and counted in the Sheet, by size and time or byte by byte; update either way, two-way (unclear ones left alone and counted), or mirror (extras to the Trash, after asking); runs as a transfer
+- [x] Compare folders and one-way/two-way/mirror sync (Advanced) — ☰ › This folder › Compare with… (the other side when split) opens the Sheet's Compare and Sync tabs: only-here/only-there/newer/different, all the way down, marked with coloured dots on the files in both panes and counted in the Sheet, by size and time or byte by byte; update either way, two-way (unclear ones left alone and counted), or mirror (extras to the trash, after asking); runs as a transfer
 - [x] Icon/grid, details/list and column views (MVP)
 - [x] Gallery view (Next) — taken out by choice: picture folders open as a grid of thumbnails, and Quick look (Space) shows one large with arrows
 - [x] Disk usage view as a file browsing mode (Advanced) — a treemap of the folder, sized as folders are measured
@@ -18,11 +18,11 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Navigation history, back, forward and parent directory (MVP)
 - [x] Customisable sidebar with pinned folders and drives (MVP) — places, bookmarks (add, remove, drag to reorder; shared with GTK file choosers), drives, a tree under each, sections that fold
 - [x] Expandable directory tree in sidebar (Next) — a chevron on each place and bookmark opens its folders, as deep as you like; what's open is remembered
-- [x] Workspaces saving tabs, panes and view settings (Next) — ☰ › Workspaces or the Start page: save every open window under a name (with its folders' views), open it here or in new windows, rename, delete
+- [x] Workspaces saving tabs, panes and view settings (Next) — ☰ › Workspaces or the start page: save every open window under a name (with its folders' views), open it here or in new windows, rename, delete
 - [x] Home dashboard with drives, recents and shortcuts (Next) — Start: workspaces, places, recent files, drives with how full, tags; can be where Files opens (Settings › Files)
 
 ## 2. Search, filtering & discovery
-- [x] Instant indexed filename search (MVP) — home and drives; built in the background at idle priority, read from disk when searching (no memory held)
+- [x] Instant indexed filename search (MVP) — home and drives; built by its own background process at idle priority (`--index`; carries on when Files closes, with progress and time left), read from disk when searching (no memory held)
 - [x] Search across multiple locations (MVP) — Here and below (this folder's whole tree, live), Home, or Everywhere (home and drives)
 - [x] Inline folder filtering as you type (MVP) — type in any folder; Esc clears; take it to subfolders or everywhere
 - [x] Search by file type, extension, size and date (MVP) — type, size and modified filters; `*.pdf` / `ext:pdf`
@@ -33,13 +33,13 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 
 ## 3. File operations & organisation
 - [x] Create, copy, cut, paste, move, rename and delete (MVP)
-- [x] Multi-selection, drag and drop, clipboard integration (MVP) — drag to folders, the empty space, sidebar places, the Trash, breadcrumbs and tabs (held over a tab opens it); to and from other apps; same drive moves, another copies, Ctrl copies, Shift moves
+- [x] Multi-selection, drag and drop, clipboard integration (MVP) — drag to folders, the empty space, sidebar places, the trash, breadcrumbs and tabs (held over a tab opens it); to and from other apps; same drive moves, another copies, Ctrl copies, Shift moves
 - [x] Background transfer queue with progress (MVP)
 - [x] Pause, resume and cancel transfers (Next)
 - [x] Side-by-side conflict resolution (Next) — in the Activity drawer along the bottom (no window): size and date of both, replace / keep both / keep newer / skip, same for the rest
 - [x] Text diffs when resolving overwrites (Advanced) — a clash between two text files (up to 1 MB) shows its changes in its card: a line-by-line diff (Myers, as git) of what's there against what's coming, with Skip / Keep both / Replace right there
 - [x] Merge directories intelligently (Next) — folder onto folder merges; files already there and the same (same bytes; over 64 MB, same size and time) are skipped without asking (a move lets the original go); Keep newer / Merge, keep newer replaces only older files
-- [x] Optional checksum verification of copies (Next) — Settings › Files › Verify copies: each file is read back from the drive (cache dropped) and checked; a mismatch keeps nothing
+- [x] Optional checksum verification of copies (Next) — Settings › Files › Check copies: each file is read back from the drive (cache dropped) and checked; a mismatch keeps nothing
 - [-] Persistent undo/redo operation history (Advanced) — not doing for now
 - [x] Batch rename with regex, numbering, case and preview (Next) — Rename… (F2) with several selected opens the Sheet’s Rename tab: find and replace (text or regex with $1 groups, case, first only), case, text before/after, numbering in view order (position, start, step, digits, separator), extension kept/lowercased/changed; the new names shown in the list as you type (old → new), clashes and taken names marked there and skipped; swaps and shifts (1→2, 2→3) handled
 - [x] Create folder from selected files (Next) — "New folder with selection…": the new folder appears in place, named from what the files share, ready to type over (Enter makes it, Esc doesn't)
@@ -69,13 +69,13 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Largest files browser (Next) — Clean up › Largest files: the 200 largest under home, a drive or a folder (hidden ones too), on its own drive
 - [x] Duplicate file finder (Next) — Clean up › Duplicates: same size, same start, then same contents (SHA-256); hard links aren't copies; "Keep the oldest of each"
 - [x] Disk capacity and free-space dashboard (MVP) — Storage page (sidebar › Drives): every drive, how full, free of total
-- [x] Safe deletion/cleanup with confirmation and recovery (Next) — Clean up moves to the Trash by default (recoverable); deleting asks first, in a strip above the files (Enter deletes, Esc keeps it)
+- [x] Safe deletion/cleanup with confirmation and recovery (Next) — Clean up moves to the trash by default (recoverable); deleting asks first, in a strip above the files (Enter deletes, Esc keeps it)
 - [x] Project build-cache and dependency cleanup (Advanced) — Clean up › Build caches: node_modules, Rust target, virtualenvs, __pycache__, JS/Gradle/Zig/.NET build output (each only beside its project file), and home's download caches (pip, npm, Cargo, Go, Gradle, Maven...)
 
 ## 6. Appearance & personalisation
 - [x] Native light, dark and system modes (MVP) — follows the desktop theme via the kit
 - [-] Per-folder background images (Next) — not doing (decided against)
-- [x] Folder colours and icons (added) — a colour, a symbol, or a picture, in the Sheet's Info for a folder; follows renames, moves and the Trash
+- [x] Folder colours and icons (added) — a colour, a symbol, or a picture, in the Sheet's Info for a folder; follows renames, moves and the trash
 - [x] Custom toolbar buttons and layouts (Next) — Settings › Files › Toolbar & menus: new folder, look again, terminal, code editor, split, hidden files, details, shelf, compress, compare & sync, new tab beside the views
 - [x] Customisable right-click context menus (Next) — leave out built-in entries; add your own actions (a command on what's chosen: %f paths, %n names, %d folder; for files, folders or either, chosen types; in a terminal or not), edited in place in Settings
 - [x] Fully remappable keyboard shortcuts (MVP) — ☰ › Keyboard shortcuts… opens Settings › Files › Shortcuts: every shortcut, press new keys, clashes refused, reset
@@ -97,12 +97,13 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] Docker/Podman container file browsing (Advanced) — Drives › Containers › Files: a running container's folders, and anything copied out to a folder you choose
 - [x] Container lifecycle operations and Compose management (Advanced) — start, stop, restart, pause, remove (asked); grouped by Compose project with Up / Down / its folder; logs and a shell in your terminal
 - [x] Command-line launcher and file search (Next) — `whiterose-files FOLDER…` opens them; `whiterose-files --find [--in DIR | --everywhere] [--inside TEXT] [--type …] [--changed …] [--case] [--regex] [--json] WORDS` prints matches from the same search (exit 1 when none)
+- [x] Files as the file picker — `whiterose-files --choose [--folder | --save NAME] [--multiple] [--in DIR] [--title TEXT] [--filter "NAME:PATTERNS"]… [--json]`: a Files window with a strip above the files (title, kind of file, the name to save as, Cancel / Open · Choose folder · Save); only matching files shown; opening a file chooses it; saving over one asks first; prints the paths (exit 1 if cancelled). Settings uses it, and whiterosed's FileChooser portal makes it every app's
 
 ## 8. Cloud, remote & network
 - [x] Local drives and removable media (MVP) — plugged-in drives listed, a click mounts (udisks), eject unmounts and powers off
 - [x] SMB and other network share browsing (Next) — Connect to server… (☰ or the sidebar's Network) opens the Sheet's Server tab (a host key or certificate question is answered there): smb:// or \\server\share, ftp://, davs:// (WebDAV), nfs:// through GVfs, browsed as ordinary folders; saved servers and any share mounted now in the sidebar (eject, right-click to forget); passwords in the keyring through whiterosed
 - [x] Cloud-synced folders and sync-state badges (Next) — folders the Nextcloud or ownCloud desktop client keeps: synced / syncing / waiting to upload / couldn't sync / only in the cloud, on every file (the clients' own socket, as Nautilus and Dolphin use)
-- [x] OneDrive, Google Drive and iCloud integration (Next) — Add cloud account… (sidebar's Network or ☰) opens the Sheet's Account tab: Google Drive, OneDrive, Dropbox, iCloud Drive, pCloud through rclone (installed from Settings › Apps), signing in with the browser and asking anything else (iCloud's two-factor code) in Files; opened as folders, cached on disk as used; also GNOME Online Accounts' drives
+- [x] OneDrive, Google Drive and iCloud integration (Next) — Add cloud account… (sidebar's Network or ☰) opens the Sheet's Account tab: Google Drive, OneDrive, Dropbox, iCloud Drive, Nextcloud (its own browser sign-in, an app password) through rclone (installed from Settings › Apps), signing in with the browser and asking anything else (iCloud's two-factor code) in Files; opened as folders, cached on disk as used; also GNOME Online Accounts' drives
 - [x] Cloud offline/download/evict actions (Advanced) — right-click › Nextcloud: Keep on this device, Free up space, Share…, Copy link (virtual files)
 - [x] FTP server support (Next) — ftp:// and ftps:// through Connect to server (guest or with a password)
 - [x] SFTP and SSH server browsing (Next) — sftp://user@host (SSH keys and the agent work as with ssh; or a password); a host key not seen before is shown and only trusted when you say so
@@ -116,10 +117,10 @@ The build checklist. Tiers: MVP first, then Next, then Advanced.
 - [x] System credential vault for secrets (Next) — every secret Files keeps is in the keyring through whiterosed (network share passwords, the sealing key); archive passwords stay in memory for the run; saved servers and exports never hold a password. (rclone keeps its cloud tokens in its own config, as rclone does.)
 - [x] Safe archive extraction and path validation (MVP) — zip and tar (gz/xz/bz2/zst): escaping names refuse the whole archive, links kept inside, no devices or setuid, stops before the drive fills
 - [x] Archive create, extract and in-place browse (Next) — Compress… in the Sheet’s Share tab (zip, 7z, tar.gz/xz/zst; beside it, copy the path, quoted or as a link), Extract here, and opening an archive like a folder
-- [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the Trash only after "I trust this file"; launchers from there never run
+- [x] Prevent unsafe code execution from untrusted folders (MVP) — programs and scripts always ask; from Downloads, the Desktop, removable drives, temp folders or the trash only after "I trust this file"; launchers from there never run
 - [x] Recovery after interrupted file transfers (Next) — copies and moves are written down until they end; one cut short (Files closed, a crash, power off) is offered at the next start: Carry on clears the half-written file, skips what's already there and finishes the rest
 - [x] Application logging and diagnostics (MVP) — files.log (0600, rolled at 1 MB); ☰ › Help › Copy diagnostics / Open the log
 - [x] Export/import settings and preferences (Next) — ☰ › Export / Import settings: every files.* setting, folder views, workspaces, folder colours and icons, saved servers (never passwords) and bookmarks in one file; importing keeps what was there in before-import.json
-- [x] Signed application updates (Next) — Files ships in WhiteRose's signed, health-checked updates (Settings › Updates)
+- [x] Signed application updates (Next) - Files ships in WhiteRose's signed, health-checked updates (Settings › Updates)
 - [-] Extension/plugin API for third-party actions (Advanced) — comes with the module API (roadmap 1.2: Files extensions)
 - [-] User-defined automation and batch workflows (Advanced) — not doing for now

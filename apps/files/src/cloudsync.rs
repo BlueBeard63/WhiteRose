@@ -203,6 +203,7 @@ pub fn act(runtime: &Path, what: &str, paths: &[PathBuf]) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use std::os::unix::net::UnixListener;
 
     /// A pretend Nextcloud client: says its folder, answers statuses, and
@@ -247,18 +248,18 @@ mod tests {
         rx
     }
 
-    fn dirs(name: &str) -> (PathBuf, PathBuf) {
-        let d = std::env::temp_dir().join(format!("wr-cloud-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
+    /// The runtime dir and the synced folder, in a scratch the caller keeps.
+    fn dirs(name: &str) -> (Scratch, PathBuf, PathBuf) {
+        let d = Scratch::new(&format!("cloud-{name}"));
         let (run, root) = (d.join("run"), d.join("Nextcloud"));
         std::fs::create_dir_all(root.join("Photos")).unwrap();
         std::fs::create_dir_all(&run).unwrap();
-        (run, root)
+        (d, run, root)
     }
 
     #[test]
     fn badges_for_a_synced_folder() {
-        let (run, root) = dirs("status");
+        let (_d, run, root) = dirs("status");
         for f in ["report.pdf", "draft.txt", "broken.doc", "notes.md"] {
             std::fs::write(root.join(f), "x").unwrap();
         }
@@ -292,20 +293,18 @@ mod tests {
         );
         // Outside the synced folder: nothing.
         assert!(status(&run, run.as_path(), 1000).is_none());
-        std::fs::remove_dir_all(run.parent().unwrap()).unwrap();
     }
 
     #[test]
     fn no_client_running() {
-        let (run, root) = dirs("none");
+        let (_d, run, root) = dirs("none");
         assert!(status(&run, &root, 1000).is_none());
         assert!(act(&run, "local", std::slice::from_ref(&root)).is_err());
-        std::fs::remove_dir_all(run.parent().unwrap()).unwrap();
     }
 
     #[test]
     fn actions_go_to_the_client() {
-        let (run, root) = dirs("act");
+        let (_d, run, root) = dirs("act");
         let rx = fake_client(&run, &root, vec![]);
         let (a, b) = (root.join("a.mkv"), root.join("Photos"));
         act(&run, "online", &[a.clone(), b.clone()]).unwrap();
@@ -325,6 +324,5 @@ mod tests {
             ]
         );
         assert!(act(&run, "explode", &[a]).is_err());
-        std::fs::remove_dir_all(run.parent().unwrap()).unwrap();
     }
 }

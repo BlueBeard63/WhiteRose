@@ -1,4 +1,4 @@
-//! ALT+TAB and SUPER+ALT+TAB driven by real key events through the seat's
+//! ALT+TAB and SUPER+TAB driven by real key events through the seat's
 //! keyboard (xkb keycodes = evdev + 8), against windows from a real client.
 
 mod common;
@@ -104,20 +104,18 @@ fn escape_cancels_without_changing_focus() {
 }
 
 #[test]
-fn super_alt_tab_switches_window_by_window() {
+fn super_tab_switches_window_by_window() {
     let mut h = Headless::new(true);
     three_windows(&mut h);
     let s = &mut h.state;
     key(s, SUPER, true);
-    key(s, ALT, true);
     tap(s, TAB); // browser (previous window)
     tap(s, TAB); // term-1
     let (sw, _) = s.switcher.clone().unwrap();
     assert_eq!(sw.mode, Mode::Windows);
     assert_eq!(sw.items.len(), 3);
-    key(s, ALT, false); // releasing either held modifier commits
+    key(s, SUPER, false); // releasing SUPER commits
     assert!(s.switcher.is_none());
-    key(s, SUPER, false);
     assert_eq!(focused_title(s), "term-1");
     // The SUPER release after switching must not open the launcher.
     assert!(!s.logo_tap_pending);
@@ -136,4 +134,42 @@ fn keys_typed_while_switching_do_not_reach_the_app() {
     key(s, GRAVE, false);
     key(s, ALT, false);
     assert!(s.swallowed.is_empty(), "every swallowed press had its release swallowed too");
+}
+
+// windows.appSwitcher.workspaces "current": ALT+TAB lists only the apps
+// with windows on this workspace; SUPER+TAB still lists every window.
+#[test]
+fn alt_tab_can_list_only_this_workspaces_apps() {
+    let mut h = Headless::new(true);
+    three_windows(&mut h);
+    let s = &mut h.state;
+    // The browser goes to workspace 2.
+    let browser = s
+        .workspaces
+        .mru()
+        .iter()
+        .find(|w| whiterose_wm::ipc::toplevel_ids(w).1.as_deref() == Some("browser"))
+        .cloned()
+        .unwrap();
+    s.workspaces.move_to(&browser, 1);
+
+    key(s, ALT, true);
+    tap(s, TAB);
+    assert_eq!(s.switcher.as_ref().unwrap().0.items.len(), 2, "all workspaces, to start with");
+    tap(s, ESC);
+    key(s, ALT, false);
+
+    s.switcher_setting("windows.appSwitcher.workspaces", &serde_json::json!("current"));
+    key(s, ALT, true);
+    tap(s, TAB);
+    let items: Vec<String> = s.switcher.as_ref().unwrap().0.items.iter().map(|i| i.app_id.clone()).collect();
+    assert_eq!(items, vec!["term"], "only this workspace's");
+    tap(s, ESC);
+    key(s, ALT, false);
+
+    key(s, SUPER, true);
+    tap(s, TAB);
+    assert_eq!(s.switcher.as_ref().unwrap().0.items.len(), 3, "SUPER+TAB: every window");
+    tap(s, ESC);
+    key(s, SUPER, false);
 }

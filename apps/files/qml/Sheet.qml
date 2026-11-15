@@ -160,7 +160,9 @@ Rectangle {
     property bool trusted: false
     function lookAtProjects() {
         root.trusted = false;
-        root.projects = root.pane && root.pane.path.startsWith("/") && !root.pane.special ? JSON.parse(Fs.projects(root.pane.path)) : { projects: [], why: "" };
+        // (Not on a network drive: looking for a dozen project files there is a
+        // trip to the server each, seconds of a stalled window.)
+        root.projects = root.pane && root.pane.path.startsWith("/") && !root.pane.special && !root.pane.remote ? JSON.parse(Fs.projects(root.pane.path)) : { projects: [], why: "" };
         if (root.tab === "scripts" && root.projects.projects.length === 0) root.tab = "info";
     }
     Connections { target: root.pane; function onPathChanged() { root.lookAtProjects() } }
@@ -196,6 +198,12 @@ Rectangle {
         property string name
         property string label
         readonly property bool on: root.tab === t.name
+        // (For screen readers and the UI tests.)
+        Accessible.role: Accessible.PageTab
+        Accessible.name: t.label
+        Accessible.checkable: true
+        Accessible.checked: t.on
+        Accessible.onPressAction: root.tab = t.name
         width: tabText.implicitWidth; height: 34
         Text {
             id: tabText

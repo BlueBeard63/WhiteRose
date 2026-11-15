@@ -36,15 +36,16 @@ Trigger {
     readonly property bool btOn: btAdapter !== null && btAdapter.enabled
     readonly property bool btConnected: btOn && Bluetooth.devices.values.some(d => d.connected)
 
-    Icon {
-        anchors.verticalCenter: parent.verticalCenter
+    // (Glyphs, 16px: placed on whole pixels so they stay sharp.)
+    Glyph {
+        y: Math.round((parent.height - height) / 2)
         visible: Networking.backend !== NetworkBackendType.None && Daemon.setting("bar.network", true)
         name: root.networkIcon
         color: root.wifiNetwork || root.wired ? Theme.text : Theme.muted
     }
 
-    Icon {
-        anchors.verticalCenter: parent.verticalCenter
+    Glyph {
+        y: Math.round((parent.height - height) / 2)
         visible: root.btOn && Daemon.setting("bar.bluetooth", true)
         name: "bluetooth"
         color: root.btConnected ? Theme.text : Theme.muted
@@ -53,38 +54,34 @@ Trigger {
     // Keeps the default sink's properties (volume, mute) bound and live.
     PwObjectTracker { objects: root.sink ? [root.sink] : [] }
 
-    Icon {
-        anchors.verticalCenter: parent.verticalCenter
+    Glyph {
+        y: Math.round((parent.height - height) / 2)
         visible: root.sink !== null && Daemon.setting("bar.volume", true)
         name: root.sink?.audio?.muted ? "volumeMuted" : "volume"
         color: root.sink?.audio?.muted ? Theme.muted : Theme.text
     }
 
-    // The battery: always the outline with its fill level, plus a small
-    // bolt beside it while charging (the same weight as the icons around it).
+    // The battery: its body with the fill level inside, plus a bolt beside
+    // it while charging.
     Row {
-        anchors.verticalCenter: parent.verticalCenter
+        y: Math.round((parent.height - height) / 2)
         visible: root.hasBattery
         spacing: 1
-        Icon {
-            anchors.verticalCenter: parent.verticalCenter
+        Glyph {
             visible: root.charging
-            name: "zap"; size: 10
-            color: Theme.text
+            name: "zap"
         }
-        Item {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 16
-            height: 16
-            Icon { name: "battery"; size: 16; color: root.percent <= 15 && !root.charging ? Theme.rose : Theme.text }
-            // Fill level inside the battery outline (inner area x 5-14, y 9-15 of 24).
+        Glyph {
+            id: batteryGlyph
+            name: "battery"
+            color: root.percent <= 15 && !root.charging ? Theme.rose : Theme.text
+            // The level, in the body's inside less a pixel all round
+            // (x 3-11, y 6-10), in whole pixels.
             Rectangle {
-                x: 5 * 16 / 24
-                y: 9 * 16 / 24
-                height: 6 * 16 / 24
-                width: Math.max(1, 9 * 16 / 24 * root.percent / 100)
+                x: 3; y: 6; height: 4
+                width: Math.max(1, Math.round(8 * root.percent / 100))
                 radius: 1
-                color: root.percent <= 15 && !root.charging ? Theme.rose : Theme.text
+                color: batteryGlyph.color
             }
         }
     }

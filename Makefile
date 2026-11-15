@@ -4,9 +4,15 @@ GO       ?= go
 CARGO    ?= cargo
 DAEMON   := daemon
 WM       := compositor
-FUZZTIME ?= 20s
+# Fuzzing runs a fixed number of inputs, not a time: a time limit can end
+# while Go is still handling a new input and report "context deadline
+# exceeded" as a failure. Each count is about 20 s on CI's 4 cores (much
+# less on a bigger machine). FUZZTIME=30s (or 5000000x) sets all three.
+FUZZ_EDID   ?= 2000000x
+FUZZ_UEVENT ?= 2000000x
+FUZZ_ICAL   ?= 1000000x
 
-.PHONY: release-key release release-notes changelog dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
+.PHONY: release-key release release-notes changelog ui-test shots dev-apps dev-apps-remove check go-check rust-check shell-check fmt vet race fuzz cover rust-fmt clippy rust-test build run-nested run-tty package package-deb package-rpm clean
 
 check: go-check rust-check shell-check
 
@@ -23,9 +29,9 @@ race:
 	cd $(DAEMON) && $(GO) test -race -count=1 ./...
 
 fuzz:
-	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/edid
-	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/uevent
-	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(FUZZTIME) ./internal/ical
+	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(or $(FUZZTIME),$(FUZZ_EDID)) ./internal/edid
+	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(or $(FUZZTIME),$(FUZZ_UEVENT)) ./internal/uevent
+	cd $(DAEMON) && $(GO) test -run='^$$' -fuzz=FuzzParse -fuzztime=$(or $(FUZZTIME),$(FUZZ_ICAL)) ./internal/ical
 
 cover:
 	cd $(DAEMON) && $(GO) test -coverprofile=coverage.out ./... && $(GO) tool cover -html=coverage.out -o coverage.html
@@ -54,12 +60,32 @@ build:
 	cd $(DAEMON) && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o ../build/whiterosed ./cmd/whiterosed
 	cd $(WM) && $(CARGO) build --release --locked && cp target/release/whiterose-wm ../build/
 
+# Click-and-check tests (daemon/uitest): each runs a nested WhiteRose in a
+# session of its own (its own HOME, D-Bus, accessibility bus, display),
+# finds things by their accessible names, clicks and types with the real
+# pointer and keyboard, and checks what shows. Inside a Wayland desktop the
+# sessions are nested windows; without one (or with WR_UITEST_HEADLESS=1, as
+# CI does) they use the compositor's headless backend. UITEST=Name runs only
+# tests matching Name.
+shots:               ## Screenshots for review: the bar's icons and every Settings page at tile sizes (build/shots)
+	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
+	cd $(WM) && $(CARGO) build --release --locked
+	cd apps && $(CARGO) build --locked
+	rm -rf build/shots
+	cd $(DAEMON) && WHITEROSE_SHOTS=$(CURDIR)/build/shots $(GO) test -tags 'uitest shots' -count=1 -timeout 20m -run TestShots ./uitest/
+
+ui-test:             ## Run the click-and-check UI tests
+	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
+	cd $(WM) && $(CARGO) build --release --locked
+	cd apps && $(CARGO) build --locked
+	cd $(DAEMON) && $(GO) test -tags uitest -count=1 $(if $(UITEST),-run '$(UITEST)') ./uitest/
+
 # Its own D-Bus session bus, like a real WhiteRose login: WhiteRose is then the
 # notification server (GNOME keeps that name on the host bus), and apps started
 # inside notify it. System services (network, Bluetooth, power) are shared.
 run-nested:          ## WhiteRose in a window on your current desktop: bar + a terminal
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
-	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
+	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" WHITEROSE_FILES="$(CURDIR)/apps/target/release/whiterose-files" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
 
 # Settings, Notepad and Files in the launcher, with their icons, running
 # straight from this checkout (your ~/.local only; dev-apps-remove undoes it).
@@ -90,7 +116,7 @@ run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl
 	cd $(WM) && $(CARGO) build --release
 	@if [ -n "$$WAYLAND_DISPLAY$$DISPLAY" ]; then echo "run-tty takes over the screens, so it must start from a text console: press Ctrl+Alt+F3, log in, then run make run-tty there (make run-nested runs it in a window here)."; exit 1; fi
 	@echo "Starting on this console; Ctrl+Alt+F1/F2 gets you back to your desktop. Log: build/whiterose-tty.log"
-	PATH="$(CURDIR)/build:$$PATH" dbus-run-session -- $(WM)/target/release/whiterose-wm --backend drm --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone" > build/whiterose-tty.log 2>&1
+	PATH="$(CURDIR)/build:$$PATH" WHITEROSE_FILES="$(CURDIR)/apps/target/release/whiterose-files" dbus-run-session -- $(WM)/target/release/whiterose-wm --backend drm --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone" > build/whiterose-tty.log 2>&1
 
 # ---- Packages ----------------------------------------------------------------
 # One .deb (Ubuntu 26.04) and one .rpm (Fedora), each built in its distro's

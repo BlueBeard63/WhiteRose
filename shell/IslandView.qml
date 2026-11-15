@@ -17,6 +17,9 @@
 //              drawn outside the outline instead of clipped to it.
 //   inputs     items outside the outline that still take clicks (those
 //              previews).
+//   bleed      true: it may draw into the island's left ear, left of its
+//              own x = 0 (the music cover); everything else is clipped to
+//              the island's body.
 import QtQuick
 
 Item {
@@ -25,6 +28,7 @@ Item {
     property bool keyboard: true
     property real overhang: 0
     property list<Item> inputs
+    property bool bleed: false
     // The content itself (the first item put inside).
     readonly property Item item: holder.children.length > 0 ? holder.children[0] : null
 

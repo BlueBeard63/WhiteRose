@@ -22,7 +22,6 @@ use smithay::{
     },
     output::Output,
     utils::{Buffer as BufferCoord, Rectangle, Size, Transform},
-    wayland::selection::data_device::set_data_device_selection,
 };
 
 use crate::{ipc, render, state::WhiteRose};
@@ -273,7 +272,7 @@ impl WhiteRose {
             self.screenshot_done(Outcome::Failed("the screen is locked".into()));
             return;
         }
-        if self.redraw.is_none() {
+        if !self.can_capture {
             self.screenshot_done(Outcome::Failed("no renderer (headless)".into()));
             return;
         }
@@ -286,24 +285,14 @@ impl WhiteRose {
         let event = match outcome {
             Outcome::Saved { path, width, height, png } => {
                 tracing::info!(path = %path.display(), width, height, "screenshot saved");
-                set_data_device_selection(
-                    &self.display_handle,
-                    &self.seat,
-                    vec!["image/png".into()],
-                    Arc::new(vec![("image/png".to_string(), png.as_ref().clone())]),
-                );
+                self.offer_clipboard(vec![("image/png".to_string(), png.as_ref().clone())]);
                 self.clipboard_add_screenshot(png.clone());
                 self.saved_screenshots.push(path.clone());
                 ipc::Event::Screenshot { path: path.to_string_lossy().into_owned(), width, height }
             }
             Outcome::Copied { width, height, png } => {
                 tracing::info!(width, height, "screenshot copied");
-                set_data_device_selection(
-                    &self.display_handle,
-                    &self.seat,
-                    vec!["image/png".into()],
-                    Arc::new(vec![("image/png".to_string(), png.as_ref().clone())]),
-                );
+                self.offer_clipboard(vec![("image/png".to_string(), png.as_ref().clone())]);
                 self.clipboard_add_screenshot(png.clone());
                 ipc::Event::Screenshot { path: String::new(), width, height }
             }
@@ -338,6 +327,7 @@ impl WhiteRose {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use chrono::TimeZone;
 
     #[test]
@@ -386,15 +376,13 @@ mod tests {
 
     #[test]
     fn never_overwrites_an_existing_screenshot() {
-        let dir = std::env::temp_dir().join(format!("wr-shot-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = Scratch::new("shot-test");
         let name = "Screenshot 2026-11-09 14-32-07.png";
         assert_eq!(unique_path(&dir, name), dir.join(name));
         std::fs::write(dir.join(name), b"x").unwrap();
         assert_eq!(unique_path(&dir, name), dir.join("Screenshot 2026-11-09 14-32-07 (2).png"));
         std::fs::write(dir.join("Screenshot 2026-11-09 14-32-07 (2).png"), b"x").unwrap();
         assert_eq!(unique_path(&dir, name), dir.join("Screenshot 2026-11-09 14-32-07 (3).png"));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -418,7 +406,8 @@ mod tests {
 
     #[test]
     fn saves_into_a_new_directory() {
-        let dir = std::env::temp_dir().join(format!("wr-shot-save-{}", std::process::id())).join("Screenshots");
+        let scratch = Scratch::new("shot-save");
+        let dir = scratch.join("Screenshots");
         let t = Local.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
         match encode_and_save(&[255; 16], 2, 2, &dir, t) {
             Outcome::Saved { path, width, height, png } => {
@@ -428,6 +417,5 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 }

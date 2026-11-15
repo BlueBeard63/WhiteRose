@@ -165,6 +165,7 @@ pub fn change(f: impl FnOnce(&mut Looks) -> bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn look(colour: &str, symbol: &str) -> Look {
         Look {
@@ -219,8 +220,7 @@ mod tests {
 
     #[test]
     fn saved_and_loaded() {
-        let d = std::env::temp_dir().join(format!("wr-looks-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
+        let d = Scratch::new("looks");
         let f = d.join("looks.json");
         assert_eq!(load_from(&f), Looks::default());
         let mut l = Looks::default();

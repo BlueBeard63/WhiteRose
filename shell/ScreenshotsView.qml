@@ -45,7 +45,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     const p = root.shots[0] ?? "";
-                    Quickshell.execDetached(["xdg-open", p ? p.slice(0, p.lastIndexOf("/")) : (Quickshell.env("HOME") + "/Pictures/Screenshots")]);
+                    Compositor.launch("", ["xdg-open", p ? p.slice(0, p.lastIndexOf("/")) : (Quickshell.env("HOME") + "/Pictures/Screenshots")]);
                     ShellState.close();
                 }
             }
@@ -97,7 +97,7 @@ Item {
                         id: openBtn
                         width: 24; height: 24; icon: "open"; iconSize: 12
                         fill: Qt.rgba(0.06, 0.06, 0.06, 0.85)
-                        onClicked: { Quickshell.execDetached(["xdg-open", cell.modelData]); ShellState.close(); }
+                        onClicked: { Compositor.launch("", ["xdg-open", cell.modelData]); ShellState.close(); }
                     }
                     IconButton {
                         id: delBtn

@@ -213,6 +213,7 @@ pub fn text_start(path: &Path, limit: usize) -> Option<(String, bool)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn e(name: &str, dir: bool, size: u64) -> Entry {
         Entry {
@@ -261,8 +262,7 @@ mod tests {
 
     #[test]
     fn reads_a_folder() {
-        let d = std::env::temp_dir().join(format!("wr-files-list-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("files-list");
         fs::create_dir_all(d.join("sub")).unwrap();
         fs::write(d.join("a.txt"), "hello").unwrap();
         fs::write(d.join(".secret"), "x").unwrap();
@@ -289,13 +289,11 @@ mod tests {
         assert!(read(&d.join("missing"), false, |_| String::new())
             .unwrap_err()
             .contains("doesn't exist"));
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
     fn text_starts() {
-        let d = std::env::temp_dir().join(format!("wr-text-{}", std::process::id()));
-        fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("text");
         fs::write(d.join("a.txt"), "héllo world").unwrap();
         assert_eq!(
             text_start(&d.join("a.txt"), 100),

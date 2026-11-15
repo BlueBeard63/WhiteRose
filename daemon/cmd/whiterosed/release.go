@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"whiterose/daemon/internal/update"
@@ -87,6 +90,14 @@ func cmdSignRelease(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	sums, err := update.MakeSums(dir, names)
+	// Each package's build ID (build.sh writes build-<version>-<kind>.id):
+	// signed with the packages, so an installed WhiteRose can show it's
+	// this release, unchanged (bug reports need that).
+	if err == nil {
+		var ids []byte
+		ids, err = buildLines(dir)
+		sums = append(sums, ids...)
+	}
 	if err == nil {
 		var sig string
 		sig, err = update.Sign(string(priv), sums)
@@ -104,6 +115,44 @@ func cmdSignRelease(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "whiterosed:", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "Signed %d packages with release key %s\n", len(names), update.KeyID(string(pub)))
+	fmt.Fprintf(stdout, "Signed %d packages and their build IDs with release key %s\n", len(names), update.KeyID(string(pub)))
+	return 0
+}
+
+// buildLines: "<id>  build-<version>-<kind>" for each .id file in dir.
+func buildLines(dir string) ([]byte, error) {
+	ids, _ := filepath.Glob(filepath.Join(dir, "build-*.id"))
+	if len(ids) == 0 {
+		return nil, errors.New("no build IDs with the packages (build-<version>-<kind>.id): make package writes them")
+	}
+	sort.Strings(ids)
+	var out []byte
+	for _, p := range ids {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		id := strings.TrimSpace(string(b))
+		if _, err := hex.DecodeString(id); err != nil || len(id) != 64 {
+			return nil, fmt.Errorf("%s doesn't hold a build ID", filepath.Base(p))
+		}
+		out = append(out, id+"  "+strings.TrimSuffix(filepath.Base(p), ".id")+"\n"...)
+	}
+	return out, nil
+}
+
+// whiterosed build-id DIR: a version folder's build ID (build.sh, after
+// laying out /usr/lib/whiterose/<version>).
+func cmdBuildID(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 {
+		fmt.Fprintln(stderr, "usage: whiterosed build-id DIR")
+		return 2
+	}
+	id, err := update.BuildID(args[0])
+	if err != nil {
+		fmt.Fprintln(stderr, "whiterosed:", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, id)
 	return 0
 }

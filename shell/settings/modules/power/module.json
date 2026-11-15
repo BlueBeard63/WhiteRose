@@ -1,6 +1,6 @@
 {
   "id": "power",
-  "name": "Power & Battery",
+  "name": "Power & battery",
   "description": "Battery, power modes and the charge limit",
   "icon": "battery",
   "category": "system",

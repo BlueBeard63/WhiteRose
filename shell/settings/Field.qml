@@ -10,6 +10,9 @@ Rectangle {
     property bool mono: false
     property bool error: false
     property bool reveal: false
+    // Its name (screen readers, tests): the row's title in a SettingRow,
+    // else the placeholder.
+    property string label: parent?.rowTitle ?? ""
     signal accepted()
     // Enter pressed or the field left.
     signal editingDone()
@@ -22,6 +25,10 @@ Rectangle {
     border { width: 1; color: root.error ? Theme.rose : input.activeFocus ? Theme.muted : Theme.surface2 }
     TextInput {
         id: input
+        Accessible.role: Accessible.EditableText
+        Accessible.name: root.label || root.placeholder
+        // (Not Accessible.passwordEdit: Qt then drops the name. The echo
+        // mode already keeps what's typed out of the tree, as dots.)
         anchors { fill: parent; leftMargin: 12; rightMargin: root.secret ? 34 : 12 }
         verticalAlignment: TextInput.AlignVCenter
         clip: true

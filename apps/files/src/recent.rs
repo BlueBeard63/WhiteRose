@@ -149,6 +149,7 @@ pub fn xbel_file() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn dates_and_xbel() {
@@ -171,8 +172,7 @@ mod tests {
 
     #[test]
     fn newest_first_without_hidden_or_gone() {
-        let d = std::env::temp_dir().join(format!("wr-recent-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
+        let d = Scratch::new("recent");
         std::fs::create_dir_all(d.join(".cache")).unwrap();
         for n in ["old.txt", "new.txt", ".cache/x"] {
             std::fs::write(d.join(n), n).unwrap();
@@ -192,6 +192,5 @@ mod tests {
             .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, vec!["new.txt", "old.txt"]);
-        std::fs::remove_dir_all(&d).unwrap();
     }
 }

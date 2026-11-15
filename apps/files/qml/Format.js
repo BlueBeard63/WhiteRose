@@ -1,6 +1,13 @@
 // Sizes, dates and kinds the way the file manager shows them.
 .pragma library
 
+// A local path as a file:// address for QML (Image, MediaPlayer, dialogs):
+// each part encoded, so a name with %, # or ? still points at the file
+// (a GVfs mount's folder is named with %2F in it).
+function fileUrl(path) {
+    return path ? "file://" + String(path).split("/").map(encodeURIComponent).join("/") : "";
+}
+
 function size(bytes) {
     if (bytes < 1000) return bytes + " B";
     const units = ["kB", "MB", "GB", "TB"];
@@ -19,6 +26,16 @@ function date(ms, nowMs) {
     if (days === 1) return "Yesterday " + hm;
     const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
     return d.getDate() + " " + m + (d.getFullYear() !== now.getFullYear() ? " " + d.getFullYear() : "");
+}
+
+// The index being made: "Indexing · 42% · about 2 min left", or (the first
+// time, nothing to compare with) "Indexing · 12,345 items".
+function indexing(count, done, left) {
+    if (done < 0) return count > 0 ? "Indexing · " + Math.round(count).toLocaleString() + " items" : "Indexing…";
+    const pct = Math.round(done * 100) + "%";
+    if (left < 0) return "Indexing · " + pct;
+    const t = left < 45 ? "under a minute" : left < 3600 ? "about " + Math.max(1, Math.round(left / 60)) + " min" : "about " + Math.round(left / 360) / 10 + " h";
+    return "Indexing · " + pct + " · " + t + " left";
 }
 
 const KINDS = {

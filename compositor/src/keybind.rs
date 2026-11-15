@@ -1,6 +1,7 @@
 //! Keyboard shortcuts: parsing ("SUPER+SHIFT+S"), the default table, and
 //! lookup. Pure logic, no compositor state, so it is fully unit-tested.
 
+use crate::layout::Dir;
 use std::fmt;
 
 use smithay::input::keyboard::{keysyms, xkb, Keysym, ModifiersState};
@@ -49,6 +50,19 @@ pub enum Action {
     /// Show each output's number on it (the shell draws it).
     IdentifyOutputs,
     Notifications,
+    /// The island's clipboard history (SUPER+V).
+    Clipboard,
+    /// The note in the island (SUPER+SHIFT+N; the Note module).
+    Note,
+    /// A snapshot for a bug report, the moment something goes wrong
+    /// (SUPER+SHIFT+B; whiterosed takes it, the island offers to report).
+    ReportSnapshot,
+    /// Today's agenda in the island (SUPER+A; the Agenda module).
+    Agenda,
+    /// What's playing, in the island (SUPER+SHIFT+M; the Music module).
+    Music,
+    /// The keyboard shortcut sheet, in the island (SUPER+K).
+    Shortcuts,
     ScreenshotRegion,
     // Handled by the compositor.
     /// PrtSc: capture the whole screen straight away.
@@ -59,14 +73,28 @@ pub enum Action {
     Workspace(u8),
     /// Move the focused window to workspace N (1-based).
     MoveToWorkspace(u8),
+    /// Move the focused window to the workspace before (left, up) or after
+    /// (right, down) this one, and go there with it.
+    MoveToWorkspaceStep(Dir),
+    /// Move the focused window to the monitor on that side.
+    MoveToOutput(Dir),
     Spawn(String),
+    /// An app from the launcher or dock (its desktop entry): its app id, its
+    /// command line already split, and where to start it.
+    Launch {
+        app_id: String,
+        argv: Vec<String>,
+        cwd: Option<String>,
+    },
+    /// A scratchpad's key (its id): start, show, focus or hide it.
+    Scratchpad(String),
     /// Focus a window by its IPC id (switching workspace if needed).
     FocusWindow(u64),
     /// Focus an app's most recent window, or cycle if it already has focus.
     FocusApp(String),
     /// Delete a screenshot this compositor saved (requested by the shell).
     DeleteScreenshot(String),
-    /// Night Light on/off and its warmth (from the shell's quick settings).
+    /// Night light on/off and its warmth (from the shell's quick settings).
     NightLight(crate::night_light::NightLight),
     /// Clipboard and screenshot-tray requests from the shell.
     Shell(ShellRequest),
@@ -76,6 +104,35 @@ pub enum Action {
     Capture(crate::screenshot::Shot),
     /// The next keyboard layout (SUPER+SPACE).
     NextLayout,
+    /// The next window layout (floating, dwindle, master) for this
+    /// workspace, saved as its setting: on the output named (the bar's
+    /// button), else where you're working (SUPER+T).
+    NextWindowLayout(Option<String>),
+    /// Take the focused window out of the tiles, or put it back.
+    ToggleFloating,
+    /// Focus the window beside the focused one.
+    FocusDirection(Dir),
+    /// Swap the focused tile with the one beside it (a floating window
+    /// moves a step that way).
+    MoveDirection(Dir),
+    /// Right and down grow the focused window, left and up shrink it (the
+    /// arrows in resize mode).
+    ResizeDirection(Dir),
+    /// Resize mode (SUPER+R): the arrow keys resize the focused window
+    /// until Escape, Enter or any other key.
+    ResizeMode,
+    /// Dwindle: flip the split the focused tile is in.
+    ToggleSplit,
+    /// Master: make the focused tile the master.
+    MakeMaster,
+    /// Join the last used tile's group, or leave the group.
+    ToggleGroup,
+    /// The snap layout picker: for the focused window (SUPER+Z), or the
+    /// window under the pointer (true: a WhiteRose app's maximize button).
+    SnapPicker(bool),
+    /// Show the next (or previous) tab of the focused group.
+    NextTab,
+    PreviousTab,
     /// Volume, brightness and media keys, done by the shell; the name is
     /// its wire name (e.g. "volume_up").
     Media(&'static str),
@@ -95,6 +152,12 @@ impl Action {
                 | Action::Lock
                 | Action::IdentifyOutputs
                 | Action::Notifications
+                | Action::Clipboard
+                | Action::Note
+                | Action::ReportSnapshot
+                | Action::Agenda
+                | Action::Music
+                | Action::Shortcuts
                 | Action::ScreenshotRegion
                 | Action::Media(_)
         )
@@ -211,12 +274,49 @@ pub fn is_logo_key(sym: Keysym) -> bool {
     matches!(sym.raw(), keysyms::KEY_Super_L | keysyms::KEY_Super_R)
 }
 
-/// "SUPER+1-9" is nine combos (1 to 9); anything else is one.
+/// The arrow keys, in the order an "ARROWS" range lists them.
+pub const ARROWS: [(&str, Dir); 4] = [("Left", Dir::Left), ("Right", Dir::Right), ("Up", Dir::Up), ("Down", Dir::Down)];
+
+/// "SUPER+1-9" is nine combos (1 to 9), "SUPER+ARROWS" four (left, right,
+/// up, down); anything else is one.
 pub fn expand(s: &str) -> Result<Vec<Combo>, ParseError> {
     match s.rsplit_once('+') {
         Some((mods, "1-9")) => (1..=9).map(|d| parse_combo(&format!("{mods}+{d}"))).collect(),
-        None if s == "1-9" => Err(ParseError::UnknownKey(s.into())),
+        Some((mods, key)) if key.eq_ignore_ascii_case("ARROWS") => {
+            ARROWS.iter().map(|(k, _)| parse_combo(&format!("{mods}+{k}"))).collect()
+        }
+        None if s == "1-9" || s.eq_ignore_ascii_case("ARROWS") => Err(ParseError::UnknownKey(s.into())),
         _ => parse_combo(s).map(|c| vec![c]),
+    }
+}
+
+/// A shortcut that stands for a set of keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Range {
+    /// One key.
+    No,
+    /// "MODS+1-9": workspace n for key n.
+    Digits,
+    /// "MODS+ARROWS": that direction for each arrow key.
+    Arrows,
+}
+
+impl Range {
+    /// How the settings page knows (empty for one key).
+    pub fn name(self) -> &'static str {
+        match self {
+            Range::No => "",
+            Range::Digits => "digits",
+            Range::Arrows => "arrows",
+        }
+    }
+
+    fn len(self) -> usize {
+        match self {
+            Range::No => 1,
+            Range::Digits => 9,
+            Range::Arrows => 4,
+        }
     }
 }
 
@@ -231,15 +331,15 @@ pub struct CustomShortcut {
 }
 
 /// One built-in shortcut: a stable id (the settings key), what it's called
-/// and grouped under on the Keyboard & Shortcuts page, and its default keys.
+/// and grouped under on the Keyboard & shortcuts page, and its default keys.
 #[derive(Debug, Clone, Copy)]
 pub struct Def {
     pub id: &'static str,
     pub name: &'static str,
     pub group: &'static str,
     pub defaults: &'static [&'static str],
-    /// Bound to "MODS+1-9": workspace n for key n.
-    pub range: bool,
+    /// Bound to a set of keys ("MODS+1-9", "MODS+ARROWS").
+    pub range: Range,
 }
 
 impl Def {
@@ -250,6 +350,12 @@ impl Def {
             "window-switcher" => Action::WindowSwitcher,
             "quick-settings" => Action::QuickSettings,
             "notifications" => Action::Notifications,
+            "clipboard" => Action::Clipboard,
+            "note" => Action::Note,
+            "report" => Action::ReportSnapshot,
+            "agenda" => Action::Agenda,
+            "music" => Action::Music,
+            "shortcuts" => Action::Shortcuts,
             "lock" => Action::Lock,
             "screenshot-region" => Action::ScreenshotRegion,
             "screenshot-screen" => Action::ScreenshotScreen,
@@ -260,6 +366,8 @@ impl Def {
             "fullscreen" => Action::ToggleFullscreen,
             "workspace" => Action::Workspace(n),
             "move-to-workspace" => Action::MoveToWorkspace(n),
+            "move-to-workspace-step" => Action::MoveToWorkspaceStep(ARROWS[n as usize].1),
+            "move-to-monitor" => Action::MoveToOutput(ARROWS[n as usize].1),
             "volume-up" => Action::Media("volume_up"),
             "volume-down" => Action::Media("volume_down"),
             "volume-mute" => Action::Media("volume_mute"),
@@ -269,27 +377,72 @@ impl Def {
             "play-pause" => Action::Media("media_play_pause"),
             "next-track" => Action::Media("media_next"),
             "previous-track" => Action::Media("media_previous"),
+            "window-layout" => Action::NextWindowLayout(None),
+            "toggle-floating" => Action::ToggleFloating,
+            "focus-direction" => Action::FocusDirection(ARROWS[n as usize].1),
+            "move-direction" => Action::MoveDirection(ARROWS[n as usize].1),
+            "resize-mode" => Action::ResizeMode,
+            "toggle-split" => Action::ToggleSplit,
+            "make-master" => Action::MakeMaster,
+            "toggle-group" => Action::ToggleGroup,
+            "snap-picker" => Action::SnapPicker(false),
+            "next-tab" => Action::NextTab,
+            "previous-tab" => Action::PreviousTab,
             other => unreachable!("catalog id {other} has no action"),
         }
     }
 }
 
 const fn def(id: &'static str, name: &'static str, group: &'static str, defaults: &'static [&'static str]) -> Def {
-    Def { id, name, group, defaults, range: false }
+    Def { id, name, group, defaults, range: Range::No }
 }
 
 /// Every built-in shortcut, in the order the settings page lists them.
 pub const CATALOG: &[Def] = &[
     def("launcher", "App launcher", "Shell", &["SUPER"]),
     def("app-switcher", "Application switcher", "Windows", &["ALT+TAB"]),
-    def("window-switcher", "Window switcher", "Windows", &["SUPER+ALT+TAB"]),
+    def("window-switcher", "Window switcher", "Windows", &["SUPER+TAB"]),
     def("quick-settings", "Quick settings", "Shell", &["SUPER+S"]),
     def("notifications", "Notifications", "Shell", &["SUPER+N"]),
+    def("clipboard", "Clipboard history", "Shell", &["SUPER+V"]),
+    def("note", "Note", "Shell", &["SUPER+SHIFT+N"]),
+    def("agenda", "Today's agenda", "Shell", &["SUPER+A"]),
+    def("music", "Now playing", "Shell", &["SUPER+SHIFT+M"]),
+    def("report", "Snapshot for a bug report", "Shell", &["SUPER+SHIFT+B"]),
+    def("shortcuts", "Keyboard shortcuts", "Shell", &["SUPER+K"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
-    Def { range: true, ..def("workspace", "Switch to workspace 1–9", "Workspaces", &["SUPER+1-9"]) },
+    def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
+    def("toggle-floating", "Float or tile window", "Windows", &["SUPER+SHIFT+SPACE"]),
+    Def { range: Range::Arrows, ..def("focus-direction", "Focus window ←→↑↓", "Windows", &["SUPER+ARROWS"]) },
     Def {
-        range: true, ..def("move-to-workspace", "Move window to workspace 1–9", "Workspaces", &["SUPER+SHIFT+1-9"])
+        range: Range::Arrows,
+        ..def("move-direction", "Move or snap window ←→↑↓", "Windows", &["SUPER+SHIFT+ARROWS"])
+    },
+    Def {
+        range: Range::Arrows,
+        ..def("move-to-monitor", "Move window to the monitor ←→↑↓", "Windows", &["SUPER+CTRL+ARROWS"])
+    },
+    def("resize-mode", "Resize window (then arrows; Esc ends)", "Windows", &["SUPER+R"]),
+    def("toggle-split", "Flip split (dwindle)", "Windows", &["SUPER+J"]),
+    def("make-master", "Make master (master)", "Windows", &["SUPER+M"]),
+    def("toggle-group", "Group or ungroup window", "Windows", &["SUPER+G"]),
+    def("snap-picker", "Snap layouts", "Windows", &["SUPER+Z"]),
+    def("next-tab", "Next tab", "Windows", &["SUPER+PERIOD"]),
+    def("previous-tab", "Previous tab", "Windows", &["SUPER+COMMA"]),
+    Def { range: Range::Digits, ..def("workspace", "Switch to workspace 1–9", "Workspaces", &["SUPER+1-9"]) },
+    Def {
+        range: Range::Digits,
+        ..def("move-to-workspace", "Move window to workspace 1–9", "Workspaces", &["SUPER+SHIFT+1-9"])
+    },
+    Def {
+        range: Range::Arrows,
+        ..def(
+            "move-to-workspace-step",
+            "Move window to the previous / next workspace ←→↑↓",
+            "Workspaces",
+            &["SUPER+ALT+ARROWS"],
+        )
     },
     def("screenshot-region", "Screenshot region", "Shell", &["SUPER+SHIFT+S"]),
     def("screenshot-screen", "Screenshot screen", "Shell", &["PRTSC"]),
@@ -319,7 +472,7 @@ impl Bindings {
         Bindings { entries }
     }
 
-    /// WhiteRose's default shortcuts (see the Keyboard & Shortcuts design).
+    /// WhiteRose's default shortcuts (see the Keyboard & shortcuts design).
     pub fn defaults(terminal: &str) -> Self {
         Bindings::build(terminal, &Default::default(), &[]).0
     }
@@ -341,17 +494,20 @@ impl Bindings {
             };
             for c in combos {
                 match expand(&c) {
-                    Ok(list) if def.range => {
-                        if list.len() != 9 {
-                            errors.push(format!("{}: {c:?} needs the 1-9 key", def.id));
+                    Ok(list) if def.range != Range::No => {
+                        let wanted = if def.range == Range::Digits { "1-9" } else { "ARROWS" };
+                        if list.len() != def.range.len() || !c.to_ascii_uppercase().ends_with(wanted) {
+                            errors.push(format!("{}: {c:?} needs the {wanted} key", def.id));
                             continue;
                         }
                         for (n, combo) in list.into_iter().enumerate() {
-                            entries.push((combo, def.action(terminal, n as u8 + 1)));
+                            // Workspaces count from 1; directions index ARROWS.
+                            let n = if def.range == Range::Digits { n + 1 } else { n };
+                            entries.push((combo, def.action(terminal, n as u8)));
                         }
                     }
                     Ok(list) if list.len() == 1 => entries.push((list[0], def.action(terminal, 0))),
-                    Ok(_) => errors.push(format!("{}: {c:?} can't use 1-9", def.id)),
+                    Ok(_) => errors.push(format!("{}: {c:?} can't use a range of keys", def.id)),
                     Err(e) => errors.push(format!("{}: {c:?}: {e}", def.id)),
                 }
             }
@@ -368,14 +524,43 @@ impl Bindings {
         (Bindings { entries }, errors)
     }
 
+    /// Adds the scratchpads' keys, so `conflicts()` sees them against the
+    /// rest. Keys that don't parse are skipped and reported.
+    pub fn add_scratchpads(&mut self, pads: &[crate::scratchpad::Pad]) -> Vec<String> {
+        let mut errors = Vec::new();
+        for p in pads {
+            for k in &p.keys {
+                match expand(k) {
+                    Ok(list) if list.len() == 1 => self.entries.push((list[0], Action::Scratchpad(p.id.clone()))),
+                    Ok(_) => errors.push(format!("{}: {k:?} can't use a range of keys", p.id)),
+                    Err(e) => errors.push(format!("{}: {k:?}: {e}", p.id)),
+                }
+            }
+        }
+        errors
+    }
+
     /// Replaces SUPER with other modifiers in every binding. Used when running
     /// nested inside another desktop, which usually keeps SUPER for itself.
     /// The SUPER-tap binding is left alone.
     pub fn remap_logo(mut self, to: Mods) -> Self {
-        for (combo, _) in &mut self.entries {
-            if combo.mods.logo && !combo.is_logo_tap() {
-                combo.mods.logo = false;
-                combo.mods = combo.mods.union(to);
+        // One that would land on another's keys (SUPER+ALT+arrow and
+        // SUPER+arrow both becoming CTRL+ALT+arrow) is left as it was:
+        // out of reach in that mode, rather than taking another's keys.
+        let remapped = |c: &Combo| {
+            let mut c = *c;
+            if c.mods.logo && !c.is_logo_tap() {
+                c.mods.logo = false;
+                c.mods = c.mods.union(to);
+            }
+            c
+        };
+        let new: Vec<Combo> = self.entries.iter().map(|(c, _)| remapped(c)).collect();
+        for i in 0..self.entries.len() {
+            let clash =
+                new.iter().enumerate().any(|(j, n)| j < i && *n == new[i] && self.entries[j].0 != self.entries[i].0);
+            if !clash {
+                self.entries[i].0 = new[i];
             }
         }
         self
@@ -424,6 +609,8 @@ mod tests {
     }
     const SUPER: Mods = Mods { logo: true, alt: false, ctrl: false, shift: false };
     const SUPER_SHIFT: Mods = Mods { logo: true, alt: false, ctrl: false, shift: true };
+    const SUPER_ALT: Mods = Mods { logo: true, alt: true, ctrl: false, shift: false };
+    const SUPER_CTRL: Mods = Mods { logo: true, alt: false, ctrl: true, shift: false };
     const ALT: Mods = Mods { logo: false, alt: true, ctrl: false, shift: false };
 
     #[test]
@@ -480,8 +667,17 @@ mod tests {
         let cases = [
             (Mods::NONE, keysyms::KEY_Print, Action::ScreenshotScreen),
             (SUPER_SHIFT, keysyms::KEY_s, Action::ScreenshotRegion),
+            (SUPER, keysyms::KEY_v, Action::Clipboard),
+            (SUPER_SHIFT, keysyms::KEY_n, Action::Note),
+            (SUPER, keysyms::KEY_a, Action::Agenda),
+            (SUPER_SHIFT, keysyms::KEY_m, Action::Music),
+            (SUPER_SHIFT, keysyms::KEY_b, Action::ReportSnapshot),
+            (SUPER, keysyms::KEY_k, Action::Shortcuts),
+            (SUPER_ALT, keysyms::KEY_Left, Action::MoveToWorkspaceStep(Dir::Left)),
+            (SUPER_ALT, keysyms::KEY_Down, Action::MoveToWorkspaceStep(Dir::Down)),
+            (SUPER_CTRL, keysyms::KEY_Right, Action::MoveToOutput(Dir::Right)),
             (ALT, keysyms::KEY_Tab, Action::AppSwitcher),
-            (Mods { logo: true, alt: true, ..Mods::NONE }, keysyms::KEY_Tab, Action::WindowSwitcher),
+            (SUPER, keysyms::KEY_Tab, Action::WindowSwitcher),
             (SUPER, keysyms::KEY_s, Action::QuickSettings),
             (SUPER, keysyms::KEY_l, Action::Lock),
             (SUPER, keysyms::KEY_q, Action::CloseWindow),
@@ -522,6 +718,11 @@ mod tests {
         assert_eq!(b.lookup(ALT, sym(keysyms::KEY_Tab)), Some(&Action::AppSwitcher));
         assert_eq!(b.lookup(Mods::NONE, sym(keysyms::KEY_Print)), Some(&Action::ScreenshotScreen));
         assert_eq!(b.logo_tap(), Some(&Action::AppLauncher));
+        // SUPER+ALT+arrow would land on SUPER+arrow's keys: left as it was.
+        let ctrl_alt = Mods { ctrl: true, alt: true, ..Mods::NONE };
+        assert_eq!(b.lookup(ctrl_alt, sym(keysyms::KEY_Left)), Some(&Action::FocusDirection(Dir::Left)));
+        let super_alt = Mods { logo: true, alt: true, ..Mods::NONE };
+        assert_eq!(b.lookup(super_alt, sym(keysyms::KEY_Left)), Some(&Action::MoveToWorkspaceStep(Dir::Left)));
     }
 
     #[test]
@@ -590,6 +791,20 @@ mod tests {
     }
 
     #[test]
+    fn scratchpad_keys_bind_and_clash() {
+        let pads = crate::scratchpad::parse(&serde_json::json!([
+            {"id": "term", "command": "foot", "keys": ["SUPER+GRAVE"]},
+            {"id": "notes", "command": "notes", "keys": ["SUPER+F", "SUPER+NOPE", "SUPER+1-9"]}
+        ]));
+        let mut b = Bindings::defaults("foot");
+        let errors = b.add_scratchpads(&pads);
+        assert_eq!(errors.len(), 2, "{errors:?}");
+        let grave = parse_combo("SUPER+GRAVE").unwrap();
+        assert_eq!(b.lookup(grave.mods, grave.key), Some(&Action::Scratchpad("term".into())));
+        assert_eq!(b.conflicts(), vec![(Action::ToggleFullscreen, Action::Scratchpad("notes".into()))]);
+    }
+
+    #[test]
     fn shell_actions_are_classified() {
         assert!(Action::ScreenshotRegion.is_shell());
         assert!(Action::AppLauncher.is_shell());
@@ -597,5 +812,40 @@ mod tests {
         assert!(!Action::AppSwitcher.is_shell(), "the compositor runs the switchers; the shell only draws them");
         assert!(!Action::ScreenshotScreen.is_shell(), "PrtSc is captured by the compositor itself");
         assert!(!Action::Workspace(1).is_shell());
+    }
+
+    #[test]
+    fn arrows_stand_for_four_keys() {
+        let combos = expand("SUPER+SHIFT+ARROWS").unwrap();
+        let keys: Vec<u32> = combos.iter().map(|c| c.key.raw()).collect();
+        assert_eq!(keys, vec![keysyms::KEY_Left, keysyms::KEY_Right, keysyms::KEY_Up, keysyms::KEY_Down]);
+        assert!(combos.iter().all(|c| c.mods == SUPER_SHIFT));
+        assert_eq!(expand("super+arrows").unwrap().len(), 4, "any case");
+        assert!(expand("ARROWS").is_err(), "needs a modifier");
+    }
+
+    #[test]
+    fn the_default_tiling_keys() {
+        let b = Bindings::defaults("true");
+        let key = |m, k| b.lookup(m, sym(k)).cloned();
+        assert_eq!(key(SUPER, keysyms::KEY_t), Some(Action::NextWindowLayout(None)));
+        assert_eq!(key(SUPER_SHIFT, keysyms::KEY_space), Some(Action::ToggleFloating));
+        assert_eq!(key(SUPER, keysyms::KEY_Left), Some(Action::FocusDirection(Dir::Left)));
+        assert_eq!(key(SUPER_SHIFT, keysyms::KEY_Down), Some(Action::MoveDirection(Dir::Down)));
+        assert_eq!(key(SUPER, keysyms::KEY_r), Some(Action::ResizeMode));
+        assert_eq!(key(SUPER, keysyms::KEY_period), Some(Action::NextTab));
+        assert_eq!(key(SUPER, keysyms::KEY_comma), Some(Action::PreviousTab));
+        assert_eq!(key(SUPER, keysyms::KEY_g), Some(Action::ToggleGroup));
+    }
+
+    #[test]
+    fn a_range_shortcut_needs_its_range_key() {
+        let mut o = std::collections::HashMap::new();
+        o.insert("focus-direction".to_string(), vec!["SUPER+1-9".to_string(), "SUPER+Y".to_string()]);
+        o.insert("workspace".to_string(), vec!["SUPER+ARROWS".to_string()]);
+        let (b, errors) = Bindings::build("true", &o, &[]);
+        assert_eq!(errors.len(), 3, "{errors:?}");
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_y)), None);
+        assert_eq!(b.lookup(SUPER, sym(keysyms::KEY_Left)), None);
     }
 }

@@ -20,6 +20,9 @@ Singleton {
     property var weather: null
     // Bumps whenever the calendars might have changed (re-read events).
     property real calendars: 0
+    // The keyring is locked (a fingerprint login): the island asks for the
+    // password once (island/keyring.qml).
+    property bool keyringLocked: false
 
     // Called continuously while a slider drags: only the latest value is
     // sent, at most every 50 ms, one process at a time.
@@ -58,6 +61,7 @@ Singleton {
             root.radios = s.radios;
             root.weather = s.weather ?? null;
             root.calendars = s.calendars ?? 0;
+            root.keyringLocked = s.keyring_locked ?? false;
         }
         // logind asked to lock or unlock (loginctl, idle, lid).
         function onLockRequested() { ShellState.lock() }

@@ -211,6 +211,7 @@ pub fn main(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
@@ -253,8 +254,7 @@ mod tests {
 
     #[test]
     fn finds_in_a_folder() {
-        let d = std::env::temp_dir().join(format!("wr-cli-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
+        let d = Scratch::new("cli");
         std::fs::create_dir_all(d.join("Taxes/2025")).unwrap();
         std::fs::write(d.join("Taxes/2025/return.pdf"), "x").unwrap();
         std::fs::write(
@@ -307,6 +307,5 @@ mod tests {
             main(&s(&["--in", &dir, "--regex", "("]), &mut vec![], &mut err),
             2
         );
-        std::fs::remove_dir_all(&d).unwrap();
     }
 }

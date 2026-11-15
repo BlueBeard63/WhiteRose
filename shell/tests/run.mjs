@@ -1,9 +1,11 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js and FilesActions.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
+import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // `deps`: what its `.import "…" as Name` lines bring in, by Name.
@@ -12,24 +14,33 @@ function load(file, names, deps = {}) {
     return new Function(...Object.keys(deps), `${src}\nreturn { ${names.join(", ")} };`)(...Object.values(deps));
 }
 const Calc = load("Calc.js", ["evaluate"]);
-const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results"]);
+const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results", "shellQuote"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
 const D = load("settings/modules/displays/Displays.js", ["modeString", "hzLabel", "resolutions", "refreshes", "withResolution", "logicalSize", "draftFrom", "snap", "dragTo", "resolveOverlap", "connected", "normalize", "place", "profilesFor", "profileName", "toConfig", "differs"]);
-const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "newId", "parseLayouts", "searchLayouts"]);
+const K = load("settings/modules/keyboard/Keys.js", ["isModifier", "keyName", "combo", "normalize", "expand", "conflict", "forRange", "caps", "spoken", "setKeys", "assign", "padShortcut", "newId", "parseLayouts", "searchLayouts"]);
 const Sun = load("Sun.js", ["times", "isDay", "untilChange"]);
+const Note = load("Note.js", ["parse", "toggle", "withoutDone"]);
+const Ag = load("Agenda.js", ["timed", "next", "when", "span", "at", "blocks"]);
 const W = load("Wallpapers.js", ["builtin", "isBuiltin", "expand", "tildify", "parseList", "all", "next", "rotationText"]);
 const Shot = load("Shot.js", ["fromDrag", "clampMove", "resize", "toRegion", "windowAt", "sizeLabel"]);
 const U = load("settings/modules/users/Users.js", ["suggestName", "nameProblem", "passwordProblem", "lastSeen", "fingers", "fingerName", "nextFinger", "enrollText", "enrollFraction"]);
-const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction"]);
-const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName"]);
+const Rep = load("Report.js", ["kinds", "areas", "pickSnapshot", "kindFor", "whereFor", "areaOptions", "titleFor", "newDraft", "fill", "snapshotLabel", "canGoOn", "crashToPrompt", "promptText"]);
+const Mem = load("Memory.js", ["size", "warningText", "appName", "closedText"]);
+const Up = load("settings/modules/updates/Updates.js", ["ago", "day", "headline", "badge", "note", "fraction", "filterSeries", "seriesNote", "releaseFacts", "releaseAction", "newestRelease"]);
+const F = load("../apps/files/qml/Format.js", ["size", "date", "kind", "click", "eta", "stemLength", "fullDate", "exactSize", "hasBit", "withBit", "sumMatch", "pathsAs", "groupName", "fileUrl"]);
+const Ph = load("../apps/notepad/qml/Placeholder.js", ["text"]);
 const Drops = load("../apps/files/qml/Drops.js", ["uris", "paths", "parent", "plan", "accepts"]);
 const Lay = load("../apps/files/qml/Layout.js", ["adaptive", "treemap"]);
 const Reorder = load("../apps/files/qml/Reorder.js", ["slot"]);
 const Act = load("settings/modules/files/FilesActions.js", ["trim", "applies", "command", "quote", "menu", "toolbar"]);
 const Arr = load("../apps/files/qml/Arrange.js", ["groupOf", "arrange", "rows", "step"], { F });
 const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "tearOff", "insertAt", "mime", "pack", "unpack"]);
+const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect", "monitorName", "shown", "save"]);
+const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "zoneCount", "offers"]);
+const P = load("settings/modules/scratchpads/Pads.js", ["ownInstance", "complete", "newId", "make", "name", "place", "size", "summary", "set"], { R });
+const Sc = load("Shortcuts.js", ["groups"], { K });
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -203,12 +214,12 @@ test("user name and initials", () => {
 test("notification age", () => {
     assert.deepEqual([0, 59, 120, 3599, 3600, 86399, 86400 * 3].map(N.ago), ["now", "now", "2m", "59m", "1h", "23h", "3d"]);
 });
-test("popups respect the panel and Do Not Disturb", () => {
+test("popups respect the panel and Do not disturb", () => {
     assert.equal(N.shouldPopup(1, false, false), true);
     assert.equal(N.shouldPopup(1, false, true), false, "already visible in the open panel");
-    assert.equal(N.shouldPopup(1, true, false), false, "Do Not Disturb");
+    assert.equal(N.shouldPopup(1, true, false), false, "Do not disturb");
     assert.equal(N.shouldPopup(0, true, false), false);
-    assert.equal(N.shouldPopup(2, true, false), true, "critical gets through Do Not Disturb");
+    assert.equal(N.shouldPopup(2, true, false), true, "critical gets through Do not disturb");
     assert.equal(N.shouldPopup(1, false, false, true), false, "a muted app doesn't pop up");
     assert.equal(N.shouldPopup(2, false, false, true), true, "unless it's critical");
 });
@@ -372,6 +383,90 @@ test("labels: saved, else Built-in or the model", () => {
     assert.deepEqual(draft.map(d => d.label), ["Built-in", "Desk left"]);
 });
 
+// ---- Window rules (Rules.js) ---------------------------------------------
+test("rules: an app id becomes an exact pattern and back", () => {
+    assert.equal(R.exactly("org.gnome.Ptyxis"), "^org\\.gnome\\.Ptyxis$");
+    assert.equal(R.exactApp(R.exactly("org.gnome.Ptyxis")), "org.gnome.Ptyxis");
+    assert.equal(R.exactApp(R.exactly("a+b(c)")), "a+b(c)");
+    assert.equal(R.exactApp("^firefox"), "", "not anchored at both ends");
+    assert.equal(R.exactApp("^fire.*$"), "", "a wildcard isn't one app");
+    assert.equal(R.exactApp(undefined), "");
+});
+test("rules: patterns the compositor can't use are refused", () => {
+    assert.equal(R.patternError(""), "");
+    assert.equal(R.patternError("^code(-oss)?$"), "");
+    assert.notEqual(R.patternError("("), "");
+    assert.notEqual(R.patternError("a(?=b)"), "", "no lookahead in Rust's regex");
+    assert.notEqual(R.patternError("(?<!x)y"), "");
+    assert.notEqual(R.patternError("(a)\\1"), "", "no backreferences");
+    assert.equal(R.complete({ app: "a" }), true);
+    assert.equal(R.complete({ title: "b", workspace: 2 }), true);
+    assert.equal(R.complete({}), false, "it needs a pattern");
+    assert.equal(R.complete({ app: "(" }), false);
+});
+test("rules: sizes and positions are pixels or percentages", () => {
+    assert.equal(R.parseLength("900", 1), 900);
+    assert.equal(R.parseLength(" 60 % ", 1), "60%");
+    assert.equal(R.parseLength("12.5%", 1), "12.5%");
+    assert.equal(R.parseLength("0", 1), null, "a size is at least 1px");
+    assert.equal(R.parseLength("0", 0), 0, "a position can be 0");
+    assert.equal(R.parseLength("120%", 0), null);
+    assert.equal(R.parseLength("-5", 0), null);
+    assert.equal(R.parseLength("1.5", 0), null, "whole pixels");
+    assert.equal(R.parseLength("wide", 0), null);
+    assert.equal(R.isPair([900, "60%"]), true);
+    assert.equal(R.isPair({ length: 2, 0: 1, 1: 2 }), true, "a Qt list counts too");
+    assert.equal(R.isPair("ab"), false);
+    assert.equal(R.isPair([1]), false);
+    assert.equal(R.isPair(undefined), false);
+    assert.equal(R.lengthText(undefined), "");
+    assert.equal(R.lengthText("60%"), "60%");
+});
+test("rules: editing, moving and deleting", () => {
+    const rules = [{ app: "a" }, { app: "b", workspace: 2 }, { app: "c" }];
+    assert.deepEqual(R.set(rules, 1, "float", true)[1], { app: "b", workspace: 2, float: true });
+    assert.deepEqual(R.set(rules, 1, "workspace", null)[1], { app: "b" });
+    assert.deepEqual(rules[1], { app: "b", workspace: 2 }, "not changed in place");
+    assert.deepEqual(R.move(rules, 0, 1).map(r => r.app), ["b", "a", "c"]);
+    assert.deepEqual(R.move(rules, 0, -1).map(r => r.app), ["a", "b", "c"], "the first stays first");
+    assert.deepEqual(R.move(rules, 2, 1).map(r => r.app), ["a", "b", "c"]);
+    assert.deepEqual(R.remove(rules, 1).map(r => r.app), ["a", "c"]);
+});
+test("rules: the header names a rule and says what it does", () => {
+    assert.equal(R.name({ app: "^org\\.gnome\\.Ptyxis$" }), "org.gnome.Ptyxis");
+    assert.equal(R.name({ app: "^code" }), "^code");
+    assert.equal(R.name({ title: "^Picture-in-Picture$" }), "^Picture-in-Picture$");
+    assert.equal(R.name({}), "New rule");
+    assert.equal(
+        R.summary({ app: "a", workspace: 3, float: true, size: [900, "60%"], position: "centre" }, 1),
+        "1 · Workspace 3 · Floats · 900 × 60% · Centred");
+    assert.equal(R.summary({ app: "a", title: "^x", float: false, position: [0, "5%"], fullscreen: true }, 2),
+        "2 · Title ^x · Tiles · At 0, 5% · Full screen");
+    assert.equal(R.summary({ app: "a", monitor: "edid:1", maximized: true }, 3, id => "Dell"), "3 · On Dell · Maximised");
+    assert.equal(R.summary({ app: "a" }, 4), "4 · Does nothing yet");
+    assert.equal(R.summary({ title: "^PiP$", opacity: [1, 0.85], onTop: true }, 6), "6 · Opacity 100% / 85% · On top");
+    assert.equal(R.percent(0.849), "85%");
+    assert.equal(R.summary({ app: "a", zone: 2 }, 7), "7 · Zone 2");
+    assert.equal(R.zoneCount({}, {}), 2, "the default grid");
+    assert.equal(R.zoneCount({ "edid:1": [[0, 0, 1, 1]] }, { "2": { "edid:1": [[0, 0, 0.25, 1], [0.25, 0, 0.25, 1], [0.5, 0, 0.5, 1]] } }), 3);
+    assert.equal(R.zoneCount(undefined, undefined, 5), 5, "a rule's own zone is offered");
+    assert.match(R.summary({}, 5), /^5 · Not saved/);
+    assert.equal(R.tiling({}), "");
+    assert.equal(R.position({ position: "center" }), "centre");
+    assert.equal(R.opens({ maximized: true, fullscreen: true }), "fullscreen");
+});
+test("rules: open windows are offered once per app id", () => {
+    const windows = [
+        { app_id: "firefox", title: "Mozilla Firefox", workspace: 1 },
+        { app_id: "firefox", title: "Private", workspace: 2 },
+        { app_id: null, title: "no id", workspace: 1 },
+        { app_id: "org.gnome.Ptyxis", title: "~", workspace: 2 },
+    ];
+    const offers = R.offers(windows, [{ app: R.exactly("org.gnome.Ptyxis") }]);
+    assert.deepEqual(offers.map(o => [o.app, o.title, o.has]), [["firefox", "Mozilla Firefox", false], ["org.gnome.Ptyxis", "~", true]]);
+    assert.deepEqual(R.offers(undefined, undefined), []);
+});
+
 test("snapping: side by side and aligned, only within reach", () => {
     const other = { x: 0, y: 0, w: 1600, h: 1000 };
     assert.deepEqual(D.snap({ x: 1612, y: 9, w: 2560, h: 1440 }, [other], 20), { x: 1600, y: 0, to: 0 });
@@ -464,7 +559,7 @@ test("Files' menus: entries left out, separators tidied, your actions applied", 
     for (const list of [Act.menu, Act.toolbar]) assert.equal(new Set(list.map(x => x.id)).size, list.length);
 });
 
-// ---- Keys (Keyboard & Shortcuts) -------------------------------------------
+// ---- Keys (Keyboard & shortcuts) -------------------------------------------
 const views = [
     { id: "launcher", keys: ["SUPER"], defaults: ["SUPER"] },
     { id: "fullscreen", keys: ["SUPER+F"], defaults: ["SUPER+F"] },
@@ -493,6 +588,12 @@ test("keys: combos are written one way", () => {
     assert.equal(K.expand("SUPER+1-9")[2], "SUPER+3");
     assert.equal(K.forRange("SUPER+SHIFT+4"), "SUPER+SHIFT+1-9");
     assert.equal(K.forRange("SUPER+W"), null);
+    assert.equal(K.forRange("SUPER+SHIFT+Left", "arrows"), "SUPER+SHIFT+ARROWS");
+    assert.equal(K.forRange("SUPER+4", "arrows"), null);
+    assert.deepEqual(K.expand("super+arrows"), ["SUPER+LEFT", "SUPER+RIGHT", "SUPER+UP", "SUPER+DOWN"]);
+    assert.deepEqual(K.caps("SUPER+ARROWS"), ["SUPER", "←→↑↓"]);
+    // A single arrow shortcut clashes with the range that includes it.
+    assert.equal(K.conflict([{ id: "focus-direction", keys: ["SUPER+ARROWS"] }], "SUPER+Up", "x")?.id, "focus-direction");
     assert.deepEqual(K.caps("SUPER+1-9"), ["SUPER", "1–9"]);
     assert.deepEqual(K.caps("XF86AudioRaiseVolume"), ["VOL +"]);
     assert.equal(K.spoken("SUPER+SPACE"), "SUPER + SPACE");
@@ -520,6 +621,49 @@ test("keys: assigning replaces, takes over, and drops back to defaults", () => {
     // A plain number key taken by the workspaces leaves the other eight.
     r = K.assign(st, "fullscreen", "SUPER+3", false);
     assert.deepEqual(r.overrides.workspace, [], "the range can't lose one key, so it's turned off");
+});
+
+test("keys: scratchpads' keys live in their pads", () => {
+    const pads = [{ id: "term", name: "Terminal", command: "foot", keys: ["SUPER+GRAVE"] }];
+    const withPad = views.concat([{ id: "scratchpad:term", name: "Terminal", group: "Scratchpads", keys: ["SUPER+GRAVE"], defaults: ["SUPER+GRAVE"] }]);
+    const st = { shortcuts: withPad, overrides: {}, custom: [], pads };
+    // Re-recorded on the Keyboard page: the pad's keys change, nothing else.
+    let r = K.assign(st, "scratchpad:term", "SUPER+T", false);
+    assert.deepEqual(r.pads[0].keys, ["SUPER+T"]);
+    assert.deepEqual(r.overrides, {}, "not a built-in override");
+    assert.deepEqual(pads[0].keys, ["SUPER+GRAVE"], "the old state is left alone");
+    // A built-in taking the pad's key takes it from the pad.
+    r = K.assign(st, "fullscreen", "SUPER+GRAVE", false);
+    assert.deepEqual(r.pads[0].keys, []);
+    assert.deepEqual(r.overrides, { fullscreen: ["SUPER+GRAVE"] });
+    // The pad taking a built-in's key.
+    r = K.assign(st, "scratchpad:term", "SUPER+F", false);
+    assert.deepEqual(r.overrides, { fullscreen: [] });
+    assert.deepEqual(r.pads[0].keys, ["SUPER+F"]);
+    assert.equal(K.padShortcut("term"), "scratchpad:term");
+});
+
+test("scratchpads: new pads, own instances and summaries", () => {
+    assert.equal(P.ownInstance("ghostty"), "ghostty --gtk-single-instance=false");
+    assert.equal(P.ownInstance("/usr/bin/ghostty -e htop"), "/usr/bin/ghostty --gtk-single-instance=false -e htop");
+    assert.equal(P.ownInstance("ghostty --gtk-single-instance=true"), "ghostty --gtk-single-instance=true", "the user's choice stays");
+    assert.equal(P.ownInstance("ptyxis"), "ptyxis --standalone");
+    assert.equal(P.ownInstance("  foot  "), "foot");
+    assert.equal(P.ownInstance(""), "");
+    const free = () => true;
+    const first = P.make([], "ghostty", free);
+    assert.deepEqual(first, { id: "pad-1", name: "Terminal", command: "ghostty --gtk-single-instance=false", keys: ["SUPER+GRAVE"] });
+    assert.deepEqual(P.make([], "", () => false).keys, [], "a taken key isn't given");
+    assert.equal(P.make([], "", free).command, "ptyxis --standalone", "the default terminal");
+    const second = P.make([first], "ghostty", free);
+    assert.deepEqual(second, { id: "pad-2", name: "Scratchpad 2", command: "", keys: [] });
+    assert.ok(P.complete(first) && !P.complete(second));
+    assert.equal(P.newId([{ id: "pad-2" }]), "pad-1");
+    assert.equal(P.summary(first, K.spoken), "SUPER + ` · ghostty · Under the island · 60% × 50%");
+    assert.equal(P.summary({ command: "whiterose-notepad", keys: ["SUPER+N"], size: [900, "40%"], place: "centre", hideOnBlur: true }, K.spoken),
+        "SUPER + N · whiterose-notepad · Centred · 900 × 40% · Hides when it loses focus");
+    assert.equal(P.name({ command: "/usr/bin/foot -e x" }), "/usr/bin/foot");
+    assert.deepEqual(P.set([first], 0, { place: "centre", name: null }), [{ id: "pad-1", command: first.command, keys: first.keys, place: "centre" }]);
 });
 
 test("keys: new ids and the XKB layout list", () => {
@@ -622,6 +766,29 @@ test("users: suggested usernames, checks, last seen", () => {
     assert.equal(U.lastSeen(new Date(2025, 9, 2).getTime() / 1000, now), "Signed in on 2 Oct 2025");
 });
 
+test("releases tab", () => {
+    const series = [
+        { name: "0.3", releases: [
+            { version: "0.3.0-alpha.3", pre: true, state: "running", published: 1794571000, changes: ["Resize floating windows from any edge"] },
+            { version: "0.3.0-alpha.2", pre: true, state: "installed", published: 1794480000, changes: ["Drag and drop between X11 and Wayland apps"] }] },
+        { name: "0.2", releases: [{ version: "0.2.1", pre: false, state: "available", published: 1794380000, changes: ["One command installs WhiteRose"] }] },
+    ];
+    assert.equal(Up.filterSeries(series, "").length, 2);
+    assert.equal(Up.filterSeries(series, "0.2").map(s => s.name).join(), "0.2");
+    assert.equal(Up.filterSeries(series, "v0.3").map(s => s.releases.length).join(), "2");
+    assert.equal(Up.filterSeries(series, "alpha.2")[0].releases.map(r => r.version).join(), "0.3.0-alpha.2");
+    assert.equal(Up.filterSeries(series, "drag")[0].releases[0].version, "0.3.0-alpha.2");
+    assert.equal(Up.filterSeries(series, "nothing like it").length, 0);
+    assert.equal(Up.seriesNote(series[0]), "2 releases · 0.3.0-alpha.3 running");
+    assert.equal(Up.seriesNote(series[1]), "1 release");
+    assert.equal(Up.releaseFacts(series[0].releases[0], 1794571000000), "alpha · 13 Nov");
+    assert.equal(Up.releaseFacts(series[1].releases[0], 1794571000000), "11 Nov");
+    assert.equal(Up.releaseAction({ state: "installed" }).join("|"), "|Switch to it");
+    assert.equal(Up.releaseAction({ state: "available" }).join("|"), "|Install");
+    assert.equal(Up.newestRelease(series), "0.3.0-alpha.3");
+    assert.equal(Up.newestRelease([]), "");
+});
+
 test("updates page text", () => {
     const now = Date.UTC(2026, 10, 10, 12, 0, 0);
     const t = now / 1000;
@@ -639,7 +806,7 @@ test("updates page text", () => {
     assert.deepEqual(Up.badge({ state: "ready", pending: true }), ["Ready to apply", "ready"]);
     assert.deepEqual(Up.badge(null), ["", "plain"]);
     assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: true }), /session restarts/);
-    assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: false }), /log out/);
+    assert.match(Up.note({ state: "ready" }, { running: "0.4.2", launcher: false }), /log out/i);
     assert.match(Up.note({ state: "downloaded" }, { running: "0.4.2" }), /beside 0.4.2/);
     assert.equal(Up.fraction({ progress: [25, 100] }), 0.25);
     assert.equal(Up.fraction({ progress: [0, 0] }), 0);
@@ -650,7 +817,7 @@ test("files: dragging out of archives", () => {
     const u = Drops.uris([a, "/home/me/x y.txt"]);
     assert.equal(u, "archive:/home/me/My%20Trip.zip!/photos/a%20b.jpg\r\nfile:///home/me/x%20y.txt\r\n");
     assert.deepEqual(Drops.paths(u.trim().split("\r\n")), [a, "/home/me/x y.txt"]);
-    // Out of an archive: always copied, never into an archive or the Trash.
+    // Out of an archive: always copied, never into an archive or the trash.
     assert.deepEqual(Drops.plan([a], "/home/me/Desktop", false, true, true), { kind: "copy", paths: [a] });
     assert.equal(Drops.plan([a], "trash:", false, false, false), null);
     assert.equal(Drops.plan(["/home/me/x"], "archive:/t.zip!/", false, false, false), null);
@@ -861,6 +1028,353 @@ test("files: the tab shown after a close", () => {
     assert.equal(Tabs.afterClose(4, 3, 3), 2, "the shown last one: the one before");
     assert.equal(Tabs.afterClose(4, 0, 2), 1, "one before the shown: shown shifts left");
     assert.equal(Tabs.afterClose(4, 3, 1), 1, "one after: shown stays");
+});
+
+// ---- Zones (Settings > Snapping) ------------------------------------
+test("zone grids are checked as the compositor does", () => {
+    assert.ok(Z.valid(Z.fallback()));
+    assert.ok(Z.valid([[0, 0, 0.4, 1], [0.6, 0, 0.4, 1]]), "gaps are fine");
+    assert.ok(!Z.valid([]));
+    assert.ok(!Z.valid([[0, 0, 0.6, 1], [0.5, 0, 0.5, 1]]), "overlap");
+    assert.ok(!Z.valid([[0.6, 0, 0.5, 1]]), "outside");
+    assert.ok(!Z.valid([[0, 0, 0.05, 1]]), "too small");
+    assert.ok(!Z.valid([[0, 0, 1]]), "not four numbers");
+    assert.ok(!Z.valid(Array.from({ length: 17 }, () => [0, 0, 0.1, 0.1])), "too many");
+});
+test("splitting a zone", () => {
+    const halves = Z.split([[0, 0, 1, 1]], 0, "side");
+    assert.deepEqual(halves, [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]);
+    assert.deepEqual(Z.split(halves, 1, "stacked"), [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]]);
+    // A third split in two: the halves still meet (well within the
+    // compositor's 1e-6).
+    const t = Z.split(Z.fallback(), 1, "side");
+    assert.ok(Math.abs(t[1][0] + t[1][2] - t[2][0]) < 1e-9);
+    assert.ok(Z.valid(t));
+    assert.equal(Z.split([[0, 0, 0.15, 1]], 0, "side"), null, "halves too small");
+    assert.equal(Z.split([[0, 0, 1, 1]], 3, "side"), null, "no such zone");
+});
+test("merging two zones that make a rectangle", () => {
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.ok(Z.canMerge(three, 1, 2));
+    assert.ok(!Z.canMerge(three, 0, 1), "an L shape");
+    assert.deepEqual(Z.merge(three, 2, 1), [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]);
+    assert.deepEqual(Z.merge([[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], 0, 1), [[0, 0, 1, 1]]);
+    assert.equal(Z.merge(three, 0, 1), null);
+});
+test("the lines between zones, once each", () => {
+    const quarters = [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+    const ls = Z.lines(quarters);
+    assert.equal(ls.length, 2, "one upright, one across");
+    assert.deepEqual(ls.map(l => [l.axis, l.at, l.lo, l.hi]), [["x", 0.5, 0, 1], ["y", 0.5, 0, 1]]);
+    assert.deepEqual(Z.lines([[0, 0, 1, 1]]), []);
+});
+test("moving a line moves every zone on it", () => {
+    const quarters = [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+    const moved = Z.moveLine(quarters, 0, "right", 0.3);
+    assert.deepEqual(moved.map(z => [z[0], z[2]]), [[0, 0.3], [0.3, 0.7], [0, 0.3], [0.3, 0.7]]);
+    // Never under a tenth.
+    assert.deepEqual(Z.moveLine([[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], 0, "right", 0.99), [[0, 0, 0.9, 1], [0.9, 0, 0.1, 1]]);
+    // Only zones lined up along the line: the bottom-right one ends before it.
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.deepEqual(Z.moveLine(three, 1, "down", 0.5), [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]]);
+    assert.equal(Z.moveLine(three, 0, "down", 0.5), three, "the area's own edge doesn't move");
+    assert.ok(Z.valid(Z.moveLine(Z.fallback(), 0, "right", 0.123456)));
+});
+test("clicking a zone with each tool", () => {
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.deepEqual(Z.click(three, "resize", -1, 1), { zones: null, picked: -1 }, "resize: zones aren't clicked");
+    assert.deepEqual(Z.click(three, "stacked", -1, 0).zones, [[0, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]]);
+    assert.deepEqual(Z.click(three, "side", -1, 0).zones[1], [0.25, 0, 0.25, 1]);
+    assert.equal(Z.click([[0, 0, 0.15, 1], [0.15, 0, 0.85, 1]], "side", -1, 0).zones, null, "too thin to split");
+    assert.deepEqual(Z.click(three, "merge", -1, 1), { zones: null, picked: 1 }, "merge: the first click picks");
+    assert.deepEqual(Z.click(three, "merge", 1, 2), { zones: [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], picked: -1 }, "the second merges");
+    assert.deepEqual(Z.click(three, "merge", 1, 0), { zones: null, picked: 0 }, "one it can't merge with is picked instead");
+    assert.deepEqual(Z.click(three, "merge", 1, 1), { zones: null, picked: -1 }, "the same one again unpicks");
+});
+test("deleting a zone leaves empty space, never the last one", () => {
+    const three = [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6], [0.5, 0.6, 0.5, 0.4]];
+    assert.deepEqual(Z.remove(three, 1), [[0, 0, 0.5, 1], [0.5, 0.6, 0.5, 0.4]]);
+    assert.ok(Z.valid(Z.remove(three, 1)), "gaps are allowed");
+    assert.equal(Z.remove([[0, 0, 1, 1]], 0), null, "the last zone stays");
+    assert.deepEqual(Z.click(three, "delete", -1, 2).zones, [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.6]]);
+    assert.equal(Z.zoneAt(three, 0.7, 0.3), 1);
+    assert.equal(Z.zoneAt(Z.remove(three, 1), 0.7, 0.3), -1, "empty space");
+});
+test("drawing a zone over empty space", () => {
+    const two = [[0, 0, 0.5, 1], [0.5, 0.6, 0.5, 0.4]]; // empty top right
+    // Snapped to 24ths, and to the zones' edges near the pointer.
+    const d = Z.draw(two, 0.51, 0.01, 0.99, 0.59);
+    assert.deepEqual(d, { zone: [0.5, 0, 0.5, 0.6], ok: true });
+    assert.deepEqual(Z.add(two, d.zone), [[0, 0, 0.5, 1], [0.5, 0.6, 0.5, 0.4], [0.5, 0, 0.5, 0.6]]);
+    // Dragged on into the zones: it stops at them.
+    assert.deepEqual(Z.draw(two, 0.9, 0.05, 0.2, 0.9).zone, [0.5, 0.0417, 0.4167, 0.5583]);
+    // Too small, or started inside a zone.
+    assert.equal(Z.draw(two, 0.6, 0.1, 0.62, 0.3).ok, false);
+    assert.equal(Z.draw(two, 0.2, 0.2, 0.9, 0.3), null);
+    // Sixteen zones already: no room for another.
+    const full = Array.from({ length: 16 }, (_, i) => [(i % 8) / 8, i < 8 ? 0 : 0.5, 1 / 8, 0.25]);
+    assert.equal(Z.draw(full, 0.5, 0.9, 0.9, 0.99).ok, false);
+});
+test("a monitor's shape below the bar", () => {
+    assert.equal(Z.aspect({ mode: { width: 2880, height: 1612 }, scale: 2, transform: "normal" }, 26), 1440 / 780);
+    assert.equal(Z.aspect({ mode: { width: 1920, height: 1080 }, scale: 1, transform: "90" }, 26), 1080 / 1894, "turned");
+    assert.equal(Z.aspect(null, 26), 16 / 9);
+    assert.equal(Z.aspect({ mode: null }, 26), 16 / 9);
+});
+test("a monitor's or a workspace's grid is shown and saved", () => {
+    const a = [[0, 0, 1, 1]], b = Z.fallback();
+    const grids = { m1: a }, ws = { "2": { m1: b } };
+    assert.deepEqual(Z.shown(grids, ws, "", "m1"), a);
+    assert.deepEqual(Z.shown(grids, ws, "2", "m1"), b, "the workspace's own");
+    assert.deepEqual(Z.shown(grids, ws, "3", "m1"), a, "else the monitor's");
+    assert.equal(Z.shown({}, {}, "", "m1"), null);
+    assert.deepEqual(Z.save(grids, ws, "", "m2", b), { key: "windows.snap.zones", value: { m1: a, m2: b } });
+    assert.deepEqual(Z.save(grids, ws, "", "m1", ""), { key: "windows.snap.zones", value: {} });
+    assert.deepEqual(Z.save(grids, ws, "3", "m1", a), { key: "windows.snap.zones.workspaces", value: { "2": { m1: b }, "3": { m1: a } } });
+    assert.deepEqual(Z.save(grids, ws, "2", "m1", ""), { key: "windows.snap.zones.workspaces", value: {} }, "an empty workspace goes");
+    assert.deepEqual(grids, { m1: a }, "unchanged");
+    assert.equal(Z.monitorName({ builtin: true }), "Built-in display");
+    assert.equal(Z.monitorName({ make: "Dell", model: "U2723", connector: "DP-1" }), "Dell U2723");
+    assert.equal(Z.monitorName({ connector: "DP-1" }), "DP-1");
+});
+
+test("the note: a title, lines and tasks", () => {
+    const text = "Today\n[ ] Call mom\n[x] Gym at six\n\nPay rent\n  [X] Bins";
+    const n = Note.parse(text);
+    assert.equal(n.title, "Today");
+    assert.deepEqual(n.lines.map(l => [l.text, l.task, l.done, l.at]), [
+        ["Call mom", true, false, 1], ["Gym at six", true, true, 2], ["Pay rent", false, false, 4], ["Bins", true, true, 5],
+    ], "blank lines left out; [X] is done too");
+    assert.equal(n.tasks, 3);
+    assert.equal(n.done, 2);
+    assert.deepEqual(Note.parse(""), { title: "", lines: [], tasks: 0, done: 0 });
+    assert.equal(Note.parse("[ ] Not a task: the title").tasks, 0, "the first line is always the title");
+    // The ways people write a task.
+    const forms = Note.parse("T\n[] a\n- [ ] b\n* [x] c\n[ ]d");
+    assert.deepEqual(forms.lines.map(l => [l.text, l.done]), [["a", false], ["b", false], ["c", true], ["d", false]]);
+    assert.equal(Note.toggle("T\n- [] a", 1), "T\n- [x] a");
+});
+
+test("the note: ticking tasks and clearing the done ones", () => {
+    const text = "Today\n[ ] Call mom\n[x] Gym\nPay rent";
+    assert.equal(Note.toggle(text, 1), "Today\n[x] Call mom\n[x] Gym\nPay rent");
+    assert.equal(Note.toggle(text, 2), "Today\n[ ] Call mom\n[ ] Gym\nPay rent");
+    assert.equal(Note.toggle(text, 3), text, "not a task: unchanged");
+    assert.equal(Note.withoutDone(text), "Today\n[ ] Call mom\nPay rent");
+});
+
+test("the agenda: what's next today, and when", () => {
+    const now = new Date(2026, 10, 12, 14, 12);
+    const at = (h, m = 0, d = 12) => new Date(2026, 10, d, h, m).toISOString();
+    const events = [
+        { title: "Gym", start: at(18, 30), end: at(19, 30) },
+        { title: "Standup", start: at(9), end: at(9, 30) },
+        { title: "Design review", start: at(15), end: at(16) },
+        { title: "Holiday", start: at(0), end: at(0, 0, 13), all_day: true },
+        { title: "Tomorrow", start: at(9, 0, 13), end: at(10, 0, 13) },
+    ];
+    assert.deepEqual(Ag.timed(events, now).map(e => e.title), ["Standup", "Design review", "Gym"], "today's timed ones, in order");
+    const n = Ag.next(events, now);
+    assert.equal(n.event.title, "Design review");
+    assert.equal(Ag.when(n), "in 48 min");
+    assert.equal(Ag.when(Ag.next(events, new Date(2026, 10, 12, 12, 0))), "in 3 h");
+    assert.equal(Ag.when(Ag.next(events, new Date(2026, 10, 12, 12, 40))), "in 2 h 20 min");
+    const on = Ag.next(events, new Date(2026, 10, 12, 15, 20));
+    assert.equal(on.now, true);
+    assert.equal(Ag.when(on), "now · until 16:00");
+    assert.equal(Ag.next(events, new Date(2026, 10, 12, 20, 0)), null, "nothing else today");
+});
+
+test("the agenda: the day as a line", () => {
+    const now = new Date(2026, 10, 12, 14, 0);
+    const at = (h, m = 0) => new Date(2026, 10, 12, h, m).toISOString();
+    const events = [{ title: "Review", start: at(15), end: at(16) }];
+    const sp = Ag.span(events, now);
+    assert.deepEqual(sp, { from: 8, to: 20 });
+    assert.equal(Ag.at(now, now, sp), 0.5, "14:00 is halfway through 08–20");
+    const b = Ag.blocks(events, now, sp, events[0]);
+    assert.deepEqual(b.map(x => [Math.round(x.x0 * 12), Math.round(x.x1 * 12), x.next, x.past]), [[7, 8, true, false]]);
+    // An early start and a late finish widen it.
+    assert.deepEqual(Ag.span([{ title: "Flight", start: at(6, 30), end: at(7, 30) }, { title: "Late", start: at(21), end: at(22, 15) }], now), { from: 6, to: 23 });
+});
+
+// ---------------------------------------------------------------- UI text
+// Every string in the shell's and the apps' QML and JS reads as plain text
+// (the copy rules in ARCHITECTURE.md, "UI text"): no em dashes, no filler,
+// no buzzwords, no apologies, no exclamation marks. (Title Case can't be
+// told from proper nouns by a script: that's for review.)
+test("UI text follows the copy rules", () => {
+    const { readdirSync, statSync } = fs;
+    const roots = [join(here, ".."), join(here, "..", "..", "apps")];
+    const files = [];
+    const walk = dir => {
+        for (const name of readdirSync(dir)) {
+            if (name === "tests" || name === "target" || name === "node_modules" || name.startsWith(".")) continue;
+            const path = join(dir, name);
+            if (statSync(path).isDirectory()) walk(path);
+            else if (/\.(qml|js)$/.test(name) || name === "module.json") files.push(path);
+        }
+    };
+    roots.forEach(walk);
+    const rules = [
+        [/—/, "an em dash"],
+        [/\b(please|kindly|in order to|feel free)\b/i, "filler"],
+        [/\b(delve|seamless\w*|empower\w*|elevate\w*|streamline\w*|robust|intuitive|magic(al)?|journey|ecosystem)\b/i, "a buzzword"],
+        [/^\s*(oops|uh oh|sorry|unfortunately)\b/i, "an apology"],
+        [/[A-Za-z)]!(\s|$)/, "an exclamation mark"],
+    ];
+    const problems = [];
+    for (const file of files) {
+        readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+            if (/^\s*(\/\/|\*|import )/.test(line)) return;
+            for (const [, text] of line.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+                for (const [re, what] of rules) {
+                    if (re.test(text)) problems.push(`${file.replace(join(here, "..", ".."), "")}:${i + 1} has ${what}: ${text}`);
+                }
+            }
+        });
+    }
+    assert.deepEqual(problems, []);
+});
+
+test("shell quoting for desktop entries run in a terminal", () => {
+    assert.equal(Search.shellQuote("htop"), "htop");
+    assert.equal(Search.shellQuote("/usr/bin/x"), "/usr/bin/x");
+    assert.equal(Search.shellQuote("two words"), "'two words'");
+    assert.equal(Search.shellQuote("it's"), "'it'\\''s'");
+    assert.equal(Search.shellQuote("$(rm -rf ~)"), "'$(rm -rf ~)'");
+});
+
+test("memory warning words", () => {
+    const GB = 1 << 30;
+    const [ct, cx] = Mem.closedText({ app: { bytes: 9 * GB, reason: "half" } }, "Firefox");
+    assert.equal(ct, "Closed Firefox to free memory");
+    assert.ok(cx.includes("Firefox was using 9 GB, more than half of all memory."), cx);
+    assert.ok(Mem.closedText({ app: { bytes: GB, reason: "growing" } }, "Code")[1].includes("Code was using 1 GB and had grown steadily for 10 minutes."));
+    assert.equal(Mem.appName("org.mozilla.firefox"), "Firefox");
+    assert.equal(Mem.appName("code"), "Code");
+    assert.equal(Mem.appName(""), "This app");
+    assert.equal(Mem.size(6.2 * GB), "6.2 GB");
+    assert.equal(Mem.size(12.4 * GB), "12 GB");
+    assert.equal(Mem.size(850 * (1 << 20)), "850 MB");
+    assert.equal(Mem.warningText({ app: { bytes: 6.2 * GB, growing: true, reason: "growing" } }, "Firefox")[0], "Firefox is using 6.2 GB and still growing");
+    assert.equal(Mem.warningText({ app: { bytes: 9 * GB, reason: "half" } }, "Code")[0], "Code is using 9 GB, more than half of memory");
+    const [t, x] = Mem.warningText({ app: { bytes: 2.1 * GB, reason: "biggest" } }, "Files");
+    assert.equal(t, "Memory is nearly full");
+    assert.ok(x.startsWith("Files is using the most (2.1 GB)."));
+});
+
+test("notepad's empty documents say what they are", () => {
+    assert.equal(Ph.text({ scratch: true }), "Notes, lists, anything. It saves itself.");
+    assert.ok(Ph.text({ path: "" }).startsWith("Start typing."));
+    assert.equal(Ph.text({ path: "/home/x/todo.txt", syntax: "" }), "todo.txt is empty.");
+    assert.equal(Ph.text({ path: "/home/x/README.md", syntax: "Markdown", language: "Markdown" }), "README.md is empty. # starts a heading, - starts a list.");
+    assert.equal(Ph.text({ path: "/src/main.go", syntax: "Go", language: "Go" }), "main.go is empty. It's highlighted as Go.");
+});
+
+test("files: file addresses keep names with % # ?", () => {
+    assert.equal(F.fileUrl("/run/user/1000/gvfs/dav:host=s,prefix=%2Fremote.php%2Fwebdav/a b.jpg"),
+        "file:///run/user/1000/gvfs/dav%3Ahost%3Ds%2Cprefix%3D%252Fremote.php%252Fwebdav/a%20b.jpg");
+    assert.equal(decodeURIComponent(F.fileUrl("/x/#1?.png").split("/").pop()), "#1?.png");
+    assert.equal(F.fileUrl(""), "");
+});
+
+// ---- the bug report flow (Report.js) -------------------------------------------
+test("report flow guesses", () => {
+    const now = Date.UTC(2026, 10, 13, 14, 0);
+    const list = [
+        { id: "b", what: "manual", time: now - 60_000, ready: true, title: "Snapshot you took" },
+        { id: "a", what: "shell", time: now - 3_600_000, ready: true, title: "The shell crashed (signal 11, SIGSEGV)" },
+    ];
+    assert.equal(Rep.pickSnapshot(list, "a", now), "a");
+    assert.equal(Rep.pickSnapshot(list, "gone", now), "b");
+    assert.equal(Rep.pickSnapshot(list.slice(1), "", now), "", "an hour old: take one now");
+    assert.equal(Rep.kindFor({ what: "shell" }, null), "crashed");
+    assert.equal(Rep.kindFor({ what: "memory" }, null), "slow");
+    assert.equal(Rep.kindFor({ what: "manual" }, { load: { mem_used_mb: 950, mem_total_mb: 1000 } }), "slow");
+    assert.equal(Rep.kindFor({ what: "manual" }, { load: { mem_used_mb: 500, mem_total_mb: 1000 } }), "wrong");
+    assert.equal(Rep.whereFor({ what: "compositor" }, null), "The whole desktop");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "whiterose-files" } }), "Files");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "firefox" } }), "firefox");
+    assert.equal(Rep.whereFor({ what: "manual" }, { windows: { focused: "(no app ID)" } }), "The whole desktop");
+    const opts = Rep.areaOptions({ windows: { apps: { firefox: 2, "whiterose-files": 1, "(no app ID)": 1 } } }, "Custom place");
+    assert.ok(opts.includes("firefox") && opts.filter(o => o === "Files").length === 1 && opts.at(-1) === "Custom place");
+    assert.equal(Rep.titleFor("froze", "Files", ""), "Files froze");
+    assert.equal(Rep.titleFor("crashed", "The bar", "The shell crashed (signal 11, SIGSEGV)"), "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(Rep.titleFor("wrong", "Displays", ""), "Displays doesn't do what it should");
+    // Filling keeps what you chose and a title you edited.
+    assert.equal(Rep.newDraft(list, "a", now).step, 2, "opened from a crash: the problem is known");
+    assert.equal(Rep.newDraft(list, "", now).step, 1);
+    const crashes = [
+        { id: "m", what: "manual", time: now - 1000, ready: true },
+        { id: "s2", what: "shell", time: now - 2000, ready: false },
+        { id: "s1", what: "shell", time: now - 3000, ready: true, prompted: true },
+        { id: "c", what: "compositor", time: now - 4000, ready: true, title: "The compositor exited with code 101" },
+    ];
+    assert.equal(Rep.crashToPrompt(crashes, now).id, "c", "not a snapshot you took, not before it's ready, not twice");
+    assert.equal(Rep.crashToPrompt([{ id: "o", what: "shell", time: now - 2 * 86400000, ready: true }], now), null, "too old");
+    assert.equal(Rep.promptText(crashes[3], now)[0], "WhiteRose crashed last time");
+    assert.equal(Rep.promptText({ what: "shell", title: "The shell crashed (signal 11, SIGSEGV)", time: now }, now)[0], "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(Rep.promptText({ what: "manual", time: now }, now)[0], "Snapshot saved");
+    let d = Rep.fill(Rep.newDraft(list, "a", now), { what: "shell" }, null, "The shell crashed (signal 11, SIGSEGV)");
+    assert.equal(d.kind + "|" + d.where + "|" + d.title, "crashed|The bar|The shell crashed (signal 11, SIGSEGV)");
+    d = Rep.fill(Object.assign(d, { kind: "froze", title: "My title", edited: true }), { what: "shell" }, null, "");
+    assert.equal(d.title, "My title");
+    assert.equal(Rep.canGoOn({ step: 4, what: "short" }), false);
+    assert.equal(Rep.canGoOn({ step: 4, what: "the bar went away" }), true);
+    assert.equal(Rep.canGoOn({ step: 3, title: "  " }), false);
+});
+
+// ---- the old-version issue workflow (.github/scripts/old-version.js) ------------
+test("old-version reports: versions", () => {
+    const Old = createRequire(import.meta.url)(join(here, "..", "..", ".github", "scripts", "old-version.js"));
+    const order = ["0.2.0", "0.2.1", "0.3.0-alpha", "0.3.0-alpha.2", "0.3.0-alpha.10", "0.3.0-beta.1", "0.3.0", "v0.3.1", "1.0.0"];
+    for (let i = 0; i < order.length; i++)
+        for (let j = 0; j < order.length; j++)
+            assert.equal(Old.compare(order[i], order[j]), Math.sign(i - j), order[i] + " vs " + order[j]);
+    assert.equal(Old.compare("0.3.0~alpha.3", "0.3.0-alpha.3"), 0);
+    const form = v => "### WhiteRose version\n\n" + v + "\n\n### What happened\n\nIt broke";
+    assert.equal(Old.reportedVersion(form("0.3.0-alpha.3")), "0.3.0-alpha.3");
+    assert.equal(Old.reportedVersion(form("WhiteRose v0.2.1")), "0.2.1");
+    assert.equal(Old.reportedVersion(form("latest")), "");
+    assert.equal(Old.reportedVersion("no form at all"), "");
+    const id = "ab".repeat(32);
+    assert.equal(Old.reportedBuild("### Build\n\n" + id.toUpperCase() + "\n\n### What happened"), id);
+    assert.equal(Old.reportedBuild("### Build\n\nnot one\n"), "");
+    const sums = "cd".repeat(32) + "  whiterose_0.3.1_amd64.deb\n" + id + "  build-0.3.1-rpm\n";
+    assert.equal(Old.listsBuild(sums, "0.3.1", id), true);
+    assert.equal(Old.listsBuild(sums, "0.3.2", id), false, "another version's build");
+    assert.equal(Old.listsBuild(sums, "0.3.1", "ef".repeat(32)), false);
+});
+
+// ---- Shortcuts (the SUPER+K sheet) ---------------------------------------------
+test("shortcut sheet: live keys, turned-off ones left out, yours last", () => {
+    const list = [
+        { id: "close-window", keys: ["SUPER+W"] },               // changed from SUPER+Q
+        { id: "fullscreen", keys: [] },                          // turned off
+        { id: "workspace", keys: ["SUPER+1-9"] },
+        { id: "move-direction", keys: ["SUPER+SHIFT+ARROWS", "SUPER+SHIFT+H"] },
+        { id: "launcher", keys: ["SUPER"] },
+        { id: "custom-1", name: "Open Spotify", command: "spotify", keys: ["SUPER+SHIFT+P"] },
+        { id: "custom-2", name: "Off", command: "x", keys: [] },
+        { id: "scratchpad:term", name: "Terminal pad", keys: ["SUPER+GRAVE"] },
+    ];
+    const g = Sc.groups(list);
+    assert.deepEqual(g.map(x => x.name), ["Windows", "Workspaces", "Desktop", "Yours"]);
+    const w = Object.fromEntries(g[0].rows.map(r => [r.label, r.keys]));
+    assert.deepEqual(w["Close"], ["SUPER", "W"]);
+    assert.equal(w["Fullscreen"], undefined);
+    assert.deepEqual(w["Move"], ["SUPER", "DRAG"]);
+    assert.deepEqual(w["Snap to a side"], ["SUPER", "SHIFT", "←→↑↓"]);
+    assert.deepEqual(g[1].rows[0], { label: "Go to workspace", keys: ["SUPER", "1–9"] });
+    assert.deepEqual(g[2].rows[0], { label: "Launcher", keys: ["SUPER"] });
+    assert.deepEqual(g[3].rows, [
+        { label: "Open Spotify", keys: ["SUPER", "SHIFT", "P"] },
+        { label: "Terminal pad", keys: ["SUPER", "`"] },
+    ]);
+    // Before the compositor has sent its list: the mouse moves only.
+    assert.deepEqual(Sc.groups([]).map(x => x.name), ["Windows"]);
+    assert.deepEqual(Sc.groups(undefined)[0].rows.length, 2);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -2,6 +2,8 @@
 //! 1440x808 output (the Figma frame size) and a real Wayland client.
 #![allow(dead_code)]
 
+pub mod tiles;
+
 use std::{
     os::unix::net::UnixStream,
     path::PathBuf,

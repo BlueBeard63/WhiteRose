@@ -51,7 +51,7 @@ type importer struct {
 }
 
 // Run imports every old file present.
-func Run(st *store.Store, secrets store.Resolver, d Dirs) Report {
+func Run(st *store.Store, secrets *store.Resolver, d Dirs) Report {
 	set := func(key string, v any) error { return st.SetValue(key, v) }
 	importers := []importer{
 		{filepath.Join(d.Config, "dock.json"), func(b []byte) error {

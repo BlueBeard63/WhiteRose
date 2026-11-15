@@ -1,6 +1,7 @@
 //! Compositor state. Structure follows Smithay's smallvil example (MIT).
 
-use std::{ffi::OsString, process::Command, sync::Arc};
+use crate::win::WinExt;
+use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
@@ -50,6 +51,8 @@ pub struct WhiteRose {
     pub daemon_socket: std::path::PathBuf,
     /// Connection to whiterosed (None while it's not running).
     pub daemon: Option<std::os::unix::net::UnixStream>,
+    /// Requests made while it wasn't connected, sent when it connects.
+    pub daemon_waiting: Vec<serde_json::Value>,
     /// Display settings: the saved layout, and one being tried out.
     pub displays: crate::display_config::Displays,
     pub display_trial: Option<crate::daemon_client::Trial>,
@@ -81,6 +84,14 @@ pub struct WhiteRose {
     pub filling: Vec<(Window, smithay::output::Output)>,
     /// Minimised windows: hidden until focused again (dock, ALT+TAB).
     pub minimized: Vec<Window>,
+    /// Tiled workspaces and the layout settings (see tiling.rs).
+    pub tiling: crate::tiling::TilingState,
+    /// Snapped floating windows (see snapping.rs).
+    pub snap: crate::snapping::SnapState,
+    /// `windows.rules`: applied as windows open (window_rules.rs).
+    pub rules: crate::rules::Rules,
+    /// `windows.scratchpads` and their windows (scratchpad_windows.rs).
+    pub scratchpads: crate::scratchpad_windows::Scratchpads,
     /// Output and usable area last used to fit maximized/fullscreen windows.
     /// PrtSc pressed: capture on the next frame.
     pub screenshot_pending: bool,
@@ -93,6 +104,9 @@ pub struct WhiteRose {
     next_window_id: u64,
     /// The open switcher and the modifiers that keep it open (released = commit).
     pub switcher: Option<(crate::switcher::Switcher, crate::keybind::Mods)>,
+    /// ALT+TAB lists only the active workspace's apps
+    /// (`windows.appSwitcher.workspaces` "current"); SUPER+TAB always all.
+    pub app_switcher_current_only: bool,
     /// Modifiers of the shortcut that triggered the current action.
     pub shortcut_mods: crate::keybind::Mods,
     /// Per output: (whole, usable) rectangles last used to fit them.
@@ -104,8 +118,11 @@ pub struct WhiteRose {
     /// SUPER is down and nothing else has been pressed since.
     pub logo_tap_pending: bool,
 
-    /// Wakes the backend to draw a frame. None when running headless (tests).
+    /// Wakes the backend to draw a frame. None in the compositor tests.
     pub redraw: Option<Ping>,
+    /// The backend draws the screen, so it can be captured (screenshots).
+    /// Not headless: it draws nothing.
+    pub can_capture: bool,
     /// Imports a client's GPU buffer into the renderer. Set by the backend.
     pub dmabuf_importer: Option<DmabufImporter>,
     pub dmabuf_global: Option<DmabufGlobal>,
@@ -134,8 +151,16 @@ pub struct WhiteRose {
     pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     /// "privacy.clipboardHistory": remember what's copied.
     pub clipboard_history_on: bool,
+    /// App ids kept running when memory runs out (the `memory.protected`
+    /// setting; the terminal always is): app_scope.rs.
+    pub memory_protected: Vec<String>,
     /// Layouts, key repeat and the shortcut settings (see keyboard.rs).
     pub keyboard: crate::keyboard::KeyboardSettings,
+    /// Mice and touchpads (pointer.rs), and the libinput devices they apply to.
+    pub pointer: crate::pointer::PointerSettings,
+    pub input_devices: Vec<smithay::reexports::input::Device>,
+    /// Shake to find (shake.rs): how big the pointer is drawn.
+    pub shake: crate::shake::Shake,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
     pub shortcuts_paused: Option<u64>,
     /// The cursor theme and size we draw with (DRM), passed on to apps.
@@ -149,6 +174,9 @@ pub struct WhiteRose {
     /// 125%, 150%, ... instead of rounding up to 200% and being scaled down.
     pub fractional_scale_state: smithay::wayland::fractional_scale::FractionalScaleManagerState,
     pub viewporter_state: smithay::wayland::viewporter::ViewporterState,
+    /// Touchpad pinch, swipe and hold gestures for apps (a browser's pinch
+    /// to zoom).
+    pub pointer_gestures_state: smithay::wayland::pointer_gestures::PointerGesturesState,
     pub lock: crate::session_lock::SessionLock,
     /// Restart bookkeeping per supervised process ("shell", "daemon").
     pub restarts: std::collections::HashMap<&'static str, crate::shell_supervisor::RestartPolicy>,
@@ -157,12 +185,15 @@ pub struct WhiteRose {
     pub clipboard_dir: std::path::PathBuf,
     pub clipboard_tx: smithay::reexports::calloop::channel::Sender<crate::clipboard_capture::Captured>,
     pub popups: PopupManager,
+    /// XWayland: X11 apps (xwayland.rs).
+    pub xwayland: crate::xwayland::XState,
     pub seat: Seat<Self>,
 }
 
 impl WhiteRose {
     pub fn new(event_loop: &mut EventLoop<'static, Self>, display: Display<Self>, bindings: Bindings) -> Self {
         let dh = display.handle();
+        let xwayland = crate::xwayland::XState::new(&dh);
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
@@ -174,6 +205,7 @@ impl WhiteRose {
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Self>(&dh);
+        let pointer_gestures_state = smithay::wayland::pointer_gestures::PointerGesturesState::new::<Self>(&dh);
         let cursor_shape_state = smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new(&dh);
@@ -221,6 +253,7 @@ impl WhiteRose {
             start_time: std::time::Instant::now(),
             daemon_socket,
             daemon: None,
+            daemon_waiting: Vec::new(),
             displays: Default::default(),
             display_trial: None,
             display_profile: None,
@@ -246,9 +279,12 @@ impl WhiteRose {
             fullscreen: Vec::new(),
             filling: Vec::new(),
             minimized: Vec::new(),
+            tiling: Default::default(),
+            snap: Default::default(),
             fitted_to: Vec::new(),
             next_window_id: 1,
             switcher: None,
+            app_switcher_current_only: false,
             shortcut_mods: crate::keybind::Mods::NONE,
             screenshot_pending: false,
             screenshot_shot: Default::default(),
@@ -258,6 +294,7 @@ impl WhiteRose {
             swallowed: Vec::new(),
             logo_tap_pending: false,
             redraw: None,
+            can_capture: false,
             dmabuf_importer: None,
             dmabuf_global: None,
             compositor_state,
@@ -283,21 +320,29 @@ impl WhiteRose {
                 terminal: "ptyxis --standalone".into(),
                 ..Default::default()
             },
+            pointer: Default::default(),
+            input_devices: Vec::new(),
+            shake: Default::default(),
             shortcuts_paused: None,
             idle: Default::default(),
             idle_inhibit_state,
             clipboard_history_on: true,
+            memory_protected: Vec::new(),
+            rules: Default::default(),
+            scratchpads: Default::default(),
             cursor_shape_state,
             vt_switch: None,
             session_lock_state,
             fractional_scale_state,
             viewporter_state,
+            pointer_gestures_state,
             lock: Default::default(),
             restarts: Default::default(),
             clipboard,
             clipboard_dir,
             clipboard_tx,
             popups: PopupManager::default(),
+            xwayland,
             seat,
         }
     }
@@ -338,6 +383,7 @@ impl WhiteRose {
     /// client request wait until some client happens to send one, so clicks
     /// and animation frames arrive late or seemingly at random.
     pub fn after_dispatch(&mut self) {
+        self.sync_x11();
         let _ = self.display_handle.flush_clients();
     }
 
@@ -364,14 +410,20 @@ impl WhiteRose {
             let (output, geo) = output_hit?;
             let map = layer_map_for_output(output);
             let local = pos - geo.loc.to_f64();
-            let surface = map.layer_under(layer, local)?;
-            let layer_geo = map.layer_geometry(surface)?;
-            surface
-                .surface_under(local - layer_geo.loc.to_f64(), WindowSurfaceType::ALL)
-                .map(|(s, p)| (s, (p + layer_geo.loc + geo.loc).to_f64()))
+            // The topmost surface that takes input here, not just the
+            // topmost whose rectangle covers it: a mostly click-through
+            // layer (its input region is a few shapes) over another, like the
+            // island's window over the screenshot toast, lets clicks through.
+            let hit = map.layers_on(layer).rev().find_map(|surface| {
+                let layer_geo = map.layer_geometry(surface)?;
+                surface
+                    .surface_under(local - layer_geo.loc.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(s, p)| (s, (p + layer_geo.loc + geo.loc).to_f64()))
+            });
+            hit
         };
         let window_hit = || {
-            self.space.element_under(pos).and_then(|(window, location)| {
+            self.window_under(pos).and_then(|(window, location)| {
                 window
                     .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
                     .map(|(s, p)| (s, (p + location).to_f64()))
@@ -386,6 +438,25 @@ impl WhiteRose {
             .or_else(window_hit)
             .or_else(|| layer_hit(Layer::Bottom))
             .or_else(|| layer_hit(Layer::Background))
+    }
+
+    /// The window under `pos` and where it's drawn (its surface's origin),
+    /// like `Space::element_under`, except that a tiled window only takes
+    /// the pointer inside its tile (`clip_of`); its popups take it anywhere.
+    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&Window, Point<i32, Logical>)> {
+        use smithay::desktop::space::SpaceElement;
+        self.space.elements().rev().find_map(|w| {
+            // A scratchpad on its way out lets the pointer through.
+            if self.scratchpads.sliding_out(w) || !self.space.element_bbox(w)?.to_f64().contains(pos) {
+                return None;
+            }
+            let at = self.space.element_location(w)? - w.geometry().loc;
+            let local = pos - at.to_f64();
+            if self.clip_of(w).is_some_and(|c| !c.to_f64().contains(pos)) {
+                return w.surface_under(local, WindowSurfaceType::POPUP).map(|_| (w, at));
+            }
+            w.is_in_input_region(&local).then_some((w, at))
+        })
     }
 
     /// The top or overlay layer surface (bar, panel, launcher) under `pos`.
@@ -430,9 +501,15 @@ impl WhiteRose {
         self.output_at(at).or_else(|| self.space.outputs().next().cloned())
     }
 
-    /// The output a window is on: the one it fills if maximized or
-    /// fullscreen, else the one it overlaps most (the first if none).
+    /// The output a window is on: its tiles' output if it's tiled (even if
+    /// the app draws past its tile), the one it fills if maximized or
+    /// fullscreen, else the one it overlaps most, else (it hasn't drawn yet)
+    /// the one its corner is on, else the first.
     pub fn output_of(&self, w: &Window) -> Option<smithay::output::Output> {
+        // A tiled window is on its tiles' output.
+        if let Some(s) = self.tile_set_of(w) {
+            return Some(s.output.clone());
+        }
         if let Some((_, o)) = self.filling.iter().find(|(f, o)| f == w && self.space.output_geometry(o).is_some()) {
             return Some(o.clone());
         }
@@ -447,6 +524,10 @@ impl WhiteRose {
             .outputs()
             .max_by_key(|o| area(o))
             .filter(|o| area(o) > 0)
+            .or_else(|| {
+                let at = geo?.loc;
+                self.space.outputs().find(|o| self.space.output_geometry(o).is_some_and(|g| g.contains(at)))
+            })
             .or_else(|| self.space.outputs().next())
             .cloned()
     }
@@ -459,7 +540,7 @@ impl WhiteRose {
         self.space
             .elements()
             .chain(self.hidden_at.iter().map(|(w, _)| w))
-            .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface))
+            .find(|w| w.surface().as_ref() == Some(surface))
             .cloned()
     }
 
@@ -470,25 +551,34 @@ impl WhiteRose {
         }
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().expect("seat has a keyboard");
+        self.scratchpad_focus_moves(window.as_ref());
         if let Some(w) = &window {
             // Focusing a minimised window (dock, ALT+TAB) brings it back.
             if let Some(i) = self.minimized.iter().position(|m| m == w) {
                 self.minimized.swap_remove(i);
                 if self.workspaces.workspace_of(w) == Some(self.workspaces.active()) {
                     self.show(w);
+                    self.retile();
                 }
             }
+            // A group's hidden tab (ALT+TAB, the dock): show it.
+            if self.tiling.groups.is_hidden(w) {
+                self.show_tab(w);
+            }
             self.space.raise_element(w, true);
+            self.restack();
             self.workspaces.focus(w);
         }
         for w in self.space.elements() {
             w.set_activated(Some(w) == window.as_ref());
-            if let Some(t) = w.toplevel() {
-                t.send_pending_configure();
-            }
+            w.configure();
         }
-        let surface = window.and_then(|w| w.toplevel().map(|t| t.wl_surface().clone()));
+        let surface = window.as_ref().and_then(|w| w.surface());
         keyboard.set_focus(self, surface, serial);
+        // An X11 window takes X's focus too.
+        if let Some(w) = window.as_ref().filter(|w| crate::win::is_x11(w)) {
+            self.x11_focus(w);
+        }
         self.schedule_redraw();
         self.ipc_sync();
     }
@@ -516,8 +606,10 @@ impl WhiteRose {
         self.focus_window(Some(w.clone()));
     }
 
+    /// The focused window: a scratchpad's if one has the keyboard, else
+    /// the active workspace's.
     pub fn focused_window(&self) -> Option<Window> {
-        self.workspaces.focused().cloned()
+        self.scratchpads.focus.clone().or_else(|| self.workspaces.focused().cloned())
     }
 
     /// Switches workspace (0-based index).
@@ -527,35 +619,46 @@ impl WhiteRose {
             self.hide(w);
         }
         for w in &switch.show {
-            if !self.minimized.contains(w) {
+            // Not minimised windows, nor the hidden tabs of a group.
+            if !self.minimized.contains(w) && !self.tiling.groups.is_hidden(w) {
                 self.show(w);
             }
         }
-        let focus = self.next_focus();
+        self.retile();
+        // A scratchpad you're in comes along, keeping the keyboard.
+        let focus = self.scratchpads.focus.clone().or_else(|| self.next_focus());
         self.focus_window(focus);
     }
 
     /// The window to focus when the focused one goes away: the most
-    /// recently used on this workspace that isn't minimised.
+    /// recently used on this workspace that's on screen (not minimised, not
+    /// a group's hidden tab).
     pub fn next_focus(&self) -> Option<Window> {
         let ws = self.workspaces.active();
         self.workspaces
             .mru()
             .iter()
-            .find(|w| self.workspaces.workspace_of(w) == Some(ws) && !self.minimized.contains(w))
+            .find(|w| {
+                self.workspaces.workspace_of(w) == Some(ws)
+                    && !self.minimized.contains(w)
+                    && !self.tiling.groups.is_hidden(w)
+            })
             .cloned()
     }
 
     /// Hides a window until it's focused again.
     pub fn minimize(&mut self, w: &Window) {
-        if self.minimized.contains(w) {
+        if self.minimized.contains(w) || self.minimize_scratchpad(w) {
             return;
         }
         if self.fullscreen.contains(w) {
             self.unfullscreen(w);
         }
+        // It comes back on its own, not as a tab.
+        self.leave_group(w);
         self.minimized.push(w.clone());
         self.hide(w);
+        self.retile();
         let next = self.next_focus();
         self.focus_window(next);
     }
@@ -563,21 +666,45 @@ impl WhiteRose {
     /// Moves the focused window to a workspace (0-based index).
     pub fn move_focused_to(&mut self, ws: usize) {
         let Some(w) = self.focused_window() else { return };
+        if ws < self.workspaces.count() && self.workspaces.workspace_of(&w) != Some(ws) {
+            self.leave_group(&w);
+        }
         if self.workspaces.move_to(&w, ws) {
+            self.end_snap(&w);
             self.hide(&w);
+            self.retile();
             let next = self.workspaces.focused().cloned();
             self.focus_window(next);
         }
     }
 
-    fn hide(&mut self, w: &Window) {
+    /// SUPER+ALT+arrow: the focused window to the workspace before (left,
+    /// up) or after (right, down) this one, and there with it. Nothing at
+    /// the first or last.
+    pub fn move_focused_step(&mut self, dir: crate::layout::Dir) {
+        use crate::layout::Dir;
+        let Some(w) = self.focused_window() else { return };
+        let ws = self.workspaces.active();
+        let to = match dir {
+            Dir::Left | Dir::Up => ws.checked_sub(1),
+            Dir::Right | Dir::Down => Some(ws + 1).filter(|n| *n < self.workspaces.count()),
+        };
+        let Some(to) = to else { return };
+        self.move_focused_to(to);
+        if self.workspaces.workspace_of(&w) == Some(to) {
+            self.switch_workspace(to);
+            self.focus_window(Some(w));
+        }
+    }
+
+    pub(crate) fn hide(&mut self, w: &Window) {
         if let Some(loc) = self.space.element_location(w) {
             self.hidden_at.push((w.clone(), loc));
         }
         self.space.unmap_elem(w);
     }
 
-    fn show(&mut self, w: &Window) {
+    pub(crate) fn show(&mut self, w: &Window) {
         let loc = self
             .hidden_at
             .iter()
@@ -596,12 +723,18 @@ impl WhiteRose {
             }
             self.switcher_sync();
         }
+        // A shown scratchpad keeps the keyboard when another window closes.
+        let keep = self.scratchpads.focus.clone().filter(|f| f != w);
+        self.forget_scratchpad(w);
         self.forget_window_state(w);
+        self.forget_tiled(w);
+        self.forget_snap(w);
         self.workspaces.remove(w);
         self.hidden_at.retain(|(h, _)| h != w);
         self.minimized.retain(|m| m != w);
         self.space.unmap_elem(w);
-        let next = self.next_focus();
+        self.retile();
+        let next = keep.or_else(|| self.next_focus());
         self.focus_window(next);
     }
 
@@ -617,25 +750,106 @@ impl WhiteRose {
         env
     }
 
-    pub fn spawn(&self, command: &str) {
-        let mut parts = command.split_whitespace();
-        let Some(program) = parts.next() else { return };
-        match Command::new(program).args(parts).env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env()).spawn() {
-            Ok(_) => tracing::info!(command, "spawned"),
-            Err(err) => tracing::warn!(command, %err, "failed to spawn"),
+    /// Starts `command` (a command line: shortcuts, scratchpads, `-c`) in a
+    /// scope of its own, named after its program; its process id if it
+    /// started.
+    pub fn spawn(&self, command: &str) -> Option<u32> {
+        let argv: Vec<String> = command.split_whitespace().map(String::from).collect();
+        let id = crate::app_scope::id_for(argv.first()?);
+        self.launch(&id, &argv, None)
+    }
+
+    /// Starts app `app_id` (`argv`, in `cwd`) in a scope of its own
+    /// (app_scope.rs); its process id if it started.
+    pub fn launch(&self, app_id: &str, argv: &[String], cwd: Option<&str>) -> Option<u32> {
+        let protected = crate::app_scope::is_protected(app_id, &self.memory_protected, &self.keyboard.terminal);
+        let mut cmd = crate::app_scope::command(app_id, argv, protected)?;
+        cmd.env("WAYLAND_DISPLAY", &self.socket_name).envs(self.ipc_env());
+        if let Some(dir) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
+            cmd.current_dir(dir);
+        }
+        match cmd.spawn() {
+            Ok(child) => {
+                tracing::info!(app_id, ?argv, scoped = crate::app_scope::available(), protected, "spawned");
+                let pid = child.id();
+                self.reap_on_exit(child);
+                Some(pid)
+            }
+            Err(err) => {
+                tracing::warn!(app_id, ?argv, %err, "failed to spawn");
+                None
+            }
+        }
+    }
+
+    /// Collects `child`'s exit status when it ends, so an app that's closed
+    /// (or a launcher script that hands off and exits) doesn't stay behind
+    /// as a zombie. Its pidfd wakes the loop once, at exit: no polling, and
+    /// no SIGCHLD handler to take other waits' children.
+    fn reap_on_exit(&self, mut child: std::process::Child) {
+        use std::os::fd::{FromRawFd, OwnedFd};
+        // SAFETY: pidfd_open takes a pid and flags, and returns a new fd
+        // (ours to own) or -1.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, child.id() as libc::pid_t, 0) };
+        if fd < 0 {
+            // No pidfds (Linux before 5.3): a thread waits instead.
+            std::thread::spawn(move || child.wait());
+            return;
+        }
+        // SAFETY: fd is the pidfd just opened, owned by nothing else.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd as i32) };
+        let mut child = Some(child);
+        let source = Generic::new(fd, Interest::READ, Mode::Level);
+        if let Err(err) = self.loop_handle.insert_source(source, move |_, _, _| {
+            if let Some(mut c) = child.take() {
+                let _ = c.wait();
+            }
+            Ok(PostAction::Remove)
+        }) {
+            tracing::warn!(err = %err.error, "couldn't watch a started app for its exit");
         }
     }
 
     pub fn run_action(&mut self, action: Action) {
+        // A scratchpad places itself: what would put it on a workspace, in
+        // the tiles, a group, a zone or fullscreen leaves it be.
+        if self.scratchpads.focus.is_some()
+            && matches!(
+                action,
+                Action::MoveToWorkspace(_)
+                    | Action::ToggleFloating
+                    | Action::ToggleGroup
+                    | Action::MakeMaster
+                    | Action::ToggleSplit
+                    | Action::ToggleFullscreen
+                    | Action::SnapPicker(false)
+            )
+        {
+            return;
+        }
         match action {
-            Action::Spawn(cmd) => self.spawn(&cmd),
+            Action::Spawn(cmd) => {
+                self.spawn(&cmd);
+            }
+            Action::Launch { app_id, argv, cwd } => {
+                // (No id: named after its program, like a command line.)
+                let id = if app_id.is_empty() {
+                    crate::app_scope::id_for(argv.first().map_or("app", |s| s))
+                } else {
+                    app_id
+                };
+                self.launch(&id, &argv, cwd.as_deref());
+            }
+            Action::Scratchpad(id) => self.scratchpad_key(&id),
             Action::CloseWindow => {
-                if let Some(t) = self.focused_window().and_then(|w| w.toplevel().cloned()) {
-                    t.send_close();
+                if let Some(w) = self.focused_window() {
+                    w.close();
                 }
             }
             Action::Workspace(n) => self.switch_workspace(usize::from(n).saturating_sub(1)),
             Action::MoveToWorkspace(n) => self.move_focused_to(usize::from(n).saturating_sub(1)),
+            Action::MoveToWorkspaceStep(dir) => self.move_focused_step(dir),
+            Action::MoveToOutput(dir) => self.move_focused_to_output(dir),
             Action::Quit => self.loop_signal.stop(),
             Action::Restart => {
                 self.exit_code = crate::keybind::RESTART_CODE;
@@ -707,6 +921,19 @@ impl WhiteRose {
                     self.toggle_fullscreen(&w);
                 }
             }
+            Action::NextWindowLayout(output) => self.next_window_layout(output.as_deref()),
+            Action::ToggleFloating => self.toggle_floating(),
+            Action::FocusDirection(d) => self.focus_direction(d),
+            Action::MoveDirection(d) => self.move_direction(d),
+            Action::ResizeDirection(d) => self.resize_direction(d),
+            Action::ResizeMode => self.tiling.key_resize = self.focused_window().is_some(),
+            Action::ToggleSplit => self.toggle_split(),
+            Action::MakeMaster => self.make_master(),
+            Action::ToggleGroup => self.toggle_group(),
+            Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
+            Action::NextTab => self.next_tab(true),
+            Action::PreviousTab => self.next_tab(false),
+
             shell => {
                 debug_assert!(shell.is_shell());
                 let name = ipc::action_name(&shell).expect("every shell action has a wire name");
@@ -730,10 +957,22 @@ impl ClientData for ClientState {
 }
 
 impl WhiteRose {
-    fn switcher_mru(&self) -> Vec<(u64, String)> {
+    /// `windows.appSwitcher.workspaces`: "current" or "all" (the default).
+    pub fn switcher_setting(&mut self, key: &str, value: &serde_json::Value) {
+        if key == "windows.appSwitcher.workspaces" {
+            self.app_switcher_current_only = value.as_str() == Some("current");
+        }
+    }
+
+    /// The windows a switcher offers, most recent first: ALT+TAB's only
+    /// on this workspace if the setting says so.
+    fn switcher_mru(&self, mode: crate::switcher::Mode) -> Vec<(u64, String)> {
+        let here = self.workspaces.active();
+        let only_here = mode == crate::switcher::Mode::Apps && self.app_switcher_current_only;
         self.workspaces
             .mru()
             .iter()
+            .filter(|w| !only_here || self.workspaces.workspace_of(w) == Some(here))
             .map(|w| (self.window_id(w), crate::ipc::toplevel_ids(w).0.unwrap_or_default()))
             .collect()
     }
@@ -744,7 +983,7 @@ impl WhiteRose {
         }
         // Held modifiers keep it open; Shift only changes direction.
         let held = crate::keybind::Mods { shift: false, ..self.shortcut_mods };
-        if let Some(s) = crate::switcher::Switcher::open(mode, &self.switcher_mru()) {
+        if let Some(s) = crate::switcher::Switcher::open(mode, &self.switcher_mru(mode)) {
             self.switcher = Some((s, held));
             self.switcher_sync();
         }

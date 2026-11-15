@@ -1,4 +1,4 @@
-//! ALT+TAB (applications) and SUPER+ALT+TAB (windows). Pure selection logic;
+//! ALT+TAB (applications) and SUPER+TAB (windows). Pure selection logic;
 //! the compositor feeds it keys and the shell draws it from IPC events.
 //!
 //! Items are taken from the focus history when the switcher opens, so the
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
-    /// SUPER+ALT+TAB: one item per window.
+    /// SUPER+TAB: one item per window.
     Windows,
     /// ALT+TAB: one item per application, holding its windows.
     Apps,
@@ -122,7 +122,7 @@ mod tests {
     fn window_mode_opens_on_the_previous_window() {
         let s = Switcher::open(Mode::Windows, &mru()).unwrap();
         assert_eq!(s.items.len(), 4);
-        assert_eq!(s.target(), Some(2), "quick SUPER+ALT+TAB goes back to the last window");
+        assert_eq!(s.target(), Some(2), "quick SUPER+TAB goes back to the last window");
     }
 
     #[test]

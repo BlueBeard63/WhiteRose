@@ -20,7 +20,7 @@ Singleton {
         badges = b;
     }
     // Updates: 1 while there's an update (or a failed start) to see to.
-    function updatesBadge(st) { setBadge("updates", st && (st.release || st.failure) ? 1 : 0) }
+    function updatesBadge(st) { setBadge("updates", st && (st.release || st.failure || st.waiting) ? 1 : 0) }
     Connections {
         target: Daemon
         function onUpdatesEvent(st) { root.updatesBadge(st) }
@@ -49,6 +49,7 @@ Singleton {
 
     // "module" or "module/sub-page".
     function open(id) {
+        if (!id) return;
         const [m, s] = String(id).split("/");
         if (modules.some(x => x.id === m)) {
             page = m;
@@ -87,6 +88,11 @@ Singleton {
 
     IpcHandler {
         target: "settings"
-        function open(page: string): void { root.open(page) }
+        // Brings the open Settings forward (bin/whiterose-settings, launched
+        // again), at PAGE if given.
+        function open(page: string): void {
+            root.open(page);
+            Compositor.focusApp("whiterose-settings");
+        }
     }
 }

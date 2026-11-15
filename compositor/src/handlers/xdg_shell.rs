@@ -23,7 +23,7 @@ use smithay::{
 };
 
 use crate::{
-    grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    grabs::{resize_grab::ResizeEdge, MoveSurfaceGrab, ResizeSurfaceGrab},
     WhiteRose,
 };
 
@@ -34,14 +34,13 @@ impl XdgShellHandler for WhiteRose {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let window = Window::new_wayland_window(surface);
-        // It opens on the output under the pointer, and must be visible
-        // there, so leave fullscreen on that output.
+        // It opens on the output under the pointer. Its first commit applies
+        // the window rules, which may move it, then leaves fullscreen on the
+        // output it ends up on (window_rules.rs).
         let output = self.pointer_output();
-        if let Some(fs) = output.as_ref().and_then(|o| self.fullscreen_on(o)).cloned() {
-            self.unfullscreen(&fs);
-        }
         // Cascade new windows so they don't stack exactly on top of each other.
-        // A real placement policy (tiling / centring) replaces this later.
+        // On a tiled workspace this is where it floats if it's untiled later;
+        // its first commit gives it a tile (tiling.rs).
         let n = self.workspaces.active_windows().len() as i32;
         // Start inside the area the bar doesn't reserve.
         let area = output.map(|o| self.usable_area_on(&o)).unwrap_or_default().loc;
@@ -80,17 +79,9 @@ impl XdgShellHandler for WhiteRose {
 
         let wl_surface = surface.wl_surface();
 
-        if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
-
-            let window =
-                self.space.elements().find(|w| w.toplevel().unwrap().wl_surface() == wl_surface).unwrap().clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-
-            let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
-
-            pointer.set_grab(self, grab, serial, Focus::Clear);
-        }
+        let Some(start_data) = check_grab(&seat, wl_surface, serial) else { return };
+        let Some(window) = self.window_for_surface(wl_surface) else { return };
+        self.start_move(window, start_data, serial);
     }
 
     fn resize_request(
@@ -104,29 +95,9 @@ impl XdgShellHandler for WhiteRose {
 
         let wl_surface = surface.wl_surface();
 
-        if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
-
-            let window =
-                self.space.elements().find(|w| w.toplevel().unwrap().wl_surface() == wl_surface).unwrap().clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-            let initial_window_size = window.geometry().size;
-
-            surface.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Resizing);
-            });
-
-            surface.send_pending_configure();
-
-            let grab = ResizeSurfaceGrab::start(
-                start_data,
-                window,
-                edges.into(),
-                Rectangle::new(initial_window_location, initial_window_size),
-            );
-
-            pointer.set_grab(self, grab, serial, Focus::Clear);
-        }
+        let Some(start_data) = check_grab(&seat, wl_surface, serial) else { return };
+        let Some(window) = self.window_for_surface(wl_surface) else { return };
+        self.start_resize(window, edges.into(), start_data, serial);
     }
 
     fn app_id_changed(&mut self, _surface: ToplevelSurface) {
@@ -135,6 +106,10 @@ impl XdgShellHandler for WhiteRose {
 
     fn title_changed(&mut self, _surface: ToplevelSurface) {
         self.ipc_sync();
+        // Tab strips show titles.
+        if !self.tiling.strips.is_empty() {
+            self.schedule_redraw();
+        }
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
@@ -159,8 +134,9 @@ impl XdgShellHandler for WhiteRose {
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<wl_output::WlOutput>) {
-        // On the output asked for, else the one the window is on.
-        if let Some(w) = self.window_for_surface(surface.wl_surface()) {
+        // On the output asked for, else the one the window is on. A
+        // scratchpad stays as it is (it's told so).
+        if let Some(w) = self.window_for_surface(surface.wl_surface()).filter(|w| !self.scratchpads.is_pad(w)) {
             self.fullscreen_to(&w, output.as_ref().and_then(smithay::output::Output::from_resource));
         } else {
             surface.send_configure();
@@ -203,7 +179,7 @@ fn check_grab(seat: &Seat<WhiteRose>, surface: &WlSurface, serial: Serial) -> Op
 /// Should be called on `WlSurface::commit`
 pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: &WlSurface) {
     // Handle toplevel commits.
-    if let Some(window) = space.elements().find(|w| w.toplevel().unwrap().wl_surface() == surface).cloned() {
+    if let Some(window) = space.elements().find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface)).cloned() {
         let initial_configure_sent = with_states(surface, |states| {
             states.data_map.get::<XdgToplevelSurfaceData>().unwrap().lock().unwrap().initial_configure_sent
         });
@@ -230,11 +206,56 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
 }
 
 impl WhiteRose {
+    /// Moves a window with the pointer (its title bar, or SUPER+drag): a
+    /// tile is dragged to a new place; anything else moves freely.
+    pub fn start_move(&mut self, window: Window, start_data: PointerGrabStartData<WhiteRose>, serial: Serial) {
+        if self.is_tiled(&window) && !Self::maximized_or_fullscreen(&window) {
+            self.start_tile_move(&window, start_data, serial);
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        let Some(initial_window_location) = self.space.element_location(&window) else { return };
+        let grab = MoveSurfaceGrab { start_data, window, initial_window_location, unsnapped: false };
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
+    /// Resizes a window from `edges` with the pointer (its border, or
+    /// SUPER+right-drag): a tile moves the splits on those edges; anything
+    /// else changes size.
+    pub fn start_resize(
+        &mut self,
+        window: Window,
+        edges: ResizeEdge,
+        start_data: PointerGrabStartData<WhiteRose>,
+        serial: Serial,
+    ) {
+        if self.is_tiled(&window) && !Self::maximized_or_fullscreen(&window) {
+            self.start_tile_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
+            return;
+        }
+        // A snapped window moves the edges it shares with other snapped
+        // windows (or its own, if it shares none).
+        if self.snap_of(&window).is_some() && !Self::maximized_or_fullscreen(&window) {
+            self.start_snap_resize(&window, crate::grabs::tile_grab::edge_dirs(edges), start_data, serial);
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        let Some(loc) = self.space.element_location(&window) else { return };
+        let Some(surface) = window.toplevel().cloned() else { return };
+        surface.with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::Resizing);
+        });
+        surface.send_pending_configure();
+        let rect = Rectangle::new(loc, window.geometry().size);
+        let grab = ResizeSurfaceGrab::start(start_data, window, edges, rect);
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
     fn unconstrain_popup(&self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             return;
         };
-        let Some(window) = self.space.elements().find(|w| w.toplevel().unwrap().wl_surface() == &root) else {
+        let Some(window) = self.space.elements().find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == &root)) else {
             return;
         };
 

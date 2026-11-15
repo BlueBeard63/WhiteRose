@@ -244,7 +244,7 @@ pub fn detect(dir: &Path) -> Vec<Project> {
 /// how it ended and waits, so its output can be read.
 pub fn wrapped(command: &str) -> String {
     format!(
-        "( {command} ); s=$?; echo; if [ $s -eq 0 ]; then echo '— done —'; else echo \"— stopped with code $s —\"; fi; printf 'Press Enter to close'; read _"
+        "( {command} ); s=$?; echo; if [ $s -eq 0 ]; then echo 'Done.'; else echo \"Stopped with code $s.\"; fi; printf 'Press Enter to close'; read _"
     )
 }
 
@@ -265,11 +265,10 @@ pub fn terminal_run_args(terminal: &str, dir: &str, cmd: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn dir(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-proj-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+    fn dir(name: &str, files: &[(&str, &str)]) -> Scratch {
+        let d = Scratch::new(&format!("proj-{name}"));
         for (f, body) in files {
             std::fs::write(d.join(f), body).unwrap();
         }
@@ -305,14 +304,12 @@ mod tests {
         assert_eq!(names(&p[2]), ["serve", "test", "sync"]);
         assert_eq!(p[2].scripts[0].command, "uv run serve");
         assert_eq!(names(&p[3]), ["all", "build", "install"]);
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
     fn nothing_for_a_plain_folder() {
         let d = dir("plain", &[("notes.txt", "x")]);
         assert!(detect(&d).is_empty());
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -344,6 +341,6 @@ mod tests {
             .stdin(std::process::Stdio::null())
             .output()
             .unwrap();
-        assert!(String::from_utf8_lossy(&out.stdout).contains("stopped with code 3"));
+        assert!(String::from_utf8_lossy(&out.stdout).contains("Stopped with code 3."));
     }
 }

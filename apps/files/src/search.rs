@@ -549,16 +549,18 @@ pub fn build_leaving(
     file: &Path,
     stop: &AtomicBool,
 ) -> Result<usize, String> {
-    build_tagged(roots, exclude, file, stop, &mut vec![])
+    build_tagged(roots, exclude, file, stop, &mut vec![], &mut |_| {})
 }
 
-/// As build_leaving, also gathering the tags found on files ([path, tags]).
+/// As build_leaving, also gathering the tags found on files ([path, tags]),
+/// and telling `progress` how many entries so far (every 1024).
 pub fn build_tagged(
     roots: &[PathBuf],
     exclude: &[PathBuf],
     file: &Path,
     stop: &AtomicBool,
     tagged: &mut Vec<(String, Vec<String>)>,
+    progress: &mut dyn FnMut(usize),
 ) -> Result<usize, String> {
     use std::os::unix::ffi::OsStrExt;
     let mut head = MAGIC.to_vec();
@@ -617,6 +619,9 @@ pub fn build_tagged(
                 body.extend_from_slice(&m.mtime().to_le_bytes());
                 put_name(&mut body, name.as_bytes());
                 count += 1;
+                if count.is_multiple_of(1024) {
+                    progress(count);
+                }
             }
         }
         ranges.push((start, count as u32, root.clone()));
@@ -808,6 +813,13 @@ impl Index {
         None
     }
 
+    /// How many entries it holds (files and folders, the tops too).
+    pub fn entries(&self) -> usize {
+        self.trees()
+            .and_then(|(t, _)| t.last().map(|x| x.1 as usize))
+            .unwrap_or(0)
+    }
+
     /// The tops of the trees in it.
     #[cfg(test)]
     pub fn roots(&self) -> Vec<PathBuf> {
@@ -903,11 +915,10 @@ pub fn index_age(file: &Path) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-search-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("search-{name}"));
         d
     }
 
@@ -1164,7 +1175,6 @@ mod tests {
         assert_eq!(run(true), ["invoice-0412.pdf.txt", "timesheet.md"]);
         // Both at once: neither has both.
         assert!(run(false).is_empty());
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -1244,7 +1254,7 @@ mod tests {
         fs::create_dir_all(d.join("Work")).unwrap();
         fs::write(d.join("Work/bank-statement.pdf"), "x").unwrap();
         let f = d.join("index");
-        build(std::slice::from_ref(&d), &f, &AtomicBool::new(false)).unwrap();
+        build(&[d.to_path_buf()], &f, &AtomicBool::new(false)).unwrap();
         let plain = fs::read(&f).unwrap();
         crate::secure::set_key_for_tests([3u8; 32]);
         fs::write(&f, crate::secure::seal_with(&[3u8; 32], &plain)).unwrap();

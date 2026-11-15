@@ -83,8 +83,14 @@ install -Dm644 shell/pam/whiterose-lock "$meta/etc/pam.d/whiterose-lock"
 install -Dm644 shell/pam/whiterose-fingerprint "$meta/etc/pam.d/whiterose-fingerprint"
 install -Dm644 packaging/files/whiterose.desktop "$meta/usr/share/wayland-sessions/whiterose.desktop"
 install -Dm644 packaging/files/whiterose-portals.conf "$meta/usr/share/xdg-desktop-portal/whiterose-portals.conf"
+# The file chooser portal: Files as every app's Open / Save (whiterosed portal,
+# started by D-Bus when the portal first asks).
+install -Dm644 packaging/files/whiterose.portal "$meta/usr/share/xdg-desktop-portal/portals/whiterose.portal"
+install -Dm644 packaging/files/org.freedesktop.impl.portal.desktop.whiterose.service "$meta/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.whiterose.service"
 install -Dm644 ARCHITECTURE.md "$meta/usr/share/doc/whiterose/ARCHITECTURE.md"
 install -Dm644 packaging/files/whiterose-autostart.sh "$meta/etc/profile.d/whiterose-autostart.sh"
+# Leftover wr-* folders in /tmp (often RAM) are cleared after a day unused.
+install -Dm644 packaging/files/whiterose-tmpfiles.conf "$meta/usr/lib/tmpfiles.d/whiterose.conf"
 install -Dm644 packaging/files/org.whiterose.apps.policy "$meta/usr/share/polkit-1/actions/org.whiterose.apps.policy"
 # Updates are only installed when signed with this key (internal/update).
 [ -f packaging/release.pub ] && install -Dm644 packaging/release.pub "$meta/usr/share/whiterose/release.pub"
@@ -96,6 +102,7 @@ install -Dm644 profile/custom.zsh-theme "$meta/usr/share/whiterose/profile/custo
 install -Dm644 profile/vscode-extensions.txt "$meta/usr/share/whiterose/profile/vscode-extensions.txt"
 
 # ---- dependencies: what the binaries link, plus what the shell uses ------------
+# (Xwayland: X11 apps; the compositor starts it when the first one connects.)
 bins="$v/bin/whiterose-wm $v/bin/quickshell $v/bin/whiterose-notepad $v/bin/whiterose-files"
 case "$FORMAT" in
 deb)
@@ -104,7 +111,7 @@ deb)
     libs=$(cd "$work/shlib" && dpkg-shlibdeps -O $bins 2>/dev/null | sed 's/^shlibs:Depends=//')
     # QuickShell uses Qt's private API: exactly this Qt.
     qtabi=$(dpkg-query -W -f='${Provides}\n' libqt6core6t64 libqt6qml6 2>/dev/null | tr ',' '\n' | grep -E 'private-abi' | sed 's/^ *//' | paste -sd, -)
-    extra="qml6-module-org-kde-syntaxhighlighting, udisks2, qml6-module-qtmultimedia, qml6-module-qtquick-pdf, qml6-module-qtquick-controls, libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime"
+    extra="qml6-module-org-kde-syntaxhighlighting, udisks2, qml6-module-qtmultimedia, qml6-module-qtquick-pdf, qml6-module-qtquick-controls, libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime, xwayland, curl"
     depends="$libs${qtabi:+, $qtabi}, $extra"
     # Fingerprint unlock and sign-in, when there's a reader (installed by
     # default, removable).
@@ -116,7 +123,7 @@ rpm)
     # bring their own dependencies (some private, which can't be required).
     libs=$(for b in $bins; do readelf -d "$b"; done | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u | grep -vE '^(ld-linux)' | sed 's/$/()(64bit)/' | paste -sd, -)
     qtver=$(rpm -q --qf '%{VERSION}' qt6-qtbase)
-    extra="kf6-syntax-highlighting, udisks2, qt6-qtmultimedia, qt6-qtpdf, mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam"
+    extra="kf6-syntax-highlighting, udisks2, qt6-qtmultimedia, qt6-qtpdf, mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam, xorg-x11-server-Xwayland, curl"
     depends="$libs, $extra"
     recommends="fprintd, fprintd-pam"
     ;;
@@ -180,6 +187,9 @@ recommends:
 $(yaml_list "$recommends")
 $scripts
 YAML
+# The version folder's build ID, signed with the packages by `make release`
+# (sign-release): an installed WhiteRose checks it's this release, unchanged.
+"$work/whiterosed" build-id "$v" > "/out/build-$VERSION-$FORMAT.id"
 nfpm package --config "$work/nfpm-core.yaml" --packager "$FORMAT" --target /out/
 nfpm package --config "$work/nfpm.yaml" --packager "$FORMAT" --target /out/
 # File names without "~" (GitHub renames such assets, and SHA256SUMS

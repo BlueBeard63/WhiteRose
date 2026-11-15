@@ -312,11 +312,10 @@ pub fn caches(root: &Path, home: &Path, stop: &AtomicBool, tell: Tell) -> Vec<Fo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-clean-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("clean-{name}"));
         d
     }
 
@@ -345,7 +344,6 @@ mod tests {
             })
             .collect();
         assert_eq!(names, vec!["big", ".hidden", "mid"]);
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -368,7 +366,6 @@ mod tests {
         assert!(g[0].files.iter().all(|f| !f.path.ends_with("almost.bin")));
         // Small files counted when asked.
         assert_eq!(duplicates(&d, 1, &stop, &mut |_| {}).len(), 2);
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -423,6 +420,5 @@ mod tests {
             "a target folder without a Cargo.toml is yours"
         );
         assert_eq!(got[0].0, "/rust/target", "largest first");
-        fs::remove_dir_all(&d).unwrap();
     }
 }

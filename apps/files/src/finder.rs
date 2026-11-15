@@ -1,9 +1,10 @@
 //! `Search` (QML singleton): finding files for QML. `find` runs on its own
 //! thread (a new search stops the one before) and `found` brings the hits:
 //! as they come for a folder's tree, at once from the index for home and
-//! the drives. The index is made again in the background, at the lowest
-//! CPU and disk priority, when it's missing or over an hour old, or when
-//! asked.
+//! the drives. The index is made again by `whiterose-files --index`
+//! (indexer.rs: its own process, lowest CPU and disk priority, carrying on
+//! when Files closes) when it's missing or over an hour old, or when asked;
+//! `poll` follows how far it's got.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -20,6 +21,13 @@ pub mod qobject {
         #[qproperty(bool, indexing)]
         /// When it was made (unix ms; 0: never).
         #[qproperty(f64, indexed, cxx_name = "indexedAt")]
+        /// While indexing: entries so far.
+        #[qproperty(f64, index_count, cxx_name = "indexCount")]
+        /// While indexing: the share done (0–1), -1 when there's nothing
+        /// to tell from (the first index).
+        #[qproperty(f64, index_done, cxx_name = "indexDone")]
+        /// While indexing: about how many seconds are left, -1 unknown.
+        #[qproperty(f64, index_left, cxx_name = "indexLeft")]
         type Search = super::SearchRust;
 
         /// `ask` (JSON): {text, scope: here | home | everywhere, here, kind,
@@ -29,14 +37,18 @@ pub mod qobject {
         fn find(self: Pin<&mut Search>, ask: &QString) -> i32;
         #[qinvokable]
         fn stop(self: &Search);
-        /// Makes the index again now. `opts` (JSON, Settings › Files ›
-        /// Search): {drives: bool, exclude: [path]}.
+        /// Makes the index again now (what's in it: Settings › Files ›
+        /// Search, read by the indexer).
         #[qinvokable]
-        fn reindex(self: Pin<&mut Search>, opts: &QString);
-        /// Makes it if it's missing, old, or asked for since (`asked`, unix ms).
+        fn reindex(self: Pin<&mut Search>);
+        /// Makes it if it's missing, old, or asked for since (`asked`, unix
+        /// ms); notices one already being made (e.g. whiterosed's).
         #[qinvokable]
         #[cxx_name = "keepFresh"]
-        fn keep_fresh(self: Pin<&mut Search>, opts: &QString, asked: f64);
+        fn keep_fresh(self: Pin<&mut Search>, asked: f64);
+        /// Reads how far the indexer has got (QML asks while `indexing`).
+        #[qinvokable]
+        fn poll(self: Pin<&mut Search>);
 
         /// {hits: [entry], seen, done}: entries like a listing's.
         #[qsignal]
@@ -68,13 +80,32 @@ const KEEP: usize = 1000;
 /// The index is made again when older than this (s).
 const STALE: i64 = 3600;
 
-#[derive(Default)]
 pub struct SearchRust {
     indexing: bool,
     indexed: f64,
+    index_count: f64,
+    index_done: f64,
+    index_left: f64,
     next: i32,
     current: Option<Arc<AtomicBool>>,
-    building: Option<Arc<AtomicBool>>,
+    /// The indexer we started is still running (before its progress file
+    /// is there, and after it's gone, this still says so).
+    child: Arc<AtomicBool>,
+}
+
+impl Default for SearchRust {
+    fn default() -> Self {
+        SearchRust {
+            indexing: false,
+            indexed: 0.0,
+            index_count: 0.0,
+            index_done: -1.0,
+            index_left: -1.0,
+            next: 0,
+            current: None,
+            child: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 fn now() -> i64 {
@@ -84,16 +115,9 @@ fn now() -> i64 {
         .unwrap_or(0)
 }
 
-#[derive(serde::Deserialize, Default)]
-#[serde(default)]
-struct Opts {
-    drives: bool,
-    exclude: Vec<String>,
-}
-
 /// What's indexed: home, and (with `drives`) the drives in the sidebar
 /// other than the system's.
-fn roots(drives: bool) -> Vec<PathBuf> {
+pub fn roots(drives: bool) -> Vec<PathBuf> {
     let home = places::home();
     let mut v = vec![home.clone()];
     for d in places::drives().into_iter().filter(|_| drives) {
@@ -288,56 +312,76 @@ impl qobject::Search {
         }
     }
 
-    pub fn reindex(mut self: Pin<&mut Self>, opts: &QString) {
-        if self.indexing {
+    pub fn reindex(mut self: Pin<&mut Self>) {
+        if self.indexing || crate::indexer::running(&search::index_file()).is_some() {
+            self.poll();
             return;
         }
-        let opts: Opts = serde_json::from_str(&opts.to_string()).unwrap_or_default();
-        let home = places::home();
-        let exclude: Vec<PathBuf> = opts
-            .exclude
-            .iter()
-            .map(|p| match p.strip_prefix("~/") {
-                Some(rest) => home.join(rest),
-                None => PathBuf::from(p),
-            })
-            .collect();
+        let Ok(exe) = std::env::current_exe() else {
+            return;
+        };
+        let mut c = std::process::Command::new(exe);
+        c.arg("--index")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit());
+        // Its own session: closing Files doesn't stop it.
+        // SAFETY: setsid in the child before exec only.
+        unsafe {
+            std::os::unix::process::CommandExt::pre_exec(&mut c, || {
+                libc::setsid();
+                Ok(())
+            });
+        }
+        let Ok(mut child) = c.spawn() else { return };
+        let alive = self.child.clone();
+        alive.store(true, Ordering::Relaxed);
+        self.as_mut().set_index_count(0.0);
+        self.as_mut().set_index_done(-1.0);
+        self.as_mut().set_index_left(-1.0);
         self.as_mut().set_indexing(true);
-        let stop = Arc::new(AtomicBool::new(false));
-        self.as_mut().rust_mut().building = Some(stop.clone());
         let thread = self.qt_thread();
         std::thread::spawn(move || {
-            background();
-            let file = search::index_file();
-            let mut tagged = vec![];
-            if search::build_tagged(&roots(opts.drives), &exclude, &file, &stop, &mut tagged)
-                .is_ok()
-            {
-                // Tags other apps put on files: on the list too.
-                crate::tags::found(tagged);
-            }
-            let at = search::index_age(&file) as f64 * 1000.0;
-            let _ = thread.queue(move |mut obj| {
-                obj.as_mut().set_indexed(at);
-                obj.as_mut().set_indexing(false);
-            });
+            let _ = child.wait();
+            alive.store(false, Ordering::Relaxed);
+            let _ = thread.queue(|obj| obj.poll());
         });
     }
 
-    pub fn keep_fresh(mut self: Pin<&mut Self>, opts: &QString, asked: f64) {
+    pub fn keep_fresh(mut self: Pin<&mut Self>, asked: f64) {
         let age = search::index_age(&search::index_file());
         self.as_mut().set_indexed(age as f64 * 1000.0);
-        if age == 0 || now() - age > STALE || asked > age as f64 * 1000.0 {
-            self.reindex(opts);
+        if crate::indexer::running(&search::index_file()).is_some() {
+            self.poll();
+        } else if age == 0 || now() - age > STALE || asked > age as f64 * 1000.0 {
+            self.reindex();
+        }
+    }
+
+    pub fn poll(mut self: Pin<&mut Self>) {
+        let file = search::index_file();
+        match crate::indexer::running(&file) {
+            Some(p) => {
+                let (done, left) =
+                    crate::indexer::estimate(&p, crate::indexer::now_ms()).unwrap_or((-1.0, -1.0));
+                self.as_mut().set_index_count(p.count as f64);
+                self.as_mut().set_index_done(done);
+                self.as_mut().set_index_left(left);
+                self.as_mut().set_indexing(true);
+            }
+            None if self.child.load(Ordering::Relaxed) => {}
+            None => {
+                self.as_mut()
+                    .set_indexed(search::index_age(&file) as f64 * 1000.0);
+                self.as_mut().set_indexing(false);
+            }
         }
     }
 }
 
 impl Drop for SearchRust {
+    // (An index being made carries on: it's its own process.)
     fn drop(&mut self) {
-        if let Some(s) = &self.building {
-            s.store(true, Ordering::Relaxed);
-        }
         if let Some(s) = &self.current {
             s.store(true, Ordering::Relaxed);
         }

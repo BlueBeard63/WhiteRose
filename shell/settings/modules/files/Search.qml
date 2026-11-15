@@ -1,10 +1,9 @@
 // Files › Search: what the search index covers (home always; drives if
-// on; folders left out), and making it again. Files makes it in the
-// background, at the lowest priority: now if it's open, else next start.
+// on; folders left out), and making it again. whiterosed makes it in the
+// background, at the lowest priority (`whiterose-files --index`): when
+// asked, when what's indexed changes, and hourly when plugged in.
 import QtQuick
-import QtQuick.Dialogs
 import Quickshell
-import Quickshell.Io
 import qs
 import qs.settings
 import "../../../Wallpapers.js" as W
@@ -15,34 +14,44 @@ Column {
     readonly property string home: Quickshell.env("HOME")
     readonly property var exclude: Daemon.setting("files.indexExclude", [])
     readonly property real asked: Daemon.setting("files.reindex", 0)
-    // When the index was made (unix s; 0 none).
-    property real made: 0
+    // whiterosed's files_index: {made (unix s; 0 none), progress (while
+    // it's being made: {started (ms), count, expected}) or null}.
+    property var index: ({ made: 0, progress: null })
+    readonly property bool busy: index.progress !== null || asked > index.made * 1000
     function ago(s) {
         if (!s) return "Not made yet";
         const d = new Date(s * 1000);
         const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
         return "Made " + d.getDate() + " " + m + ", " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
     }
-
-    Process {
-        id: stat
-        running: true
-        command: ["sh", "-c", "stat -c %Y \"${XDG_CACHE_HOME:-$HOME/.cache}/whiterose/files/index\" 2>/dev/null || echo 0"]
-        stdout: StdioCollector { onStreamFinished: page.made = parseInt(text) || 0 }
+    // As Files shows it: "Being made · 42% · about 2 min left" (the share
+    // from the last index's size; the first time, a count).
+    function making(p) {
+        if (!p || !p.count) return "Being made…";
+        if (!p.expected) return "Being made · " + p.count.toLocaleString() + " items so far";
+        const done = Math.min(0.99, p.count / p.expected);
+        const took = (Date.now() - p.started) / 1000;
+        const pct = Math.round(done * 100) + "%";
+        if (took < 1) return "Being made · " + pct;
+        const left = took / done * (1 - done);
+        const t = left < 45 ? "under a minute" : left < 3600 ? "about " + Math.max(1, Math.round(left / 60)) + " min" : "about " + Math.round(left / 360) / 10 + " h";
+        return "Being made · " + pct + " · " + t + " left";
     }
-    // Asked for again: look again in a while (Files makes it in the background).
-    Timer { running: page.asked > page.made * 1000; interval: 3000; repeat: true; onTriggered: stat.running = true }
+    function refresh() { Daemon.request({ op: "files_index" }, (v, err) => { if (!err && v) page.index = v }) }
+    Component.onCompleted: refresh()
+    // While it's being made (or asked for and not started yet): follow it.
+    Timer { running: page.busy && page.visible; interval: 1000; repeat: true; onTriggered: page.refresh() }
 
     PageHeader { title: "Search"; subtitle: "Files › what searching Home and Everywhere looks through." }
 
     Card {
         SettingRow {
             title: "Search index"
-            subtitle: page.asked > page.made * 1000 ? "Being made again…" : page.ago(page.made)
+            subtitle: page.busy ? page.making(page.index.progress) : page.ago(page.index.made)
             Button {
                 text: "Make again"
-                enabled: !(page.asked > page.made * 1000)
-                onClicked: Daemon.set("files.reindex", Date.now())
+                enabled: !page.busy
+                onClicked: { Daemon.set("files.reindex", Date.now()); page.refresh() }
             }
         }
         SettingRow {
@@ -93,12 +102,13 @@ Column {
         }
     }
 
-    FolderDialog {
+    FilePicker {
         id: folderDialog
         title: "A folder to leave out of the index"
-        currentFolder: "file://" + page.home
-        onAccepted: {
-            const path = W.tildify(decodeURIComponent(String(selectedFolder).replace(/^file:\/\//, "")), page.home);
+        folder: page.home
+        folders: true
+        onPicked: picked => {
+            const path = W.tildify(picked, page.home);
             if (!page.exclude.includes(path)) Daemon.set("files.indexExclude", page.exclude.concat([path]));
         }
     }

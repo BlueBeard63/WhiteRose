@@ -33,6 +33,26 @@ func TestKeepTwo(t *testing.T) {
 	}
 }
 
+// A release picked under Releases (an older one) stays too; the newest
+// always does (the whiterose package depends on it).
+func TestKeepChosen(t *testing.T) {
+	all := []string{"0.2.0", "0.2.1", "0.3.0-alpha.2", "0.3.0-alpha.3"}
+	if got := Keep(all, "0.3.0-alpha.3", "0.2.1"); !reflect.DeepEqual(got, []string{"0.3.0-alpha.3", "0.3.0-alpha.2", "0.2.1"}) {
+		t.Errorf("%v", got)
+	}
+	if got := Remove(all, "0.3.0-alpha.3", "0.2.1"); !reflect.DeepEqual(got, []string{"0.2.0"}) {
+		t.Errorf("%v", got)
+	}
+	// Running an older one and picking another: newest, running, chosen.
+	if got := Remove(all, "0.2.1", "0.2.0"); !reflect.DeepEqual(got, []string{"0.3.0-alpha.2"}) {
+		t.Errorf("%v", got)
+	}
+	// Not installed, or already kept: nothing extra.
+	if got := Keep(all, "0.3.0-alpha.3", "0.9.9", "0.3.0-alpha.3"); len(got) != 2 {
+		t.Errorf("%v", got)
+	}
+}
+
 func TestInstalled(t *testing.T) {
 	root := t.TempDir()
 	for _, v := range []string{"0.10.0", "0.9.1", "0.5.0", "half", "../x"} {

@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import WhiteRose.Kit
 import WhiteRose.Notepad
+import "Placeholder.js" as Placeholder
 
 Item {
     id: ed
@@ -204,10 +205,13 @@ Item {
                 if (ed.syntax !== "" && ed.syntax !== "Markdown" && ed.syntax !== "Makefile") { area.insert(area.cursorPosition, "    "); e.accepted = true }
                 else e.accepted = false;
             }
+            // Empty: what this document is, until something's typed.
             Text {
-                visible: area.text === "" && ed.scratch
+                visible: area.text === "" && !ed.loading
                 x: area.leftPadding; y: area.topPadding
-                text: "Notes, lists, anything. It saves itself."
+                width: flick.width - area.leftPadding - area.rightPadding
+                wrapMode: Text.Wrap
+                text: Placeholder.text({ scratch: ed.scratch, path: ed.path, syntax: ed.syntax, language: ed.language })
                 color: Theme.faint
                 font: area.font
             }

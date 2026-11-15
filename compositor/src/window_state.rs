@@ -16,6 +16,7 @@ use smithay::{
 };
 
 use crate::state::WhiteRose;
+use crate::win::WinExt;
 
 impl WhiteRose {
     /// The fullscreen window showing on `output` (visible workspace), if any.
@@ -30,7 +31,7 @@ impl WhiteRose {
     }
 
     /// Remembers which output `w` fills from now on.
-    fn fill(&mut self, w: &Window, o: Output) {
+    pub(crate) fn fill(&mut self, w: &Window, o: Output) {
         self.filling.retain(|(f, _)| f != w);
         self.filling.push((w.clone(), o));
     }
@@ -43,23 +44,22 @@ impl WhiteRose {
         self.restore_geometry.push((w.clone(), Rectangle::new(loc, w.geometry().size)));
     }
 
-    fn has_state(w: &Window, state: ToplevelState) -> bool {
-        w.toplevel().is_some_and(|t| t.with_pending_state(|s| s.states.contains(state)))
+    pub(crate) fn has_state(w: &Window, state: ToplevelState) -> bool {
+        w.has(state)
     }
 
     /// Applies `state` with `rect` as the window's size and position.
-    fn apply(&mut self, w: &Window, state: ToplevelState, on: bool, rect: Option<Rectangle<i32, Logical>>) {
-        let Some(toplevel) = w.toplevel() else { return };
-        toplevel.with_pending_state(|s| {
+    pub(crate) fn apply(&mut self, w: &Window, state: ToplevelState, on: bool, rect: Option<Rectangle<i32, Logical>>) {
+        w.pend(|s| {
             if on {
-                s.states.set(state);
+                s.set(state);
             } else {
-                s.states.unset(state);
+                s.unset(state);
             }
             // A zero size lets the client choose (e.g. it never had a buffer).
             s.size = rect.map(|r| r.size).filter(|sz| sz.w > 0 && sz.h > 0);
         });
-        toplevel.send_pending_configure();
+        w.configure();
         if let Some(r) = rect {
             self.space.map_element(w.clone(), r.loc, true);
         }
@@ -94,6 +94,8 @@ impl WhiteRose {
             self.take_floating(w)
         };
         self.apply(w, ToplevelState::Maximized, false, rect);
+        // Back into its tile, if it's tiled.
+        self.retile();
     }
 
     pub fn fullscreen(&mut self, w: &Window) {
@@ -109,8 +111,10 @@ impl WhiteRose {
         if already && self.output_of(w).as_ref() == Some(&o) {
             return;
         }
-        // One fullscreen window per output.
-        if let Some(prev) = self.fullscreen_on(&o).filter(|p| *p != w).cloned() {
+        // One fullscreen window per output (of those showing: a window a
+        // rule opens on another workspace leaves this one be).
+        let showing = self.workspaces.workspace_of(w) == Some(self.workspaces.active());
+        if let Some(prev) = self.fullscreen_on(&o).filter(|p| showing && *p != w).cloned() {
             self.unfullscreen(&prev);
         }
         self.remember_floating(w);
@@ -138,6 +142,7 @@ impl WhiteRose {
             self.take_floating(w)
         };
         self.apply(w, ToplevelState::Fullscreen, false, rect);
+        self.retile();
         self.island_sync();
     }
 
@@ -149,7 +154,7 @@ impl WhiteRose {
         }
     }
 
-    /// Re-fits maximized and fullscreen windows after the output or the
+    /// Re-fits maximized and fullscreen windows, and the tiles, after the output or the
     /// panels' reserved space changed (bar appeared, output resized).
     /// Cheap when nothing changed: the bar commits often (clock, EQ), so this
     /// only reconfigures windows when the geometry really moved.
@@ -172,6 +177,7 @@ impl WhiteRose {
             let rect = if fs { self.output_rect(&o) } else { self.usable_area_on(&o) };
             self.apply(&w, if fs { ToplevelState::Fullscreen } else { ToplevelState::Maximized }, true, Some(rect));
         }
+        self.retile();
     }
 
     /// Drops all maximize/fullscreen bookkeeping for a closed window.

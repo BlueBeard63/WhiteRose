@@ -65,11 +65,11 @@ pub fn clear(file: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn gathers_and_forgets() {
-        let d = std::env::temp_dir().join(format!("wr-shelf-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
+        let d = Scratch::new("shelf");
         std::fs::create_dir_all(d.join("Photos/2026")).unwrap();
         std::fs::write(d.join("Photos/2026/a.jpg"), "a").unwrap();
         std::fs::write(d.join("report.pdf"), "r").unwrap();
@@ -103,6 +103,5 @@ mod tests {
         add(&f, &[p("Photos")]).unwrap();
         clear(&f).unwrap();
         assert!(load(&f).is_empty());
-        std::fs::remove_dir_all(&d).unwrap();
     }
 }

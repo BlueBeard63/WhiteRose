@@ -211,6 +211,7 @@ fn convert_to(path: &Path, sealed: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn seals_and_opens() {
@@ -266,8 +267,7 @@ mod tests {
     #[test]
     fn files_switch_either_way() {
         set_key_for_tests([3u8; 32]);
-        let d = std::env::temp_dir().join(format!("wr-secure-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("secure");
         let f = d.join("visits.json");
         // (The switch itself isn't touched: other tests run alongside.)
         write_as(&f, b"{\"/home/x\": 1}", false).unwrap();
@@ -281,6 +281,5 @@ mod tests {
         assert_eq!(fs::read(&f).unwrap(), b"{\"/home/x\": 1}");
         assert_eq!(from_hex(&"ab".repeat(32)), Some([0xab; 32]));
         assert_eq!(from_hex("xyz"), None);
-        fs::remove_dir_all(&d).unwrap();
     }
 }

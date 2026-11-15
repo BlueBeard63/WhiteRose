@@ -1,19 +1,27 @@
 //! Input handling: shortcuts first, then forwarding to clients.
 //! Pointer handling follows Smithay's smallvil example (MIT).
 
+use crate::win::WinExt;
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
+        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, GestureBeginEvent as _, GestureEndEvent as _,
+        GesturePinchUpdateEvent as _, GestureSwipeUpdateEvent as _, InputBackend, InputEvent, KeyState,
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
+    desktop::Window,
     input::{
         keyboard::FilterResult,
-        pointer::{AxisFrame, ButtonEvent, MotionEvent},
+        pointer::{
+            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
+            GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
+            GestureSwipeUpdateEvent, GrabStartData, MotionEvent,
+        },
     },
-    utils::{Logical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point, Serial, SERIAL_COUNTER},
 };
 
 use crate::{
+    grabs::tile_grab::nearest_corner,
     keybind::{is_logo_key, Action, Mods},
     state::WhiteRose,
 };
@@ -30,16 +38,17 @@ impl WhiteRose {
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
                 self.on_pointer_motion(pos, event.time_msec());
             }
-            InputEvent::PointerMotion { event, .. } => {
-                let pointer = self.seat.get_pointer().expect("seat has a pointer");
-                let pos = self.clamp_to_outputs(pointer.current_location(), pointer.current_location() + event.delta());
-                self.on_pointer_motion(pos, event.time_msec());
-            }
+            InputEvent::PointerMotion { event, .. } => self.on_pointer_relative(event.delta(), event.time_msec()),
             InputEvent::PointerButton { event, .. } => {
                 self.on_pointer_button(event.button_code(), event.state(), event.time_msec())
             }
             InputEvent::PointerAxis { event, .. } => {
                 self.activity();
+                // Scrolling with SUPER held uses it: letting go mustn't open
+                // the launcher.
+                if self.super_held() {
+                    self.logo_tap_pending = false;
+                }
                 let source = event.source();
                 let amount =
                     |axis| event.amount(axis).unwrap_or_else(|| event.amount_v120(axis).unwrap_or(0.0) * 15.0 / 120.);
@@ -60,8 +69,97 @@ impl WhiteRose {
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
+            // Touchpad gestures go to the app under the pointer, as they
+            // come (a browser's pinch to zoom, two-finger swipe back).
+            InputEvent::GestureSwipeBegin { event, .. } => {
+                self.activity();
+                let e = GestureSwipeBeginEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: event.time_msec(),
+                    fingers: event.fingers(),
+                };
+                self.with_pointer(|p, s| p.gesture_swipe_begin(s, &e));
+            }
+            InputEvent::GestureSwipeUpdate { event, .. } => {
+                self.activity();
+                let e = GestureSwipeUpdateEvent { time: event.time_msec(), delta: event.delta() };
+                self.with_pointer(|p, s| p.gesture_swipe_update(s, &e));
+            }
+            InputEvent::GestureSwipeEnd { event, .. } => {
+                let e = GestureSwipeEndEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: event.time_msec(),
+                    cancelled: event.cancelled(),
+                };
+                self.with_pointer(|p, s| p.gesture_swipe_end(s, &e));
+            }
+            InputEvent::GesturePinchBegin { event, .. } => {
+                self.activity();
+                let e = GesturePinchBeginEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: event.time_msec(),
+                    fingers: event.fingers(),
+                };
+                self.with_pointer(|p, s| p.gesture_pinch_begin(s, &e));
+            }
+            InputEvent::GesturePinchUpdate { event, .. } => {
+                self.activity();
+                let e = GesturePinchUpdateEvent {
+                    time: event.time_msec(),
+                    delta: event.delta(),
+                    scale: event.scale(),
+                    rotation: event.rotation(),
+                };
+                self.with_pointer(|p, s| p.gesture_pinch_update(s, &e));
+            }
+            InputEvent::GesturePinchEnd { event, .. } => {
+                let e = GesturePinchEndEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: event.time_msec(),
+                    cancelled: event.cancelled(),
+                };
+                self.with_pointer(|p, s| p.gesture_pinch_end(s, &e));
+            }
+            InputEvent::GestureHoldBegin { event, .. } => {
+                self.activity();
+                let e = GestureHoldBeginEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: event.time_msec(),
+                    fingers: event.fingers(),
+                };
+                self.with_pointer(|p, s| p.gesture_hold_begin(s, &e));
+            }
+            InputEvent::GestureHoldEnd { event, .. } => {
+                let e = GestureHoldEndEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: event.time_msec(),
+                    cancelled: event.cancelled(),
+                };
+                self.with_pointer(|p, s| p.gesture_hold_end(s, &e));
+            }
             _ => {}
         }
+    }
+
+    /// Runs `f` with the seat's pointer.
+    fn with_pointer(&mut self, f: impl FnOnce(&smithay::input::pointer::PointerHandle<Self>, &mut Self)) {
+        let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        f(&pointer, self);
+    }
+
+    /// A mouse or touchpad moved the pointer by `delta`: faster while the
+    /// modifiers in `mouse.fasterWith` (and only those) are held. They still
+    /// reach apps: nothing is taken. Also driven by tests.
+    pub fn on_pointer_relative(&mut self, delta: Point<f64, Logical>, time: u32) {
+        let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        let held = self.seat.get_keyboard().map(|k| Mods::from(&k.modifier_state()));
+        let k = match (self.pointer.faster_with, held) {
+            (Some(want), Some(held)) if held == want => self.pointer.faster_by,
+            _ => 1.0,
+        };
+        let from = pointer.current_location();
+        let pos = self.clamp_to_outputs(from, from + delta.upscale(k));
+        self.on_pointer_motion(pos, time);
     }
 
     /// The pointer moved to `pos` (global coordinates). Also driven by tests.
@@ -69,9 +167,28 @@ impl WhiteRose {
         self.activity();
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
+        let from = pointer.current_location();
         let under = self.surface_under(pos);
+        let over_nothing = under.is_none();
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
         pointer.frame(self);
+        if !pointer.is_grabbed() {
+            // Over nothing (a gap between windows): the arrow. Apps set
+            // their cursor as the pointer enters them, but nothing does
+            // here, so the last app's (a resize arrow at its edge) stayed.
+            let arrow = smithay::input::pointer::CursorImageStatus::default_named();
+            if over_nothing && self.cursor_status != arrow {
+                self.cursor_status = arrow;
+                self.schedule_redraw();
+            }
+            self.picker_pointer(pos);
+            // (Dragging something is never a shake.)
+            if self.draws_cursor {
+                self.shake.motion(pos.x - from.x, pos.y - from.y, crate::shake::now_ms());
+            }
+        }
+        // An X11 app dragging off its windows: catch it for Wayland ones.
+        self.xdnd_pointer(pos);
         // The drag icon follows the pointer, and so does a pointer we draw.
         if self.dnd_icon.is_some() || self.draws_cursor {
             self.schedule_redraw();
@@ -99,12 +216,17 @@ impl WhiteRose {
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         let serial = SERIAL_COUNTER.next_serial();
         let button_state = state;
+        if button_state == ButtonState::Pressed {
+            self.shake.reset();
+        }
 
         if button_state == ButtonState::Pressed && self.is_locked() {
             self.focus_lock_surface();
         } else if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
             let at = pointer.current_location();
-            if let Some(layer) = self.top_layer_at(at) {
+            if self.picker_click(at) {
+                // The snap picker's: a cell was chosen (or a gap clicked).
+            } else if let Some(layer) = self.top_layer_at(at) {
                 // Clicks on panels never change window focus. Panels that
                 // take typing (e.g. a search field) get the keyboard.
                 if layer.can_receive_keyboard_focus() {
@@ -112,13 +234,70 @@ impl WhiteRose {
                     keyboard.set_focus(self, Some(layer.wl_surface().clone()), serial);
                 }
             } else {
-                let clicked = self.space.element_under(at).map(|(w, _)| w.clone());
-                // Click-to-focus; clicking the background clears focus.
-                self.focus_window(clicked);
+                let clicked = self.window_under(at).map(|(w, _)| w.clone());
+                // An X11 menu or tooltip takes the click, not the focus.
+                if clicked.as_ref().is_some_and(crate::xwayland::unmanaged) {
+                } else if !self.mouse_grab(button, at, clicked.as_ref(), serial) {
+                    // Click-to-focus; clicking the background clears focus.
+                    self.focus_window(clicked);
+                }
             }
         }
         pointer.button(self, &ButtonEvent { button, state: button_state, serial, time });
         pointer.frame(self);
+        // (Released: an X11 drag's drop catcher goes.)
+        let at = pointer.current_location();
+        self.xdnd_pointer(at);
+    }
+
+    /// SUPER+left-drag moves a window and SUPER+right-drag resizes it from
+    /// the nearest corner; a tab shows its window (and drags it out);
+    /// dragging the gap between tiles (or snapped windows) resizes them.
+    /// True if a drag started (the click is the compositor's).
+    fn mouse_grab(&mut self, button: u32, at: Point<f64, Logical>, clicked: Option<&Window>, serial: Serial) -> bool {
+        const BTN_LEFT: u32 = 0x110;
+        const BTN_RIGHT: u32 = 0x111;
+        let start = GrabStartData { focus: None, button, location: at };
+        if self.super_held() && (button == BTN_LEFT || button == BTN_RIGHT) {
+            let Some(w) = clicked.filter(|w| !self.fullscreen.contains(w)).cloned() else { return false };
+            self.focus_window(Some(w.clone()));
+            if button == BTN_LEFT {
+                self.start_move(w, start, serial);
+            } else {
+                let rect = self.space.element_geometry(&w).unwrap_or_default();
+                self.start_resize(w, nearest_corner(rect, at), start, serial);
+            }
+            return true;
+        }
+        if button == BTN_LEFT && clicked.is_none() {
+            // A tab: show it, and drag it if the pointer moves.
+            if let Some(tab) = self.tab_at(at) {
+                self.focus_window(Some(tab.clone()));
+                self.start_move(tab, start, serial);
+                return true;
+            }
+            if let Some((w, edges)) = self.gap_at(at) {
+                self.start_tile_resize(&w, edges, start, serial);
+                return true;
+            }
+            if let Some((w, edges)) = self.snap_gap_at(at) {
+                self.start_snap_resize(&w, edges, start, serial);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Is SUPER held (or what stands in for it, with --mod ctrl-alt)?
+    fn super_held(&self) -> bool {
+        let Some(keyboard) = self.seat.get_keyboard() else { return false };
+        let held = Mods::from(&keyboard.modifier_state());
+        match self.keyboard.logo_remap {
+            Some(m) => {
+                (!m.ctrl || held.ctrl) && (!m.alt || held.alt) && (!m.shift || held.shift) && (!m.logo || held.logo)
+            }
+            None => held.logo,
+        }
     }
 
     /// One key event from any backend (also driven directly by tests).
@@ -153,6 +332,25 @@ impl WhiteRose {
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
                 }
+                // The snap picker takes the arrows, Enter and Escape; its
+                // own shortcut closes it.
+                if pressed && state.snap.picker.is_some() {
+                    let toggle =
+                        matches!(state.bindings.lookup(Mods::from(mods), sym), Some(Action::SnapPicker(false)));
+                    if toggle {
+                        state.close_picker();
+                    }
+                    if toggle || state.picker_key(sym) {
+                        state.swallowed.push(keycode);
+                        return FilterResult::Intercept(None);
+                    }
+                }
+                // Resize mode takes the arrows (and Escape or Enter ends it).
+                if state.tiling.key_resize && pressed {
+                    if let Some(result) = state.resize_mode_key(sym, keycode) {
+                        return result;
+                    }
+                }
 
                 // SUPER on its own opens the launcher, on release, and only if no
                 // other key was pressed while it was held.
@@ -186,11 +384,44 @@ impl WhiteRose {
             tracing::debug!(?action, "shortcut");
             self.run_action(action);
         }
+        // SHIFT pressed or let go while dragging shows or hides the zones.
+        self.snap_drag_refresh();
     }
 }
 
 impl WhiteRose {
-    /// Keys while ALT+TAB / SUPER+ALT+TAB is open. Releasing the modifiers
+    /// A key pressed in resize mode: an arrow resizes the focused window,
+    /// Escape or Enter ends the mode, a modifier is passed on, and any other
+    /// key ends it and then works as usual (None).
+    fn resize_mode_key(
+        &mut self,
+        sym: smithay::input::keyboard::Keysym,
+        keycode: smithay::input::keyboard::Keycode,
+    ) -> Option<FilterResult<Option<Action>>> {
+        use smithay::input::keyboard::keysyms as k;
+        let dir = match sym.raw() {
+            k::KEY_Left => Some(crate::layout::Dir::Left),
+            k::KEY_Right => Some(crate::layout::Dir::Right),
+            k::KEY_Up => Some(crate::layout::Dir::Up),
+            k::KEY_Down => Some(crate::layout::Dir::Down),
+            _ => None,
+        };
+        if let Some(d) = dir {
+            self.swallowed.push(keycode);
+            return Some(FilterResult::Intercept(Some(Action::ResizeDirection(d))));
+        }
+        if sym.is_modifier_key() {
+            return Some(FilterResult::Forward);
+        }
+        self.tiling.key_resize = false;
+        if matches!(sym.raw(), k::KEY_Escape | k::KEY_Return | k::KEY_KP_Enter) {
+            self.swallowed.push(keycode);
+            return Some(FilterResult::Intercept(None));
+        }
+        None
+    }
+
+    /// Keys while ALT+TAB / SUPER+TAB is open. Releasing the modifiers
     /// that opened it focuses the selection.
     fn switcher_key(
         &mut self,
@@ -243,9 +474,7 @@ impl WhiteRose {
             k::KEY_q => {
                 let targets = s.close_targets();
                 for w in self.workspaces.mru().iter().filter(|w| targets.contains(&self.window_id(w))) {
-                    if let Some(t) = w.toplevel() {
-                        t.send_close();
-                    }
+                    w.close();
                 }
             }
             k::KEY_Escape => self.cancel_switcher(),

@@ -219,7 +219,6 @@ pub fn draw(p: &Piece, cache: &Path, dark: bool, ink: &str) -> Result<(), String
             .and_then(|_| std::fs::rename(work.join("m.svg"), &out).map_err(|e| e.to_string()))
         }
     };
-    let _ = std::fs::remove_dir_all(&work);
     r
 }
 
@@ -239,7 +238,30 @@ fn run(c: &mut Command) -> Result<(), String> {
     }
 }
 
-fn tempdir() -> Result<PathBuf, String> {
+/// A drawing's work folder, removed when dropped (also when a step fails
+/// part way, so /tmp, often RAM, doesn't collect them).
+struct WorkDir(PathBuf);
+
+impl Drop for WorkDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for WorkDir {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for WorkDir {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn tempdir() -> Result<WorkDir, String> {
     let d = std::env::temp_dir().join(format!(
         "wr-render-{}-{}",
         std::process::id(),
@@ -249,12 +271,13 @@ fn tempdir() -> Result<PathBuf, String> {
             .unwrap_or(0)
     ));
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
-    Ok(d)
+    Ok(WorkDir(d))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn finds_diagrams_and_maths_but_not_code_or_money() {
@@ -278,9 +301,7 @@ mod tests {
 
     #[test]
     fn swaps_in_what_is_drawn() {
-        let d = std::env::temp_dir().join(format!("wr-md-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("md");
         let md = "a $x^2$ b\n\n```mermaid\ngraph LR\n```\nend";
         let (out, missing) = with_drawings(md, &d, true, "#ffffff");
         assert_eq!(out, md);
@@ -296,6 +317,5 @@ mod tests {
         // Another theme: drawn again.
         assert_eq!(with_drawings(md, &d, false, "#000000").1.len(), 2);
         assert_eq!(tools(&|n| n == "mmdc"), (true, false));
-        std::fs::remove_dir_all(&d).unwrap();
     }
 }

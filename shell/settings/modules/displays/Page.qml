@@ -92,7 +92,7 @@ Column {
         Text {
             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
             text: page.trying ? "Going back to the previous settings in " + page.secondsLeft + " s unless you keep these"
-                : page.dirty ? "Changes are tested first, then revert after " + page.trialSeconds + " s unless you confirm"
+                : page.dirty ? "Changes revert after " + page.trialSeconds + " s unless you keep them"
                 : ""
             color: page.trying ? Theme.text : Theme.faint
             font { family: Theme.font; pointSize: Theme.pt(11.5) }
@@ -112,12 +112,12 @@ Column {
 
     PageHeader {
         title: "Displays"
-        subtitle: "Monitors are matched by their EDID identity, not by the port they use."
+        subtitle: "WhiteRose recognises each monitor by its EDID, not the port it's plugged into."
         Choice {
             visible: page.several && page.caps.position
             value: page.profile
             options: page.profiles.map(p => ({ label: "Profile · " + p.name, value: p.name }))
-                .concat(page.profiles.some(p => p.name === page.profile) ? [] : [{ label: "Profile · New", value: page.profile }])
+                .concat(page.profiles.some(p => p.name === page.profile) ? [] : [{ label: "Profile · new", value: page.profile }])
             onPicked: v => page.useProfile(v)
         }
         Button { text: "Identify"; onClicked: Compositor.identifyOutputs() }
@@ -310,18 +310,21 @@ Column {
     // ---- the selected monitor ---------------------------------------------------------
     Card {
         visible: page.current !== null
-        // Header: name, model, how it's identified.
+        // Header: name, model, how it's identified (narrow: the ID under the name).
         Item {
-            width: parent.width; height: 64
+            id: monHeader
+            readonly property bool narrow: page.width < 560
+            width: parent.width; height: narrow ? 64 + 26 : 64
             Rectangle {
                 id: monIcon
-                x: 16; anchors.verticalCenter: parent.verticalCenter
+                x: 16; y: 15
                 width: 34; height: 34; radius: 10
                 color: Theme.surface2
                 Icon { anchors.centerIn: parent; name: "monitor"; size: 16; color: Theme.text }
             }
             Column {
-                anchors { left: monIcon.right; leftMargin: 12; right: badges.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                id: monText
+                anchors { left: monIcon.right; leftMargin: 12; right: monHeader.narrow ? parent.right : badges.left; rightMargin: monHeader.narrow ? 16 : 12; verticalCenter: monIcon.verticalCenter }
                 spacing: 2
                 Text {
                     width: parent.width; elide: Text.ElideRight
@@ -338,7 +341,8 @@ Column {
             }
             Row {
                 id: badges
-                anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                x: monHeader.narrow ? monText.x : parent.width - 16 - width
+                y: monHeader.narrow ? 60 : Math.round((64 - height) / 2)
                 spacing: 6
                 Badge { dot: false; text: "# " + (page.current?.id ?? "") }
                 Item { width: 6; height: 1 }
@@ -389,11 +393,13 @@ Column {
             title: "Position"
             subtitle: "Logical pixels, top-left of this monitor"
             Field {
+                label: "Position x"
                 implicitWidth: 86; mono: true
                 text: String(page.current?.position[0] ?? 0)
                 onAccepted: { const v = parseInt(text); if (!isNaN(v)) page.draft = D.place(page.draft, page.selected, v, page.current.position[1], 0) }
             }
             Field {
+                label: "Position y"
                 implicitWidth: 86; mono: true
                 text: String(page.current?.position[1] ?? 0)
                 onAccepted: { const v = parseInt(text); if (!isNaN(v)) page.draft = D.place(page.draft, page.selected, page.current.position[0], v, 0) }
@@ -428,10 +434,11 @@ Column {
         }
         SettingRow {
             title: "Scale"
-            subtitle: "Fractional scaling"
+            subtitle: "Below 100% fits more on screen"
             Segmented {
+                readonly property var steps: [0.75, 1, 1.25, 1.5, 2]
                 value: page.current?.scale ?? 1
-                options: [1, 1.25, 1.5, 2].concat([1, 1.25, 1.5, 2].includes(page.current?.scale ?? 1) ? [] : [page.current.scale])
+                options: steps.concat(steps.includes(page.current?.scale ?? 1) ? [] : [page.current.scale]).sort((x, y) => x - y)
                     .map(s => ({ label: Math.round(s * 100) + "%", value: s }))
                 onPicked: v => page.edit(page.selected, { scale: v })
             }

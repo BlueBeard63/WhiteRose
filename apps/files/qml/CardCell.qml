@@ -15,7 +15,16 @@ Item {
     // The grid it's in: k (size), cellWidth / cellHeight, current, focused, takeFocus(), now.
     required property var view
     readonly property bool on: !!cell.pane.selected[modelData.path]
-    readonly property bool photo: String(modelData.mime).startsWith("image/") && modelData.size < 40e6
+    // (For screen readers and the UI tests: the file, whether it's
+    // selected, and, while renaming, its new name.)
+    Accessible.role: Accessible.ListItem
+    Accessible.name: cell.modelData.name ?? ""
+    Accessible.description: ""
+    Accessible.selectable: true
+    Accessible.selected: cell.on
+
+    // (Not on a network drive: each would download the whole image.)
+    readonly property bool photo: !pane.remote && String(modelData.mime).startsWith("image/") && modelData.size < 40e6
     width: cell.view.cellWidth; height: cell.view.cellHeight
     // Selected next to selected: one block (no gap, no corner, between them).
     readonly property var join: cell.pane.joined(cell.at, cell.view.cols)
@@ -39,7 +48,7 @@ Item {
             Image {
                 anchors { fill: parent; margins: cell.photo ? 0 : 4 }
                 visible: !cell.modelData.look
-                source: cell.photo ? "file://" + cell.modelData.path : cell.modelData.icon ? "file://" + cell.modelData.icon : ""
+                source: cell.photo ? F.fileUrl(cell.modelData.path) : cell.modelData.icon ? F.fileUrl(cell.modelData.icon) : ""
                 sourceSize: Qt.size(width * 2, height * 2)
                 fillMode: cell.photo ? Image.PreserveAspectCrop : Image.PreserveAspectFit
                 asynchronous: true

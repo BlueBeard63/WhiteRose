@@ -7,6 +7,7 @@ import QtQuick.Controls.Basic
 import WhiteRose.Kit
 import WhiteRose.Files
 import "Drops.js" as D
+import "Format.js" as Fmt
 
 Rectangle {
     id: root
@@ -77,7 +78,7 @@ Rectangle {
                 id: chipRow
                 x: 8; anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
-                Image { width: 28; height: 28; sourceSize: Qt.size(56, 56); source: chip.modelData.icon ? "file://" + chip.modelData.icon : ""; anchors.verticalCenter: parent.verticalCenter }
+                Image { width: 28; height: 28; sourceSize: Qt.size(56, 56); source: chip.modelData.icon ? Fmt.fileUrl(chip.modelData.icon) : ""; anchors.verticalCenter: parent.verticalCenter }
                 Text {
                     width: Math.min(implicitWidth, 130)
                     anchors.verticalCenter: parent.verticalCenter

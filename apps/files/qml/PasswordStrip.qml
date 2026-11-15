@@ -40,7 +40,7 @@ Strip {
     Text {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.wrong
-        text: "That isn't right; try again"
+        text: "Wrong password. Try again."
         color: Theme.rose
         font { family: Theme.font; pointSize: Theme.pt(10.5) }
     }

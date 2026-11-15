@@ -105,7 +105,7 @@ impl<W: Clone + PartialEq> Workspaces<W> {
         ws != self.active
     }
 
-    /// Every window, most recently focused first (for SUPER+ALT+TAB).
+    /// Every window, most recently focused first (for SUPER+TAB).
     pub fn mru(&self) -> &[W] {
         &self.mru
     }

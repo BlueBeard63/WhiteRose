@@ -7,6 +7,12 @@ export XDG_SESSION_TYPE=wayland
 export QT_QPA_PLATFORM=wayland
 export MOZ_ENABLE_WAYLAND=1
 export ELECTRON_OZONE_PLATFORM_HINT=auto
+# Apps' Open and Save dialogs go through the desktop portal, whose file
+# chooser is WhiteRose Files: GTK 3, GTK 4 and Qt apps are told to use it
+# (Electron apps do by themselves).
+export GTK_USE_PORTAL=1
+export GDK_DEBUG=portals
+export QT_QPA_PLATFORMTHEME=xdgdesktopportal
 # The terminal SUPER+RETURN opens: $TERMINAL, else the first one installed.
 if [ -z "$TERMINAL" ]; then
     for t in ghostty ptyxis gnome-terminal konsole foot xterm; do

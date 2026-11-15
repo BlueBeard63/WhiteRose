@@ -5,6 +5,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import "Search.js" as Search
 
 Singleton {
     id: root
@@ -16,14 +17,19 @@ Singleton {
     property int activeWorkspace: 1
     property int workspaceCount: 9
     property var occupiedWorkspaces: []
+    // The active workspace's window layout on each screen, by screen name:
+    // "floating", "dwindle" or "master".
+    property var windowLayouts: ({})
     property string focusedAppId: ""
     property string focusedTitle: ""
     // Every window, most recently used first:
     // { id, app_id, title, workspace (1-based), focused }.
     property var windows: []
-    // ALT+TAB / SUPER+ALT+TAB, run by the compositor: null when closed, else
+    // ALT+TAB / SUPER+TAB, run by the compositor: null when closed, else
     // { mode: "apps"|"windows", items: [{ app_id, windows: [id] }], selected, sub }.
     property var switcher: null
+    // The snap layout picker while it's open (SnapPicker.qml draws it).
+    property var snapPicker: null
     // Clipboard history, newest first:
     // { id, time, kind: "text"|"image"|"files", preview, image, files: [{ path, exists }], available }.
     property var clipboard: []
@@ -72,15 +78,36 @@ Singleton {
     function workspace(n) { send({ cmd: "workspace", n: n }) }
     function moveToWorkspace(n) { send({ cmd: "move_to_workspace", n: n }) }
     function spawn(command) { send({ cmd: "spawn", command: command }) }
+    // Start an app in its own systemd scope (compositor/src/app_scope.rs:
+    // running out of memory then closes that app, not the session). `appId`
+    // "" names it after its program. Without the compositor (a test, a
+    // restart), it's started from here as before.
+    function launch(appId, argv, cwd) {
+        if (!argv || argv.length === 0) return;
+        if (connected) send({ cmd: "launch", app_id: appId ?? "", argv: Array.from(argv), cwd: cwd || null });
+        else Quickshell.execDetached({ command: Array.from(argv), workingDirectory: cwd || "" });
+    }
+    // A desktop entry (launcher, dock): its own command line, in a terminal
+    // if it asks for one.
+    function launchEntry(entry) {
+        if (!entry) return;
+        if (!connected) { entry.execute(); return; }
+        const argv = entry.runInTerminal
+            ? Search.terminalCommand(Quickshell.env("TERMINAL") || "ptyxis", Array.from(entry.command).map(Search.shellQuote).join(" "))
+            : Array.from(entry.command);
+        launch(entry.id, argv, entry.workingDirectory);
+    }
     function closeWindow() { send({ cmd: "close_window" }) }
+    // The next window layout on `screenName` (as SUPER+T), saved for the workspace.
+    function nextWindowLayout(screenName) { send({ cmd: "next_window_layout", output: screenName }) }
     function screenshot() { send({ cmd: "screenshot" }) }
     // Focus an app's most recent window, or cycle if it already has focus.
     function focusApp(appId) { send({ cmd: "focus_app", app_id: appId }) }
     function focusWindow(id) { send({ cmd: "focus_window", id: id }) }
     // Re-sends the history, re-checking copied files on disk.
-    // Night Light: warm the screen to `kelvin` while on.
+    // Night light: warm the screen to `kelvin` while on.
     function nightLight(on, kelvin) { send({ cmd: "night_light", on: on, temperature: kelvin }) }
-    // Ends the session (Log Out).
+    // Ends the session (Log out).
     function quit() { send({ cmd: "quit" }) }
     // Shows each monitor's number and name on it (Displays page).
     function identifyOutputs() { send({ cmd: "identify_outputs" }) }
@@ -112,6 +139,7 @@ Singleton {
             root.activeWorkspace = msg.active;
             root.workspaceCount = msg.count;
             root.occupiedWorkspaces = msg.occupied;
+            root.windowLayouts = msg.layouts ?? {};
             break;
         case "focus":
             root.focusedAppId = msg.app_id ?? "";
@@ -122,6 +150,9 @@ Singleton {
             break;
         case "switcher":
             root.switcher = msg.state;
+            break;
+        case "snap_picker":
+            root.snapPicker = msg.picker;
             break;
         case "clipboard":
             root.clipboard = msg.entries;
@@ -166,7 +197,11 @@ Singleton {
         path: root.socketPath
         connected: root.available
         parser: SplitParser { onRead: line => root.handle(line) }
-        onConnectedChanged: if (!connected && root.available) reconnect.start()
+        onConnectedChanged: {
+            if (connected) return;
+            root.snapPicker = null; // (it closed with the compositor)
+            if (root.available) reconnect.start();
+        }
     }
 
     // If the compositor restarts, reconnect after a short pause (not a poll loop:

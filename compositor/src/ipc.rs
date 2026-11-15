@@ -12,6 +12,7 @@
 //! -> {"cmd":"spawn","command":"ptyxis --standalone"}
 //! ```
 
+use crate::win::WinExt;
 use std::{
     io::{ErrorKind, Read, Write},
     os::unix::net::{UnixListener, UnixStream},
@@ -30,11 +31,15 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum Event {
-    /// Workspace numbers are 1-based, as shown to the user.
+    /// Workspace numbers are 1-based, as shown to the user. `layouts`: the
+    /// window layout of the active workspace on each output, by output name
+    /// ("floating", "dwindle", "master"), for each screen's bar.
     Workspaces {
         active: u8,
         count: u8,
         occupied: Vec<u8>,
+        #[serde(default)]
+        layouts: std::collections::BTreeMap<String, String>,
     },
     Focus {
         app_id: Option<String>,
@@ -48,7 +53,7 @@ pub enum Event {
     Windows {
         windows: Vec<WindowInfo>,
     },
-    /// ALT+TAB / SUPER+ALT+TAB state; `state` is null when closed.
+    /// ALT+TAB / SUPER+TAB state; `state` is null when closed.
     Switcher {
         state: Option<crate::switcher::Switcher>,
     },
@@ -90,7 +95,7 @@ pub enum Event {
         capabilities: crate::outputs::Capabilities,
         trial_until: Option<u64>,
     },
-    /// Every shortcut and its keys (Keyboard & Shortcuts page).
+    /// Every shortcut and its keys (Keyboard & shortcuts page).
     Shortcuts {
         shortcuts: Vec<crate::keyboard::ShortcutView>,
     },
@@ -100,6 +105,44 @@ pub enum Event {
         layouts: Vec<crate::keyboard::LayoutView>,
         active: usize,
     },
+    /// Every layer surface (the bar, panels, wallpaper), sent only to the
+    /// client that asked with `{"debug_layers":true}` (UI tests).
+    Layers {
+        layers: Vec<LayerInfo>,
+    },
+    /// The snap layout picker; null when it's closed (snapping.rs).
+    SnapPicker {
+        picker: Option<PickerView>,
+    },
+}
+
+/// The snap layout picker, for the shell to draw exactly there: `x`, `y`
+/// on the output named; tiles and cells relative to the picker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PickerView {
+    pub output: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    /// A card under the pointer (a WhiteRose app's maximize button), not
+    /// hanging from the bar like the island.
+    pub card: bool,
+    /// The window's title.
+    pub title: String,
+    pub layouts: Vec<PickerLayoutView>,
+    /// [layout, cell] under the pointer or chosen with the arrows.
+    pub hovered: Option<[usize; 2]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PickerLayoutView {
+    /// `halves`, `thirds`, `quarters`, `two-thirds-left`,
+    /// `two-thirds-right`, `zones`.
+    pub id: String,
+    /// [x, y, w, h]
+    pub rect: [i32; 4],
+    pub cells: Vec<[i32; 4]>,
 }
 
 impl Event {
@@ -123,6 +166,18 @@ pub struct WindowInfo {
     pub geometry: Option<[i32; 4]>,
 }
 
+/// A layer-shell surface on screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayerInfo {
+    /// What the client called it ("whiterose-bar").
+    pub namespace: String,
+    pub output: String,
+    /// "background", "bottom", "top" or "overlay".
+    pub layer: String,
+    /// [x, y, w, h] in global logical pixels.
+    pub geometry: [i32; 4],
+}
+
 /// Messages from the shell to the compositor.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
@@ -137,6 +192,14 @@ pub enum Request {
     },
     Spawn {
         command: String,
+    },
+    /// Start an app in its own scope (app_scope.rs): the launcher's and
+    /// dock's desktop entries, and files opened from the shell.
+    Launch {
+        app_id: String,
+        argv: Vec<String>,
+        #[serde(default)]
+        cwd: Option<String>,
     },
     CloseWindow,
     /// Open a switcher without held modifiers (mouse, dock, scripts): it
@@ -184,13 +247,13 @@ pub enum Request {
     },
     /// Send the window list (with where each window is) now.
     WindowsList,
-    /// Night Light from the quick settings: warm the screen to `temperature` K.
+    /// Night light from the quick settings: warm the screen to `temperature` K.
     NightLight {
         on: bool,
         #[serde(default = "neutral")]
         temperature: u32,
     },
-    /// End the session (Log Out).
+    /// End the session (Log out).
     Quit,
     /// Start the session again (whiterose-launch), e.g. to switch to an update.
     Restart,
@@ -200,10 +263,23 @@ pub enum Request {
     DeleteScreenshot {
         path: String,
     },
+    /// The next window layout (the bar's layout button), on the output
+    /// named, else where you're working (as SUPER+T).
+    NextWindowLayout {
+        #[serde(default)]
+        output: Option<String>,
+    },
     /// Settings is recording a new shortcut: keys reach it instead of
     /// triggering shortcuts, until it says so or disconnects.
     PauseShortcuts {
         on: bool,
+    },
+    /// Open the snap layout picker for the focused window (as SUPER+Z), or
+    /// for the window under the pointer, just below it (a WhiteRose app's
+    /// maximize button).
+    SnapPicker {
+        #[serde(default)]
+        under_pointer: bool,
     },
 }
 
@@ -225,6 +301,7 @@ impl Request {
             Request::Workspace { n } => Action::Workspace(n),
             Request::MoveToWorkspace { n } => Action::MoveToWorkspace(n),
             Request::Spawn { command } => Action::Spawn(command),
+            Request::Launch { app_id, argv, cwd } => Action::Launch { app_id, argv, cwd },
             Request::CloseWindow => Action::CloseWindow,
             Request::Screenshot => Action::ScreenshotScreen,
             Request::ClipboardList => Action::Shell(ShellRequest::ClipboardList),
@@ -243,12 +320,14 @@ impl Request {
                 Action::NightLight(crate::night_light::NightLight { on, temperature })
             }
             Request::Quit => Action::Quit,
+            Request::NextWindowLayout { output } => Action::NextWindowLayout(output),
             Request::Restart => Action::Restart,
             Request::IdentifyOutputs => Action::IdentifyOutputs,
             Request::Capture { region, pointer, save } => {
                 Action::Capture(crate::screenshot::Shot { region, pointer, save })
             }
             Request::WindowsList => Action::Shell(ShellRequest::WindowsList),
+            Request::SnapPicker { under_pointer } => Action::SnapPicker(under_pointer),
             Request::PauseShortcuts { .. } => unreachable!("handled per client in ipc_request"),
         }
     }
@@ -263,6 +342,12 @@ pub fn action_name(action: &Action) -> Option<&'static str> {
         Action::IdentifyOutputs => "identify_outputs",
         Action::Media(name) => name,
         Action::Notifications => "notifications",
+        Action::Clipboard => "clipboard",
+        Action::Note => "note",
+        Action::ReportSnapshot => "report_snapshot",
+        Action::Agenda => "agenda",
+        Action::Music => "music",
+        Action::Shortcuts => "shortcuts",
         Action::ScreenshotRegion => "screenshot_region",
         _ => return None,
     })
@@ -320,6 +405,7 @@ pub struct Server {
     last_outputs: Option<Event>,
     last_shortcuts: Option<Event>,
     last_keyboard: Option<Event>,
+    last_snap_picker: Option<Event>,
 }
 
 impl Server {
@@ -359,6 +445,7 @@ impl Server {
             last_outputs: None,
             last_shortcuts: None,
             last_keyboard: None,
+            last_snap_picker: None,
         })
     }
 
@@ -397,7 +484,8 @@ impl Server {
             Event::Outputs { .. } => &mut self.last_outputs,
             Event::Shortcuts { .. } => &mut self.last_shortcuts,
             Event::Keyboard { .. } => &mut self.last_keyboard,
-            Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } => {
+            Event::SnapPicker { .. } => &mut self.last_snap_picker,
+            Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } | Event::Layers { .. } => {
                 self.broadcast(&event);
                 return;
             }
@@ -406,6 +494,12 @@ impl Server {
             *slot = Some(event.clone());
             self.broadcast(&event);
         }
+    }
+
+    /// Sends `event` to one client.
+    pub fn send(&mut self, id: u64, event: &Event) {
+        let line = event.to_line();
+        self.clients.retain_mut(|c| c.id != id || Self::send_to(c, &line));
     }
 
     fn remove(&mut self, id: u64) {
@@ -505,7 +599,7 @@ impl WhiteRose {
     }
 
     fn ipc_request(&mut self, id: u64, line: &str) {
-        if self.debug_pointer(line) || self.debug_key(line) {
+        if self.debug_pointer(line) || self.debug_key(line) || self.debug_layers(id, line) {
             return;
         }
         match Request::parse(line) {
@@ -525,13 +619,16 @@ impl WhiteRose {
     /// Development only (`WHITEROSE_DEBUG_INPUT=1`): drives the pointer like
     /// a real mouse, for reproducing UI problems without a person clicking:
     /// `{"debug_pointer":{"x":720,"y":60,"button":"press"}}` (button optional:
-    /// "press" or "release", or "right-press" / "right-release"). Returns true if the line was such a request.
+    /// "press" or "release", or "right-press" / "right-release"); `"scroll":3`
+    /// turns the wheel three clicks down (negative: up). Returns true if the
+    /// line was such a request.
     fn debug_pointer(&mut self, line: &str) -> bool {
         #[derive(Deserialize)]
         struct P {
             x: f64,
             y: f64,
             button: Option<String>,
+            scroll: Option<i32>,
         }
         #[derive(Deserialize)]
         struct Req {
@@ -552,7 +649,59 @@ impl WhiteRose {
             }
             _ => {}
         }
+        if let Some(clicks) = p.scroll.filter(|&c| c != 0) {
+            use smithay::{
+                backend::input::{Axis, AxisSource},
+                input::pointer::AxisFrame,
+            };
+            let frame = AxisFrame::new(time)
+                .source(AxisSource::Wheel)
+                .value(Axis::Vertical, 15.0 * clicks as f64)
+                .v120(Axis::Vertical, 120 * clicks);
+            let pointer = self.seat.get_pointer().expect("seat has a pointer");
+            pointer.axis(self, frame);
+            pointer.frame(self);
+        }
         true
+    }
+
+    /// Development only, like debug_pointer: `{"debug_layers":true}` answers
+    /// this client with every layer surface and where it is (UI tests click
+    /// the bar's things at the bar's place plus their place in it).
+    fn debug_layers(&mut self, id: u64, line: &str) -> bool {
+        if !line.contains("\"debug_layers\"") || std::env::var_os("WHITEROSE_DEBUG_INPUT").is_none() {
+            return false;
+        }
+        let event = self.layers_event();
+        if let Some(server) = self.ipc.as_mut() {
+            server.send(id, &event);
+        }
+        true
+    }
+
+    pub fn layers_event(&self) -> Event {
+        use smithay::wayland::shell::wlr_layer::Layer;
+        let mut layers = Vec::new();
+        for output in self.space.outputs() {
+            let at = self.space.output_geometry(output).map(|g| g.loc).unwrap_or_default();
+            let map = smithay::desktop::layer_map_for_output(output);
+            for l in map.layers() {
+                let Some(g) = map.layer_geometry(l) else { continue };
+                layers.push(LayerInfo {
+                    namespace: l.namespace().to_string(),
+                    output: output.name(),
+                    layer: match l.layer() {
+                        Layer::Background => "background",
+                        Layer::Bottom => "bottom",
+                        Layer::Top => "top",
+                        Layer::Overlay => "overlay",
+                    }
+                    .into(),
+                    geometry: [at.x + g.loc.x, at.y + g.loc.y, g.size.w, g.size.h],
+                });
+            }
+        }
+        Event::Layers { layers }
     }
 
     /// Development only, like debug_pointer: `{"debug_key":{"code":133,"down":true}}`
@@ -583,10 +732,12 @@ impl WhiteRose {
 
     pub fn workspaces_event(&self) -> Event {
         let count = self.workspaces.count();
+        let active = self.workspaces.active();
         Event::Workspaces {
-            active: self.workspaces.active() as u8 + 1,
+            active: active as u8 + 1,
             count: count as u8,
             occupied: (0..count).filter(|&i| !self.workspaces.windows(i).is_empty()).map(|i| i as u8 + 1).collect(),
+            layouts: self.space.outputs().map(|o| (o.name(), self.layout_of(active, o).as_str().to_string())).collect(),
         }
     }
 
@@ -612,23 +763,7 @@ impl WhiteRose {
     }
 
     pub fn focus_event(&self) -> Event {
-        use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
-        let (app_id, title) = self
-            .focused_window()
-            .and_then(|w| w.toplevel().cloned())
-            .map(|t| {
-                with_states(t.wl_surface(), |states| {
-                    states
-                        .data_map
-                        .get::<XdgToplevelSurfaceData>()
-                        .map(|d| {
-                            let d = d.lock().unwrap();
-                            (d.app_id.clone(), d.title.clone())
-                        })
-                        .unwrap_or_default()
-                })
-            })
-            .unwrap_or_default();
+        let (app_id, title) = self.focused_window().map(|w| w.ids()).unwrap_or_default();
         Event::Focus { app_id, title }
     }
 
@@ -688,23 +823,9 @@ pub fn island_covered(
     windows.iter().any(|w| w.overlaps(zone))
 }
 
-/// A toplevel's (app_id, title).
+/// A window's (app_id, title).
 pub fn toplevel_ids(w: &smithay::desktop::Window) -> (Option<String>, Option<String>) {
-    use smithay::wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData};
-    w.toplevel()
-        .map(|t| {
-            with_states(t.wl_surface(), |states| {
-                states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()
-                    .map(|d| {
-                        let d = d.lock().unwrap();
-                        (d.app_id.clone(), d.title.clone())
-                    })
-                    .unwrap_or_default()
-            })
-        })
-        .unwrap_or_default()
+    w.ids()
 }
 
 #[cfg(test)]
@@ -713,8 +834,12 @@ mod tests {
 
     #[test]
     fn events_serialize_to_one_json_line() {
-        let e = Event::Workspaces { active: 2, count: 9, occupied: vec![1, 2] };
-        assert_eq!(e.to_line(), "{\"event\":\"workspaces\",\"active\":2,\"count\":9,\"occupied\":[1,2]}\n");
+        let layouts = [("DP-1".to_string(), "dwindle".to_string())].into();
+        let e = Event::Workspaces { active: 2, count: 9, occupied: vec![1, 2], layouts };
+        assert_eq!(
+            e.to_line(),
+            "{\"event\":\"workspaces\",\"active\":2,\"count\":9,\"occupied\":[1,2],\"layouts\":{\"DP-1\":\"dwindle\"}}\n"
+        );
         let e = Event::Action { name: "screenshot_region".into() };
         assert_eq!(e.to_line(), "{\"event\":\"action\",\"name\":\"screenshot_region\"}\n");
         let e = Event::Focus { app_id: None, title: Some("a \"quoted\"\nline".into()) };
@@ -787,6 +912,14 @@ mod tests {
     #[test]
     fn requests_map_to_actions() {
         assert_eq!(Request::Workspace { n: 4 }.into_action(), Action::Workspace(4));
+        assert_eq!(
+            Request::parse(r#"{"cmd":"next_window_layout","output":"DP-1"}"#).map(Request::into_action),
+            Ok(Action::NextWindowLayout(Some("DP-1".into())))
+        );
+        assert_eq!(
+            Request::parse(r#"{"cmd":"next_window_layout"}"#).map(Request::into_action),
+            Ok(Action::NextWindowLayout(None))
+        );
         assert_eq!(Request::CloseWindow.into_action(), Action::CloseWindow);
     }
 

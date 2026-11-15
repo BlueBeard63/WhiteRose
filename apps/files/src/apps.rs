@@ -146,14 +146,51 @@ pub struct Lists {
 }
 
 pub fn list_files() -> Vec<PathBuf> {
-    let mut v = vec![config_home().join("mimeapps.list")];
-    v.extend(
-        env_dirs("XDG_CONFIG_DIRS", "/etc/xdg")
-            .into_iter()
-            .map(|d| d.join("mimeapps.list")),
-    );
-    v.extend(app_dirs().into_iter().map(|d| d.join("mimeapps.list")));
+    files_for(
+        &desktops(),
+        config_home(),
+        env_dirs("XDG_CONFIG_DIRS", "/etc/xdg"),
+        app_dirs(),
+    )
+}
+
+/// The session's desktops, lowercase ("whiterose"; "ubuntu", "gnome").
+pub fn desktops() -> Vec<String> {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|d| !d.is_empty())
+        .map(|d| d.to_lowercase())
+        .collect()
+}
+
+/// In each folder, the desktops' own lists first, then the plain one
+/// (the spec's order).
+pub fn files_for(
+    desktops: &[String],
+    config: PathBuf,
+    config_dirs: Vec<PathBuf>,
+    app_dirs: Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut v = vec![];
+    for d in std::iter::once(config).chain(config_dirs).chain(app_dirs) {
+        for name in desktops {
+            v.push(d.join(format!("{name}-mimeapps.list")));
+        }
+        v.push(d.join("mimeapps.list"));
+    }
     v
+}
+
+/// Where a default you pick is saved: in a WhiteRose session WhiteRose's
+/// own list (Settings › Apps › Default apps keeps it there too; GNOME's
+/// defaults stay as they are), else your mimeapps.list.
+pub fn user_list() -> PathBuf {
+    if desktops().iter().any(|d| d == "whiterose") {
+        config_home().join("whiterose-mimeapps.list")
+    } else {
+        config_home().join("mimeapps.list")
+    }
 }
 
 /// Read in order: earlier files win for defaults; associations add up.
@@ -454,6 +491,7 @@ pub fn open_with(id: &str, files: &[String], terminal: Option<&str>) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn entry(id: &str, name: &str, exec: &str, mimes: &[&str]) -> Entry {
         Entry {
@@ -498,9 +536,7 @@ mod tests {
         ] {
             apps.insert(e.id.clone(), e);
         }
-        let d = std::env::temp_dir().join(format!("wr-apps-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("apps");
         let mine = d.join("mimeapps.list");
         fs::write(&mine, "[Added Associations]\ntext/markdown=c.desktop;\n[Removed Associations]\ntext/plain=d.desktop;\n").unwrap();
         let sys = d.join("sys.list");
@@ -539,7 +575,6 @@ mod tests {
             2,
             "replaced, not added (one default, one added association)"
         );
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -567,6 +602,28 @@ mod tests {
         assert_eq!(
             command_lines(&e, &[]),
             vec![vec!["sh", "-c", "echo \"$1\"", "%"]]
+        );
+    }
+
+    #[test]
+    fn desktop_lists_first() {
+        let v = files_for(
+            &["whiterose".to_string()],
+            PathBuf::from("/h/.config"),
+            vec![PathBuf::from("/etc/xdg")],
+            vec![PathBuf::from("/usr/share/applications")],
+        );
+        let names: Vec<String> = v.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        assert_eq!(
+            names,
+            [
+                "/h/.config/whiterose-mimeapps.list",
+                "/h/.config/mimeapps.list",
+                "/etc/xdg/whiterose-mimeapps.list",
+                "/etc/xdg/mimeapps.list",
+                "/usr/share/applications/whiterose-mimeapps.list",
+                "/usr/share/applications/mimeapps.list"
+            ]
         );
     }
 }

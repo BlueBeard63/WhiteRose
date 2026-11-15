@@ -295,32 +295,82 @@ func (s Source) client() *http.Client {
 
 // Latest is the newest published release (not drafts or pre-releases).
 func (s Source) Latest(ctx context.Context) (Release, error) {
+	var r Release
+	err := s.get(ctx, "/releases/latest", &r)
+	return r, err
+}
+
+// List is every published release, pre-releases too (not drafts), newest
+// first (up to 100: the API's page).
+func (s Source) List(ctx context.Context) ([]Release, error) {
+	var all []Release
+	if err := s.get(ctx, "/releases?per_page=100", &all); err != nil {
+		return nil, err
+	}
+	out := all[:0]
+	for _, r := range all {
+		if !r.Draft && validVersion(r.Version()) {
+			out = append(out, r)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return Newer(out[i].Version(), out[j].Version()) })
+	return out, nil
+}
+
+// Newest is the newest of `rs`, pre-releases only when `pre`.
+func Newest(rs []Release, pre bool) (Release, bool) {
+	var best Release
+	found := false
+	for _, r := range rs {
+		if r.Draft || (r.Pre && !pre) {
+			continue
+		}
+		if !found || Newer(r.Version(), best.Version()) {
+			best, found = r, true
+		}
+	}
+	return best, found
+}
+
+// Series is the major.minor a version belongs to ("0.3" for 0.3.0-alpha.2).
+func Series(v string) string {
+	v = strings.TrimPrefix(v, "v")
+	if i := strings.IndexAny(v, "-~"); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return v
+	}
+	return parts[0] + "." + parts[1]
+}
+
+func (s Source) get(ctx context.Context, path string, into any) error {
 	if !validRepo(s.Repo) {
-		return Release{}, errors.New("no update source set")
+		return errors.New("no update source set")
 	}
 	api := s.API
 	if api == "" {
 		api = "https://api.github.com"
 	}
-	req, _ := http.NewRequestWithContext(ctx, "GET", api+"/repos/"+s.Repo+"/releases/latest", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", api+"/repos/"+s.Repo+path, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "whiterosed")
 	res, err := s.client().Do(req)
 	if err != nil {
-		return Release{}, fmt.Errorf("couldn't reach the update server: %w", err)
+		return fmt.Errorf("couldn't reach the update server: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
-		return Release{}, errors.New("there are no releases yet")
+		return errors.New("there are no releases yet")
 	}
 	if res.StatusCode != http.StatusOK {
-		return Release{}, fmt.Errorf("the update server said %s", res.Status)
+		return fmt.Errorf("the update server said %s", res.Status)
 	}
-	var r Release
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&r); err != nil {
-		return Release{}, fmt.Errorf("the update server's answer was garbled: %w", err)
+	if err := json.NewDecoder(io.LimitReader(res.Body, 16<<20)).Decode(into); err != nil {
+		return fmt.Errorf("the update server's answer was garbled: %w", err)
 	}
-	return r, nil
+	return nil
 }
 
 func validRepo(r string) bool {

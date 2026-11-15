@@ -8,7 +8,7 @@ Column {
     id: page
     spacing: 16
     readonly property var parts: [
-        { id: "general", icon: "gear", name: "General", text: "Where Files starts, single or double click, the Trash, hidden files" },
+        { id: "general", icon: "gear", name: "General", text: "Where Files starts, single or double click, the trash, hidden files" },
         { id: "views", icon: "grid", name: "Views & lists", text: "How folders look until you choose: view, sort, groups, sizes, columns" },
         { id: "search", icon: "search", name: "Search", text: "What the search index covers, and making it again" },
         { id: "apps", icon: "terminal", name: "Open with", text: "The terminal and code editor for “Open in…”" },

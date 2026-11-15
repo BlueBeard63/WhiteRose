@@ -88,7 +88,7 @@ Item {
         id: copyTo
         property string path: ""
         title: "Copy “" + copyTo.path.substring(copyTo.path.lastIndexOf("/") + 1) + "” out to…"
-        currentFolder: "file://" + Fs.home()
+        currentFolder: F.fileUrl(Fs.home())
         onAccepted: page.act({ what: "copy", id: page.inside.id, path: copyTo.path, dest: decodeURIComponent(String(selectedFolder).replace(/^file:\/\//, "")) }, "Copied out")
     }
 

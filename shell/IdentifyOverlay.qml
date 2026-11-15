@@ -30,6 +30,7 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             WlrLayershell.namespace: "whiterose-identify"
+            LayerTitle { name: "whiterose-identify" }
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             mask: Region {}

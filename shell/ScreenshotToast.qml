@@ -28,10 +28,15 @@ PanelWindow {
     visible: open || slide.running
 
     WlrLayershell.namespace: "whiterose-toast"
+
+    LayerTitle { name: "whiterose-toast" }
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-    mask: Region { item: shape }
+    // The sliding item, not the shape inside it: a Region follows its own
+    // item's moves only, so with `shape` it stayed where the slide started
+    // (above the window) and every click went straight through.
+    mask: Region { item: slider }
 
     function show() {
         open = true;
@@ -185,20 +190,21 @@ PanelWindow {
                     width: (parent.width - 8 * 2 - 34) / 2
                     icon: "open"
                     label: "Open"
-                    onClicked: { Quickshell.execDetached(["xdg-open", root.path]); root.dismiss(); }
+                    onClicked: { Compositor.launch("", ["xdg-open", root.path]); root.dismiss(); }
                 }
                 ToastButton {
                     width: (parent.width - 8 * 2 - 34) / 2
                     icon: "folder"
                     label: "Open folder"
                     onClicked: {
-                        Quickshell.execDetached(["xdg-open", root.path.substring(0, root.path.lastIndexOf("/"))]);
+                        Compositor.launch("", ["xdg-open", root.path.substring(0, root.path.lastIndexOf("/"))]);
                         root.dismiss();
                     }
                 }
                 ToastButton {
                     width: 34
                     icon: "trash"
+                    name: "Delete"
                     onClicked: { Compositor.deleteScreenshot(root.path); root.dismiss(); }
                 }
             }

@@ -3,7 +3,6 @@
 // permission: the shell's password prompt appears when they do, and a
 // request waits until you answer it.
 import QtQuick
-import QtQuick.Dialogs
 import Quickshell
 import Quickshell.Widgets
 import qs
@@ -52,13 +51,15 @@ Column {
     }
 
     // ---- you ------------------------------------------------------------------------
+    // Narrow (a tiled window): the buttons go under the name.
+    readonly property bool narrow: width < 560
     Card {
         visible: page.me !== null
         Item {
-            width: parent.width; height: 104
+            width: parent.width; height: page.narrow ? 104 + myButtons.height + 4 : 104
             Avatar {
                 id: myAvatar
-                x: 20; anchors.verticalCenter: parent.verticalCenter
+                x: 20; y: 20
                 size: 64
                 user: page.me
                 // Hover: change the picture.
@@ -72,7 +73,7 @@ Column {
                 MouseArea { id: avatarMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pictureDialog.open() }
             }
             Column {
-                anchors { left: myAvatar.right; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                anchors { left: myAvatar.right; leftMargin: 18; verticalCenter: myAvatar.verticalCenter }
                 spacing: 4
                 // The name: click to edit, Enter saves.
                 Item {
@@ -104,7 +105,9 @@ Column {
                 }
             }
             Row {
-                anchors { right: parent.right; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                id: myButtons
+                x: page.narrow ? 20 : parent.width - 18 - width
+                y: page.narrow ? 104 - 8 : Math.round((104 - height) / 2)
                 spacing: 8
                 Button { text: "Fingerprints"; icon: "fingerprint"; onClicked: SettingsState.open("users/fingerprints") }
                 Button { text: "Change password"; icon: "lock"; onClicked: passwordDialog.openFor(page.me) }
@@ -199,12 +202,12 @@ Column {
     }
 
     // ---- dialogs --------------------------------------------------------------------------------
-    FileDialog {
+    FilePicker {
         id: pictureDialog
         title: "Choose a picture"
-        currentFolder: "file://" + (Quickshell.env("HOME") ?? "") + "/Pictures"
-        nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.bmp)"]
-        onAccepted: page.change("user_icon", { uid: page.me.uid, path: decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")) })
+        folder: (Quickshell.env("HOME") ?? "") + "/Pictures"
+        filters: [{ name: "Images", patterns: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }]
+        onPicked: path => page.change("user_icon", { uid: page.me.uid, path: path })
     }
 
     Dialog {
@@ -215,7 +218,7 @@ Column {
         function openFor(u) { user = u; pw1.text = ""; pw2.text = ""; error = ""; waiting = false; open(); pw1.focusField() }
         readonly property string problem: U.passwordProblem(pw1.text, pw2.text)
         title: user?.me ? "Change your password" : "Set a password for " + (user ? page.label(user) : "")
-        subtitle: user?.me ? "You'll be asked for your current one" : "They can change it after signing in"
+        subtitle: user?.me ? "It asks for your current one first" : "They can change it after signing in"
         icon: "lock"
         Field { id: pw1; width: parent.width; secret: true; placeholder: "New password"; onAccepted: pw2.focusField() }
         Field { id: pw2; width: parent.width; secret: true; placeholder: "Again"; error: pw2.text !== "" && pw2.text !== pw1.text; onAccepted: saveBtn.clicked() }
@@ -322,7 +325,7 @@ Column {
         property string error: ""
         function openFor(u) { user = u; keepFiles.checked = true; error = ""; waiting = false; open() }
         title: "Remove " + (user ? page.label(user) : "") + "?"
-        subtitle: "They won't be able to sign in any more"
+        subtitle: "They can't sign in any more"
         icon: "trash"
         SettingRow {
             divider: false

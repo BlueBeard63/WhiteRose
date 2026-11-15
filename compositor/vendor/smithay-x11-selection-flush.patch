@@ -1,0 +1,13 @@
+--- a/src/xwayland/xwm/mod.rs
++++ b/src/xwayland/xwm/mod.rs
+@@ -1158,6 +1158,10 @@ impl X11Wm {
+             self.conn
+                 .set_selection_owner(x11rb::NONE, selection.atom, selection.timestamp)?;
+         }
++        // WhiteRose patch: send it now. Unflushed, X doesn't know who owns
++        // the selection until something else flushes the connection, and an
++        // X11 app pasting in between is told there's nothing to paste.
++        self.conn.flush()?;
+ 
+         Ok(())
+     }

@@ -60,11 +60,11 @@ pub fn save_scratch_to(dir: &std::path::Path, text: &str) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn session_and_scratch_round_trip() {
-        let d = std::env::temp_dir().join(format!("wr-notepad-session-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("notepad-session");
         assert_eq!(load_from(&d), Session::default(), "nothing saved yet");
         assert_eq!(scratch_from(&d), "");
         let s = Session {
@@ -85,6 +85,5 @@ mod tests {
             Session::default(),
             "a broken file starts fresh"
         );
-        fs::remove_dir_all(d).unwrap();
     }
 }

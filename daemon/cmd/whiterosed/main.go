@@ -10,6 +10,7 @@
 //	whiterosed airplane on|off
 //	whiterosed release-key PUB          make the release signing key (once)
 //	whiterosed sign-release DIR PUB     sign the packages in DIR for a release
+//	whiterosed build-id DIR             a version folder's build ID (packaging)
 //	whiterosed project FILE version|prerelease|repo|notes [VERSION]|changelog|check
 //	                          read project.yaml (the version, release notes, changelog)
 //	whiterosed fingerprint-root on|off  fingerprint for sign-in and sudo (as root, via pkexec)
@@ -45,6 +46,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdCheckConfig(args[1:], stdout, stderr)
 	case "serve":
 		return cmdServe(args[1:], stdout, stderr)
+	case "portal":
+		return cmdPortal(args[1:], stdout, stderr)
 	case "settings":
 		return cmdSettings(args[1:], stdout, stderr)
 	case "brightness":
@@ -59,6 +62,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdReleaseKey(args[1:], stdout, stderr)
 	case "sign-release":
 		return cmdSignRelease(args[1:], stdout, stderr)
+	case "build-id":
+		return cmdBuildID(args[1:], stdout, stderr)
 	case "project":
 		return cmdProject(args[1:], stdout, stderr)
 	case "fingerprint-root":
@@ -82,6 +87,7 @@ commands:
   monitors       list connected monitors and their stable IDs
   check-config   validate a displays.toml file
   serve          run the daemon (settings database, system state, calendars, weather)
+  portal         the desktop portal's file chooser (Files as every app's Open / Save)
   settings       list | get KEY | set KEY JSON | reset KEY
   brightness     set <percent>: change the screen backlight (through logind)
   airplane       on|off: block or unblock every radio

@@ -54,6 +54,63 @@ fn die_with_us(cmd: &mut Command) {
     }
 }
 
+/// How a supervised process ended, when it wasn't a clean exit (code 0).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Exit {
+    Code(i32),
+    Signal(i32),
+}
+
+impl Exit {
+    fn of(status: &std::process::ExitStatus) -> Option<Exit> {
+        use std::os::unix::process::ExitStatusExt;
+        match (status.code(), status.signal()) {
+            (Some(0), _) => None,
+            (Some(c), _) => Some(Exit::Code(c)),
+            // Asked to stop (logging out, a restart): not a crash.
+            (None, Some(libc::SIGTERM | libc::SIGHUP | libc::SIGINT)) => None,
+            (None, Some(s)) => Some(Exit::Signal(s)),
+            (None, None) => None,
+        }
+    }
+}
+
+/// Where crash records go: $XDG_STATE_HOME/whiterose/crashes (the format
+/// is daemon/internal/crash's: a folder `<ms>-<what>` with crash.json;
+/// whiterosed takes a snapshot into it and keeps the newest 5).
+fn crashes_dir() -> Option<std::path::PathBuf> {
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/state")))?;
+    Some(state.join("whiterose/crashes"))
+}
+
+fn crash_record(what: &str, exit: Exit, ms: u128, version: &str) -> serde_json::Value {
+    let mut r = serde_json::json!({ "what": what, "time": ms as u64 });
+    match exit {
+        Exit::Code(c) => r["code"] = c.into(),
+        Exit::Signal(s) => r["signal"] = s.into(),
+    }
+    if !version.is_empty() {
+        r["version"] = version.into();
+    }
+    r
+}
+
+fn write_crash_record(what: &str, exit: Exit) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let Some(dir) = crashes_dir() else { return Ok(()) };
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let dir = dir.join(format!("{ms:013}-{what}"));
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
+    let version = std::env::var("WHITEROSE_VERSION").unwrap_or_default();
+    let body = serde_json::to_vec_pretty(&crash_record(what, exit, ms, &version))?;
+    let mut f =
+        std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(dir.join("crash.json"))?;
+    std::io::Write::write_all(&mut f, &body)
+}
+
 impl WhiteRose {
     /// Starts `command` and restarts it whenever it exits (see module docs).
     /// `name` is for logs and keeps each process's restart count apart.
@@ -72,13 +129,22 @@ impl WhiteRose {
             }
         };
         tracing::info!(name, command, "started");
-        let (tx, rx) = channel::<String>();
+        let (tx, rx) = channel::<(String, Option<Exit>)>();
         std::thread::spawn(move || {
-            let status = child.wait().map(|s| s.to_string()).unwrap_or_else(|e| e.to_string());
-            let _ = tx.send(status);
+            let (status, exit) = match child.wait() {
+                Ok(s) => (s.to_string(), Exit::of(&s)),
+                Err(e) => (e.to_string(), None),
+            };
+            let _ = tx.send((status, exit));
         });
         let inserted = self.loop_handle.insert_source(rx, move |event, _, state| {
-            let Event::Msg(status) = event else { return };
+            let Event::Msg((status, exit)) = event else { return };
+            // Died (not a clean exit): noted for a bug report.
+            if let Some(exit) = exit {
+                if let Err(err) = write_crash_record(name, exit) {
+                    tracing::warn!(name, %err, "can't write the crash record");
+                }
+            }
             if !state.restarts.entry(name).or_default().should_restart(Instant::now()) {
                 tracing::error!(name, status, "keeps exiting; not restarting it again");
                 return;
@@ -100,6 +166,25 @@ impl WhiteRose {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crash_records() {
+        use std::os::unix::process::ExitStatusExt;
+        assert_eq!(Exit::of(&std::process::ExitStatus::from_raw(0)), None);
+        assert_eq!(Exit::of(&std::process::ExitStatus::from_raw(3 << 8)), Some(Exit::Code(3)));
+        assert_eq!(Exit::of(&std::process::ExitStatus::from_raw(11)), Some(Exit::Signal(11)));
+        assert_eq!(Exit::of(&std::process::ExitStatus::from_raw(15)), None, "asked to stop");
+        assert_eq!(Exit::of(&std::process::ExitStatus::from_raw(9)), Some(Exit::Signal(9)), "killed (out of memory)");
+        // The same fields as daemon/internal/crash.Record.
+        assert_eq!(
+            crash_record("shell", Exit::Signal(11), 1794571766000, "0.3.0"),
+            serde_json::json!({ "what": "shell", "time": 1794571766000u64, "signal": 11, "version": "0.3.0" })
+        );
+        assert_eq!(
+            crash_record("daemon", Exit::Code(2), 5, ""),
+            serde_json::json!({ "what": "daemon", "time": 5, "code": 2 })
+        );
+    }
 
     #[test]
     fn restarts_until_it_crashes_too_often() {

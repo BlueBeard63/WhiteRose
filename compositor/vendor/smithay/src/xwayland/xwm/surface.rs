@@ -551,6 +551,45 @@ impl X11Surface {
         Ok(())
     }
 
+    /// WhiteRose patch: the X11 half of keyboard focus (input focus, or
+    /// WM_TAKE_FOCUS for windows that take it themselves), for a compositor
+    /// whose seat focuses the window's wl_surface rather than the
+    /// X11Surface. `KeyboardTarget::enter` does this and then the Wayland half.
+    pub fn give_focus(&self) {
+        let (set_input_focus, send_take_focus) = match self.input_mode() {
+            InputMode::None => return,
+            InputMode::Passive => (true, false),
+            InputMode::LocallyActive => (true, true),
+            InputMode::GloballyActive => (false, true),
+        };
+
+        if let Some(conn) = self.conn.upgrade() {
+            if set_input_focus {
+                if let Err(err) = conn.set_input_focus(InputFocus::NONE, self.window, x11rb::CURRENT_TIME) {
+                    warn!("Unable to set focus for X11Surface ({:?}): {}", self.window, err);
+                }
+            }
+
+            if send_take_focus {
+                let event = ClientMessageEvent::new(
+                    32,
+                    self.window,
+                    self.atoms.WM_PROTOCOLS,
+                    [self.atoms.WM_TAKE_FOCUS, x11rb::CURRENT_TIME, 0, 0, 0],
+                );
+                if let Err(err) = conn.send_event(false, self.window, EventMask::NO_EVENT, event) {
+                    warn!(
+                        "Unable to send take focus event for X11Surface ({:?}): {}",
+                        self.window, err
+                    );
+                }
+                let _ = conn.flush();
+            }
+
+            let _ = conn.flush();
+        }
+    }
+
     /// Returns the reported window type of the underlying X11 window if set.
     ///
     /// Windows without a window type set should be considered to be of type `Normal` for
@@ -1002,38 +1041,10 @@ impl IsAlive for X11Surface {
 
 impl<D: SeatHandler + 'static> KeyboardTarget<D> for X11Surface {
     fn enter(&self, seat: &Seat<D>, data: &mut D, keys: Vec<KeysymHandle<'_>>, serial: Serial) {
-        let (set_input_focus, send_take_focus) = match self.input_mode() {
-            InputMode::None => return,
-            InputMode::Passive => (true, false),
-            InputMode::LocallyActive => (true, true),
-            InputMode::GloballyActive => (false, true),
-        };
-
-        if let Some(conn) = self.conn.upgrade() {
-            if set_input_focus {
-                if let Err(err) = conn.set_input_focus(InputFocus::NONE, self.window, x11rb::CURRENT_TIME) {
-                    warn!("Unable to set focus for X11Surface ({:?}): {}", self.window, err);
-                }
-            }
-
-            if send_take_focus {
-                let event = ClientMessageEvent::new(
-                    32,
-                    self.window,
-                    self.atoms.WM_PROTOCOLS,
-                    [self.atoms.WM_TAKE_FOCUS, x11rb::CURRENT_TIME, 0, 0, 0],
-                );
-                if let Err(err) = conn.send_event(false, self.window, EventMask::NO_EVENT, event) {
-                    warn!(
-                        "Unable to send take focus event for X11Surface ({:?}): {}",
-                        self.window, err
-                    );
-                }
-                let _ = conn.flush();
-            }
-
-            let _ = conn.flush();
+        if self.input_mode() == InputMode::None {
+            return;
         }
+        self.give_focus();
 
         if let Some(surface) = self.state.lock().unwrap().wl_surface.as_ref() {
             KeyboardTarget::enter(surface, seat, data, keys, serial);

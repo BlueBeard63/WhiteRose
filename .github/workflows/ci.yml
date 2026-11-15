@@ -49,6 +49,66 @@ jobs:
             apps
       - run: make rust-check
 
+  # Click-and-check UI tests (make ui-test): WhiteRose sessions (apps, the
+  # shell, Settings) with the compositor's headless backend (no screen, no
+  # GPU; everything draws in software),
+  # things found by name through the accessibility bus and clicked with the
+  # compositor's test input. Ubuntu 26.04 for its Qt, like the .deb.
+  ui:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      XDG_RUNTIME_DIR: /tmp/runtime
+    steps:
+      - run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git make build-essential pkg-config \
+            libxkbcommon-dev libwayland-dev libegl-dev libgles-dev libudev-dev libseat-dev libinput-dev libgbm-dev libdrm-dev \
+            qt6-base-dev qt6-declarative-dev qmake6 \
+            dbus dbus-user-session at-spi2-core qt6-wayland fontconfig fonts-dejavu-core \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-dialogs qml6-module-qtquick-shapes \
+            qml6-module-qtquick-window qml6-module-qtquick-templates qml6-module-qtqml-workerscript qml6-module-qtquick-layouts \
+            qml6-module-qtquick-pdf qml6-module-qtmultimedia libqt6svg6 qt6-image-formats-plugins procps \
+            cmake ninja-build qt6-base-private-dev qt6-declarative-private-dev qt6-wayland-dev qt6-wayland-private-dev \
+            qt6-shadertools-dev qt6-svg-dev spirv-tools libcli11-dev libjemalloc-dev libpipewire-0.3-dev libpam0g-dev \
+            libpolkit-agent-1-dev libpolkit-gobject-1-dev libglib2.0-dev wayland-protocols
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - uses: actions/checkout@v4
+      # In a container the checkout belongs to another user than the job's
+      # (root), so git (and go build's VCS stamping) refuses it otherwise.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      # QuickShell (the shell and Settings run on it): the revision the
+      # packages pin (packaging/build.sh), built once and cached.
+      - id: qs
+        run: echo "rev=$(sed -n 's/^QS_REV=\([0-9a-f]*\).*/\1/p' packaging/build.sh)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: /opt/qs
+          key: quickshell-${{ steps.qs.outputs.rev }}-ubuntu26.04
+      - run: |
+          if [ ! -x /opt/qs/bin/quickshell ]; then
+            git clone --quiet https://git.outfoxxed.me/quickshell/quickshell /tmp/qs
+            git -C /tmp/qs checkout --quiet "${{ steps.qs.outputs.rev }}"
+            cmake -S /tmp/qs -B /tmp/qs/build -GNinja -DCMAKE_BUILD_TYPE=Release \
+              -DDISTRIBUTOR="WhiteRose CI" -DCRASH_HANDLER=OFF -DX11=OFF -DHYPRLAND=OFF -DI3=OFF -DSERVICE_GREETD=OFF
+            cmake --build /tmp/qs/build
+            install -Dm755 "$(find /tmp/qs/build -maxdepth 2 -type f -name quickshell -perm -u+x | head -1)" /opt/qs/bin/quickshell
+            ln -sf quickshell /opt/qs/bin/qs
+          fi
+          echo /opt/qs/bin >> "$GITHUB_PATH"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            compositor
+            apps
+      - run: make ui-test
+
   shell:
     runs-on: ubuntu-latest
     steps:

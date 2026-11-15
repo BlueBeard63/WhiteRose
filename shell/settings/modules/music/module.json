@@ -1,0 +1,11 @@
+{
+  "id": "music",
+  "name": "Music",
+  "description": "What's playing, in the island: the cover, the track and its controls",
+  "icon": "music",
+  "category": "desktop",
+  "order": 15.3,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["music", "media", "now playing", "player", "song", "track", "spotify", "mpris", "album", "cover"]
+}

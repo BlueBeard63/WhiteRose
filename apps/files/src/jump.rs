@@ -188,6 +188,7 @@ pub fn find(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     fn w(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_string).collect()
@@ -211,8 +212,7 @@ mod tests {
 
     #[test]
     fn visits_rank_and_are_remembered() {
-        let d = std::env::temp_dir().join(format!("wr-jump-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("jump");
         for p in ["a/notes", "b/notes", "c/nothing"] {
             fs::create_dir_all(d.join(p)).unwrap();
         }
@@ -251,6 +251,5 @@ mod tests {
                 now
             )
         );
-        fs::remove_dir_all(&d).unwrap();
     }
 }

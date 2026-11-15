@@ -24,13 +24,15 @@ Column {
 
     function refresh() {
         Daemon.request({ op: "apps" }, (v, err) => {
+            // (The page may be gone by the answer: a sub-page opened.)
+            if (!page) return;
             page.loadError = err ?? "";
-            if (!err) {
+            if (!err && v) {
                 page.info = v;
                 // Start with everything not installed yet picked.
                 if (Object.keys(page.picked).length === 0) {
                     const p = {};
-                    for (const a of v.apps) if (!a.installed) p[a.id] = true;
+                    for (const a of v.apps ?? []) if (!a.installed) p[a.id] = true;
                     page.picked = p;
                 }
             }
@@ -48,6 +50,8 @@ Column {
         page.error = "";
         page.steps = [];
         Daemon.request({ op: "apps_install", args: { ids: page.chosen.map(a => a.id) } }, (v, err) => {
+            // (Installing takes a while: the page may be gone by the answer.)
+            if (!page) return;
             page.busy = false;
             page.error = err ?? "";
             if (v) { page.info = v; page.picked = {}; }
@@ -166,10 +170,11 @@ Column {
                                  discord: "discord", signal: "signal-desktop", zsh: "utilities-terminal", git: "git" })[row.modelData.id] ?? ""
                 }
                 Column {
-                    anchors { left: icon.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                    // Up to its badge or switch: a long description is cut short there.
+                    anchors { left: icon.right; leftMargin: 12; right: parent.right; rightMargin: 100; verticalCenter: parent.verticalCenter }
                     spacing: 1
-                    Text { text: row.modelData.name; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(13); weight: Font.Medium } }
-                    Text { text: page.sourceText(row.modelData); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11) } }
+                    Text { width: parent.width; elide: Text.ElideRight; text: row.modelData.name; color: Theme.text; font { family: Theme.font; pointSize: Theme.pt(13); weight: Font.Medium } }
+                    Text { width: parent.width; elide: Text.ElideRight; text: page.sourceText(row.modelData); color: Theme.muted; font { family: Theme.font; pointSize: Theme.pt(11) } }
                 }
                 Badge {
                     visible: row.modelData.installed
@@ -177,6 +182,7 @@ Column {
                     text: "installed"
                 }
                 Toggle {
+                    label: row.modelData.name
                     visible: !row.modelData.installed
                     anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                     checked: row.on
@@ -190,7 +196,7 @@ Column {
         visible: page.apps.length > 0
         width: parent.width
         wrapMode: Text.Wrap
-        text: "Zsh comes with Oh My Zsh and your theme, and becomes your shell. VS Code comes with your extensions. Community builds are packaged by others than the app's makers."
+        text: "Zsh comes with Oh My Zsh and your theme, and becomes your shell. VS Code comes with your extensions. Community builds come from people other than the app's makers."
         color: Theme.faint
         font { family: Theme.font; pointSize: Theme.pt(11.5) }
     }

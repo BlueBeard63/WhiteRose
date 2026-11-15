@@ -123,8 +123,8 @@ SidePanel {
         Row {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { width: 26; height: 26; icon: "chevL"; iconSize: 14; fill: "transparent"; iconColor: Theme.muted; onClicked: root.page(-1) }
-            IconButton { width: 26; height: 26; icon: "chevR"; iconSize: 14; fill: "transparent"; iconColor: Theme.muted; onClicked: root.page(1) }
+            IconButton { label: "Previous month"; width: 26; height: 26; icon: "chevL"; iconSize: 14; fill: "transparent"; iconColor: Theme.muted; onClicked: root.page(-1) }
+            IconButton { label: "Next month"; width: 26; height: 26; icon: "chevR"; iconSize: 14; fill: "transparent"; iconColor: Theme.muted; onClicked: root.page(1) }
         }
     }
 

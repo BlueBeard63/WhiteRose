@@ -2,6 +2,7 @@
 // module). The panel shows the first page; quick look scrolls through all.
 import QtQuick
 import QtQuick.Pdf
+import "Format.js" as Fmt
 
 Item {
     id: root
@@ -11,7 +12,7 @@ Item {
 
     PdfDocument {
         id: doc
-        source: root.path ? "file://" + root.path : ""
+        source: root.path ? Fmt.fileUrl(root.path) : ""
     }
     Loader {
         anchors.fill: parent

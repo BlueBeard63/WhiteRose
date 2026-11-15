@@ -47,8 +47,35 @@ pub fn dir() -> PathBuf {
     state.join("whiterose/files")
 }
 
+/// On a network drive, asking whether a folder exists is a trip to the
+/// server each (restoring a history of them took seconds). There, a
+/// folder counts while its drive is mounted: known from the mount's own
+/// folder (GVfs answers listing its root itself) or mountinfo, never the
+/// server.
+fn remote_present(p: &str) -> Option<bool> {
+    if !crate::places::is_remote(p) {
+        return None;
+    }
+    let run = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from)?;
+    Some(match crate::places::mount_place(p, &run) {
+        Some((root, _)) => {
+            let root = Path::new(&root);
+            root.parent()
+                .and_then(|g| std::fs::read_dir(g).ok())
+                .is_some_and(|mut d| {
+                    d.any(|e| e.is_ok_and(|e| Some(e.file_name().as_os_str()) == root.file_name()))
+                })
+        }
+        // (Some other network mount, NFS or SMB: mounted, so it counts.)
+        None => true,
+    })
+}
+
 /// The nearest folder at or above `p` that exists ("/" at worst).
 fn nearest(p: &str) -> String {
+    if remote_present(p) == Some(true) {
+        return p.to_string();
+    }
     let mut p = Path::new(p);
     while !p.is_dir() {
         match p.parent() {
@@ -80,7 +107,7 @@ pub fn clean(s: Session, home: &Path) -> Session {
     Session { windows }
 }
 
-/// Places that aren't folders on disk: the Trash, Start, Recent, the
+/// Places that aren't folders on disk: the trash, Start, Recent, the
 /// Storage page, a tag's files.
 fn special(p: &str) -> bool {
     [
@@ -96,7 +123,9 @@ fn special(p: &str) -> bool {
 }
 
 fn clean_tab(t: Tab, home: &Path, outer: bool) -> Tab {
-    let ok = |p: &String| p.starts_with('/') && Path::new(p).is_dir();
+    let ok = |p: &String| {
+        p.starts_with('/') && remote_present(p).unwrap_or_else(|| Path::new(p).is_dir())
+    };
     let path = if special(&t.path) {
         t.path
     } else if t.path.starts_with('/') {
@@ -149,12 +178,10 @@ pub fn save_to(dir: &Path, s: &Session) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let d =
-            std::env::temp_dir().join(format!("wr-files-session-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("files-session-{name}"));
         d
     }
 
@@ -273,7 +300,7 @@ mod tests {
         assert!(second.second.is_none(), "a side doesn't split again");
         assert_eq!((t.vertical, t.active), (true, 1));
         let plain = &c.windows[0].tabs[1];
-        assert_eq!(plain.path, "trash:", "the Trash stays the Trash");
+        assert_eq!(plain.path, "trash:", "the trash stays the trash");
         assert_eq!(
             (plain.vertical, plain.active),
             (false, 0),

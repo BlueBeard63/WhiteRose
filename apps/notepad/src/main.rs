@@ -5,6 +5,9 @@ extern crate whiterose_kit;
 mod core;
 mod doc;
 mod lang;
+#[cfg(test)]
+#[path = "../../scratch.rs"]
+mod scratch;
 mod session;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};

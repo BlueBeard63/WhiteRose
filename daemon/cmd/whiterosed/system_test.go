@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ func TestSettingsAndCalendarCommandsTalkToTheDaemon(t *testing.T) {
 	}
 	defer st.Close()
 	d := calendar.Dirs{Data: filepath.Join(root, "data"), Cache: filepath.Join(root, "cache"), Home: root}
-	srv := &server.Server{Store: st, Secrets: store.Resolver{Fallback: st.Fallback()}, Dirs: d}
+	srv := &server.Server{Store: st, Secrets: &store.Resolver{Fallback: st.Fallback()}, Dirs: d}
 	sock := filepath.Join(root, "d.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
@@ -108,5 +109,57 @@ func TestSettingsAndCalendarCommandsTalkToTheDaemon(t *testing.T) {
 	t.Setenv("WHITEROSE_DAEMON_SOCKET", filepath.Join(root, "nobody.sock"))
 	if out, code := cli("settings", "list"); code != 1 || !strings.Contains(out, "isn't running") {
 		t.Fatalf("no daemon: %d %s", code, out)
+	}
+}
+
+// The lock screen's password unlocks the keyring and the daemon opens it
+// straight away; the password is never in an error or the log.
+func TestKeyringUnlockFromTheLockScreen(t *testing.T) {
+	root := t.TempDir()
+	st, err := store.Open(filepath.Join(root, "settings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	locked := true
+	secrets := &store.Resolver{Fallback: st.Fallback(), Open: func() (store.Secrets, error) {
+		if locked {
+			return nil, store.ErrLocked
+		}
+		return st.Fallback(), nil
+	}}
+	var got string
+	unlock := func(pw string) error {
+		got = pw
+		if pw != "right horse" {
+			return errors.New("the keyring didn't take the password")
+		}
+		locked = false
+		return nil
+	}
+	var log bytes.Buffer
+	op := keyringUnlock(secrets, unlock, &log)
+	req := func(args string) error {
+		_, err := op(server.Request{Args: json.RawMessage(args)})
+		return err
+	}
+	if req(`{}`) == nil || req(`{"password":""}`) == nil || got != "" {
+		t.Fatal("unlocked without a password")
+	}
+	err = req(`{"password":"wrong staple"}`)
+	if err == nil || strings.Contains(err.Error(), "staple") || strings.Contains(log.String(), "staple") {
+		t.Fatalf("err %v, log %q", err, log.String())
+	}
+	if secrets.Retry() {
+		t.Fatal("opened after a wrong password")
+	}
+	if err := req(`{"password":"right horse"}`); err != nil {
+		t.Fatal(err)
+	}
+	if secrets.Closed() != nil {
+		t.Fatalf("the keyring wasn't opened: %v", secrets.Closed())
+	}
+	if strings.Contains(log.String(), "horse") {
+		t.Fatalf("password in the log: %q", log.String())
 	}
 }

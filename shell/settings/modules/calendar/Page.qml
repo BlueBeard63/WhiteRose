@@ -1,4 +1,4 @@
-// Calendar & Weather: the calendars the clock panel shows (iCal links, kept
+// Calendar & weather: the calendars the clock panel shows (iCal links, kept
 // in the keyring, or .ics files) and where the weather is for.
 import QtQuick
 import Quickshell
@@ -18,7 +18,7 @@ Column {
         function onSettingsChanged() { page.refresh() }
     }
 
-    PageHeader { title: "Calendar & Weather"; subtitle: "What the clock panel shows." }
+    PageHeader { title: "Calendar & weather"; subtitle: "What the clock panel shows." }
 
     Section { text: "Calendars" }
     Card {
@@ -35,7 +35,9 @@ Column {
                 required property int index
                 divider: index > 0
                 title: modelData.name
-                subtitle: modelData.has_link ? "Link · kept in the keyring" : modelData.path
+                subtitle: !modelData.has_link ? modelData.path
+                    : modelData.locked ? "Link · the keyring is locked, so it isn't updated"
+                    : "Link · kept in the keyring"
                 Rectangle { width: 12; height: 12; radius: 6; color: modelData.color; anchors.verticalCenter: parent.verticalCenter }
                 Button {
                     text: "Remove"; kind: "danger"

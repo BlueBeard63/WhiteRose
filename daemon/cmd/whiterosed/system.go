@@ -25,6 +25,9 @@ type SystemState struct {
 	// Changes whenever a calendar was downloaded or a calendar file changed:
 	// the shell re-reads events.
 	Calendars int64 `json:"calendars"`
+	// The keyring is locked (a fingerprint login): the shell asks for the
+	// password once.
+	KeyringLocked bool `json:"keyring_locked"`
 }
 
 func readState(backlights, radios fs.FS) SystemState {

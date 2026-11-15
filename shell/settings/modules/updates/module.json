@@ -7,5 +7,9 @@
   "order": 5.5,
   "version": "1.0.0",
   "core": true,
-  "keywords": ["update", "updates", "upgrade", "version", "release", "install", "rollback", "roll back", "previous version", "restart", "snapshot", "check for updates", "whiterose"]
+  "keywords": ["update", "updates", "upgrade", "version", "release", "install", "rollback", "roll back", "previous version", "restart", "snapshot", "check for updates", "whiterose"],
+  "pages": [
+    { "id": "releases", "name": "Releases", "icon": "package", "file": "Releases.qml",
+      "keywords": ["releases", "versions", "alpha", "beta", "pre-release", "prerelease", "changelog", "release notes", "older version", "downgrade"] }
+  ]
 }

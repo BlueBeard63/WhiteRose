@@ -104,16 +104,14 @@ pub fn write(path: &Path, text: &str, eol: &Eol) -> Result<i64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
-    fn dir() -> PathBuf {
+    fn dir() -> Scratch {
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let d = std::env::temp_dir().join(format!(
-            "wr-notepad-{}-{}",
-            std::process::id(),
+        Scratch::new(&format!(
+            "notepad-{}",
             N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&d).unwrap();
-        d
+        ))
     }
 
     #[test]
@@ -137,7 +135,6 @@ mod tests {
             !d.join(".run.sh.whiterose-saving").exists(),
             "no temporary file left behind"
         );
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -149,7 +146,6 @@ mod tests {
         assert_eq!(read(&d.join("latin1")).unwrap_err(), "it isn't UTF-8 text");
         assert_eq!(read(&d).unwrap_err(), "that's a folder");
         assert!(read(&d.join("missing")).is_err());
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -159,6 +155,5 @@ mod tests {
         let t1 = write(&p, "# hello\n", &Eol::Lf).unwrap();
         assert_eq!(read(&p).unwrap().text, "# hello\n");
         assert_eq!(t1, mtime(&p));
-        fs::remove_dir_all(d).unwrap();
     }
 }

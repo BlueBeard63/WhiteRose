@@ -126,12 +126,11 @@ pub fn backup_file() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn round_trip() {
-        let d = std::env::temp_dir().join(format!("wr-prefs-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = Scratch::new("prefs");
         let parts: Vec<(&str, PathBuf)> = vec![
             ("views", d.join("views.json")),
             ("bookmarks", d.join("bookmarks")),
@@ -173,7 +172,6 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(other.join("views.json")).unwrap())
                 .unwrap();
         assert_eq!(v["/home/x"]["mode"], "grid");
-        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

@@ -4,7 +4,7 @@
 // coloured dot: only here, newer here, newer there, different, something
 // inside differs) and listed here; then syncing them as a job. Sizes and
 // times by default; byte by byte when asked. Syncing says what it will do
-// first; whatever a sync removes goes to the Trash.
+// first; whatever a sync removes goes to the trash.
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
@@ -308,7 +308,7 @@ Column {
                 MouseArea { id: howMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.how = modelData.value }
             }
         }
-        // What it'll do (and, before anything goes to the Trash, asked again).
+        // What it'll do (and, before anything goes to the trash, asked again).
         Rectangle {
             width: parent.width
             height: planText.implicitHeight + 20
@@ -320,9 +320,9 @@ Column {
                 wrapMode: Text.Wrap
                 readonly property var p: root.plan ?? { to_right: [], to_left: [], trash_right: [], trash_left: [], unsure: [] }
                 text: ([p.to_right.length ? p.to_right.length + " copied to " + root.name(root.rightDir) : "", p.to_left.length ? p.to_left.length + " copied to " + root.name(root.leftDir) : "",
-                        root.trashing ? root.trashing + " to the Trash" : "", p.unsure.length ? p.unsure.length + " left alone (can't tell which is newer)" : ""]
+                        root.trashing ? root.trashing + " to the trash" : "", p.unsure.length ? p.unsure.length + " left alone (can't tell which is newer)" : ""]
                     .filter(s => s).join(" · ") || "Nothing to do")
-                    + (root.confirming ? " — Sync again to go ahead (you can bring them back from the Trash)." : "")
+                    + (root.confirming ? ". Sync again to go ahead. You can bring them back from the trash." : "")
                 color: root.trashing ? Theme.text : Theme.muted
                 font { family: Theme.font; pointSize: Theme.pt(11) }
             }
@@ -340,7 +340,7 @@ Column {
             visible: root.part === "sync"
             anchors.verticalCenter: undefined
             readonly property int n: root.plan ? root.plan.to_right.length + root.plan.to_left.length + root.trashing : 0
-            text: root.confirming ? "Sync, " + root.trashing + " to the Trash" : "Sync"
+            text: root.confirming ? "Sync, " + root.trashing + " to the trash" : "Sync"
             kind: root.confirming ? "danger" : "primary"
             enabled: n > 0 && !root.scanning
             onClicked: root.go()

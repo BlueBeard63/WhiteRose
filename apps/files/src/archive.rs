@@ -1210,6 +1210,7 @@ pub fn compress(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use std::os::unix::fs::MetadataExt;
 
     #[test]
@@ -1325,7 +1326,6 @@ mod tests {
                 .is_none()
         );
         assert!(!out.join("c.zip").exists() && !out.join(".c.zip.wrpart").exists());
-        fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
@@ -1415,7 +1415,6 @@ mod tests {
             assert_eq!(fs::read_to_string(&f).unwrap(), "jpeg2");
             assert_eq!(cached_file(&a, "trip/photos/b.jpg").unwrap(), f);
         }
-        fs::remove_dir_all(&d).unwrap();
     }
 
     struct Quiet(u32, Option<u32>);
@@ -1427,10 +1426,8 @@ mod tests {
         }
     }
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-archive-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("archive-{name}"));
         d
     }
 

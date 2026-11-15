@@ -126,6 +126,13 @@ function pushHistory(list, entry, max, same) {
 
 // argv that runs `cmd` in `terminal` and leaves a shell open afterwards, so
 // the output stays readable. Terminals disagree on how to take a command.
+// One word for sh: as it is when it's plain, else in single quotes
+// ("it's" → 'it'\''s').
+function shellQuote(w) {
+    w = String(w);
+    return /^[A-Za-z0-9_\/.,:=+@%-]+$/.test(w) ? w : "'" + w.replace(/'/g, "'\\''") + "'";
+}
+
 function terminalCommand(terminal, cmd) {
     var parts = (terminal || "ptyxis").trim().split(/\s+/);
     var name = parts[0].split("/").pop();

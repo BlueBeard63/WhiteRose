@@ -130,6 +130,7 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use std::{os::unix::net::UnixListener, sync::mpsc, time::Duration};
 
     #[test]
@@ -150,8 +151,7 @@ mod tests {
 
     #[test]
     fn follows_changes_and_writes_settings() {
-        let dir = std::env::temp_dir().join(format!("wr-kit-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = Scratch::new("kit");
         let sock = dir.join("d.sock");
         let _ = std::fs::remove_file(&sock);
         let listener = UnixListener::bind(&sock).unwrap();
@@ -192,6 +192,5 @@ mod tests {
             (v["op"].as_str(), v["key"].as_str(), &v["value"]),
             (Some("set"), Some("module.notepad.wrap"), &json!(false))
         );
-        let _ = std::fs::remove_dir_all(dir);
     }
 }

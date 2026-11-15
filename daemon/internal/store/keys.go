@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"whiterose/daemon/internal/config"
@@ -79,7 +81,7 @@ var Known = map[string]Key{
 	"launcher.commands":     {Default: json.RawMessage(`[]`), Check: into(maxLen[string](50))},
 	"launcher.calculations": {Default: json.RawMessage(`[]`), Check: into(maxLen[Calculation](20))},
 	"quick.doNotDisturb":    {Default: json.RawMessage(`false`), Check: into[bool](nil)},
-	// Unix ms when Night Light turns itself off; 0 = off.
+	// Unix ms when Night light turns itself off; 0 = off.
 	"quick.nightLight.until": {Default: json.RawMessage(`0`), Check: into(func(v float64) error {
 		if v < 0 {
 			return errors.New("must be 0 or a time")
@@ -276,9 +278,36 @@ var Known = map[string]Key{
 	"privacy.screenOffAfter": {Default: json.RawMessage(`10`), Check: into(minutes(0, 1, 2, 5, 10, 15, 30, 60))},
 	"privacy.lockOnSuspend":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// How often whiterosed looks for a WhiteRose update (Settings › Updates).
-	"update.check":             {Default: json.RawMessage(`"daily"`), Check: into(oneOf("daily", "weekly", "manual"))},
+	"update.check": {Default: json.RawMessage(`"daily"`), Check: into(oneOf("daily", "weekly", "manual"))},
+	// App ids kept running when memory runs out (the terminal always is):
+	// further back in the kill order, and never closed by the watcher.
+	"memory.protected": {Default: json.RawMessage(`[]`), Check: into(maxLen[string](100))},
+	// When memory is critical, the watcher closes the app at fault by itself.
+	"memory.autoClose": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Offer pre-releases (alpha, beta) as updates and list them under Releases.
+	"update.prerelease":        {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	"privacy.recentFiles":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Mice and touchpads (Settings › Mouse & touchpad; the compositor
+	// applies them through libinput). Speed is libinput's, -1 to 1.
+	"mouse.naturalScroll":    {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"mouse.speed":            {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},
+	"mouse.acceleration":     {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.naturalScroll": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.speed":         {Default: json.RawMessage(`0`), Check: into(pointerSpeed)},
+	"touchpad.acceleration":  {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"touchpad.tapToClick":    {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Shaking the pointer makes it big for a moment (the compositor).
+	"mouse.shakeToFind": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Held, the pointer moves faster (fasterBy times); "" turns it off.
+	// The modifiers still reach apps.
+	"mouse.fasterWith": {Default: json.RawMessage(`"CTRL+SHIFT"`), Check: into(oneOf("", "CTRL+SHIFT", "CTRL+ALT", "SUPER+SHIFT"))},
+	"mouse.fasterBy": {Default: json.RawMessage(`3`), Check: into(func(v float64) error {
+		if v < 1 || v > 8 {
+			return errors.New("must be 1-8")
+		}
+		return nil
+	})},
 	// Keyboard layouts, first is the default: UK English to start with.
 	// An empty list means the system's (/etc/default/keyboard or the X11
 	// keyboard config).
@@ -345,6 +374,281 @@ var Known = map[string]Key{
 		}
 		return nil
 	})},
+	// Window layout (the compositor's layout/ module). The global default,
+	// then overrides per workspace ("1"-"9") and per monitor (its ID, as in
+	// "displays"); a monitor's beats a workspace's.
+	"windows.layout": {Default: json.RawMessage(`"floating"`), Check: into(oneOf(layouts...))},
+	"windows.layout.workspaces": {Default: json.RawMessage(`{}`), Check: into(func(m map[string]string) error {
+		for ws, l := range m {
+			if len(ws) != 1 || ws < "1" || ws > "9" {
+				return fmt.Errorf("invalid workspace %q (want 1-9)", ws)
+			}
+			if err := oneOf(layouts...)(l); err != nil {
+				return fmt.Errorf("workspace %s: %w", ws, err)
+			}
+		}
+		return nil
+	})},
+	"windows.layout.monitors": {Default: json.RawMessage(`{}`), Check: into(func(m map[string]string) error {
+		if len(m) > 32 {
+			return errors.New("at most 32 monitors")
+		}
+		for id, l := range m {
+			if !config.ValidID(id) {
+				return fmt.Errorf("invalid monitor id %q", id)
+			}
+			if err := oneOf(layouts...)(l); err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+		}
+		return nil
+	})},
+	// Floating windows snap to edges, corners and zones.
+	"windows.snap": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	// Zone grids per monitor (its ID): [x, y, w, h] as fractions of the
+	// area the bar leaves, shown while SHIFT is held during a drag. No grid:
+	// two thirds and a third.
+	"windows.snap.zones": {Default: json.RawMessage(`{}`), Check: into(func(m map[string][][4]float64) error {
+		if len(m) > 32 {
+			return errors.New("at most 32 monitors")
+		}
+		for id, zones := range m {
+			if !config.ValidID(id) {
+				return fmt.Errorf("invalid monitor id %q", id)
+			}
+			if err := checkZones(zones); err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+		}
+		return nil
+	})},
+	// A workspace's own zone grid on a monitor, instead of the monitor's:
+	// {"<workspace 1-9>": {"<monitor id>": [[x, y, w, h], ...]}}.
+	"windows.snap.zones.workspaces": {Default: json.RawMessage(`{}`), Check: into(func(m map[string]map[string][][4]float64) error {
+		for ws, grids := range m {
+			if n, err := strconv.Atoi(ws); err != nil || n < 1 || n > 9 || ws != strconv.Itoa(n) {
+				return fmt.Errorf("invalid workspace %q (1-9)", ws)
+			}
+			if len(grids) > 32 {
+				return fmt.Errorf("workspace %s: at most 32 monitors", ws)
+			}
+			for id, zones := range grids {
+				if !config.ValidID(id) {
+					return fmt.Errorf("workspace %s: invalid monitor id %q", ws, id)
+				}
+				if err := checkZones(zones); err != nil {
+					return fmt.Errorf("workspace %s, %s: %w", ws, id, err)
+				}
+			}
+		}
+		return nil
+	})},
+	// Gaps in pixels: between tiles, and around them. Smart: none with one tile.
+	// The note (the Note module, SUPER+SHIFT+N): one text, its first line the
+	// title, "[ ]" lines tasks.
+	"note.text": {Default: json.RawMessage(`""`), Check: into(func(s string) error { return limit(s, 20000) })},
+	// ALT+TAB: apps with windows on any workspace, or only this one.
+	"windows.appSwitcher.workspaces": {Default: json.RawMessage(`"all"`), Check: into(oneOf("all", "current"))},
+	"windows.gaps.inner":             {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.outer":             {Default: json.RawMessage(`8`), Check: into(pixels(0, 64))},
+	"windows.gaps.smart":             {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// Master layout: the master tile's share of the area, and its side.
+	"windows.master.ratio": {Default: json.RawMessage(`0.55`), Check: into(func(v float64) error {
+		if v < 0.1 || v > 0.9 {
+			return errors.New("must be 0.1-0.9")
+		}
+		return nil
+	})},
+	"windows.master.side": {Default: json.RawMessage(`"left"`), Check: into(oneOf("left", "right", "top", "bottom"))},
+	// Dwindle: which way new tiles split (auto: by the tile's shape).
+	"windows.dwindle.split": {Default: json.RawMessage(`"auto"`), Check: into(oneOf("auto", "horizontal", "vertical"))},
+	// Window rules, in order: what to do with a window when it opens,
+	// matched by app id and/or title (regular expressions). Every rule that
+	// matches applies; for the same action the later rule wins.
+	"windows.rules": {Default: json.RawMessage(`[]`), Check: into(checkWindowRules)},
+	// Apps shown and hidden with a key, sliding down from the island.
+	"windows.scratchpads": {Default: json.RawMessage(`[]`), Check: into(checkScratchpads)},
+}
+
+// The window layouts (windows.layout and its overrides).
+var layouts = []string{"floating", "dwindle", "master"}
+
+// WindowRule is one of windows.rules. Sizes and positions are pixels or
+// "N%" of the monitor's usable area; Position may also be "centre".
+type WindowRule struct {
+	App        string            `json:"app,omitempty"`
+	Title      string            `json:"title,omitempty"`
+	Workspace  *int              `json:"workspace,omitempty"`
+	Monitor    string            `json:"monitor,omitempty"`
+	Float      *bool             `json:"float,omitempty"`
+	Size       []json.RawMessage `json:"size,omitempty"`
+	Position   json.RawMessage   `json:"position,omitempty"`
+	Maximized  *bool             `json:"maximized,omitempty"`
+	Fullscreen *bool             `json:"fullscreen,omitempty"`
+	Opacity    []float64         `json:"opacity,omitempty"`
+	OnTop      *bool             `json:"onTop,omitempty"`
+	Zone       *int              `json:"zone,omitempty"`
+}
+
+func checkWindowRules(rules []WindowRule) error {
+	if len(rules) > 200 {
+		return errors.New("at most 200 rules")
+	}
+	for i, r := range rules {
+		if err := checkWindowRule(r); err != nil {
+			return fmt.Errorf("rule %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+func checkWindowRule(r WindowRule) error {
+	if r.App == "" && r.Title == "" {
+		return errors.New("needs an app id or a title")
+	}
+	for _, p := range []string{r.App, r.Title} {
+		if len(p) > 500 {
+			return errors.New("pattern too long")
+		}
+		if _, err := regexp.Compile(p); err != nil {
+			return err
+		}
+	}
+	if r.Workspace != nil && (*r.Workspace < 1 || *r.Workspace > 9) {
+		return errors.New("workspace must be 1-9")
+	}
+	if r.Zone != nil && (*r.Zone < 1 || *r.Zone > 64) {
+		return errors.New("zone must be 1-64")
+	}
+	if r.Size != nil {
+		if len(r.Size) != 2 {
+			return errors.New("size is [width, height]")
+		}
+		for _, l := range r.Size {
+			if err := checkRuleLength(l, 1); err != nil {
+				return fmt.Errorf("size: %w", err)
+			}
+		}
+	}
+	if r.Position != nil {
+		var s string
+		var xy []json.RawMessage
+		switch {
+		case json.Unmarshal(r.Position, &s) == nil:
+			if s != "centre" && s != "center" {
+				return errors.New(`position is [x, y] or "centre"`)
+			}
+		case json.Unmarshal(r.Position, &xy) == nil && len(xy) == 2:
+			for _, l := range xy {
+				if err := checkRuleLength(l, 0); err != nil {
+					return fmt.Errorf("position: %w", err)
+				}
+			}
+		default:
+			return errors.New(`position is [x, y] or "centre"`)
+		}
+	}
+	if r.Opacity != nil {
+		if len(r.Opacity) != 2 {
+			return errors.New("opacity is [focused, unfocused]")
+		}
+		for _, o := range r.Opacity {
+			if o < 0.1 || o > 1 {
+				return errors.New("opacity must be 0.1-1")
+			}
+		}
+	}
+	return nil
+}
+
+// Scratchpad is one of windows.scratchpads: the key runs Command, and the
+// first window that process opens is shown and hidden by the key after.
+// No keys is allowed (another shortcut took its key): it's off until it
+// has one.
+// Size is pixels or "N%" of the monitor's usable area; Place is "top"
+// (under the island) or "centre".
+type Scratchpad struct {
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	Command    string            `json:"command"`
+	Keys       []string          `json:"keys"`
+	Size       []json.RawMessage `json:"size,omitempty"`
+	Place      string            `json:"place,omitempty"`
+	HideOnBlur bool              `json:"hideOnBlur,omitempty"`
+}
+
+func checkScratchpads(pads []Scratchpad) error {
+	if len(pads) > 50 {
+		return errors.New("at most 50 scratchpads")
+	}
+	seen := map[string]bool{}
+	for i, p := range pads {
+		switch {
+		case !shortcutID.MatchString(p.ID):
+			return fmt.Errorf("scratchpad %d: invalid id %q", i+1, p.ID)
+		case seen[p.ID]:
+			return fmt.Errorf("scratchpad %d: id %q used twice", i+1, p.ID)
+		}
+		seen[p.ID] = true
+		if err := checkScratchpad(p); err != nil {
+			return fmt.Errorf("%s: %w", p.ID, err)
+		}
+	}
+	return nil
+}
+
+func checkScratchpad(p Scratchpad) error {
+	switch {
+	case len(p.Name) > 100:
+		return errors.New("name must be at most 100 characters")
+	case strings.TrimSpace(p.Command) == "" || len(p.Command) > 2000:
+		return errors.New("command must be 1-2000 characters")
+	case p.Place != "" && p.Place != "top" && p.Place != "centre" && p.Place != "center":
+		return errors.New(`place is "top" or "centre"`)
+	}
+	if err := checkCombos(p.Keys); err != nil {
+		return err
+	}
+	if p.Size != nil {
+		if len(p.Size) != 2 {
+			return errors.New("size is [width, height]")
+		}
+		for _, l := range p.Size {
+			if err := checkRuleLength(l, 1); err != nil {
+				return fmt.Errorf("size: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// checkRuleLength: whole pixels (at least min) or "N%" (0-100).
+func checkRuleLength(raw json.RawMessage, min int) error {
+	var px int
+	if json.Unmarshal(raw, &px) == nil {
+		if px < min || px > 100000 {
+			return fmt.Errorf("must be at least %d px", min)
+		}
+		return nil
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		if n, ok := strings.CutSuffix(strings.TrimSpace(s), "%"); ok {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil && f >= 0 && f <= 100 {
+				return nil
+			}
+		}
+	}
+	return errors.New(`must be pixels or "N%"`)
+}
+
+func pixels(lo, hi int) func(int) error {
+	return func(v int) error {
+		if v < lo || v > hi {
+			return fmt.Errorf("must be %d-%d px", lo, hi)
+		}
+		return nil
+	}
 }
 
 // KeyboardLayout is an XKB layout and optional variant ("gb", "extd").
@@ -614,6 +918,38 @@ func actionList(list []FilesAction) error {
 		if a.On != "files" && a.On != "folders" && a.On != "any" {
 			return fmt.Errorf("%q: on must be files, folders or any", a.Name)
 		}
+	}
+	return nil
+}
+
+// checkZones checks a zone grid as the compositor does (layout/snap.rs):
+// 1-16 zones, each inside the area and at least a tenth of it each way,
+// none overlapping.
+func checkZones(zones [][4]float64) error {
+	const eps = 1e-6
+	if len(zones) == 0 || len(zones) > 16 {
+		return errors.New("must have 1-16 zones")
+	}
+	for i, z := range zones {
+		x, y, w, h := z[0], z[1], z[2], z[3]
+		if x < -eps || y < -eps || w < 0.1-eps || h < 0.1-eps || x+w > 1+eps || y+h > 1+eps {
+			return fmt.Errorf("zone %d is outside the area or smaller than a tenth", i+1)
+		}
+		for j, o := range zones[:i] {
+			ow := math.Min(x+w, o[0]+o[2]) - math.Max(x, o[0])
+			oh := math.Min(y+h, o[1]+o[3]) - math.Max(y, o[1])
+			if ow > eps && oh > eps {
+				return fmt.Errorf("zones %d and %d overlap", j+1, i+1)
+			}
+		}
+	}
+	return nil
+}
+
+// pointerSpeed: libinput's range.
+func pointerSpeed(v float64) error {
+	if v < -1 || v > 1 {
+		return errors.New("must be -1 to 1")
 	}
 	return nil
 }

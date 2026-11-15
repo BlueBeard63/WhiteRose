@@ -1,4 +1,4 @@
-// Files › General: where Files starts, how a click opens things, the Trash,
+// Files › General: where Files starts, how a click opens things, the trash,
 // and what shows.
 import QtQuick
 import qs
@@ -16,7 +16,7 @@ Column {
         SettingRow {
             title: "Open with"
             subtitle: page.startIn === "last" ? "The tabs and windows you had last time" : page.startIn === "home" ? "Your home folder"
-                : page.startIn === "start" ? "The Start page: workspaces, places, recent files, drives" : "The folder below"
+                : page.startIn === "start" ? "The start page: workspaces, places, recent files, drives" : "The folder below"
             Choice {
                 value: page.startIn
                 options: [{ label: "Last tabs", value: "last" }, { label: "Home", value: "home" }, { label: "Start page", value: "start" }, { label: "A folder", value: "folder" }]
@@ -50,12 +50,12 @@ Column {
             }
         }
         SettingRow {
-            title: "Ask before moving to the Trash"
-            subtitle: "Delete always goes to the Trash, so things can be brought back"
+            title: "Ask before moving to the trash"
+            subtitle: "Delete always moves things to the trash, so you can get them back"
             Toggle { checked: Daemon.setting("files.confirmTrash", false); onToggled: on => Daemon.set("files.confirmTrash", on) }
         }
         SettingRow {
-            title: "Verify copies"
+            title: "Check copies"
             subtitle: "Read each copied file back from the drive and check it matches (slower; catches failing drives and cables)"
             Toggle { checked: Daemon.setting("files.verifyCopies", false); onToggled: on => Daemon.set("files.verifyCopies", on) }
         }

@@ -62,20 +62,43 @@ QuickShell's workspace modules are written for specific compositors (Hyprland, i
 compositor/   whiterose-wm: Rust + Smithay 0.7
   src/keybind.rs     shortcut parsing, default table, lookup (pure, unit-tested)
   src/workspace.rs   workspaces + focus history for the switchers (pure, unit-tested)
+  src/layout/        window layouts (pure, unit-tested): the Layout enum and which one applies,
+                     gaps, the dwindle tree, master, drop zones, tab groups
+  src/tiling.rs      tiles per (workspace, output): retile(), floating geometry, mouse drops, the
+                     tiling keys, the windows.* settings
+  src/tab_strip.rs   a grouped tile's tab strip, drawn with fontdue in the bundled Geist
+  src/grabs/         pointer grabs: move, resize, and tile_grab.rs (drag a tile, move a split)
   src/state.rs       compositor state, actions, workspace switching
   src/input.rs       shortcuts first (SUPER tap, PrtSc, ...), then forward to clients
   src/winit.rs       nested backend: redraws only on change (full repaint; the host EGL surface
                      rejects buffer-age queries); dmabuf v4 with render-node feedback
+  src/headless.rs    headless backend (`--backend headless`): one virtual 1280x800 output, nothing
+                     drawn, frame callbacks at most every 16 ms; input only through the debug
+                     pointer and keys. For the UI tests in CI
   src/handlers/       protocol handlers: xdg-shell, layer-shell (bar/panels), linux-dmabuf (GPU buffers)
   tests/globals.rs   starts the core headless and connects a real Wayland client
   tests/layer_shell.rs  a bar-like client on a fake 1440x808 output: bar width, reserved space,
                         windows open below it, launcher gets exclusive keyboard focus
+  tests/tiling.rs, tile_mouse.rs, tile_groups.rs, tile_keys.rs  tiling with real clients: layouts
+                        and settings, dragging and resizing, tab groups, the keys
 daemon/       whiterosed: Go
+  uitest/            click-and-check UI tests (`make ui-test`): internal/uitest starts a nested
+                     WhiteRose in a session of its own (HOME, D-Bus, accessibility bus, display),
+                     finds things by accessible name and role (AT-SPI; the kit's components and
+                     Files' rows and tabs carry them), clicks and types with the real pointer and
+                     keyboard through the compositor, and reads back what shows. The shell (bar,
+                     island, panels) and Settings too: layer windows are titled with their
+                     namespace (shell/LayerTitle.qml) and placed through the compositor's
+                     test-only `{"debug_layers":true}`; settings can be seeded and read back. Nested in the
+                     current desktop, or headless (apps draw in software) when there is none or
+                     WR_UITEST_HEADLESS=1: the `ui` CI job. `make shots` (shots_test.go) uses
+                     the same sessions to save screenshots for review to build/shots: the bar,
+                     Quick Settings, the zone editor on screen, and every Settings page as a tile
 Makefile      `make check` = gofmt, vet, race, fuzz, cargo fmt, clippy -D warnings, cargo test
               `make run-nested` = WhiteRose in a window on the current desktop
 ```
 
-When running nested, SUPER is remapped to CTRL+ALT (`--mod ctrl-alt`, the default), because the host desktop keeps SUPER, ALT+TAB and PrtSc for itself.
+When running nested, the window asks the host desktop to pass its shortcuts through, so SUPER works as on real hardware. Where the host can't (X11, or the permission was refused), `--mod ctrl-alt` remaps SUPER to CTRL+ALT.
 
 ---
 
@@ -191,7 +214,7 @@ Rules that keep RAM low:
 
 - Each package is built in a container of its distro (`packaging/Dockerfile.ubuntu`, `packaging/Dockerfile.fedora`, `packaging/build.sh`), so it links that distro's own libraries. Output goes to `build/packages/`.
 - QuickShell is built from source, pinned to the revision the shell is written against, and shipped privately as `/usr/lib/whiterose/quickshell`. It uses Qt's private API, so the package requires exactly the Qt it was built with: `qt6-*-private-abi (= x.y.z)` on Ubuntu, `qt6-qtbase = x.y.z` on Fedora. A distro Qt update waits for a rebuilt WhiteRose instead of breaking the shell.
-- Dependencies come from what the binaries link (dpkg-shlibdeps; sonames for rpm), plus what a bare install lacks: Mesa's drivers, fonts, PipeWire with Pulse compatibility, NetworkManager, BlueZ, UPower, AccountsService, polkit and the portals.
+- Dependencies come from what the binaries link (dpkg-shlibdeps; sonames for rpm), plus what a bare install lacks: Mesa's drivers, fonts, PipeWire with Pulse compatibility, NetworkManager, BlueZ, UPower, AccountsService, polkit, the portals and Xwayland (for X11 apps; it runs only while one is open).
 - **Starting it:** the login screen's "WhiteRose" session (`/usr/share/wayland-sessions`). Without a login screen (Ubuntu Server), logging in on tty1 starts it (`/etc/profile.d/whiterose-autostart.sh`; zsh users get the same line in `~/.zprofile`). Other consoles stay text.
 - **Ubuntu Server networking:** the package sets netplan's renderer to NetworkManager (`/etc/netplan/90-whiterose-network-manager.yaml`, from the next boot; removed on purge) so Wi-Fi and the Network page work.
 - **App setup** (Settings > Apps, offered on first login): `daemon/internal/apps`. Each app comes from the distro's packages, the maker's repository (VS Code, Signal on Ubuntu) or a COPR (Ghostty on Fedora), else Flathub. No snaps. The root half runs as `pkexec whiterosed apps-root ID...` (policy `org.whiterose.apps.install`). It only accepts catalogue ids, and every URL and command is fixed in the catalogue. Then, as you: Oh My Zsh with your theme, and your VS Code extensions (`profile/`).
@@ -215,7 +238,7 @@ When given a local file, apt and dnf both pull in every dependency the package d
 | `whiterosed` | Inside the package. Static Go binary |
 | QuickShell | Inside the package. It is not in the standard repos, and older distros may ship a Qt that is too old for it, so ship a private copy under `/usr/lib/whiterose/` (falling back to system Qt only where it is new enough) |
 | Core settings modules, configs, icons, fonts (Geist) | Inside the package |
-| PipeWire + WirePlumber, NetworkManager, BlueZ, UPower, power-profiles-daemon, polkit, xdg-desktop-portal | Declared as dependencies; apt or dnf installs them |
+| PipeWire + WirePlumber, NetworkManager, BlueZ, UPower, power-profiles-daemon, polkit, xdg-desktop-portal, Xwayland | Declared as dependencies; apt or dnf installs them |
 
 The package also installs:
 
@@ -255,6 +278,20 @@ Figma frames: `Settings - Displays` and `Settings - Displays (dragging)`.
 - Identify shows each monitor's number and name on it for 3 s (`shell/IdentifyOverlay.qml`).
 - The logic (snapping, overlap, building the setting) is `settings/modules/displays/Displays.js`, tested by `shell/tests/run.mjs`.
 
+## UI text
+
+Every word on screen (the shell, Settings, the apps, notifications, errors the daemon or compositor show) reads like a competent person wrote it: clear, direct, no sales voice.
+
+- **Sentence case** everywhere ("Do not disturb", "Top bar", "Move to trash"), except proper nouns (WhiteRose, Wi-Fi, Bluetooth, Files, Google Drive).
+- **No em dashes:** a colon, comma, full stop or brackets instead. Window titles: "Pictures - Files".
+- **Action or outcome first:** "Save changes", not "Click here to save your changes".
+- **No filler** ("Please", "Kindly", "In order to", "Feel free to"), **no buzzwords** (seamless, empower, unlock as in features, robust, intuitive, magic…), **no exclamation marks**.
+- **Errors say what went wrong and how to fix it**, without "Oops" or apologies: "At least 8 characters", "Wrong password. Try again."
+- **No repeating the title in the body:** under "Delete project?", the body gives the consequence ("This removes all files permanently").
+- **Active voice, everyday verbs:** get, make, fix, send, check, keep.
+
+`node shell/tests/run.mjs` (in `make check`) fails on an em dash, filler, a buzzword, an apology or an exclamation mark in any QML/JS string or module.json; sentence case is for review.
+
 ## Appearance
 
 Figma frame: `Settings - Appearance`.
@@ -270,6 +307,7 @@ Figma frame: `Settings - Appearance`.
 
 - `bar.*` settings choose what the bar shows: workspaces (`bar.workspaceStyle`: dots or numbers), now playing, the network, Bluetooth and volume icons, the battery percentage, the bell, the date, 12- or 24-hour time, and seconds. `bar.screens` puts the bar on every screen or only the main one.
 - Seconds are the only option with a cost: the clock then wakes every second instead of every minute.
+- **Icons:** the bar's are solid glyphs on a 16px grid (`shell/Glyph.qml`; Figma: `Bar Icons — 16px`), drawn 1:1 and placed on whole pixels (`Trigger` centres its row on whole pixels too), so they stay sharp. Lucide's 24px outlines, shrunk to 13–16px, landed between pixels and went soft. Weak Wi-Fi draws the bands it doesn't reach dim, and Do not disturb shows a moon. Elsewhere (Settings, panels) icons stay Lucide outlines (`Icon.qml`).
 
 ## Screenshot tool
 
@@ -322,8 +360,8 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
   - **File operations** (`src/ops.rs`, run by the `Ops` singleton in `src/jobs.rs`): copy, move, trash, delete on a thread per job, copies and moves one at a time. Copies write `.name.wrpart` and rename it into place, keeping modes and times. A clash pauses the job and asks (replace or merge, keep both, skip, or the same for the rest). Moves rename when they can, else copy then remove the original only if everything copied.
   - **Trash:** the freedesktop.org layout (`src/trash.rs`), so GNOME and KDE see the same Trash: home Trash for the home drive, the drive's `.Trash/$uid` or `.Trash-$uid` elsewhere. `trash:` (also `trash:///` from `xdg-open`) shows every Trash at once, by original name, with where each came from and when. Restore puts it back (remaking its folder; numbered if the name's taken); deleting there ("purge") removes the `.trashinfo` too.
   - **Properties:** `Fs.info` for one item; sizes of folders and of several items are counted on a thread (`Ops.measure`) and shown as they grow. Permission switches `chmod` straight away, only for your own files.
-  - **Drag and drop:** a drag carries the selection as `text/uri-list` (and the paths as text), so any app takes it; drops come the same way from any app. Targets: folders in every view, a folder's empty space, sidebar places (the Trash trashes), breadcrumbs and tabs (held over, a tab opens). `Drops.plan` decides: same drive moves, another copies, Ctrl copies, Shift moves (modifiers read at the drop, `QGuiApplication::queryKeyboardModifiers`); never onto or into itself. The source app is always told "copied", so it never deletes originals behind our move. Drags start by hand past 10 px (`DragSource.qml`), not with `MouseArea.drag.target`: with that, Qt crashed when the dragged item went away mid-drag.
-  - **Search** (`src/search.rs`, run by the `Search` singleton in `src/finder.rs`): typing in a folder filters it; Ctrl+F searches. Names must hold every word (any order), ranked by where the words fall and by recency; `*.pdf` / `ext:pdf` and type, size and date filters narrow it. "This folder" walks the tree live (always exact); "Home" and "Everywhere" read the index: `$XDG_CACHE_HOME/whiterose/files/index` (0600), folders before their contents and each tree in one stretch so a search is one pass through a memory-mapped file. It's rebuilt in a thread at nice 19 and idle I/O priority when missing or over an hour old, or on request. Hidden folders, `node_modules`, `__pycache__`, `site-packages` and `~/go/pkg` are left out; hits gone since are dropped.
+  - **Drag and drop:** a drag carries the selection as `text/uri-list` (and the paths as text), so any app takes it; drops come the same way from any app. Targets: folders in every view, a folder's empty space, sidebar places (the trash trashes), breadcrumbs and tabs (held over, a tab opens). `Drops.plan` decides: same drive moves, another copies, Ctrl copies, Shift moves (modifiers read at the drop, `QGuiApplication::queryKeyboardModifiers`); never onto or into itself. The source app is always told "copied", so it never deletes originals behind our move. Drags start by hand past 10 px (`DragSource.qml`), not with `MouseArea.drag.target`: with that, Qt crashed when the dragged item went away mid-drag.
+  - **Search** (`src/search.rs`, run by the `Search` singleton in `src/finder.rs`): typing in a folder filters it; Ctrl+F searches. Names must hold every word (any order), ranked by where the words fall and by recency; `*.pdf` / `ext:pdf` and type, size and date filters narrow it. "This folder" walks the tree live (always exact); "Home" and "Everywhere" read the index: `$XDG_CACHE_HOME/whiterose/files/index` (0600), folders before their contents and each tree in one stretch so a search is one pass through a memory-mapped file. It's rebuilt by `whiterose-files --index` (`src/indexer.rs`), a process of its own at nice 19 and idle I/O priority (so closing Files doesn't stop it; a lock keeps it to one), when missing or over an hour old, or on request. It reads what to index and whether to seal it from whiterosed, and makes nothing without it. While it runs, `index.progress` beside the index holds `{pid, started, count, expected}` (`expected`: the last index's size); Files polls it for the bar, the percentage and the time left. Hidden folders, `node_modules`, `__pycache__`, `site-packages` and `~/go/pkg` are left out; hits gone since are dropped.
   - **Previews** (`Preview.qml`): pictures decoded at the size shown, the start of text (`Fs.readText`: up to 16 KB in the panel, 1 MB in quick look; not text if it has NULs or isn't UTF-8), and anything else as its type's large icon. Video, audio (`MediaPreview.qml`, QtMultimedia) and PDF (`PdfPreview.qml`, QtQuick.Pdf) are plain resources loaded only when needed, not compiled ahead, so Files builds and runs without those modules (showing icons; a missing module isn't retried). The packages depend on them. Grid thumbnails are the photos themselves, decoded at icon size, only for visible items.
   - **Open in a terminal / editor** (`src/launch.rs`): the `apps.terminal` and `apps.editor` settings (a program's name, chosen in Settings › Apps, which lists only installed ones), else the first installed from a fixed list; each terminal's own way of starting in a folder. Started in their own session, so they outlive Files. A folder inside a git repository also offers the repository.
   - **Folder sizes:** list view asks `Ops.sizeFolders` for the folders shown; one idle-priority thread works through them, dropping the queue when asked again (moving folder) and reusing sizes from the last minute. Not for `/`.
@@ -333,10 +371,13 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
   - **More views:** gallery (one item large, arrows on hover), cards, and disk usage (a squarified treemap, `Layout.js`, of the folder with folders sized in the background). Adaptive (on by default, ☰ menu): a folder with no view of its own and none lent gets one to suit it, mostly pictures a gallery, a code project a list (`Layout.adaptive`), and nothing's remembered until you change it. Item size (Ctrl+= / Ctrl+- / Ctrl+0) is one setting for every view and window.
   - **Arranging:** group by kind, date modified, size or name (`Arrange.js`) is part of a folder's view, like sort; headings fold their group. Grouped grid and cards are rows in a ListView (`GroupedGrid.qml`, the cells shared with the plain grid as `GridCell` / `CardCell`) since a GridView can't hold headings. The list's columns (size, modified, created, kind), their widths and where folders go are one setting for every window (`views.json`).
   - **Menus:** the kit `Menu` takes submenus (an item with `items`), opening beside it, to the left when there's no room. A chosen action runs after every menu has closed, since it may change what the menus hold.
-  - **Settings › Files** (`shell/settings/modules/files`, five sub-pages): everything that isn't about one folder is a whiterosed setting (`files.*`, `apps.terminal`, `apps.editor`), so Settings and every Files window follow a change at once. Files keeps only per-folder things (views, looks, the session). "Make the index again" sets `files.reindex` (a time); Files makes it when that's newer than the index. The shortcut list (`FilesKeys.js`) lives in the Settings module and is compiled into Files, so both show the same.
+  - **The picker** (`src/choose.rs`, `qml/ChooseStrip.qml`): `whiterose-files --choose …` is Files with a strip above the files saying what's wanted. Panes list only folders and files matching the filter shown (globs on the name or MIME types, `Fs.chooseMatches`); opening a file chooses it; the answer is printed (a line each, or `--json`) and the process exits 0, or 1 for Cancel, Esc or closing the window. A picker restores and saves no tabs and leaves the index alone. Its window title ends in " - Files", as Qt adds the app's name to titles that don't.
+  - **Settings picks with it:** `shell/settings/FilePicker.qml` runs `whiterose-files --choose --json` (`$WHITEROSE_FILES` if set) for the user picture, wallpapers (an image, a folder), folders left out of the search index and Wi-Fi certificates, in place of Qt's file dialogs.
+  - **Every app's Open and Save** (`daemon/internal/portal`, `whiterosed portal`): WhiteRose's xdg-desktop-portal backend, `org.freedesktop.impl.portal.desktop.whiterose`, implements only the FileChooser (OpenFile, SaveFile, SaveFiles); `whiterose-portals.conf` sends that to it and everything else to GTK's. D-Bus starts it when the portal first asks (`/usr/share/dbus-1/services/…whiterose.service`, running `/usr/bin/whiterosed portal`, so the session's version via `WHITEROSE_DIR`). Each request runs `whiterose-files --choose --json` with the app's title, folder, name and filters (the one it wants shown first; GTK's `*.[pP][nN][gG]` globs work), answers `file://` URIs, and its Request's Close kills the picker. The session sets `GTK_USE_PORTAL=1`, `GDK_DEBUG=portals` and `QT_QPA_PLATFORMTHEME=xdgdesktopportal` so GTK and Qt apps ask the portal; Electron apps do anyway. Choices (extra check boxes) aren't shown.
+  - **Settings › Files** (`shell/settings/modules/files`, five sub-pages): everything that isn't about one folder is a whiterosed setting (`files.*`, `apps.terminal`, `apps.editor`), so Settings and every Files window follow a change at once. Files keeps only per-folder things (views, looks, the session). "Make again" sets `files.reindex` (a time). whiterosed (`internal/filesindex`) runs `whiterose-files --index` then, two seconds after what's indexed changes, and every 10 minutes checks whether the index is over an hour old, making it only when plugged in (`/sys/class/power_supply`: something other than a battery online, or no battery). So the index stays fresh with Files closed and costs no battery. `files_index` gives Settings the index's age and progress. `$WHITEROSE_FILES` names the Files to run (the UI tests and `make run-*` use the checkout's build); without one on PATH there's no indexing from the daemon. The shortcut list (`FilesKeys.js`) lives in the Settings module and is compiled into Files, so both show the same.
   - **Tags** (`src/tags.rs`): on the file itself as the `user.xdg.tags` extended attribute (comma-separated; KDE's Dolphin reads the same), so they survive any app renaming or moving the file; copies made by Files carry them. Names and colours are the `files.tags` setting. Files keeps a list of what's tagged where (`$XDG_STATE_HOME/whiterose/files/tags.json`) for the Sidebar counts, `tag:Name` pages and `tag:` searches, kept up by Files' own operations, checked against the files when read, and filled in with other apps' tags when the search index is made. Drives that can't hold extended attributes (some FAT/exFAT sticks) refuse tags, and Files says so.
   - **Git** (`src/git.rs`): `git --no-optional-locks status --porcelain=v2 --branch -z --ignored=matching` in the repository the folder is in, on a background thread at idle priority; each entry's state (a folder: the worst inside), the branch and ahead / behind in the status bar. Asked when a folder is listed and every 4 s while Files is in front and the folder is in a repository; off with `files.git`.
-  - **Safety:** Files never runs code by itself (`src/run.rs`): programs, executable scripts and launchers ask first; from untrusted places (Downloads, Desktop, removable drives, temp folders, the Trash, someone else's files) running needs "I trust this file", and `.desktop` launchers from there never run. Archives extract in Rust (`src/archive.rs`) into a hidden folder renamed into place: any absolute or `..` name refuses the whole archive, nothing is written through a link, links pointing outside are skipped, setuid / devices are dropped, and it stops before the drive is nearly full. Drives: `lsblk` lists plugged-in filesystems, `udisksctl` mounts (the polkit agent asks if needed) and ejects (unmount, then power-off when nothing on it is mounted). Everything done or refused goes in `files.log` (0600); ☰ › Help › Copy diagnostics puts version, system, tools, settings and the log's end on the clipboard.
+  - **Safety:** Files never runs code by itself (`src/run.rs`): programs, executable scripts and launchers ask first; from untrusted places (Downloads, Desktop, removable drives, temp folders, the trash, someone else's files) running needs "I trust this file", and `.desktop` launchers from there never run. Archives extract in Rust (`src/archive.rs`) into a hidden folder renamed into place: any absolute or `..` name refuses the whole archive, nothing is written through a link, links pointing outside are skipped, setuid / devices are dropped, and it stops before the drive is nearly full. Drives: `lsblk` lists plugged-in filesystems, `udisksctl` mounts (the polkit agent asks if needed) and ejects (unmount, then power-off when nothing on it is mounted). Everything done or refused goes in `files.log` (0600); ☰ › Help › Copy diagnostics puts version, system, tools, settings and the log's end on the clipboard.
   - **Rule for dialogs:** a popup closed from inside a key handler (Enter) crashes Qt; close it with `Qt.callLater`.
   - **Clipboard:** files go as `text/uri-list`, `x-special/gnome-copied-files` and plain paths (`cpp/clip.cpp`), so copy and paste work with other file managers both ways.
   - **Default:** `/etc/xdg/whiterose-mimeapps.list` makes Files open folders inside a WhiteRose session only.
@@ -347,12 +388,91 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
 - **Minimise:** a minimised window is hidden but kept, and comes back when it's focused (dock, ALT+TAB, the app's launcher entry). It stays hidden across workspace switches.
 - **The session's own processes:** the daemon and shell get SIGTERM when the compositor exits, however it exits, so none is left holding the session's sockets.
 
+## Layouts and tiling
+
+Figma frames: `Settings - Windows` (and scrolled to the end). Plan and decisions: `docs/plans/layout-engine.md`.
+
+- **Three layouts:** `floating` (the default: windows stay where they're put), `dwindle` (each new window splits the focused tile; a split goes side by side when its space is wide, stacked when tall, unless set) and `master` (one large tile on a chosen side, the rest stacked).
+- **Which applies:** per workspace *and* output, `monitor setting > workspace setting > global`. Monitors are keyed by their stable ID, as in `displays`.
+- **Settings (whiterosed):** `windows.layout`, `windows.layout.workspaces` (`{"1": "dwindle"}`), `windows.layout.monitors` (`{"<monitor id>": "master"}`), `windows.gaps.inner` / `.outer` (0–64 px), `windows.gaps.smart` (no gaps with one window), `windows.master.ratio` (0.1–0.9) and `.side`, `windows.dwindle.split` (`auto | horizontal | vertical`). The compositor follows them live (`layout_setting` in `daemon_message`).
+- **The core is pure** (`compositor/src/layout/`): generic over the window type like `workspace.rs`, so trees, rectangles, resizing, neighbours and groups are unit-tested without a compositor. The compositor keeps one `Tiling` per (workspace, output) that isn't floating.
+- **One reconcile step:** `retile()` brings the visible workspace in line with the settings and the windows on screen. Windows that should be tiled join next to the most recently used tile, those that shouldn't leave, and each tile gets its rectangle. It runs after a window's first commit (when the app has said whether it's a dialog or fixed size), closing, minimising, switching or moving workspaces, maximize/fullscreen ending, bar or output changes (`refit_windows`) and settings changes. A window is only reconfigured when its rectangle moved, so the bar's frequent commits cost nothing.
+- **Floating geometry is kept:** a window's floating place and size are remembered when it's tiled and given back when it floats again (the workspace turns floating, it moves to a floating one). Tiled windows are told they're tiled (xdg-toplevel `tiled_*` states), so apps drop their shadows and rounded corners.
+- **What floats on a tiled workspace:** dialogs (windows with a parent), fixed-size windows, and windows you take out (SUPER+SHIFT+SPACE, or dropped outside the tiles). They sit above the tiles. Maximized and fullscreen windows keep their place in the tree.
+- **A tiled window is cut to its tile:** a tile can get smaller than an app will go (Ghostty's minimum size, deep in a dwindle split), and the app then draws bigger than its tile. `retile()` records each placed tile (`TilingState.placed`), and `clip_of` makes it the window's clip: `render.rs` builds the space's elements itself and crops the window's own surfaces to it (its popups stay whole, so a menu can reach past the tile), `window_under` hit-tests the pointer by it, and frame callbacks go only to outputs the tile is on. Floating, maximized, fullscreen and dragged windows aren't clipped.
+- **Mouse:** a title-bar drag or SUPER+left-drag drags a tile, with a preview of where it lands. Dropped on another tile's top band it joins that tile's group, on its middle the two swap, near an edge it splits that tile. Dropped outside every tiled area it floats there; anywhere else it goes back. A border drag, SUPER+right-drag (nearest corner) or dragging the gap between tiles moves the splits. SUPER+drag also moves and resizes floating windows.
+- **Tab groups:** windows sharing one tile, one shown at a time. The tree holds each group's shown window; the other tabs are hidden like windows on another workspace, so changing tab is a `replace` in the tree. The strip above the tile is a small island (Figma "Grouping — tab strip options", C): a 6 px black band across the tile (14 px below its top, clear of the bar's idle island; its ends rounded on top) with the tabs hanging from it in a 30 px island on concave ears, each tab its app's icon (16 px, faded on tabs not shown) and title, as wide as they need (up to 220 px, sharing the room when there isn't enough), the shown one on a lighter pill; beside the island it's see-through, and the window starts 8 px below (`TAB_STRIP` = 58). Dropping a window on a tile's top 28 px (`GROUP_DROP`) groups them. `tab_strip::layout` places the tabs for drawing and clicks alike. Icons (`app_icons.rs`) are found as the shell finds them: the app id's desktop entry (by file name, StartupWMClass, or the id's last part) gives Icon=, looked up in GNOME's icon theme, what it inherits, hicolor and pixmaps (the smallest PNG big enough, `@2x` folders too); PNG only, so an SVG-only app shows its title alone. Each is read, scaled and premultiplied once per size and kept. **The strip moves** (220 ms, eased out) when its group changes on screen: `retile` compares the new strips with the last (the same group if they share a window; `animate_strips`). A new one appears: the band grows from the middle and the island drops out from under it. One whose tabs or shown tab changed slides there: the island widens or narrows, tabs still in it slide, one gone fades out in the first half and one new fades in after (so they don't cross), the pill slides to the shown tab. One gone goes the way it came, drawn over its window (which has its whole tile at once), from the labels last drawn for it, since its windows may be gone. Switching workspace moves nothing. Each in-between frame is a `Scene` (pure functions: `still`, `appearing`, `changing`; tested) drawn afresh; frames are asked for only while one moves. It's drawn by the compositor: fontdue and the Geist font compiled in, anti-aliased shapes in premultiplied ARGB, each strip drawn once at the output's real resolution and cached until its titles, shown tab or size change, behind every window and in front of the wallpaper. A tab leaves its group when it's dragged out, closed, minimised or moved to another workspace; a group of one ends, and so does every group on a workspace that stops tiling.
+- **Keys** (Settings › Keyboard, "Windows"): SUPER+T next layout (saved for the workspace, or for the monitor if it has its own), SUPER+SHIFT+SPACE float or tile, SUPER+arrows focus, SUPER+SHIFT+arrows move (a floating window snaps instead, see Snapping), SUPER+R resize mode (arrows resize; Escape, Enter or any other key ends it), SUPER+J flip a split, SUPER+M make master, SUPER+G group or ungroup, SUPER+. and SUPER+, next and previous tab. SUPER+CTRL+arrows was avoided: with `--mod ctrl-alt` it'd be the same keys as SUPER+arrows. SUPER+TAB is the window switcher (CTRL+ALT+TAB with `--mod ctrl-alt`).
+- **The bar:** the `workspaces` event carries every output's layout (`layouts`, by output name); each screen's bar shows its own after the workspace dots and cycles it on a click (`next_window_layout` with the output's name).
+- **Saving from the compositor:** a setting the compositor saves (SUPER+T, the display trial's end) before whiterosed has connected, or while it restarts, waits in `daemon_waiting` (the latest per key) and is sent when it connects.
+
+## Snapping
+
+Figma frames: `Snap Picker - SUPER + Z`, `Snap Picker - Maximize button`, `Settings - Snapping`. Plan and decisions: `docs/plans/snap-layouts.md`.
+
+- **Where:** floating windows on floating workspaces (on a tiled one, a drag already splits, swaps, groups or floats). Fixed-size and fullscreen windows don't snap. `windows.snap` turns it off.
+- **A snap is a zone**, `[x, y, w, h]` as fractions of the output's usable area (`compositor/src/layout/snap.rs`, pure and unit-tested). Its rectangle uses the tiling gaps, so a snapped half is the same rectangle as a dwindle tile. Zones are refitted in `retile()` when the bar, the outputs or the gaps change; a window is only reconfigured when its rectangle moved.
+- **Each snapped window remembers its own size** from before it snapped (`snapping.rs`). Dragging it away gives that size back under the pointer, at the same place across its width; restoring puts it back where the drag started. Maximize, fullscreen and minimise keep the snap. Moving the window to another workspace, or the workspace starting to tile, ends it. Snapped windows are told they're tiled (`tiled_*` states), as tiles are.
+- **Dragging** (title bar or SUPER+drag): the pointer reaching a side edge gives a half, near a corner a quarter, the top edge maximizes, and the top edge's middle third opens the picker. An edge with another monitor beyond it doesn't snap, so windows still cross. The drop preview is the one tiles use.
+- **Zones:** holding SHIFT during a drag shows the monitor's zone grid instead of the edges, and the window drops into the zone under the pointer (one zone per drop). `windows.snap.zones` holds a grid per monitor id (`{"<monitor id>": [[x, y, w, h], ...]}`); without one, two thirds and a third. A grid has 1–16 zones, each inside the area, at least a tenth of it each way, none overlapping. Zones needn't cover the area: a drop over a gap just floats. The daemon, the compositor and the Settings page all check this; the compositor ignores a bad grid.
+- **A grid per workspace:** `windows.snap.zones.workspaces` (`{"<workspace 1-9>": {"<monitor id>": grid}}`) gives a workspace its own grid on a monitor. Drags and the picker use the active workspace's (`Settings::zones_for`): the workspace's own on that monitor, else the monitor's, else the default.
+- **Resizing together:** a border drag, SUPER+right-drag or a drag on the gap between snapped windows moves the line they share. Every snapped window on that line follows, as long as it lines up with the others along it, so the middle of four quarters moves all four. Edges on the screen's border don't move, and no window gets narrower than a tenth.
+- **The picker:** the layouts (halves, thirds, quarters, two thirds and a third both ways, the monitor's own grid) as small diagrams. It opens three ways:
+  - SUPER+Z, for the focused window. The arrows, Enter and Escape work it, and SUPER+Z again closes it.
+  - A drag to the middle of the top edge. Dropping on a cell snaps there; moving away closes it.
+  - Resting on Maximise in a WhiteRose app (the kit's `AppWindow`) for half a second. The kit sends `snap_picker` with `under_pointer` (`apps/kit/src/compositor.rs`), and the picker opens as a card just below the pointer. It closes once the pointer is well away. Other apps draw their own buttons, so the compositor can't see a hover on them.
+  - The compositor places the picker, finds the cell under the pointer (even while a drag holds the pointer) and shows the hovered cell's drop preview. The shell only draws the `snap_picker` event (`shell/SnapPicker.qml`, its own overlay layer), at exactly the tiles and cells it's given.
+- **Keys** (SUPER+SHIFT+arrows on a floating window): left or right snaps to that half. Pressed again towards the side it already reaches, it goes on to the next monitor's opposite half or quarter; towards the other side, it gives the window its own size back. Up maximizes; from a half it goes to the top quarter, and from a bottom quarter to the half. Down goes from a half to the bottom quarter, from a top quarter to the half, and from a bottom quarter or maximized back to the window's own size. Down never minimises.
+- **Settings › Snapping:** the switch, and each monitor's zone grid edited in place (`shell/settings/modules/snapping/`). Its header picks:
+  - **Zones for:** all workspaces (the monitor's grid) or one workspace. A workspace starts from the monitor's grid and saves its own on the first change; Reset takes it back.
+  - **The tool**, which stays picked (icons, named for screen readers and tests, with tooltips): Resize drags the lines between zones; Side by side and Stacked split the zone clicked (hovering shows where); Merge joins two zones clicked one after the other; Draw drags out a zone over empty space (its edges snap to 24ths and to nearby zone edges, and it stops at the zones around it); Delete takes a zone away (never the last).
+  - **Edit on screen** opens the same editor at full size over that monitor, drawn by the shell: Settings asks it over QuickShell IPC (`shell/bin/whiterose-shell zones edit <monitor> <workspace> <tool>`, which finds this session's shell as `whiterose-settings` finds Settings). `ZonesOverlay.qml` is a top layer `whiterose-zone-editor` where the desktop dims behind translucent zones; the tools and Done are in that monitor's island (`island/zones.qml`, `ZoneTools.qml`), and its bar rises to the overlay layer meanwhile so the island is drawn over the zones. Escape or Done ends it; it saves as it goes (`Zones.js` `save`, shared with Settings). Figma: `Edit zones on screen`.
+  - Every change is saved as it's made. `Zones.js` holds the grid logic (splitting, merging, moving lines, drawing, deleting) and is tested by `node shell/tests/run.mjs`.
+- **An app's smallest size wins:** a zone smaller than a window's minimum size (420x300 for WhiteRose's own apps) is asked for, but the app keeps its own size.
+
+## Window rules
+
+Figma frames: `Settings - Window rules` (and scrolled to the end). Plan and decisions: `docs/plans/window-rules.md`.
+
+- **What a rule is:** `windows.rules`, a list in order. Each rule matches by `app` (app id) and/or `title`, both regular expressions that match anywhere unless anchored, and sets any of:
+  - Placement: `workspace` (1–9), `monitor` (a monitor id, as in `displays`), `float` (`true` floats it, `false` tiles it if it can be tiled), `size` and `position` (pixels or `"N%"` of the usable area; `position` may be `"centre"`), `maximized`, `fullscreen`.
+  - Look: `opacity` (`[focused, unfocused]`, 0.1–1) and `onTop`.
+  - `zone`: a snap zone to open in, numbered as on the Snapping page.
+- **Every match applies:** the rules are walked in order and each match is folded into one set of actions, a later rule winning for what it sets (`compositor/src/rules.rs`, pure and unit-tested). A rule with no pattern, or one that doesn't compile, is skipped with a warning in the log; the daemon refuses to save one (`checkWindowRules`, which compiles patterns with Go's RE2, nearly the syntax of Rust's `regex`).
+- **When:** once, on a window's first commit (`window_committed` → `apply_rules` in `window_rules.rs`). That is the first moment its app id and title are known, and it hasn't drawn yet, so the app's first frame is already where and how big the rules say. Editing the rules doesn't move open windows.
+- **Placement:**
+  - Its first configure went out when it was created (focusing it), so `apply_rules` ends by sending one with what the rules changed.
+  - A size is sent in that configure. A position needs the window's size, so it's applied on the commit that brings its first buffer (`place_by_rule`). Both apply only to windows that float; a tile ignores them.
+  - Opening on another workspace is quiet: that workspace doesn't come into view, focus stays where it was, and the window isn't told it's focused.
+  - A fullscreen window on the output a new window opens on leaves fullscreen so the new window is seen, unless a rule sent the new one to another workspace (this moved from `new_toplevel` to the first commit, after the rules).
+  - A maximized or fullscreen rule has no size of its own to go back to yet: restored, the app picks its size, at the cascade.
+- **A zone** snaps the window as if it were dropped there (`snap_window`): the grid of its monitor and workspace, floating workspaces only, not fixed-size windows. It refits like any snapped window, and dragged out it gets the rule's size back. A zone the grid doesn't have is ignored; a zone wins over a position.
+- **Look:** kept on the window for its life (`Look` in its user data). Opacity is the alpha its surfaces and popups are drawn with (`window_alpha`), focused or not by who has the keyboard; Smithay damages an element when its alpha changes, and a translucent one reports no opaque region, so what's behind is still drawn. Window previews and screenshots of a window stay solid. On top: `restack` keeps three bands, tiles, then floating windows, then windows a rule keeps on top, each in its own order; fullscreen windows and the bar's top layers are still above.
+- **Settings › Window rules** (`shell/settings/modules/rules/`): each rule is a card whose header names it (the app id, when its pattern is one app exactly) and sums up what it does; it opens to edit in place, a row per action. Move up and down (order matters), delete. Adding offers a blank rule or the open windows, one per app id, which fills in that app id escaped and anchored. Only complete rules are saved: a new rule stays on the page until it has a pattern, and a pattern that doesn't compile shows why under its row. `Rules.js` holds the logic and is tested by `node shell/tests/run.mjs`.
+
+## Scratchpads
+
+Figma frame: `Settings - Scratchpads`. Plan and decisions: `docs/plans/scratchpads.md`.
+
+- **What a scratchpad is:** `windows.scratchpads`, a list of `{id, name, command, keys, size, place, hideOnBlur}`. `size` is pixels or `"N%"` of the usable area (60% × 50% if unset), `place` is `"top"` (centred under the island, the default) or `"centre"`. A pad may have no key (another shortcut took it); it can't be shown until it has one. The daemon checks it (`checkScratchpads`). The parsing, what the key does in each state, where it goes and the slide's maths are pure and unit-tested (`compositor/src/scratchpad.rs`); the rest is `scratchpad_windows.rs`.
+- **Its window is the one its key started:** the key runs the command (`spawn`, keeping the pid), and the first window opened by that process or a child of it (the client's pid, walked up through `/proc/<pid>/stat`) is claimed on its first commit, before the window rules. A start that opens nothing within 10 s is given up. Other windows of the same app are ordinary, and an app that's already open isn't taken. Apps that hand new windows to a running copy must be asked for their own: Settings adds `--gtk-single-instance=false` to Ghostty and `--standalone` to Ptyxis.
+- **The key:** not running → start it; hidden → show and focus it; shown but not focused → focus it; shown and focused → hide it; shown on another monitor → bring it to the one under the pointer. Several pads can be shown at once. Closing its window turns the pad off; the key starts it again. A pad removed from the setting lets its window go as an ordinary one.
+- **Not on any workspace:** a claimed window is taken out of `Workspaces`, so switching workspace leaves it be, and everything built from the focus history leaves it out: ALT+TAB, SUPER+TAB, the shell's window list (dock, screenshot window picking, Settings' open windows) and other apps' taskbars. `focused_window()` is the pad when one has the keyboard, and switching workspace keeps it there. What would put it elsewhere is ignored (move to workspace, float, group, master, split, fullscreen, SUPER+Z); minimizing hides it.
+- **Above everything:** shown pads are a fourth band in `restack`, above windows a rule keeps on top, and they're drawn and take the pointer over fullscreen windows too; the bar's top layers and the lock screen are still above. A pad with `hideOnBlur` hides when another window is focused. Window rules give a pad only their look (`apply_look`).
+- **The slide:** 150 ms, eased out, from under the top of the usable area (`sliding_pad` in render.rs draws it offset and cut off there). The window is in place at once, so it can be typed into straight away; only its drawing moves. Hiding gives the keyboard back at once and lets the pointer through while it slides up, and a timer unmaps it at the end. A key mid-slide turns it round from where it is. Frames are asked for only while something slides; `Scratchpads::slide_length` zero turns slides off (the 0.5 effects switch can use it).
+- **Keys:** pads' keys are added to the shortcut table (`Bindings::add_scratchpads`), so clashes with other shortcuts are seen, and listed on the Keyboard page as shortcuts `scratchpad:<id>` in a "Scratchpads" group; recording one there changes the pad (`Keys.js` `setKeys`).
+- **Settings › Scratchpads** (`shell/settings/modules/scratchpads/`): each pad is a card whose header sums up its key, app, place and size; it opens to edit in place (name, command, key, size, place, hide when it loses focus). The key is recorded by clicking it (`KeyRecorder.qml`); a key another shortcut uses waits for Enter and is taken from it. A new pad starts as the terminal (`apps.terminal`, Ptyxis if unset) with SUPER+` if that's free, and is saved once it has a command. `Pads.js` holds the logic and is tested by `node shell/tests/run.mjs`.
+
 ## Keyboard and shortcuts
 
-Figma frame: `Settings - Keyboard & Shortcuts`.
+Figma frame: `Settings - Keyboard & shortcuts`.
 
 - **Every shortcut is an action with a stable id** (`compositor/src/keybind.rs`, `CATALOG`: `close-window`, `workspace`, `volume-up`, ...), a name, a group and default keys. The table is the defaults plus the user's changes, rebuilt the moment a setting changes.
-- **Settings:** `shortcuts.keys` holds only changes (id → keys; an empty list turns one off); `shortcuts.custom` holds your own `{id, name, command, keys}`. Keys are strings: `SUPER+SHIFT+S`, `PRTSC`, `XF86AudioRaiseVolume`, and `SUPER+1-9` for the nine workspace shortcuts.
+- **Settings:** `shortcuts.keys` holds only changes (id → keys; an empty list turns one off); `shortcuts.custom` holds your own `{id, name, command, keys}`; scratchpads keep theirs in `windows.scratchpads` (see Scratchpads). Keys are strings: `SUPER+SHIFT+S`, `PRTSC`, `XF86AudioRaiseVolume`, `SUPER+1-9` for the nine workspace shortcuts and `SUPER+ARROWS` for the four direction shortcuts. A ranged shortcut is recorded with one of its keys; the settings page knows which by the row's `range` (`digits` or `arrows`).
+- **ALT+TAB's apps:** `windows.appSwitcher.workspaces` (Settings › Windows › Switching): `all` (the default) lists apps with windows on any workspace, `current` only those on the active one (`switcher_mru` filters the focus history before grouping by app). SUPER+TAB always lists every window.
+- **Monitors by arrow:** SUPER+CTRL+arrow (`move-to-monitor`, `output_move.rs`) takes the focused window to the monitor on that side (`toward`: past that edge, lined up with it most, then nearest; tested). Tiled, it leaves its group and tiles and joins the other monitor's; floating or snapped (unsnapped), it keeps its place relative to the screen, kept inside it (`carried`); maximized, it fills the other screen; fullscreen, it goes fullscreen there. Where it floats before tiling or maximizing moves with it. It stays focused; scratchpads stay.
+- **Workspaces by arrow:** SUPER+ALT+arrow (`move-to-workspace-step`) takes the focused window to the workspace before (left, up) or after (right, down) and goes there with it, still focused; nothing at the first or last.
+- **Nested, SUPER becomes CTRL+ALT** (when the host keeps SUPER): a shortcut whose remapped keys would be another's (SUPER+ALT+arrow and SUPER+arrow both CTRL+ALT+arrow) keeps its SUPER keys, out of reach in that mode, rather than taking the other's.
 - **Keys match by position:** shortcuts use the key's Latin symbol, so they keep working on other layouts. Settings records them the same way (by scan code), so what you press is what's saved.
 - **Recording:** Settings sends `pause_shortcuts` so keys reach it instead of triggering shortcuts. Closing Settings (or a crash) un-pauses them. Ctrl+Alt+Fn still works. A combo another shortcut uses shows a warning; Enter takes it over.
 - **Layouts:** `keyboard.layouts` (first is the default; UK English, `gb`, out of the box); an empty list means the system's (`/etc/default/keyboard` on Ubuntu, `/etc/X11/xorg.conf.d/00-keyboard.conf` on Fedora), and UK English if the system doesn't say. SUPER+SPACE switches. The compositor sends the layouts' XKB names and the active one in the `keyboard` event. The page lists layouts from XKB's `evdev.lst`.
@@ -366,7 +486,7 @@ Figma frame: `Settings - Keyboard & Shortcuts`.
 - **Session:** libseat/logind opens the GPU and input devices. Switching consoles pauses DRM and libinput and resumes them on return. Ctrl+Alt+F1–F12 switch consoles, even when locked.
 - **Display:** one GPU (the boot GPU), GBM buffers and a GLES renderer. Smithay's DRM compositor puts the cursor and suitable windows straight on hardware planes.
 - **Drawing on demand:** a screen redraws only when something changed, at most once per vblank. When nothing changed, frame callbacks wait one refresh instead of firing at once, so idle clients can't make it spin.
-- **Night Light** loads the colour into each screen's gamma table, so it costs no drawing.
+- **Night light** loads the colour into each screen's gamma table, so it costs no drawing.
 - **Cursor:** XCursor theme (`XCURSOR_THEME`, `XCURSOR_SIZE`). Animated cursors show their first frame only, so a busy pointer doesn't redraw the screen continuously.
 - **Input:** libinput, with tap-to-click on touchpads. The pointer crosses between screens and stops at outer edges.
 - **Scaling:** `wp_fractional_scale_v1` and `wp_viewporter`, so apps draw at exactly 125% or 150% instead of rendering at 200% and being scaled down.
@@ -436,13 +556,32 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 
 ## Vendored Smithay
 
-`compositor/vendor/smithay` is Smithay 0.7.0 plus two patches, used through `[patch.crates-io]`.
+`compositor/vendor/smithay` is Smithay 0.7.0 plus six patches, used through `[patch.crates-io]`.
 
 - **`smithay-layer-unmap-after-destroy.patch`:** destroying a layer surface and then committing its `wl_surface` with no buffer (how QtWayland/QuickShell hides a panel) was rejected with a bogus "width 0 requested" protocol error, which disconnected the whole shell. Test: `tests/layer_shell.rs::unmapping_after_destroying_a_layer_surface_does_not_kill_the_client`.
 - **`smithay-session-lock.patch`:**
   - **Unlock disconnect:** the same bug for lock surfaces disconnected the shell on every unlock. Test: `hiding_a_former_lock_surface_after_unlock_does_not_kill_the_client`.
   - **New hooks:** `lock_cancelled` (a lock destroyed before it was confirmed now ends the lock instead of leaving the screen locked forever) and `unlock_requested` (lets the compositor ignore an unlock from a lock that a newer one replaced). Tests: in `tests/session_lock.rs`.
+- **`smithay-x11-focus.patch`:** `X11Surface::give_focus`, the X11 half of keyboard focus (X input focus, or `WM_TAKE_FOCUS`), split out of its `KeyboardTarget::enter`. Our seat focuses an X11 window's `wl_surface` (as for any window), so the compositor calls this itself when it focuses one. Test: `daemon/uitest/xwayland_test.go`.
+- **`smithay-x11-selection-flush.patch`:** `X11Wm::new_selection` now flushes, so X learns at once that the clipboard changed hands; before, an X11 app pasting soon after a copy could be told there was nothing to paste. Test: `the_compositors_own_clipboard_pastes_into_an_x11_app` in `tests/xwayland.rs`.
+- **`smithay-xwayland-on-demand.patch`:** `XWaylandSockets` (an X display's lock and listening sockets, held by the compositor) and `XWayland::spawn_with_sockets`, so Xwayland can start on sockets bound at login, and again after it's stopped; and `X11Wm` removes its event source when dropped, so a WM dropped while its Xwayland still runs sends no more events. Tests: the on-demand ones in `tests/xwayland.rs`.
+- **`smithay-x11-dnd.patch`:** the client drag grab asks the compositor (`ClientDndGrabHandler::dnd_foreign`) whether it carries drags over a surface itself, and if so hands it the motion, leave and drop there instead of making a wl_data_device offer; and `start_dnd_keeping_focus`, a compositor drag during which the pointer stays with the surface the press began on (it still sees motion and the release) while other clients' surfaces get the offer. Both for the XDND bridge. Tests: the drag tests in `tests/xwayland.rs`.
 - **Removing them:** drop the vendored copy once upstream ships these fixes.
+
+---
+
+## XWayland
+
+Implemented in `compositor/src/xwayland.rs`, with `win.rs` as the one way the rest of the compositor talks to a window of either kind. Plan: `docs/plans/xwayland.md`.
+
+- **Started on demand:** at login the compositor only takes an X display (its lock and sockets) and sets `DISPLAY`, before the daemon and shell start, so everything they launch inherits it (and D-Bus-activated apps, through `dbus-update-activation-environment`). Xwayland starts when the first X11 app connects, and takes that connection. While it runs, every 10 s a worker thread asks it (XRes) whether any client besides our window manager is connected; two "none" answers in a row stop it (killed at once: until it exits it would still take X11 apps connecting on the sockets it shares with us), and the next X11 app starts it again. (`-terminate` doesn't do this: our window manager counts as a client.) A crashed Xwayland is restarted the same way; after three failed starts in a row it gives up until WhiteRose restarts. An idle desktop runs no X server. The packages depend on Xwayland (`xwayland`, `xorg-x11-server-Xwayland`); without it (removed by hand, or a build being worked on), no display is taken and X11 apps just don't open.
+- **Managed X11 windows** open as Wayland ones do: under the pointer, cascaded, on this workspace, focused. WM_CLASS (its class, else instance) is the app id, `_NET_WM_NAME` the title. Transient-for windows and dialog, utility, toolbar and splash types float.
+- **Place and size together:** X11 must be told where a window is. Its next size and states are kept with it, and after each batch of events `sync_x11` configures any X11 window whose rectangle (where the compositor has it, the size it's told) differs from what X has.
+- **Override-redirect windows** (menus, tooltips) are unmanaged: drawn where they ask, above everything, never in a workspace, never focused by a click.
+- **Everything else sees them** through `win.rs`: tiling (and the space back when one closes), maximize, fullscreen, snapping, rules (by WM_CLASS), scratchpads (by `_NET_WM_PID`), the switchers, the dock and IPC. A title or class change is sent to the shell (`property_notify`). A window's first commit applies its rules and tile; when X links its wl_surface only after it has drawn, `surface_associated` does that instead, or a window that never redraws would stay untiled. Tests: `compositor/tests/xwayland.rs` runs a real Xwayland in the headless backend and drives X11 windows with x11rb (skipped without Xwayland).
+- **Clipboard, both ways:** an X11 copy is offered to Wayland apps (`Offer::X11`, read through Xwayland when pasted) and recorded in the history; a Wayland copy, a screenshot or a history entry pasted back (`offer_clipboard`) is offered to X11 apps. An X11 app may read the clipboard only while an X11 window has the keyboard, as a Wayland app can only paste when focused. The middle-click primary selection stays among X11 apps (there's none on the Wayland side here).
+- **Drag and drop, Wayland to X11** (`compositor/src/xdnd.rs`): Smithay's X11 WM has no XDND, so the compositor speaks it as its own small X11 client (two threads: one runs the main loop's commands, one reads X's events; the main loop never waits on X). A Wayland drag over an X11 window is handed to it by the drag grab (the patch above): it owns XdndSelection and sends XdndEnter / Position / Leave / Drop; the X11 app's XdndStatus becomes the Wayland source's `target` and `action`, its request for the data is answered by the Wayland app (`send`) through a socket pair, and its XdndFinished becomes `dnd_finished` (no answer in 10 s: `cancelled`). The idle check leaves this client out.
+- **Drag and drop, X11 to Wayland:** our X11 client watches XdndSelection (XFixes). While an X11 app owns it and the press holding the pointer began on an X11 window, an invisible, unmanaged, XdndAware window covers the screen whenever the pointer is off the X11 windows, so the app finds a drop target there (the window manager leaves it out). Its XdndEnter starts a compositor drag (`start_dnd_keeping_focus`: the X11 app keeps the pointer, so it sees the release and drops) offering the app's mime types, and X's text targets as text; the Wayland window's accept and action answer each XdndPosition, its request for the data is read from XdndSelection, and its finish (or cancel) becomes XdndFinished once the app has dropped. Not taken: large transfers in pieces (INCR).
 
 ---
 
@@ -450,7 +589,7 @@ WhiteRose updates never need a reboot: restarting the session (or the next login
 
 Implemented in `compositor/src/clipboard.rs` (pure logic) and `clipboard_capture.rs`; shown in the island's clipboard view.
 
-- **Capture:** every clipboard copy by an app is read by the compositor on a worker thread, with a 3 s timeout and a size cap. It keeps one representation, in this order: file list, image, text.
+- **Capture:** every clipboard copy by an app (Wayland or X11) is read by the compositor on a worker thread, with a 3 s timeout and a size cap. It keeps one representation, in this order: file list, image, text.
 - **Never stored:** anything a password manager marks as secret (`x-kde-passwordManagerHint`), whitespace-only text, and data over the caps.
 - **Storage:** `$XDG_DATA_HOME/whiterose/clipboard/`, containing `history.json` (written atomically) and `images/`. Identical images share one file.
 - **Limits:** 50 entries, 256 KB of text per entry, 16 MB per image, 64 MB of images in total. The oldest entries are evicted first. Copying something already in the history moves it to the top.
@@ -468,7 +607,17 @@ Implemented in `compositor/src/clipboard.rs` (pure logic) and `clipboard_capture
 - `clipboard`
 - `screenshots`
 - `launcher`
-- `switcher`, which the compositor drives while ALT+TAB / SUPER+ALT+TAB is held
+- `switcher`, which the compositor drives while ALT+TAB / SUPER+TAB is held
+- `note` (SUPER+SHIFT+N; the Note module)
+- `agenda` (the clock, SUPER+A; the Agenda module)
+- `music` ("Now playing" in the bar, SUPER+SHIFT+M; the Music module)
+
+SUPER+V opens `clipboard` directly.
+
+- **Features as modules:** an island feature that isn't core is a Settings module like an optional page (`module.json` with `"core": false`, on by default): its page holds its options, and turning it off in Settings › Modules (`settings.modules.disabled`) turns the feature off too (its view doesn't open, its key does nothing). The note, the agenda and music are the first three.
+- **The note** (`shell/NoteView.qml`, logic in `shell/Note.js`, tested): one text, `note.text` in whiterosed, saved 0.4 s after you stop typing and when the island closes. Its first line is the title; `[ ]` / `[x]` lines are tasks (`[]`, `- [ ]` and `* [ ]` too). With tasks it opens on the checklist (Figma "Island v2 — Note · tasks": the title, done/total, a segment a task, a tick each; clicking one ticks it in the text); typing, Enter or Tab writes; Tab or Esc goes back to the checklist (Esc again closes). Without tasks it opens writing. Settings › Note clears the finished tasks or the whole note.
+- **The agenda** (`shell/AgendaView.qml`, logic in `shell/Agenda.js`, tested): today's events from whiterosed (`calendar_events`, as the month panel), reloaded when calendars change and redrawn each minute while open. It shows the event on now, else the next one today ("in 48 min", "now · until 16:00"), its start on the right, and the day as a line (08:00–20:00, widened to whole hours for events outside it) with today's timed events on it: the next one lit, past ones faint, now in rose. Clicking the line or the time opens the month panel. With the module on, the bar's clock opens the agenda; off, the month, as before.
+- **Music** (`shell/MusicView.qml`; Figma "Island v2 — Music (art)"): the player `shell/NowPlaying.qml` picks: the one playing, else the last that played, else one with a track (browsers publish what they play, so a YouTube video counts; "Now playing" and the media keys use the same choice). Its cover (`artUrl`; a rose gradient without one) fills the island's left side and its left ear (a view with `bleed` may draw into the ear: the island widens its clip there), one outline following the ear's curve and the island's lower corner (40 at this height), fading into the island; on the right the title, artist · album, the default output's name (PipeWire), the position (asked for once a second while playing; click the bar to seek) and the controls the player has (shuffle and repeat only if it supports them; repeat goes none → playlist → track). Space plays or pauses, Left / Right skip 5 s. It moves with the music: a new song slides its title and artist in the way Next or Previous went (on its own: like Next; stopped: a fade), and its cover fades in over the last one, settling from a slight zoom; pausing dims the cover; a control's new icon (play ↔ pause) turns over; the position glides between its once-a-second updates. With the module on, "Now playing" opens it; off, it plays and pauses, as before. The UI tests put a stand-in MPRIS player on the session's bus (`daemon/uitest/mpris_test.go`).
 
 Each view (`*View.qml`) only reports the size it wants. The island animates its outline to that size, fades the old content out and the new content in once the shape has settled, and keeps the bar window tall until the morph ends.
 
@@ -485,14 +634,14 @@ Scripting: `qs ipc call island set <view>`.
 | Wi-Fi, Bluetooth, volume, battery, power mode | QuickShell services (NetworkManager, BlueZ, PipeWire, UPower, power-profiles-daemon) |
 | Brightness, airplane mode | `whiterosed`: `brightness set <percent>` goes through logind's `SetBrightness`; `airplane on\|off` goes through `/dev/rfkill`. Neither needs root. |
 | Live brightness/airplane state, lock requests | `whiterosed serve`'s socket: it pushes a `state` event on every change and `{"event":"lock"}` when logind asks (`loginctl lock-session`). It sleeps in the kernel and on D-Bus in between: netlink uevents, rfkill reads, logind signals. |
-| Night Light | The compositor (see below). The shell stores the state and turns it off at the next 07:00. |
-| Do Not Disturb | Shell state, for the notification server |
+| Night light | The compositor (see below). The shell stores the state and turns it off at the next 07:00. |
+| Do not disturb | Shell state, for the notification server |
 
-Do Not Disturb and Night Light are settings (`quick.doNotDisturb`, `quick.nightLight.until`, `quick.nightLight.temperature`). The power button swaps the toggles for Suspend, Log Out, Restart and Power Off. Suspend locks first.
+Do not disturb and Night light are settings (`quick.doNotDisturb`, `quick.nightLight.until`, `quick.nightLight.temperature`). The power button swaps the toggles for Suspend, Log out, Restart and Power off. Suspend locks first.
 
-## Night Light
+## Night light
 
-`compositor/src/night_light.rs` multiplies every pixel by the colour of the chosen temperature, 4000 K by default. In nested mode this is one GL blend pass after each frame (framebuffer × colour), and it runs only while Night Light is on. The DRM backend will load the same colour into the gamma table instead, which costs nothing. Screenshots and window previews render separately, so they stay untinted. `tests/night_light.rs` checks the pass on a real (or Mesa software) GPU.
+`compositor/src/night_light.rs` multiplies every pixel by the colour of the chosen temperature, 4000 K by default. In nested mode this is one GL blend pass after each frame (framebuffer × colour), and it runs only while Night light is on. The DRM backend will load the same colour into the gamma table instead, which costs nothing. Screenshots and window previews render separately, so they stay untinted. `tests/night_light.rs` checks the pass on a real (or Mesa software) GPU.
 
 ## Session lock
 
@@ -512,12 +661,12 @@ The compositor implements `ext-session-lock-v1` (`compositor/src/session_lock.rs
 
 The shell is the session's notification server (`shell/Notifications.qml`, using QuickShell's `NotificationServer`). It supports bodies, actions, images and persistence.
 
-- **The panel** (`NotificationsPanel.qml`) hangs from the bar like Quick Settings and opens from the bell or SUPER+N. It shows everything not yet dismissed, newest first, plus Clear all and a Do Not Disturb toggle.
+- **The panel** (`NotificationsPanel.qml`) hangs from the bar like Quick Settings and opens from the bell or SUPER+N. It shows everything not yet dismissed, newest first, plus Clear all and a Do not disturb toggle.
   - Clicking a card runs the app's default action, or brings the app forward.
   - The app's other actions appear as buttons.
 - **Popups** (`NotificationPopups.qml`) show new notifications in the same spot, at most three.
   - They stay for the app's timeout, kept between 3 and 30 s (5 s by default). Hovering pauses the countdown.
-  - Critical notifications stay until dismissed and get through Do Not Disturb. Nothing pops up while a panel is open.
+  - Critical notifications stay until dismissed and get through Do not disturb. Nothing pops up while a panel is open.
   - The bell gets a rose dot until the panel is opened.
 - **Rules** (`Notifications.js`) are tested in `shell/tests/run.mjs`.
 - **Arrival times:** notifications carry no timestamp, so the shell records when each one arrives.
@@ -562,7 +711,8 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
   - Only the open page is loaded.
   - The Modules page turns optional pages off (`settings.modules.disabled`).
   - Search matches names, descriptions and keywords.
-- **Shared components** live in `shell/settings/`: cards, rows, toggles, dropdowns, segmented control, fields, sliders and dialogs.
+- **Shared components** live in `shell/settings/`: cards, rows, toggles, dropdowns, segmented control (text, or icons with tooltips), fields, sliders and dialogs.
+- **As a tile:** Settings works from a third of the screen up (Figma: `Settings - narrow · …`). Below 900px the sidebar becomes an icon rail (`Settings/Rail`); its Menu or Search button, or `/`, slides the full sidebar over the page, and picking a page, the dimmed page or Escape slides it away. Rows (`SettingRow`) and page headers (`PageHeader`) put their controls under their title where they don't fit beside it, and pages with their own grids reflow. `make shots` shows every page at a third, a half and two thirds of the screen.
 - **Pages in this first set**, each backed by the real service:
 
 | Page | Backed by |
@@ -570,15 +720,20 @@ All user settings live in one SQLite database, `~/.local/share/whiterose/setting
 | Network | QuickShell Networking for the list, connect and forget; `whiterosed` (`internal/netconf`) for profile details and editing: security, password, MAC privacy, frame protection, IPv4/IPv6, DNS, metered, autoconnect. Edits keep the stored password and re-apply the profile if it's in use. |
 | Bluetooth | QuickShell Bluetooth: adapter, pair, connect, forget. Searches only while the page is open. |
 | Sound | QuickShell PipeWire: default output and input, volumes, per-app streams. |
-| Power & Battery | UPower and power profiles; `whiterosed` (`internal/power`) for cycles, the 24 h charge history and the charge limit (shown only where the battery supports one); `bar.batteryPercent`. |
+| Power & battery | UPower and power profiles; `whiterosed` (`internal/power`) for cycles, the 24 h charge history and the charge limit (shown only where the battery supports one); `bar.batteryPercent`. |
 | Dock | `dock.pinned`: order, remove, add from installed apps. |
-| Notifications | Do Not Disturb, popup duration, per-app mute (the shell records which apps notify). |
-| Calendar & Weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
-| Keyboard & Shortcuts | Compositor `shortcuts` and `keyboard` events; `keyboard.*` and `shortcuts.*` settings. |
+| Notifications | Do not disturb, popup duration, per-app mute (the shell records which apps notify). |
+| Calendar & weather | `whiterosed` calendar add/remove (links to the keyring) and the `weather.*` settings. |
+| Keyboard & shortcuts | Compositor `shortcuts` and `keyboard` events; `keyboard.*` and `shortcuts.*` settings. |
+| Mouse & touchpad | `mouse.*` and `touchpad.*` settings (scroll direction, speed −1 to 1, acceleration, tap to click), applied by the compositor (`pointer.rs`) through libinput to every pointer device as it appears and again on a change; a device that can tap is a touchpad, any other pointer a mouse. Real hardware only: nested, the host desktop's settings apply. `mouse.shakeToFind`: shaking the pointer (four turns of at least 60 px within 800 ms, no button held) grows it to 3× for a moment (`shake.rs`, pure and unit-tested; `cursor.rs` draws the theme's big image at the size wanted, an app's own pointer as the arrow). Frames come on a one-refresh timer only while it's bigger than usual, so a still desktop still draws nothing. `mouse.fasterWith` (Ctrl+Shift to start with; Ctrl+Alt, Super+Shift or off) and `mouse.fasterBy` (2–4×): while exactly those modifiers are held, mouse and touchpad movement is multiplied (`on_pointer_relative`); it's checked on every movement, so letting go is back to normal at once. Nothing is taken from apps, so their Ctrl+Shift shortcuts still work. |
 | Appearance | `appearance.*` and `wallpaper.*`; the wallpaper list from `find` in the folders. |
 | Privacy | `privacy.*` settings (compositor idle, daemon sleep lock); clears via the compositor and settings. |
 | Users | `whiterosed` users ops (AccountsService); permission through the shell's polkit prompt. |
-| Top Bar | The `bar.*` settings. |
+| Top bar | The `bar.*` settings. |
+| Windows | The `windows.layout*`, `windows.gaps.*`, `windows.master.*` and `windows.dwindle.split` settings; monitors from the compositor's `outputs` event. |
+| Snapping | `windows.snap`, `windows.snap.zones` and `windows.snap.zones.workspaces` (each monitor's zone grid, and workspaces' own, edited in place or on screen); monitors from the `outputs` event. |
+| Window rules | `windows.rules`; open windows from the compositor's `windows` event, monitors from `outputs`. |
+| Scratchpads | `windows.scratchpads` (keys included; a clash may change `shortcuts.*` too); the terminal from `apps.terminal`. |
 | Displays | Compositor `outputs` event; Apply writes the `displays.test` trial, Keep writes `displays`. |
 | Modules, About | The module list and memory use; hardware and OS from `/proc`, `/sys` and `/etc/os-release`. |
 

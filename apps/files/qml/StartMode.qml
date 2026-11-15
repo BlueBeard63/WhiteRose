@@ -63,7 +63,7 @@ Flickable {
             x: 12; y: 12
             width: 30; height: 30
             sourceSize: Qt.size(60, 60)
-            source: tile.icon ? "file://" + tile.icon : ""
+            source: tile.icon ? F.fileUrl(tile.icon) : ""
         }
         Column {
             anchors { left: tIcon.right; leftMargin: 10; right: parent.right; rightMargin: 12; top: parent.top; topMargin: 11 }

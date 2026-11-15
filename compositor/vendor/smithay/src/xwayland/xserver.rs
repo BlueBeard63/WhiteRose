@@ -20,6 +20,37 @@ use crate::{utils::user_data::UserDataMap, wayland::compositor::CompositorClient
 
 use super::x11_sockets::{prepare_x11_sockets, X11Lock};
 
+/// WhiteRose patch: an X display's lock and listening sockets, held apart
+/// from any one Xwayland, so a compositor can bind the display at startup,
+/// watch for the first X11 client, and only then start Xwayland on them
+/// (again, after stopping it once no X11 app is left). Dropping the last one
+/// releases the display (its lock file and socket).
+#[derive(Debug)]
+pub struct XWaylandSockets {
+    lock: X11Lock,
+    listeners: Vec<UnixStream>,
+}
+
+impl XWaylandSockets {
+    /// Takes display `display` (else the first free one) and binds its
+    /// sockets: the path one and, if asked, the abstract one.
+    pub fn bind(display: impl Into<Option<u32>>, open_abstract_socket: bool) -> std::io::Result<Self> {
+        let (lock, listeners) = prepare_x11_sockets(display.into(), open_abstract_socket)?;
+        Ok(XWaylandSockets { lock, listeners })
+    }
+
+    /// Its display number (`DISPLAY=:N`).
+    pub fn display_number(&self) -> u32 {
+        self.lock.display_number()
+    }
+
+    /// The listening sockets, to watch for a client connecting.
+    pub fn listeners(&self) -> &[UnixStream] {
+        &self.listeners
+    }
+}
+
+
 /// A handle to a running XWayland process. Using XWayland as an xserver for
 /// X11-based clients requires two connections: one wayland socket, where
 /// XWayland creates surfaces for its clients, and one X11 socket, where a
@@ -124,11 +155,35 @@ impl XWayland {
         V: AsRef<OsStr>,
         F: FnOnce(&UserDataMap),
     {
+        let sockets = XWaylandSockets::bind(display, open_abstract_socket)?;
+        let (xwayland, client) = Self::spawn_with_sockets(dh, &sockets, envs, stdout, stderr, user_data)?;
+        // This Xwayland holds its display.
+        xwayland.inner.lock().unwrap().display_lock = Some(sockets);
+        Ok((xwayland, client))
+    }
+
+    /// WhiteRose patch: as `spawn`, on display sockets the caller holds (and
+    /// may hand to another Xwayland once this one has exited; dropping them
+    /// releases the display).
+    pub fn spawn_with_sockets<K, V, I, F>(
+        dh: &DisplayHandle,
+        sockets: &XWaylandSockets,
+        envs: I,
+        stdout: impl Into<std::process::Stdio>,
+        stderr: impl Into<std::process::Stdio>,
+        user_data: F,
+    ) -> std::io::Result<(Self, Client)>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+        F: FnOnce(&UserDataMap),
+    {
         let (x_wm_x11, x_wm_me) = UnixStream::pair()?;
         let (wl_x11, wl_me) = UnixStream::pair()?;
 
-        let (lock, listen_sockets) = prepare_x11_sockets(display.into(), open_abstract_socket)?;
-        let display_number = lock.display_number();
+        let listen_sockets = sockets.listeners();
+        let display_number = sockets.display_number();
 
         // XWayland writes the the display number and a newline to this pipe when it's ready.
         let (displayfd_recv, displayfd_send) =
@@ -148,7 +203,7 @@ impl XWayland {
             .arg("-displayfd")
             .arg(displayfd_send.as_raw_fd().to_string());
 
-        for socket in &listen_sockets {
+        for socket in listen_sockets {
             command.arg("-listenfd").arg(socket.as_raw_fd().to_string());
         }
 
@@ -192,7 +247,8 @@ impl XWayland {
         let wrapper = unsafe { calloop::generic::FdWrapper::new(displayfd_recv.as_raw_fd()) };
         let source = calloop::generic::Generic::new(wrapper, calloop::Interest::READ, calloop::Mode::Level);
         let inner = Instance {
-            display_lock: lock,
+            display_number,
+            display_lock: None,
             display_fd: displayfd_recv,
             x11_socket: Some(x_wm_me),
         };
@@ -229,7 +285,7 @@ impl XWayland {
     /// Returns the X11 display used by the instance, suitable for setting the
     /// `DISPLAY` environment variable.
     pub fn display_number(&self) -> u32 {
-        self.inner.lock().unwrap().display_lock.display_number()
+        self.inner.lock().unwrap().display_number
     }
 
     /// Returns a file descriptor which can be polled for readiness. When the fd
@@ -261,7 +317,9 @@ impl XWayland {
 
 #[derive(Debug)]
 struct Instance {
-    display_lock: X11Lock,
+    display_number: u32,
+    /// The display, if this Xwayland holds it (`spawn`; not `spawn_with_sockets`).
+    display_lock: Option<XWaylandSockets>,
     x11_socket: Option<UnixStream>,
     display_fd: OwnedFd,
 }
@@ -297,7 +355,7 @@ impl calloop::EventSource for XWayland {
             callback(
                 XWaylandEvent::Ready {
                     x11_socket,
-                    display_number: guard.display_lock.display_number(),
+                    display_number: guard.display_number,
                 },
                 &mut (),
             );
@@ -390,6 +448,14 @@ impl XWaylandClientData {
     /// Access user_data map for a xwayland client
     pub fn user_data(&self) -> &UserDataMap {
         &self.data_map
+    }
+
+    /// WhiteRose patch: the Xwayland process's id, until its Wayland
+    /// connection is gone (then it's reaped), so a compositor stopping an
+    /// idle Xwayland can end it at once: until it exits, it would still take
+    /// new X11 clients on the shared sockets.
+    pub fn pid(&self) -> Option<u32> {
+        self.child.lock().unwrap().as_ref().map(|c| c.id())
     }
 }
 

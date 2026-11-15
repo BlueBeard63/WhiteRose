@@ -5,6 +5,7 @@
 // drag.target, which Qt mishandles once the item goes away mid-drag.)
 import QtQuick
 import "Drops.js" as D
+import "Format.js" as Fmt
 
 Item {
     id: src
@@ -24,7 +25,7 @@ Item {
     Drag.supportedActions: Qt.CopyAction | Qt.MoveAction | Qt.LinkAction
     Drag.proposedAction: Qt.MoveAction
     Drag.mimeData: ({ "text/uri-list": D.uris(src.paths), "text/plain": src.paths.join("\n") })
-    Drag.imageSource: src.icon ? "file://" + src.icon : ""
+    Drag.imageSource: src.icon ? Fmt.fileUrl(src.icon) : ""
     Drag.imageSourceSize: Qt.size(48, 48)
     Drag.hotSpot: Qt.point(24, 24)
     Drag.onDragFinished: src.Drag.active = false

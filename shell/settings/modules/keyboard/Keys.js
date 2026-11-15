@@ -1,11 +1,14 @@
-// Keyboard & Shortcuts logic, free of QML so it can be tested
+// Keyboard & shortcuts logic, free of QML so it can be tested
 // (shell/tests/run.mjs).
 //
 // Shortcuts are strings the compositor parses: modifiers then one key,
-// "SUPER+SHIFT+S", "PRTSC", "XF86AudioRaiseVolume", and "SUPER+1-9" for the
-// workspace shortcuts (one per number key). Settings store only changes:
+// "SUPER+SHIFT+S", "PRTSC", "XF86AudioRaiseVolume", "SUPER+1-9" for the
+// workspace shortcuts (one per number key) and "SUPER+ARROWS" for the
+// direction shortcuts (one per arrow key). Settings store only changes:
 // "shortcuts.keys" maps an id to its keys (none = turned off), and
 // "shortcuts.custom" holds your own [{ id, name, command, keys }].
+// Scratchpads' keys show up as shortcuts "scratchpad:<id>" and are kept in
+// "windows.scratchpads" (state.pads), with the rest of each scratchpad.
 .pragma library
 
 const MODS = ["SUPER", "CTRL", "ALT", "SHIFT"];
@@ -70,12 +73,12 @@ function normalize(c) {
     return MODS.filter(m => mods.has(m)).concat([key]).join("+");
 }
 
-// Every concrete combo: "SUPER+1-9" is nine.
+// Every concrete combo: "SUPER+1-9" is nine, "SUPER+ARROWS" four.
 function expand(c) {
     const n = normalize(c);
-    if (!n.endsWith("+1-9")) return [n];
-    const head = n.slice(0, -3);
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9].map(d => head + d);
+    if (n.endsWith("+1-9")) return [1, 2, 3, 4, 5, 6, 7, 8, 9].map(d => n.slice(0, -3) + d);
+    if (n.endsWith("+ARROWS")) return ["LEFT", "RIGHT", "UP", "DOWN"].map(k => n.slice(0, -6) + k);
+    return [n];
 }
 
 // The first other shortcut already using any of `c`'s combos.
@@ -84,9 +87,15 @@ function conflict(shortcuts, c, exceptId) {
     return (shortcuts ?? []).find(s => s.id !== exceptId && (s.keys ?? []).some(k => expand(k).some(x => mine.includes(x)))) ?? null;
 }
 
-// Workspace shortcuts take a number key and stand for all nine.
-function forRange(c) {
+// Workspace shortcuts take a number key and stand for all nine
+// (range "digits"); direction shortcuts take an arrow key and stand for all
+// four ("arrows"). Null if the key doesn't fit the range.
+function forRange(c, range) {
     const n = normalize(c);
+    if (range === "arrows") {
+        const m = n.match(/^(.*\+)?(LEFT|RIGHT|UP|DOWN)$/);
+        return m ? (m[1] ?? "") + "ARROWS" : null;
+    }
     const m = n.match(/^(.*\+)?([0-9])$/);
     return m ? (m[1] ?? "") + "1-9" : null;
 }
@@ -96,7 +105,7 @@ const LABELS = {
     XF86MONBRIGHTNESSUP: "BRIGHT +", XF86MONBRIGHTNESSDOWN: "BRIGHT −", XF86AUDIOPLAY: "PLAY", XF86AUDIONEXT: "NEXT",
     XF86AUDIOPREV: "PREV", "1-9": "1–9", PRIOR: "PG UP", NEXT: "PG DN", MINUS: "-", EQUAL: "=",
     BRACKETLEFT: "[", BRACKETRIGHT: "]", SEMICOLON: ";", APOSTROPHE: "'", GRAVE: "`", BACKSLASH: "\\",
-    COMMA: ",", PERIOD: ".", SLASH: "/", LEFT: "←", RIGHT: "→", UP: "↑", DOWN: "↓",
+    COMMA: ",", PERIOD: ".", SLASH: "/", LEFT: "←", RIGHT: "→", UP: "↑", DOWN: "↓", ARROWS: "←→↑↓",
 };
 
 // The key caps to draw for a shortcut.
@@ -112,19 +121,28 @@ function sameList(a, b) {
     return x.length === y.length && x.every((k, i) => k === y[i]);
 }
 
-// Gives shortcut `id` the keys `keys`, returning new { overrides, custom }.
-// Built-in shortcuts back on their defaults are dropped from the overrides.
+// The id a scratchpad's key goes by among the shortcuts.
+const PAD = "scratchpad:";
+function padShortcut(padId) { return PAD + padId }
+
+// Gives shortcut `id` the keys `keys`, returning new { overrides, custom,
+// pads }. Built-in shortcuts back on their defaults are dropped from the
+// overrides.
 function setKeys(state, id, keys) {
     const overrides = Object.assign({}, state.overrides ?? {});
     const custom = (state.custom ?? []).map(c => Object.assign({}, c));
+    const pads = (state.pads ?? []).map(p => Object.assign({}, p));
     const c = custom.find(x => x.id === id);
+    const pad = String(id).startsWith(PAD) ? pads.find(p => PAD + p.id === id) : null;
     if (c) c.keys = keys.slice();
-    else {
+    else if (String(id).startsWith(PAD)) {
+        if (pad) pad.keys = keys.slice();
+    } else {
         const view = (state.shortcuts ?? []).find(s => s.id === id);
         if (view && sameList(keys, view.defaults)) delete overrides[id];
         else overrides[id] = keys.slice();
     }
-    return { overrides, custom };
+    return { overrides, custom, pads };
 }
 
 // Records `c` for shortcut `id`: replacing its keys (or adding to them),
@@ -132,7 +150,7 @@ function setKeys(state, id, keys) {
 function assign(state, id, c, add) {
     const n = normalize(c);
     const view = (state.shortcuts ?? []).find(s => s.id === id);
-    let next = { overrides: state.overrides, custom: state.custom };
+    let next = { overrides: state.overrides, custom: state.custom, pads: state.pads };
     const other = conflict(state.shortcuts, n, id);
     if (other) {
         const mine = expand(n);

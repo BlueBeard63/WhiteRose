@@ -2,7 +2,7 @@
 // of the bar. Opened from the status cluster or SUPER+S. Wi-Fi, Bluetooth,
 // volume and battery come from QuickShell's services (NetworkManager, BlueZ,
 // PipeWire, UPower); brightness and airplane mode from whiterosed; Night
-// Light from the compositor; Do Not Disturb belongs to the shell.
+// Light from the compositor; Do not disturb belongs to the shell.
 import QtQuick
 import Quickshell
 import Quickshell.Bluetooth
@@ -52,8 +52,6 @@ SidePanel {
     readonly property string userName: QS.displayName(passwd.text(), user)
     FileView { id: uptimeFile; path: "/proc/uptime"; blockLoading: true }
     readonly property string uptime: QS.uptime(parseFloat(uptimeFile.text()) || 0)
-    // AccountsService's picture (what GNOME's settings sets), else ~/.face.
-    readonly property var avatars: ["/var/lib/AccountsService/icons/" + user, Quickshell.env("HOME") + "/.face"]
 
     // Header: who's logged in, uptime, lock and power.
     Item {
@@ -63,32 +61,9 @@ SidePanel {
             spacing: 10
             anchors.verticalCenter: parent.verticalCenter
             // The user's picture, or their initials on a gradient.
-            ClippingRectangle {
-                width: 34; height: 34; radius: 17
-                Rectangle {
-                    anchors.fill: parent
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: Theme.rose }
-                        GradientStop { position: 1; color: "#6B4A8C" }
-                    }
-                }
-                Text {
-                    anchors.centerIn: parent
-                    visible: picture.status !== Image.Ready
-                    text: QS.initials(root.userName)
-                    color: Theme.bg
-                    font { family: Theme.font; pointSize: Theme.pt(14); weight: Font.DemiBold }
-                }
-                Image {
-                    id: picture
-                    property int tried: 0
-                    anchors.fill: parent
-                    source: "file://" + root.avatars[tried]
-                    sourceSize: Qt.size(68, 68)
-                    fillMode: Image.PreserveAspectCrop
-                    visible: status === Image.Ready
-                    onStatusChanged: if (status === Image.Error && tried + 1 < root.avatars.length) tried++
-                }
+            Avatar {
+                width: 34; height: 34
+                name: root.userName
             }
             Column {
                 anchors.verticalCenter: parent.verticalCenter
@@ -149,14 +124,14 @@ SidePanel {
         }
         QsTile {
             icon: "bellOff"
-            title: "Do Not Disturb"
+            title: "Do not disturb"
             active: QuickState.doNotDisturb
             subtitle: active ? "On" : "Off"
             onClicked: QuickState.setDoNotDisturb(!active)
         }
         QsTile {
             icon: "moon"
-            title: "Night Light"
+            title: "Night light"
             active: QuickState.nightLight
             subtitle: active ? "Until " + Qt.formatTime(new Date(QuickState.nightLightUntil), "HH:mm") : "Off"
             onClicked: QuickState.setNightLight(!active)
@@ -164,7 +139,7 @@ SidePanel {
         QsTile {
             visible: System.radios > 0
             icon: "plane"
-            title: "Airplane Mode"
+            title: "Airplane mode"
             active: System.airplane
             subtitle: active ? "On" : "Off"
             onClicked: System.setAirplane(!active)
@@ -172,7 +147,7 @@ SidePanel {
         QsTile {
             visible: PowerProfiles !== null
             icon: PowerProfiles.profile === PowerProfile.PowerSaver ? "leaf" : "zap"
-            title: "Power Mode"
+            title: "Power mode"
             active: PowerProfiles.profile !== PowerProfile.Balanced
             subtitle: QS.profileName(PowerProfiles.profile)
             onClicked: PowerProfiles.profile = QS.nextProfile(PowerProfiles.profile, PowerProfiles.hasPerformanceProfile)
@@ -187,7 +162,7 @@ SidePanel {
             onClicked: { ShellState.closePanel(); ShellState.lock(); Quickshell.execDetached(["systemctl", "suspend"]) }
         }
         QsTile {
-            icon: "logOut"; title: "Log Out"
+            icon: "logOut"; title: "Log out"
             onClicked: Compositor.quit()
         }
         QsTile {
@@ -195,7 +170,7 @@ SidePanel {
             onClicked: Quickshell.execDetached(["systemctl", "reboot"])
         }
         QsTile {
-            icon: "power"; title: "Power Off"; active: true
+            icon: "power"; title: "Power off"; active: true
             onClicked: Quickshell.execDetached(["systemctl", "poweroff"])
         }
     }
@@ -205,6 +180,7 @@ SidePanel {
         width: parent.width
         spacing: 8
         QsSlider {
+            label: "Volume"
             visible: root.sink !== null
             icon: root.sink?.audio?.muted ? "volumeMuted" : "volume"
             dimmed: root.sink?.audio?.muted ?? false
@@ -213,6 +189,7 @@ SidePanel {
             onIconClicked: root.sink.audio.muted = !root.sink.audio.muted
         }
         QsSlider {
+            label: "Brightness"
             visible: System.brightness >= 0
             icon: "sun"
             minimum: 0.01
@@ -238,6 +215,9 @@ SidePanel {
             }
         }
         Item {
+            Accessible.role: Accessible.Link
+            Accessible.name: "All settings"
+            Accessible.onPressAction: ShellState.openSettings("")
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             width: allRow.implicitWidth
             height: allRow.implicitHeight

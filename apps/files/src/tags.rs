@@ -339,6 +339,7 @@ pub fn on(paths: &[PathBuf]) -> BTreeMap<String, usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn comments_on_files() {
@@ -357,10 +358,8 @@ mod tests {
         assert!(set_comment(&f, &"x".repeat(5000)).is_err());
     }
 
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wr-tags-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+    fn scratch(name: &str) -> Scratch {
+        let d = Scratch::new(&format!("tags-{name}"));
         d
     }
 

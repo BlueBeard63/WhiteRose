@@ -18,6 +18,7 @@ Scope {
             color: Theme.bg
             WlrLayershell.layer: WlrLayer.Background
             WlrLayershell.namespace: "whiterose-wallpaper"
+            LayerTitle { name: "whiterose-wallpaper" }
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
             WallpaperView {

@@ -33,6 +33,7 @@ fn main() {
             "qml/TagDots.qml",
             "qml/TagStrip.qml",
             "qml/RunStrip.qml",
+            "qml/ChooseStrip.qml",
             "qml/Strip.qml",
             "qml/NameEditor.qml",
             "qml/StartMode.qml",

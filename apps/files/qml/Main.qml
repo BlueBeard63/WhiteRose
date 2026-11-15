@@ -27,7 +27,7 @@ import "FilesActions.js" as Actions
 
 AppWindow {
     id: win
-    title: current ? current.title + " — Files" : "Files"
+    title: Session.choose ? Session.choose.title + " - Files" : current ? current.title + " - Files" : "Files"
     visible: true
     width: 1040; height: 680
 
@@ -159,6 +159,8 @@ AppWindow {
         win.show(Math.min(w.current ?? 0, win.tabs.length - 1));
     }
     onClosing: {
+        // A picker closed: nothing chosen.
+        if (Session.choose) Fs.chooseDone("null");
         Session.remove(win);
         // Windows made later go away for good; the first one is the engine's.
         if (win.initial) Qt.callLater(() => win.destroy());
@@ -324,7 +326,7 @@ AppWindow {
             IconButton {
                 id: plus
                 anchors { left: tabRow.right; leftMargin: 4; verticalCenter: parent.verticalCenter }
-                width: 28; height: 28; icon: "plus"; iconSize: 13; fill: "transparent"
+                width: 28; height: 28; icon: "plus"; label: "New tab"; iconSize: 13; fill: "transparent"
                 onClicked: win.newTab({ path: win.current?.path ?? "" })
             }
             MouseArea {
@@ -414,7 +416,7 @@ AppWindow {
         }
         onConnectServer: win.connectServer(null)
         onAddCloud: win.addCloud()
-        onShelfClicked: win.info = shelfBar.items.length === 0 ? "Drop files on Shelf (or Ctrl+Shift+S) to gather them" : ""
+        onShelfClicked: win.info = shelfBar.items.length === 0 ? "Drop files on the shelf (or Ctrl+Shift+S) to gather them" : ""
         onServerMenu: (server, x, y) => { serverMenu.server = server; serverMenu.openAt(x, y) }
         onEjectDrive: device => { win.info = "Ejecting…"; Ops.eject(device) }
         Menu {
@@ -467,10 +469,10 @@ AppWindow {
             anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 2
             // Show / hide the sidebar.
-            IconButton { width: 32; height: 32; icon: "panelLeft"; fill: "transparent"; iconColor: Session.sidebar ? Theme.text : Theme.muted; onClicked: Session.setSidebar(!Session.sidebar) }
-            IconButton { width: 32; height: 32; icon: "chevL"; fill: "transparent"; opacity: (win.current?.back.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goBack() }
-            IconButton { width: 32; height: 32; icon: "chevR"; fill: "transparent"; opacity: (win.current?.forward.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goForward() }
-            IconButton { width: 32; height: 32; icon: "chevUp"; fill: "transparent"; opacity: Fs.up(win.current?.path ?? "/") !== "" ? 1 : 0.35; onClicked: win.current?.up() }
+            IconButton { width: 32; height: 32; icon: "panelLeft"; label: "Sidebar"; fill: "transparent"; iconColor: Session.sidebar ? Theme.text : Theme.muted; onClicked: Session.setSidebar(!Session.sidebar) }
+            IconButton { width: 32; height: 32; icon: "chevL"; label: "Back"; fill: "transparent"; opacity: (win.current?.back.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goBack() }
+            IconButton { width: 32; height: 32; icon: "chevR"; label: "Forward"; fill: "transparent"; opacity: (win.current?.forward.length ?? 0) > 0 ? 1 : 0.35; onClicked: win.current?.goForward() }
+            IconButton { width: 32; height: 32; icon: "chevUp"; label: "Up"; fill: "transparent"; opacity: Fs.up(win.current?.path ?? "/") !== "" ? 1 : 0.35; onClicked: win.current?.up() }
         }
         AddressBar {
             id: address
@@ -500,14 +502,14 @@ AppWindow {
             id: emptyTrash
             visible: win.current?.inTrash ?? false
             anchors { right: views.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
-            text: "Empty Trash"
+            text: "Empty trash"
             kind: "danger"
             enabled: (win.current?.entries.length ?? 0) > 0
             onClicked: if (enabled) win.askEmpty()
         }
         Segmented {
             id: views
-            // (Nothing to show differently on the Start page.)
+            // (Nothing to show differently on the start page.)
             visible: !(win.current?.ownView ?? false)
             anchors { right: extraTools.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             value: win.current?.mode ?? "grid"
@@ -525,7 +527,7 @@ AppWindow {
                 model: Session.toolbar.map(id => Actions.toolbar.find(t => t.id === id)).filter(t => !!t)
                 delegate: IconButton {
                     required property var modelData
-                    width: 32; height: 32; icon: modelData.icon; fill: "transparent"
+                    width: 32; height: 32; icon: modelData.icon; label: modelData.label; fill: "transparent"
                     iconColor: (modelData.id === "hidden" && Session.hidden) || (modelData.id === "details" && Session.details) || (modelData.id === "split" && (win.tab?.split ?? false)) ? Theme.rose : Theme.text
                     onClicked: win.toolbarDo(modelData.id)
                     ToolTip.visible: hovered
@@ -537,13 +539,13 @@ AppWindow {
         IconButton {
             id: searchButton
             anchors { right: menuButton.left; rightMargin: 2; verticalCenter: parent.verticalCenter }
-            width: 32; height: 32; icon: win.current?.searching ? "x" : "search"; fill: "transparent"
+            width: 32; height: 32; icon: win.current?.searching ? "x" : "search"; label: win.current?.searching ? "Close search" : "Search"; fill: "transparent"
             onClicked: win.current?.searching ? win.closeSearch() : win.openSearch("")
         }
         IconButton {
             id: menuButton
             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-            width: 32; height: 32; icon: "menu"; fill: "transparent"
+            width: 32; height: 32; icon: "menu"; label: "Menu"; fill: "transparent"
             onClicked: viewMenu.openAt(width - viewMenu.width, height + 4)
             Menu {
                 id: viewMenu
@@ -740,26 +742,45 @@ AppWindow {
                 Timer { id: insideTimer; interval: 450; onTriggered: if (insideField.text !== (searchRow.ask.content ?? "")) win.current?.find({ content: insideField.text, either: insideField.text === searchField.text }) }
             }
         }
-        // The index (home and drives): how fresh, and freshen it.
+        // The index (home and drives): how fresh, and freshen it; while
+        // it's being made, how far it's got and about how long is left.
         Row {
             id: indexRow
             visible: (searchRow.ask.scope ?? "here") !== "here"
             anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-            spacing: 4
+            spacing: 8
+            Rectangle {
+                visible: Search.indexing && Search.indexDone >= 0
+                anchors.verticalCenter: parent.verticalCenter
+                width: 64; height: 4; radius: 2
+                color: Theme.surface2
+                Accessible.role: Accessible.ProgressBar
+                Accessible.name: "Indexing"
+                Accessible.description: Math.round(Search.indexDone * 100) + "%"
+                Rectangle {
+                    width: parent.width * Math.max(0, Search.indexDone); height: parent.height; radius: 2
+                    color: Theme.pearl
+                    Behavior on width { NumberAnimation { duration: 380 } }
+                }
+            }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: Search.indexing ? "Indexing…" : Search.indexedAt > 0 ? "Indexed " + F.date(Search.indexedAt, Date.now()).replace(/^Today /, "at ") : "Not indexed yet"
+                text: Search.indexing ? F.indexing(Search.indexCount, Search.indexDone, Search.indexLeft)
+                    : Search.indexedAt > 0 ? "Indexed " + F.date(Search.indexedAt, Date.now()).replace(/^Today /, "at ") : "Not indexed yet"
                 color: Theme.faint
                 font { family: Theme.font; pointSize: Theme.pt(11) }
             }
             IconButton {
                 visible: !Search.indexing
+                label: "Index again"
                 width: 26; height: 26; icon: "restart"; iconSize: 12; fill: "transparent"
-                onClicked: Search.reindex(JSON.stringify(Session.indexOpts))
+                onClicked: Search.reindex()
             }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.surface1 }
     }
+    // How far the indexer has got (its own process: read every so often).
+    Timer { running: Search.indexing; repeat: true; interval: 500; onTriggered: Search.poll() }
     // Index done: searches of home and the drives see what it found.
     Connections {
         target: Search
@@ -790,7 +811,8 @@ AppWindow {
         const out = [];
         if (dir) out.push({ label: "Open in terminal", shortcut: entry ? "" : "F4", run: () => win.openTerminal(dir) });
         if (ed && (dir || textish)) out.push({ label: "Open in " + ed.name, run: () => win.openEditor(entry ? entry.path : dir) });
-        const root = dir ? Fs.gitRoot(dir) : "";
+        // (Not on a network drive: it looks for .git in every folder above.)
+        const root = dir && !Fs.isRemote(dir) ? Fs.gitRoot(dir) : "";
         if (ed && root && root !== dir) out.push({ label: "Open repository in " + ed.name, run: () => win.openEditor(root) });
         return out;
     }
@@ -919,7 +941,7 @@ AppWindow {
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
                 ...(win.current.inTag ? [{ label: "Rename tag…", run: () => tagDialog.rename(win.current.path.slice(4)) }] : []),
             ] : itemMenu.trashed ? (!itemMenu.entry ? [
-                { label: "Empty Trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
+                { label: "Empty trash…", danger: true, enabled: (win.current?.entries.length ?? 0) > 0, run: () => win.askEmpty() },
                 { label: "Select all", shortcut: "Ctrl+A", run: () => win.current.selectAll() },
             ] : [
                 { label: "Restore", run: () => win.restore(itemMenu.sel.map(e => e.path)) },
@@ -978,7 +1000,7 @@ AppWindow {
                     { label: "Share…", enabled: !itemMenu.many, run: () => win.cloudAct("share") },
                     { label: "Copy link", enabled: !itemMenu.many, run: () => win.cloudAct("link") },
                 ] }] : []),
-                { label: "Move to Trash", shortcut: "Delete", run: () => win.trash() },
+                { label: "Move to trash", shortcut: "Delete", run: () => win.trash() },
                 { label: "Delete permanently…", shortcut: "Shift+Del", danger: true, run: () => win.askDelete(itemMenu.sel.map(e => e.path)) },
                 { separator: true },
                 { label: "Properties", shortcut: "Alt+Enter", run: () => win.properties() },
@@ -1188,19 +1210,19 @@ AppWindow {
     }
     function trash() {
         const sel = win.current?.selection ?? [];
-        // In the Trash, Delete means for good.
+        // In the trash, Delete means for good.
         if (win.current?.inDrives) return;
         if (win.current?.inTrash) win.askDelete(sel.map(e => e.path), "purge");
         // (Settings › Files › General: ask first.)
         else if (Session.confirmTrash) win.askDelete(sel.map(e => e.path), "trash");
         else win.run("trash", sel.map(e => e.path));
     }
-    // kind: "delete" (anywhere), "purge" (things in the Trash), "empty" (all of it).
+    // kind: "delete" (anywhere), "purge" (things in the trash), "empty" (all of it).
     function askDelete(paths, kind) {
         if (paths.length === 0) return;
         confirm.paths = paths;
         confirm.kind = kind ?? "delete";
-        // Shown by their own names (a trashed one's name in the Trash can differ).
+        // Shown by their own names (a trashed one's name in the trash can differ).
         confirm.names = paths.map(p => (win.current?.entries.find(e => e.path === p)?.name) ?? p.substring(p.lastIndexOf("/") + 1));
         confirm.open();
     }
@@ -1245,6 +1267,8 @@ AppWindow {
 
     // ---- opening files: programs ask first ---------------------------------------------
     function openFile(entry) {
+        // A picker: opening a file is choosing it (saving: its name).
+        if (Session.choose) { chooseStrip.openEntry(entry); return }
         // Inside an archive: taken out into a cache first (an archive in
         // an archive opens as a folder too). Programs from there count as
         // untrusted (run.rs).
@@ -1259,7 +1283,14 @@ AppWindow {
             return;
         }
         const info = JSON.parse(Fs.runInfo(entry.path, entry.mime ?? ""));
-        if (info.kind === "none") { Qt.openUrlExternally("file://" + entry.path); return }
+        if (info.kind === "none") {
+            // On a network drive: by its GVfs address, so the app reads it
+            // through GVfs (much faster than the FUSE folder).
+            const r = Fs.openRemote(entry.path);
+            if (r === "local") Qt.openUrlExternally(F.fileUrl(entry.path));
+            else if (r !== "") { win.notice = "Couldn't open “" + entry.name + "”: " + r; Qt.openUrlExternally(F.fileUrl(entry.path)) }
+            return;
+        }
         runDialog.ask(entry, info);
     }
     // As text, in Notepad (or the code editor).
@@ -1405,8 +1436,8 @@ AppWindow {
         id: exportDialog
         title: "Export Files' settings"
         fileMode: FileDialog.SaveFile
-        currentFolder: "file://" + Fs.home()
-        selectedFile: "file://" + Fs.home() + "/whiterose-files-settings.json"
+        currentFolder: F.fileUrl(Fs.home())
+        selectedFile: F.fileUrl(Fs.home()) + "/whiterose-files-settings.json"
         nameFilters: ["Files settings (*.json)"]
         onAccepted: {
             const err = Ops.exportSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")));
@@ -1416,7 +1447,7 @@ AppWindow {
     FileDialog {
         id: importDialog
         title: "Import Files' settings"
-        currentFolder: "file://" + Fs.home()
+        currentFolder: F.fileUrl(Fs.home())
         nameFilters: ["Files settings (*.json)"]
         onAccepted: {
             const r = JSON.parse(Ops.importSettings(decodeURIComponent(String(selectedFile).replace(/^file:\/\//, ""))));
@@ -1460,6 +1491,8 @@ AppWindow {
     Column {
         id: asks
         anchors { left: sidebar.right; right: details.visible ? details.left : parent.right; top: searchRow.bottom }
+        // A picker (`--choose`): what's wanted, and the answer.
+        ChooseStrip { id: chooseStrip; width: parent.width; pane: win.current }
         // Name for a rename, a new folder or a new file (or a workspace): asked
         // in a strip above the files.
         Strip {
@@ -1537,8 +1570,8 @@ AppWindow {
                     anchors { left: confirmIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
                     width: Math.min(implicitWidth, confirmButtons.x - x - 12)
                     elide: Text.ElideMiddle
-                    text: confirm.kind === "empty" ? "Empty the Trash?"
-                        : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the Trash?" : "Move " + confirm.paths.length + " items to the Trash?")
+                    text: confirm.kind === "empty" ? "Empty the trash?"
+                        : confirm.kind === "trash" ? (confirm.names.length === 1 ? "Move “" + confirm.names[0] + "” to the trash?" : "Move " + confirm.paths.length + " items to the trash?")
                         : confirm.names.length === 1 ? "Delete “" + confirm.names[0] + "” for good?"
                         : "Delete " + confirm.paths.length + " items for good?"
                     color: Theme.text
@@ -1547,9 +1580,9 @@ AppWindow {
                 Text {
                     anchors { left: confirmAsk.right; leftMargin: 8; right: confirmButtons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideRight
-                    text: confirm.kind === "trash" ? "You can bring them back from the Trash."
+                    text: confirm.kind === "trash" ? "You can bring them back from the trash."
                         : confirm.kind === "empty" ? "Everything in it (" + confirm.paths.length + (confirm.paths.length === 1 ? " item" : " items") + ") goes for good."
-                        : "It won't go to the Trash, so it can't be brought back."
+                        : "It skips the trash, so you can't get it back."
                     color: Theme.muted
                     font { family: Theme.font; pointSize: Theme.pt(11.5) }
                 }
@@ -1560,7 +1593,7 @@ AppWindow {
                     Button { text: confirm.kind === "trash" ? "Don't" : "Keep it"; kind: "ghost"; onClicked: confirm.close() }
                     Button {
                         id: deleteButton
-                        text: confirm.kind === "empty" ? "Empty Trash" : confirm.kind === "trash" ? "Move to Trash" : "Delete"
+                        text: confirm.kind === "empty" ? "Empty trash" : confirm.kind === "trash" ? "Move to trash" : "Delete"
                         kind: confirm.kind === "trash" ? "primary" : "danger"
                         // After the key is handled: closing in the middle of it crashes Qt.
                         Keys.onReturnPressed: e => { e.accepted = true; Qt.callLater(() => deleteButton.clicked()) }

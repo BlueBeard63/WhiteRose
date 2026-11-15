@@ -126,11 +126,11 @@ pub fn clear_parts(e: &Entry) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn written_down_and_crossed_off() {
-        let d = std::env::temp_dir().join(format!("wr-journal-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
+        let d = Scratch::new("journal");
         fs::create_dir_all(d.join("dest/photos/2026")).unwrap();
         fs::create_dir_all(d.join("src/photos")).unwrap();
         let f = d.join("transfers.json");
@@ -173,6 +173,5 @@ mod tests {
             ..e
         })
         .is_empty());
-        fs::remove_dir_all(&d).unwrap();
     }
 }
