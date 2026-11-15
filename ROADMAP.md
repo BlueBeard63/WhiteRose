@@ -15,7 +15,7 @@ Each feature lists where the idea comes from: Windows, Hyprland, niri, GNOME, KD
 | ✅ | [**0.1**](#01--foundations) | Foundations | What WhiteRose is today. |
 | ✅ | [**0.2**](#02--files) | Files | Online drives, network shares, and no dialogs. |
 | ✅ | [**0.3**](#03--layouts) | Layouts | How windows are arranged, plus the basics a daily desktop needs. |
-| 🗓️ | [**0.4**](#04--overview--gestures) | Overview & gestures | Seeing everything at once, and moving around with gestures. |
+| 🗓️ | [**0.4**](#04--overview-gestures--apps) | Overview, gestures & apps | Seeing everything at once, moving around with gestures, and four apps of WhiteRose's own. |
 | 🗓️ | [**0.5**](#05--look--feel) | Look & feel | Making it yours, and making every app match. |
 | 🗓️ | [**0.6**](#06--login) | Login | WhiteRose from the first frame: its own display manager. |
 | 🗓️ | [**0.7**](#07--accounts--everyday-tools) | Accounts & everyday tools | Your accounts' calendars and contacts, small things used all day, and hardware setup. |
@@ -218,41 +218,83 @@ Not on the plan for 0.3, added because daily use needed them.
 
 </details>
 
-## 0.4 · Overview & gestures
+## 0.4 · Overview, gestures & apps
 
-**Planned.** Seeing everything at once, and moving around with gestures.
+**Planned.** Seeing everything at once, moving around with gestures, and four apps of WhiteRose's own. The whole of 0.4 is written down before any code: [docs/plans/0.4.md](docs/plans/0.4.md). Every feature has its own setting, and an update from 0.3 changes nothing you already use.
+
+<details>
+<summary><b>Animation core</b>: One animation system in the compositor, for gestures, the overview and switching workspace. <sub>· niri, Hyprland</sub></summary>
+
+- Follows your fingers 1:1, then springs into place when you let go.
+- Workspaces slide when you switch (can be off). The scratchpad slide, tab bar and pointer shake move onto it.
+- Curves, open/close animations and the battery switch build on it in 0.5.
+
+</details>
+
+<details>
+<summary><b>Touchpad gestures</b>: Three fingers for the desktop: swipe for workspaces, up or pinch for the overview. <sub>· Hyprland, GNOME</sub></summary>
+
+- 1:1 swipe between workspaces, swipe up or pinch in for the overview, swipe down to close it; three-finger window drag (off by default).
+- Settings › Mouse & touchpad › Gestures: each gesture to an action, or passed to the app. Two- and four-finger gestures go to apps unless you bind them.
+- Already in 0.3: gestures reach apps (pinch to zoom in browsers, swipe and hold).
+
+</details>
 
 <details>
 <summary><b>Overview, your choice</b>: A GNOME-style overview or a niri-style zoom-out, chosen in Settings. <sub>· GNOME, niri</sub></summary>
 
-- GNOME-style: SUPER shows every window and workspace zoomed out, with search on top.
-- niri-style: zoom out on the workspaces; drag windows between them.
-- Settings › Windows › Overview picks the style (or off); both are compositor-rendered, live.
+- GNOME-style: every window and workspace zoomed out, live, with search on top (windows, apps, files, settings, the calculator). Can replace the launcher on a SUPER tap if you want.
+- niri-style: zoom out on the workspaces as they are; drag windows between them.
+- SUPER+W, a gesture, or a SUPER tap. Settings › Windows › Overview picks the style, or turns it off.
 
 </details>
 
 <details>
-<summary><b>Workspace strip</b>: Workspaces in the bar with live previews on hover. <sub>· Noctalia</sub></summary>
+<summary><b>Workspace strip</b>: Workspaces in the bar with their apps, and live previews on hover. <sub>· Noctalia</sub></summary>
 
-- The bar's workspace dots become a strip; hovering shows a live preview; drag windows onto a workspace.
-- An option alongside (or instead of) the overview.
-
-</details>
-
-<details>
-<summary><b>Activities</b>: Separate sets of workspaces, apps and files, e.g. Work and Personal. <sub>· KDE</sub></summary>
-
-- An activity has its own workspaces, dock pins, recent files and wallpaper.
-- Switch from the island or a key; apps can be in one activity or all.
+- A third style for the bar's workspaces, next to dots and numbers; drag a window onto a workspace.
+- Previews on hover are a separate switch, off by default.
 
 </details>
 
 <details>
-<summary><b>Touchpad gestures</b>: Swipe for workspaces, pinch for the overview, three-finger drag; configurable. <sub>· Hyprland, GNOME</sub></summary>
+<summary><b>Activities</b>: Separate sets of workspaces, apps and files, e.g. Work and Personal. Off by default. <sub>· KDE</sub></summary>
 
-- 1:1 swipe between workspaces, pinch for the overview, three-finger window drag.
-- Settings › Touchpad: gestures to actions.
-- Already in 0.3: gestures reach apps (pinch to zoom in browsers, swipe and hold).
+- An activity has its own workspaces, dock pins, wallpaper, recent files, and layout and snap zones per workspace.
+- Switch from the island or SUPER+SHIFT+A; a window can be in one activity or all of them.
+- Open windows don't come back after a restart yet.
+
+</details>
+
+<details>
+<summary><b>Task manager</b>: Apps and their processes, performance graphs and memory protection in one app. <sub>· Windows</sub></summary>
+
+- CPU, memory, disk and network per app, with end and force end.
+- Graphs for each CPU core, memory, disks, network and the GPU.
+- Which apps are protected from memory protection, and which are at risk.
+
+</details>
+
+<details>
+<summary><b>Disk imager</b>: Write an ISO to a USB stick, or put several on one with Ventoy. <sub>· Rufus, GNOME Disks</sub></summary>
+
+- Only removable drives are offered; confirmed by name and size, with your fingerprint; checked after writing.
+- Install Ventoy onto a stick, then add, remove and list its ISOs.
+
+</details>
+
+<details>
+<summary><b>Clocks</b>: Alarms, timers, a stopwatch and a world clock, with the time left in the island. <sub>· GNOME, Windows</sub></summary>
+
+- Alarms and timers go off with the app closed.
+- The island shows a running timer, the stopwatch or the next alarm counting down.
+
+</details>
+
+<details>
+<summary><b>Calculator</b>: Standard and scientific, with history. <sub>· GNOME, Windows</sub></summary>
+
+- The launcher, which already calculates since 0.3, gets the scientific functions too.
 
 </details>
 
