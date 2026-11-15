@@ -174,6 +174,11 @@ Column {
                 }
             }
         }
+        SettingRow {
+            title: "Slide when switching"
+            subtitle: "Workspaces slide in from the side; off, they change at once"
+            Toggle { checked: Daemon.setting("animations.workspaceSwitch", true); onToggled: v => Daemon.set("animations.workspaceSwitch", v) }
+        }
     }
 
     // ---- per monitor ------------------------------------------------------------------
