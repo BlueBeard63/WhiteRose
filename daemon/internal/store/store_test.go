@@ -121,6 +121,7 @@ func TestValidation(t *testing.T) {
 		"windows.snap.zones.workspaces": `{"10":{"builtin":[[0,0,1,1]]}}`,
 		"windows.rules":                 `[{"workspace":2}]`,
 		"windows.scratchpads":           `[{"id":"a","command":""}]`,
+		"animations.workspaceSwitch":    `"on"`,
 		"nope.unknown":                  `1`,
 		"Bad Key":                       `1`,
 		"module.x":                      `{not json`,

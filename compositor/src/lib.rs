@@ -49,6 +49,7 @@ pub mod window_rules;
 pub mod window_state;
 pub mod winit;
 pub mod workspace;
+pub mod workspace_slide;
 pub mod xdnd;
 pub mod xwayland;
 

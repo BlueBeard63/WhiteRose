@@ -269,7 +269,9 @@ impl crate::state::WhiteRose {
     /// frame after each one until nothing is. (The pointer growing for
     /// shake to find is the DRM backend's own: nested, the host draws it.)
     pub fn animating(&self) -> bool {
-        self.scratchpads.animating() || crate::tab_strip::animating(self)
+        self.scratchpads.animating()
+            || crate::tab_strip::animating(self)
+            || self.workspace_sliding(Instant::now()).is_some_and(|s| s.along.moving(Instant::now()))
     }
 }
 

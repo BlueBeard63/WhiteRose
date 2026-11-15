@@ -573,11 +573,21 @@ fn buffer(pixels: &[u8], (w, h): (i32, i32)) -> MemoryRenderBuffer {
 /// The tab strips on `output`, ready to draw (behind the windows).
 pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose) -> Vec<OutputElement> {
     let scale = output.current_scale().fractional_scale();
-    let Some(origin) = state.space.output_geometry(output).map(|g| g.loc) else { return Vec::new() };
+    let Some(geo) = state.space.output_geometry(output) else { return Vec::new() };
+    let origin = geo.loc;
     let strips = &state.tiling.strip_images;
     let now = Instant::now();
+    // Sliding in with their workspace.
+    let dx = state.workspace_shift(Some(state.workspaces.active()), geo.size.w, now);
     let mut out = Vec::new();
     for s in state.tiling.strips.iter().filter(|s| s.output == *output) {
+        let moved;
+        let s = if dx == 0 {
+            s
+        } else {
+            moved = Strip { rect: Rectangle::new(s.rect.loc + Point::from((dx, 0)), s.rect.size), ..s.clone() };
+            &moved
+        };
         let size = ((s.rect.size.w as f64 * scale).round() as i32, (s.rect.size.h as f64 * scale).round() as i32);
         let labels: Vec<Label> = s.tabs.iter().map(label_of).collect();
         for (w, l) in s.tabs.iter().zip(&labels) {
