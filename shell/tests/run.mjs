@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js, Gestures.js, Strip.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js, Gestures.js, Strip.js, the Activities page's Activities.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
@@ -43,6 +43,7 @@ const P = load("settings/modules/scratchpads/Pads.js", ["ownInstance", "complete
 const Sc = load("Shortcuts.js", ["groups", "columns"], { K });
 const G = load("Gestures.js", ["DEFAULT", "KINDS", "bindings", "actionOf", "set", "usable", "options", "sheet"]);
 const St = load("Strip.js", ["MAX_ICONS", "shown", "cell", "cellAt", "preview", "caption"]);
+const Act2 = load("settings/modules/activities/Activities.js", ["rename", "remove", "newName", "add", "subtitle"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -1499,6 +1500,23 @@ test("strip: the preview's caption", () => {
     const ws = [{ id: 1, workspace: 1, title: "notes.md" }, { id: 2, workspace: 1, title: "", app_id: "foot" }];
     assert.equal(St.caption(ws, 1), "notes.md, foot");
     assert.equal(St.caption(ws, 4), "No windows");
+});
+
+test("activities page: rename, remove, add", () => {
+    const list = [{ id: "default", name: "Main" }, { id: "a1", name: "Home" }];
+    assert.deepEqual(Act2.rename(list, "a1", "  Gaming "), [{ id: "default", name: "Main" }, { id: "a1", name: "Gaming" }]);
+    assert.equal(Act2.rename(list, "a1", " "), null, "a blank name won't do");
+    assert.equal(Act2.rename(list, "a1", "x".repeat(41)), null);
+    assert.equal(Act2.rename(list, "nope", "X"), null);
+    assert.deepEqual(Act2.remove(list, "a1"), [{ id: "default", name: "Main" }]);
+    assert.deepEqual(Act2.remove(list, "default"), list, "the default stays");
+    const more = Act2.add(list, 255);
+    assert.deepEqual(more[2], { id: "aff", name: "Activity 2" });
+    assert.equal(Act2.add(more.concat([]), 255)[3].id, "affx", "ids stay apart");
+    assert.equal(Act2.newName([{ name: "Activity 2" }]), "Activity 3");
+    assert.equal(Act2.subtitle(5, true), "Current · 5 windows");
+    assert.equal(Act2.subtitle(1, false), "1 window");
+    assert.equal(Act2.subtitle(undefined, false), "No windows");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -1,0 +1,11 @@
+{
+  "id": "activities",
+  "name": "Activities",
+  "description": "Separate sets of workspaces, dock pins, wallpaper and recent files",
+  "icon": "briefcase",
+  "category": "desktop",
+  "order": 12.55,
+  "version": "1.0.0",
+  "core": false,
+  "keywords": ["activities", "activity", "work", "home", "workspaces", "sets", "contexts", "projects", "SUPER+SHIFT+A"]
+}

@@ -750,3 +750,29 @@ func TestSettingsRuleActivity(t *testing.T) {
 		t.Fatalf("the activity wasn't saved: %s", s.Setting("windows.rules"))
 	}
 }
+
+// Settings › Activities: turn them on, add one, rename it in place,
+// delete it.
+func TestSettingsActivitiesPage(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("activities")
+	settings.Click(uitest.Named("Activities").Role("check box"))
+	s.WaitSetting("activities.enabled", true)
+	settings.Click(uitest.Named("Add activity").Role("push button"))
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("activities.list"), `"name":"Activity 2"`) }) {
+		t.Fatalf("no new activity: %s", s.Setting("activities.list"))
+	}
+	settings.Click(uitest.Named("Rename Activity 2").Role("push button"))
+	settings.WaitFor(uitest.Named("Name").Role("text"))
+	settings.Press("ctrl+a")
+	settings.Type("Home")
+	settings.Press("Return")
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("activities.list"), `"name":"Home"`) }) {
+		t.Fatalf("not renamed: %s", s.Setting("activities.list"))
+	}
+	if _, ok := settings.Find(uitest.Named("Delete Main")); ok {
+		t.Fatal("the default activity can be deleted")
+	}
+	settings.Click(uitest.Named("Delete Home").Role("push button"))
+	s.WaitSetting("activities.list", []any{map[string]any{"id": "default", "name": "Main"}})
+}
