@@ -506,3 +506,42 @@ func TestSuperOnItsOwnCanOpenTheOverview(t *testing.T) {
 	}
 	s.Layer("whiterose-overview").WaitFor(uitest.Named("Search").Role("text"))
 }
+
+// The bar's workspace strip: an app's icon dragged onto another
+// workspace's cell moves that window there (nothing switches), and back;
+// with previews on, the pointer on a cell shows that workspace.
+func TestWorkspaceStripMovesAWindow(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{
+		"bar.workspaceStyle": "strip", "bar.workspacePreviews": true,
+	}})
+	os.MkdirAll(filepath.Join(s.Home, "alpha"), 0o755)
+	s.Open(filesBinary(s)+" "+filepath.Join(s.Home, "alpha"), "alpha - Files")
+	bar := s.Bar()
+	at := func(q uitest.Query) (float64, float64) {
+		n := bar.WaitFor(q)
+		g := bar.Geometry()
+		return float64(g[0] + n.X + n.W/2), float64(g[1] + n.Y + n.H/2)
+	}
+	icon := uitest.Named("alpha - Files").Role("push button")
+
+	bar.Hover(uitest.Named("Workspace 3").Role("push button"))
+	bar.WaitFor(uitest.Named("Preview of workspace 3"))
+
+	x1, y1 := at(icon)
+	x2, y2 := at(uitest.Named("Workspace 3").Role("push button"))
+	s.Drag(x1, y1, x2, y2)
+	if !uitest.WaitUntil(func() bool { return s.WindowWorkspace("alpha - Files") == 3 }) {
+		t.Fatalf("the window is on workspace %d, not 3", s.WindowWorkspace("alpha - Files"))
+	}
+	if s.HasWindow("alpha - Files") {
+		t.Fatal("the window is still on screen: workspace 1 is still the one shown")
+	}
+
+	// Its icon is in workspace 3's cell now: back to 1, and on screen.
+	x1, y1 = at(icon)
+	x2, y2 = at(uitest.Named("Workspace 1").Role("push button"))
+	s.Drag(x1, y1, x2, y2)
+	if !uitest.WaitUntil(func() bool { return s.HasWindow("alpha - Files") }) {
+		t.Fatal("the window didn't come back")
+	}
+}

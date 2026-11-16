@@ -10,6 +10,7 @@ Column {
 
     function on(key) { return Daemon.setting(key, true) }
     readonly property bool numbers: Daemon.setting("bar.workspaceStyle", "dots") === "numbers"
+    readonly property bool strip: Daemon.setting("bar.workspaceStyle", "dots") === "strip"
     readonly property bool twelve: Daemon.setting("bar.timeFormat", "24h") === "12h"
     readonly property bool seconds: Daemon.setting("bar.seconds", false)
     // A fixed moment for the preview, so it doesn't tick.
@@ -30,8 +31,40 @@ Column {
             Row {
                 anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
                 spacing: 8
+                // The strip: numbers and, where something's open, icons.
                 Row {
-                    visible: page.on("bar.workspaces")
+                    visible: page.on("bar.workspaces") && page.strip
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 3
+                    Repeater {
+                        model: [2, 0, 1, 0, 0]
+                        delegate: Rectangle {
+                            required property int index
+                            required property int modelData
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: cellRow.implicitWidth + (modelData ? 10 : 12)
+                            height: 16; radius: 5
+                            color: index === 0 ? Theme.pearl : "transparent"
+                            Row {
+                                id: cellRow
+                                anchors.centerIn: parent
+                                spacing: 3
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: index + 1
+                                    color: index === 0 ? Theme.bg : modelData ? Theme.text : Theme.faint
+                                    font { family: Theme.mono; pointSize: Theme.pt(10.5) }
+                                }
+                                Repeater {
+                                    model: modelData
+                                    delegate: Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 11; height: 11; radius: 3; color: Theme.rose }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row {
+                    visible: page.on("bar.workspaces") && !page.strip
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 5
                     Repeater {
@@ -96,10 +129,20 @@ Column {
             Segmented {
                 visible: page.on("bar.workspaces")
                 value: Daemon.setting("bar.workspaceStyle", "dots")
-                options: [{ label: "Dots", value: "dots" }, { label: "Numbers", value: "numbers" }]
+                options: [{ label: "Dots", value: "dots" }, { label: "Numbers", value: "numbers" }, { label: "Strip", value: "strip" }]
                 onPicked: v => Daemon.set("bar.workspaceStyle", v)
             }
             Toggle { checked: page.on("bar.workspaces"); onToggled: v => Daemon.set("bar.workspaces", v) }
+        }
+        SettingRow {
+            title: "Workspace previews"
+            subtitle: "With the strip: a live preview of a workspace when the pointer is on it"
+            dimmed: !page.strip || !page.on("bar.workspaces")
+            Toggle {
+                enabled: page.strip && page.on("bar.workspaces")
+                checked: Daemon.setting("bar.workspacePreviews", false)
+                onToggled: on => Daemon.set("bar.workspacePreviews", on)
+            }
         }
         SettingRow {
             title: "Now playing"

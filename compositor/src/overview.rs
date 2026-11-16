@@ -456,14 +456,23 @@ impl WhiteRose {
         }
     }
 
-    /// Moves `w` to workspace `ws` (hidden if that isn't the one shown).
+    /// Moves `w` to workspace `ws`: hidden if that isn't the one shown,
+    /// shown if it is (from a hidden one: the bar's workspace strip).
     pub fn move_window_to(&mut self, w: &Window, ws: usize) {
         if ws < self.workspaces.count() && self.workspaces.workspace_of(w) != Some(ws) {
             self.leave_group(w);
         }
-        if self.workspaces.move_to(w, ws) {
+        let from = self.workspaces.workspace_of(w);
+        self.workspaces.move_to(w, ws);
+        if from.is_some() && self.workspaces.workspace_of(w) != from {
             self.end_snap(w);
-            self.hide(w);
+            if ws == self.workspaces.active() {
+                if !self.minimized.contains(w) && self.space.element_location(w).is_none() {
+                    self.show(w);
+                }
+            } else {
+                self.hide(w);
+            }
             self.retile();
             if self.focused_window().as_ref() == Some(w) {
                 let next = self.next_focus();

@@ -90,6 +90,8 @@ pub enum Action {
     Scratchpad(String),
     /// Focus a window by its IPC id (switching workspace if needed).
     FocusWindow(u64),
+    /// Move a window (by IPC id) to workspace N (1-based), not following it.
+    MoveWindow(u64, u8),
     /// Focus an app's most recent window, or cycle if it already has focus.
     FocusApp(String),
     /// Delete a screenshot this compositor saved (requested by the shell).
