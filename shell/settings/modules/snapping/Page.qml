@@ -16,12 +16,13 @@ Column {
 
     readonly property var grids: Daemon.setting("windows.snap.zones", ({}))
     // {"<workspace 1-9>": {"<monitor id>": grid}}: a workspace's own grids.
-    readonly property var workspaceGrids: Daemon.setting("windows.snap.zones.workspaces", ({}))
+    // (The current activity's: Activities.qml.)
+    readonly property var workspaceGrids: Activities.setting("windows.snap.zones.workspaces", ({}))
 
     // Saves (or, for "", clears) monitor `id`'s grid for workspace `ws` ("" for all).
     function save(ws, id, zones) {
         const out = Z.save(page.grids, page.workspaceGrids, ws, id, zones);
-        Daemon.set(out.key, out.value);
+        Activities.save(out.key, out.value);
     }
     // The shell edits a grid on screen (ZonesOverlay.qml), over that
     // monitor with its tools in the island; it saves as it goes, as here.

@@ -698,3 +698,22 @@ func TestSettingsWorkspaceStrip(t *testing.T) {
 	settings.Click(uitest.Named("Workspace previews").Role("check box"))
 	s.WaitSetting("bar.workspacePreviews", true)
 }
+
+// With activities on, what's per activity is saved as the current one's
+// own (here Home's): the default activity's (the plain keys) stays.
+func TestSettingsSavePerActivity(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{
+		"activities.enabled": true,
+		"activities.list":    []map[string]string{{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}},
+		"activities.current": "home",
+	}})
+	s.Bar().WaitFor(uitest.Named("Activity: Home"))
+	settings := s.Settings("windows")
+	settings.Click(uitest.Named("Workspace 1").Role("combo box"))
+	settings.WaitFor(uitest.Named("Dwindle").Role("menu item"))
+	settings.Activate(uitest.Named("Dwindle").Role("menu item"))
+	s.WaitSetting("activities.overrides", map[string]any{"home": map[string]any{"windows.layout.workspaces": map[string]any{"1": "dwindle"}}})
+	if got := s.Setting("windows.layout.workspaces"); got != "" && got != "{}" {
+		t.Fatalf("the default activity's layouts changed: %s", got)
+	}
+}

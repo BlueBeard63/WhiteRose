@@ -9,7 +9,8 @@ import "Wallpapers.js" as W
 Singleton {
     id: root
     readonly property string home: Quickshell.env("HOME") ?? ""
-    readonly property string current: Daemon.setting("wallpaper.current", "builtin:rose")
+    // (The current activity's: Activities.qml.)
+    readonly property string current: Activities.setting("wallpaper.current", "builtin:rose")
     readonly property var folders: Daemon.setting("wallpaper.folders", ["~/Pictures/Wallpapers"])
     readonly property var files: Daemon.setting("wallpaper.files", [])
     readonly property int rotateMinutes: Daemon.setting("wallpaper.rotateMinutes", 0)
@@ -17,7 +18,7 @@ Singleton {
     property var images: []
     readonly property var all: W.all(root.images, root.files.map(f => W.expand(f, root.home)))
 
-    function set(id) { Daemon.set("wallpaper.current", id) }
+    function set(id) { Activities.set("wallpaper.current", id) }
     function next() { set(W.next(root.images, root.files.map(f => W.expand(f, root.home)), root.current)) }
 
     function refresh() {

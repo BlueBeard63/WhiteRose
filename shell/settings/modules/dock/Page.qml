@@ -9,8 +9,9 @@ Column {
     id: page
     spacing: 16
 
-    readonly property var pinned: Daemon.setting("dock.pinned", [])
-    function save(list) { Daemon.set("dock.pinned", list) }
+    // (The current activity's: Activities.qml.)
+    readonly property var pinned: Activities.setting("dock.pinned", [])
+    function save(list) { Activities.set("dock.pinned", list) }
     function move(i, d) {
         const l = page.pinned.slice();
         const j = i + d;

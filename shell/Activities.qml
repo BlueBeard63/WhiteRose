@@ -13,7 +13,10 @@ Singleton {
     readonly property bool enabled: Daemon.setting("activities.enabled", false)
     readonly property var list: Daemon.setting("activities.list", [{ id: "default", name: "Main" }])
     readonly property var overrides: Daemon.setting("activities.overrides", ({}))
-    readonly property string current: Compositor.activity
+    // The compositor's word, else (Settings, before it connects) the saved one.
+    readonly property string current: Compositor.connected ? Compositor.activity : Daemon.setting("activities.current", "default")
+    // The keys an activity has its own value of (keys.go perActivity).
+    readonly property var perActivity: ["dock.pinned", "wallpaper.current", "windows.layout.workspaces", "windows.snap.zones.workspaces"]
 
     function nameOf(id) { return root.list.find(a => a.id === id)?.name ?? "" }
 
@@ -27,6 +30,13 @@ Singleton {
     }
     // ... for the current activity.
     function setting(key, fallback) { return settingFor(root.current, key, fallback) }
+
+    // Saves `key`: a per-activity one as the current activity's own, any
+    // other as it is.
+    function save(key, value) {
+        if (root.perActivity.includes(key)) root.set(key, value);
+        else Daemon.set(key, value);
+    }
 
     // Saves per-activity `key` as the current activity's own.
     function set(key, value) {

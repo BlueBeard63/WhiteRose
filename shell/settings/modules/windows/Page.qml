@@ -12,7 +12,8 @@ Column {
     spacing: 16
 
     readonly property string layout: Daemon.setting("windows.layout", "floating")
-    readonly property var workspaces: Daemon.setting("windows.layout.workspaces", ({}))
+    // (The current activity's: Activities.qml.)
+    readonly property var workspaces: Activities.setting("windows.layout.workspaces", ({}))
     readonly property var monitors: Daemon.setting("windows.layout.monitors", ({}))
     readonly property var choices: [
         { label: "Default", value: "" },
@@ -26,7 +27,7 @@ Column {
         const m = Object.assign({}, map ?? {});
         if (value === "") delete m[entry];
         else m[entry] = value;
-        Daemon.set(key, m);
+        Activities.save(key, m);
     }
     function monitorName(o) {
         if (o.builtin) return "Built-in display";

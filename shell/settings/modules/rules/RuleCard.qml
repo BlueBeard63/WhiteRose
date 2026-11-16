@@ -253,7 +253,7 @@ Card {
             value: card.rule.zone ?? 0
             options: {
                 const grids = JSON.parse(JSON.stringify(Daemon.setting("windows.snap.zones", ({})) ?? {}));
-                const own = JSON.parse(JSON.stringify(Daemon.setting("windows.snap.zones.workspaces", ({})) ?? {}));
+                const own = JSON.parse(JSON.stringify(Activities.setting("windows.snap.zones.workspaces", ({})) ?? {}));
                 const n = R.zoneCount(grids, own, card.rule.zone);
                 const zones = [];
                 for (let i = 1; i <= n; i++) zones.push({ label: "Zone " + i, value: i });

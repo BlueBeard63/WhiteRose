@@ -19,7 +19,7 @@ Scope {
             readonly property var zones: ShellState.zones
             readonly property var output: Compositor.outputs.find(o => o.id === root.zones?.monitor) ?? null
             readonly property var grids: Daemon.setting("windows.snap.zones", ({}))
-            readonly property var wsGrids: Daemon.setting("windows.snap.zones.workspaces", ({}))
+            readonly property var wsGrids: Activities.setting("windows.snap.zones.workspaces", ({}))
 
             screen: Quickshell.screens.find(s => s.name === root.output?.connector) ?? null
             anchors { top: true; bottom: true; left: true; right: true }
@@ -67,7 +67,7 @@ Scope {
                     saved: Z.shown(root.grids, root.wsGrids, root.zones?.ws ?? "", root.zones?.monitor ?? "")
                     onSave: zones => {
                         const out = Z.save(root.grids, root.wsGrids, root.zones.ws, root.zones.monitor, zones);
-                        Daemon.set(out.key, out.value);
+                        Activities.save(out.key, out.value);
                     }
                 }
             }

@@ -175,6 +175,7 @@ impl WhiteRose {
                 if self.workspaces.mru().is_empty() && self.activities.stashed.is_empty() {
                     self.activities.current = id.to_owned();
                     self.reapply_activity_settings();
+                    self.ipc_sync();
                 }
                 None
             }
