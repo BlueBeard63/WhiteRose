@@ -486,6 +486,34 @@ func TestOverviewSearchGoesToAWindow(t *testing.T) {
 	}
 }
 
+// The niri-style overview has no search: Enter goes back to the
+// workspace in the middle (the compositor's, as are the arrows).
+func TestNiriOverviewEnterGoesBack(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"overview.style": "niri"}})
+	os.MkdirAll(filepath.Join(s.Home, "alpha"), 0o755)
+	s.Open(filesBinary(s)+" "+filepath.Join(s.Home, "alpha"), "alpha - Files")
+	// The setting reaches the compositor a moment after the session
+	// starts: until then it's GNOME's, whose search takes Enter (closed
+	// again with Esc).
+	closed := false
+	for i := 0; i < 10 && !closed; i++ {
+		s.Press("super+w")
+		s.Layer("whiterose-overview")
+		s.Press("Return")
+		closed = uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-overview") })
+		if !closed {
+			s.Press("Escape")
+			uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-overview") })
+		}
+	}
+	if !closed {
+		t.Fatal("Enter didn't close the niri-style overview")
+	}
+	if !uitest.WaitUntil(func() bool { _, focused, _ := s.Toplevel("alpha - Files"); return focused }) {
+		t.Fatal("alpha - Files isn't focused")
+	}
+}
+
 // With "Open with SUPER" on, SUPER on its own opens the overview instead
 // of the launcher.
 func TestSuperOnItsOwnCanOpenTheOverview(t *testing.T) {

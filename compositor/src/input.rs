@@ -48,6 +48,19 @@ impl WhiteRose {
                 let source = event.source();
                 let amount =
                     |axis| event.amount(axis).unwrap_or_else(|| event.amount_v120(axis).unwrap_or(0.0) * 15.0 / 120.);
+                // The niri-style overview scrolls along its workspaces.
+                let at = self.seat.get_pointer().expect("seat has a pointer").current_location();
+                if self.overview_active() && !self.is_locked() && self.top_layer_at(at).is_none() {
+                    let finger = source == AxisSource::Finger;
+                    if finger
+                        && event.amount(Axis::Vertical) == Some(0.0)
+                        && event.amount(Axis::Horizontal) == Some(0.0)
+                    {
+                        self.overview_scroll_stop();
+                    } else if self.overview_scroll(amount(Axis::Vertical) + amount(Axis::Horizontal), finger) {
+                        return;
+                    }
+                }
                 let mut frame = AxisFrame::new(event.time_msec()).source(source);
                 for axis in [Axis::Horizontal, Axis::Vertical] {
                     let v = amount(axis);
@@ -341,6 +354,23 @@ impl WhiteRose {
                 if pressed && state.overview_active() && sym.raw() == smithay::input::keyboard::keysyms::KEY_Escape {
                     state.swallowed.push(keycode);
                     return FilterResult::Intercept(Some(Action::Overview(Some(false))));
+                }
+                // The niri-style overview: the arrows move along the
+                // workspaces, Enter goes to the one in the middle.
+                if pressed && state.overview_active() && state.overview_style == "niri" {
+                    use smithay::input::keyboard::keysyms as k;
+                    let step = |dir| state.overview_step_target(dir).map(|ws| Action::Workspace(ws as u8 + 1));
+                    // (Past either end: nothing, but not the app's either.)
+                    let action = match sym.raw() {
+                        k::KEY_Left | k::KEY_Up => Some(step(-1)),
+                        k::KEY_Right | k::KEY_Down => Some(step(1)),
+                        k::KEY_Return | k::KEY_KP_Enter => Some(Some(Action::Overview(Some(false)))),
+                        _ => None,
+                    };
+                    if let Some(action) = action {
+                        state.swallowed.push(keycode);
+                        return FilterResult::Intercept(action);
+                    }
                 }
 
                 if pressed {

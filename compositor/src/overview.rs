@@ -13,6 +13,8 @@
 //! (`anim::Value`, which the fingers can set too).
 //!
 //! Where things go is pure and unit-tested here (`spread`, `cells`).
+//! `overview.style` niri draws the same overview another way: the
+//! workspaces zoomed out side by side (overview_niri.rs).
 
 use std::{
     cell::Cell,
@@ -25,7 +27,7 @@ use smithay::{
         gles::GlesRenderer,
         utils::CommitCounter,
     },
-    desktop::{layer_map_for_output, Window},
+    desktop::{layer_map_for_output, LayerSurface, Window},
     output::Output,
     utils::{Logical, Physical, Point, Rectangle, Scale},
     wayland::shell::wlr_layer::Layer as WlrLayer,
@@ -56,10 +58,10 @@ pub const CLOSE: f64 = 26.0;
 
 // Colours, premultiplied: behind everything, a workspace, an outline, the
 // workspace a window is dragged over.
-const BACKDROP: [f32; 3] = [0.047, 0.047, 0.051];
-const CELL: [f32; 3] = [0.11, 0.11, 0.12];
-const OUTLINE: [f32; 3] = [0.96, 0.96, 0.96];
-const TARGET: [f32; 3] = [0.91, 0.64, 0.68];
+pub(crate) const BACKDROP: [f32; 3] = [0.047, 0.047, 0.051];
+pub(crate) const CELL: [f32; 3] = [0.11, 0.11, 0.12];
+pub(crate) const OUTLINE: [f32; 3] = [0.96, 0.96, 0.96];
+pub(crate) const TARGET: [f32; 3] = [0.91, 0.64, 0.68];
 
 /// A rectangle in logical pixels, relative to an output.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -89,7 +91,7 @@ impl Rect {
         Rect::new(l(self.x, to.x), l(self.y, to.y), l(self.w, to.w), l(self.h, to.h))
     }
 
-    fn overlaps(&self, o: &Rect) -> bool {
+    pub(crate) fn overlaps(&self, o: &Rect) -> bool {
         self.x < o.x + o.w && o.x < self.x + self.w && self.y < o.y + o.h && o.y < self.y + self.h
     }
 
@@ -196,6 +198,11 @@ pub struct Overview {
     pub pressed: Option<(Window, Point<f64, Logical>)>,
     /// The window being dragged.
     pub dragging: Option<Window>,
+    /// Where in the pressed window it was picked up (0 to 1 across and
+    /// down): the niri style draws it there under the pointer.
+    pub grab: (f64, f64),
+    /// Scrolled since the last workspace step (the niri style).
+    pub scroll: f64,
     /// Where the pointer is (global).
     pub pointer: Point<f64, Logical>,
     /// The output it opened on (the pointer's): the search is there.
@@ -212,6 +219,8 @@ impl Default for Overview {
             hovered: None,
             pressed: None,
             dragging: None,
+            grab: (0.0, 0.0),
+            scroll: 0.0,
             pointer: Point::default(),
             search_on: None,
             ids: (0..32).map(|_| Id::new()).collect(),
@@ -229,6 +238,8 @@ pub struct Scene {
     pub origin: Point<i32, Logical>,
     pub windows: Vec<(Window, Rect, Rect)>,
     pub cells: Vec<Rect>,
+    /// The niri style: how everything is zoomed out (None: GNOME's).
+    pub zoom: Option<crate::overview_niri::Zoom>,
 }
 
 impl Scene {
@@ -349,6 +360,9 @@ impl WhiteRose {
     /// The overview on `output`: where each window of the current workspace
     /// is now and where it's spread, and the workspace row.
     pub fn overview_scene(&self, output: &Output) -> Option<Scene> {
+        if self.overview_style == "niri" {
+            return self.niri_scene(output);
+        }
         let geo = self.space.output_geometry(output)?;
         let top = (self.usable_area_on(output).loc.y - geo.loc.y) as f64;
         let (w, h) = (geo.size.w as f64, geo.size.h as f64);
@@ -378,7 +392,7 @@ impl WhiteRose {
         let now: Vec<Rect> = windows.iter().map(|(_, r)| *r).collect();
         let spread = spread(&now, area, GAP);
         let windows = windows.into_iter().zip(spread).map(|((win, r), s)| (win, r, s)).collect();
-        Some(Scene { output: output.clone(), origin: geo.loc, windows, cells })
+        Some(Scene { output: output.clone(), origin: geo.loc, windows, cells, zoom: None })
     }
 
     fn overview_scene_at(&self, pos: Point<f64, Logical>) -> Option<Scene> {
@@ -429,12 +443,17 @@ impl WhiteRose {
                     return;
                 }
             }
-            if let Some((w, _)) = scene.window_at(p) {
+            if let Some((w, r)) = scene.window_at(p) {
                 self.overview.pressed = Some((w.clone(), pos));
+                self.overview.grab = ((p.0 - r.x) / r.w.max(1.0), (p.1 - r.y) / r.h.max(1.0));
                 return;
             }
             if let Some(ws) = scene.cell_at(p) {
                 self.switch_workspace(ws);
+                // The niri style goes there; GNOME's stays to show it.
+                if scene.zoom.is_some() {
+                    self.close_overview();
+                }
                 self.overview_changed();
                 return;
             }
@@ -485,31 +504,60 @@ impl WhiteRose {
         if self.overview.open.target() <= 0.0 && !self.overview.open.driven() {
             return None;
         }
+        let niri = self.overview_style == "niri";
+        // The niri strip sliding: nothing to put titles on until it stops.
+        let sliding = niri && self.workspace_sliding(Instant::now()).is_some();
         let outputs = self
             .space
             .outputs()
             .filter_map(|o| self.overview_scene(o))
-            .map(|s| crate::ipc::OverviewOutput {
-                output: s.output.name(),
-                windows: s
-                    .windows
-                    .iter()
-                    .map(|(w, _, r)| crate::ipc::OverviewWindow {
-                        id: self.window_id(w),
-                        x: r.x.round() as i32,
-                        y: r.y.round() as i32,
-                        width: r.w.round() as i32,
-                        height: r.h.round() as i32,
-                    })
-                    .collect(),
+            .map(|s| {
+                let (w, h) = s.zoom.map_or((f64::MAX, f64::MAX), |z| (z.w, z.h));
+                let screen = Rect::new(0.0, 0.0, w, h);
+                crate::ipc::OverviewOutput {
+                    output: s.output.name(),
+                    windows: s
+                        .windows
+                        .iter()
+                        .filter(|(_, _, r)| !sliding && r.overlaps(&screen))
+                        .map(|(w, _, r)| crate::ipc::OverviewWindow {
+                            id: self.window_id(w),
+                            x: r.x.round() as i32,
+                            y: r.y.round() as i32,
+                            width: r.w.round() as i32,
+                            height: r.h.round() as i32,
+                            title_y: if niri { WhiteRose::niri_title_y(&s, r) } else { None },
+                        })
+                        .collect(),
+                }
             })
             .collect();
         Some(crate::ipc::OverviewView {
+            style: if niri { "niri" } else { "gnome" }.into(),
             outputs,
             hovered: self.overview.hovered.as_ref().map(|w| self.window_id(w)),
             dragging: self.overview.dragging.is_some(),
-            search: self.overview.search_on.clone().or_else(|| self.space.outputs().next().map(|o| o.name())),
+            // The niri style has no search.
+            search: if niri {
+                None
+            } else {
+                self.overview.search_on.clone().or_else(|| self.space.outputs().next().map(|o| o.name()))
+            },
         })
+    }
+
+    /// A frame was drawn with the overview open: what's under the pointer
+    /// once the niri strip stops, and the shell told where things went
+    /// (only sent when it changed).
+    pub fn overview_frame(&mut self) {
+        if !self.overview_active() {
+            return;
+        }
+        let now = Instant::now();
+        if self.overview_style == "niri" && self.overview.dragging.is_none() && self.workspace_sliding(now).is_none() {
+            self.overview_hover(self.overview.pointer);
+        }
+        self.overview_sync();
     }
 
     /// Tells the shell (only when it changed).
@@ -528,31 +576,17 @@ pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose)
         return None;
     }
     let scene = state.overview_scene(output)?;
+    if scene.zoom.is_some() {
+        return Some(crate::overview_niri::elements(renderer, output, state, &scene));
+    }
     let scale = output.current_scale().fractional_scale();
     let t = state.overview_shown().clamp(0.0, 1.0);
     let ov = &state.overview;
-    let mut shapes = Shapes { ids: ov.ids.iter(), commit: ov.commit.get(), scale };
+    let mut shapes = Shapes::new(ov, scale);
     let mut out = Vec::new();
 
     // The bar and the shell's layers (the search) over everything.
-    {
-        let map = layer_map_for_output(output);
-        for layer in [WlrLayer::Overlay, WlrLayer::Top] {
-            for l in map.layers_on(layer).rev() {
-                let loc = map.layer_geometry(l).map(|g| g.loc).unwrap_or_default();
-                out.extend(
-                    l.render_elements::<WaylandSurfaceRenderElement<_>>(
-                        renderer,
-                        loc.to_physical_precise_round(scale),
-                        Scale::from(scale),
-                        1.0,
-                    )
-                    .into_iter()
-                    .map(OutputElement::Surface),
-                );
-            }
-        }
-    }
+    layers(renderer, output, scale, &[WlrLayer::Overlay, WlrLayer::Top], &mut out);
 
     // The window being dragged, small, under the pointer.
     let local = |p: Point<f64, Logical>| (p.x - scene.origin.x as f64, p.y - scene.origin.y as f64);
@@ -614,37 +648,63 @@ pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose)
 
     // Behind it all, fading in over the desktop.
     shapes.solid(&mut out, Rect::new(0.0, 0.0, ow, oh), BACKDROP, t);
-    {
-        let map = layer_map_for_output(output);
-        for layer in [WlrLayer::Bottom, WlrLayer::Background] {
-            for l in map.layers_on(layer).rev() {
-                let loc = map.layer_geometry(l).map(|g| g.loc).unwrap_or_default();
-                out.extend(
-                    l.render_elements::<WaylandSurfaceRenderElement<_>>(
-                        renderer,
-                        loc.to_physical_precise_round(scale),
-                        Scale::from(scale),
-                        1.0,
-                    )
-                    .into_iter()
-                    .map(OutputElement::Surface),
-                );
-            }
+    layers(renderer, output, scale, &[WlrLayer::Bottom, WlrLayer::Background], &mut out);
+    Some(out)
+}
+
+/// `output`'s layer surfaces on `which` (front to back), as they are.
+pub(crate) fn layers(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    scale: f64,
+    which: &[WlrLayer],
+    out: &mut Vec<OutputElement>,
+) {
+    let map = layer_map_for_output(output);
+    for layer in which {
+        for l in map.layers_on(*layer).rev() {
+            let loc = map.layer_geometry(l).map(|g| g.loc).unwrap_or_default();
+            layer_scaled(renderer, l, loc.to_f64(), scale, 1.0, out);
         }
     }
-    Some(out)
+}
+
+/// Layer surface `l` drawn at `at` (output-local, logical), `k` times its
+/// size.
+pub(crate) fn layer_scaled(
+    renderer: &mut GlesRenderer,
+    l: &LayerSurface,
+    at: Point<f64, Logical>,
+    scale: f64,
+    k: f64,
+    out: &mut Vec<OutputElement>,
+) {
+    out.extend(
+        l.render_elements::<WaylandSurfaceRenderElement<_>>(
+            renderer,
+            at.to_physical_precise_round(scale),
+            Scale::from(scale * k),
+            1.0,
+        )
+        .into_iter()
+        .map(OutputElement::Surface),
+    );
 }
 
 /// Flat shapes (the backdrop, workspaces, outlines), each with its own
 /// stable id.
-struct Shapes<'a> {
+pub(crate) struct Shapes<'a> {
     ids: std::slice::Iter<'a, Id>,
     commit: CommitCounter,
     scale: f64,
 }
 
-impl Shapes<'_> {
-    fn solid(&mut self, out: &mut Vec<OutputElement>, r: Rect, c: [f32; 3], a: f64) {
+impl<'a> Shapes<'a> {
+    pub(crate) fn new(ov: &'a Overview, scale: f64) -> Shapes<'a> {
+        Shapes { ids: ov.ids.iter(), commit: ov.commit.get(), scale }
+    }
+
+    pub(crate) fn solid(&mut self, out: &mut Vec<OutputElement>, r: Rect, c: [f32; 3], a: f64) {
         let Some(id) = self.ids.next() else { return };
         let a = a as f32;
         out.push(OutputElement::Solid(SolidColorRenderElement::new(
@@ -657,7 +717,7 @@ impl Shapes<'_> {
     }
 
     /// A 2 px outline just outside `r`.
-    fn ring(&mut self, out: &mut Vec<OutputElement>, r: Rect, c: [f32; 3], a: f64) {
+    pub(crate) fn ring(&mut self, out: &mut Vec<OutputElement>, r: Rect, c: [f32; 3], a: f64) {
         let w = 2.0;
         self.solid(out, Rect::new(r.x - w, r.y - w, r.w + 2.0 * w, w), c, a);
         self.solid(out, Rect::new(r.x - w, r.y + r.h, r.w + 2.0 * w, w), c, a);
@@ -671,7 +731,7 @@ fn output_size(state: &WhiteRose, output: &Output) -> (f64, f64) {
 }
 
 /// `w` drawn (live) so its content fills `r` (output-local, logical).
-fn scaled_window(
+pub(crate) fn scaled_window(
     renderer: &mut GlesRenderer,
     w: &Window,
     r: Rect,

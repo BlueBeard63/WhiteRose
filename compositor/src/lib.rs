@@ -27,6 +27,7 @@ pub mod night_light;
 pub mod output_move;
 pub mod outputs;
 pub mod overview;
+pub mod overview_niri;
 pub mod pointer;
 pub mod protocols;
 pub mod ready;

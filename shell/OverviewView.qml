@@ -6,6 +6,10 @@
 // click), and on the monitor it opened on the search. Typing searches the
 // open windows first, then everything the launcher finds; arrows move,
 // Enter opens. Esc is the compositor's (it closes the overview).
+//
+// The niri style (Figma "Overview niri - SUPER + W") has no search: only
+// the hovered window's title, under its workspace (`title_y`), and its
+// close button.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -16,6 +20,7 @@ import "Search.js" as Search
 Scope {
     id: root
     readonly property var ov: Compositor.overview
+    readonly property bool niri: ov?.style === "niri"
     property string query: ""
     property int selected: 0
     // Closed: the next one starts with an empty search.
@@ -87,7 +92,11 @@ Scope {
                     x: modelData.x; y: modelData.y
                     width: modelData.width; height: modelData.height
                     Row {
-                        anchors { horizontalCenter: parent.horizontalCenter; top: parent.bottom; topMargin: 12 }
+                        // GNOME: every title, under its window. niri: the
+                        // hovered one's, under its workspace.
+                        visible: !root.niri || root.ov?.hovered === spot.modelData.id
+                        x: (spot.width - width) / 2
+                        y: root.niri ? (spot.modelData.title_y ?? 0) - spot.y : spot.height + 12
                         spacing: 7
                         AppIcon {
                             anchors.verticalCenter: parent.verticalCenter
@@ -96,7 +105,7 @@ Scope {
                             name: spot.info?.app_id ?? ""
                         }
                         Text {
-                            width: Math.min(implicitWidth, spot.width - 22)
+                            width: Math.min(implicitWidth, (root.niri ? Math.max(spot.width, 480) : spot.width) - 22)
                             elide: Text.ElideRight
                             text: spot.title
                             color: root.ov?.hovered === spot.modelData.id ? Theme.text : Theme.muted

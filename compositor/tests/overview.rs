@@ -146,3 +146,83 @@ fn three_fingers_open_and_close_it_and_the_style_can_turn_it_off() {
         });
     });
 }
+
+/// Near the right edge of `r`, half way down (a neighbouring workspace
+/// shows only its edge).
+fn right_edge(s: &WhiteRose, r: &Rect) -> Point<f64, Logical> {
+    middle(s, r) + Point::from((r.w / 2.0 - 20.0, 0.0))
+}
+
+#[test]
+fn niri_style_zooms_out_on_the_workspaces_side_by_side() {
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        two_windows(&mut c);
+        ask.run(|s| {
+            s.overview_setting("overview.style", &json!("niri"));
+            s.animation_setting("animations.workspaceSwitch", &json!(false));
+            let o = s.space.outputs().next().cloned().unwrap();
+            let geo = s.space.output_geometry(&o).unwrap();
+            let second = s.workspaces.active_windows()[1].clone();
+            s.move_window_to(&second, 1);
+            s.run_action(Action::Overview(None));
+            let scene = s.overview_scene(&o).unwrap();
+            assert!(scene.zoom.is_some());
+            assert_eq!(scene.windows.len(), 2, "every workspace's windows");
+            assert_eq!(scene.cells.len(), 9);
+            let cur = scene.cells[0];
+            assert!((cur.w - geo.size.w as f64 / 2.0).abs() < 1e-6, "half size");
+            assert!((cur.x + cur.w / 2.0 - geo.size.w as f64 / 2.0).abs() < 1e-6, "the current one in the middle");
+            let (_, _, r) = scene.windows.iter().find(|(w, _, _)| *w == second).cloned().unwrap();
+            let next = scene.cells[1];
+            assert!(r.x >= next.x && r.x + r.w <= next.x + next.w + 1e-6, "on its own workspace, to the right");
+            let view = s.overview_view().unwrap();
+            assert_eq!(view.style, "niri");
+            assert_eq!(view.search, None, "no search");
+            assert!(view.outputs[0].windows.iter().all(|w| w.title_y.is_some()));
+
+            // Scrolling moves along; the arrows' and a scroll's step stop at the ends.
+            assert!(s.overview_scroll(15.0, false));
+            assert_eq!(s.workspaces.active(), 1);
+            assert!(s.overview_active());
+            s.overview_scroll(-15.0, false);
+            assert_eq!(s.workspaces.active(), 0);
+            assert_eq!(s.overview_step_target(-1), None);
+
+            // A window on the next workspace: a click goes to it.
+            click(s, middle(s, &r));
+            assert_eq!(s.workspaces.active(), 1);
+            assert_eq!(s.focused_window().as_ref(), Some(&second));
+            assert_eq!(s.overview.open.target(), 0.0, "closing");
+
+            // Dragged onto the workspace before: it moves there, the overview stays.
+            s.overview.open.jump(0.0);
+            s.run_action(Action::Overview(None));
+            let scene = s.overview_scene(&o).unwrap();
+            let (_, _, r) = scene.windows.iter().find(|(w, _, _)| *w == second).cloned().unwrap();
+            s.on_pointer_motion(middle(s, &r), 1);
+            s.on_pointer_button(LEFT, ButtonState::Pressed, 2);
+            s.on_pointer_motion(middle(s, &r) + Point::from((30.0, 0.0)), 3);
+            assert!(s.overview.dragging.is_some());
+            s.on_pointer_motion(right_edge(s, &scene.cells[0]), 4);
+            s.on_pointer_button(LEFT, ButtonState::Released, 5);
+            assert_eq!(s.workspaces.workspace_of(&second), Some(0));
+            assert!(s.overview_active());
+
+            // A click on a workspace's empty space goes there and closes it.
+            let scene = s.overview_scene(&o).unwrap();
+            click(s, right_edge(s, &scene.cells[0]));
+            assert_eq!(s.workspaces.active(), 0);
+            assert_eq!(s.overview.open.target(), 0.0);
+
+            // GNOME's again: its own scene, its search.
+            s.overview_setting("overview.style", &json!("gnome"));
+            s.run_action(Action::Overview(None));
+            assert!(s.overview_scene(&o).unwrap().zoom.is_none());
+            assert!(s.overview_view().unwrap().search.is_some());
+            assert!(!s.overview_scroll(15.0, false), "GNOME's doesn't scroll");
+        });
+    });
+}
