@@ -131,6 +131,7 @@ impl WhiteRose {
             shortcuts |= state.scratchpads_setting(key, value);
             state.switcher_setting(key, value);
             state.animation_setting(key, value);
+            state.gestures_setting(key, value);
             // Apps kept running when memory runs out (app_scope.rs).
             if key == "memory.protected" {
                 state.memory_protected = serde_json::from_value(value.clone()).unwrap_or_default();

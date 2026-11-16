@@ -393,6 +393,16 @@ impl Def {
     }
 }
 
+/// What a gesture bound to shortcut `id` runs: a built-in shortcut's
+/// action (one that isn't a range of keys, which needs a number or a
+/// direction) or one you added. None for anything else.
+pub fn action_by_id(id: &str, terminal: &str, custom: &[CustomShortcut]) -> Option<Action> {
+    if let Some(c) = custom.iter().find(|c| c.id == id) {
+        return Some(Action::Spawn(c.command.clone()));
+    }
+    CATALOG.iter().find(|d| d.id == id && d.range == Range::No).map(|d| d.action(terminal, 0))
+}
+
 const fn def(id: &'static str, name: &'static str, group: &'static str, defaults: &'static [&'static str]) -> Def {
     Def { id, name, group, defaults, range: Range::No }
 }

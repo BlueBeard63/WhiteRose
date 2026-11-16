@@ -374,6 +374,16 @@ var Known = map[string]Key{
 		}
 		return nil
 	})},
+	// Touchpad gestures (the compositor's gestures.rs): "<fingers>-<gesture>"
+	// -> what it does. Gestures: swipe-horizontal, swipe-up, swipe-down,
+	// pinch-in, pinch-out, with 3 or 4 fingers (2: pinches only). Actions:
+	// "app" (passed to the app under the pointer, as for one not listed),
+	// "workspaces" (left or right swipes only: follows the fingers), or a
+	// shortcut's id, run when the fingers lift.
+	"gestures.bindings": {Default: json.RawMessage(`{"3-swipe-horizontal":"workspaces"}`), Check: into(checkGestures)},
+	// Three fingers on a window move it; the three-finger swipes then take
+	// four fingers.
+	"gestures.dragWindow": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	// Switching workspace slides (the compositor's workspace_slide.rs).
 	"animations.workspaceSwitch": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Window layout (the compositor's layout/ module). The global default,
@@ -952,6 +962,29 @@ func checkZones(zones [][4]float64) error {
 func pointerSpeed(v float64) error {
 	if v < -1 || v > 1 {
 		return errors.New("must be -1 to 1")
+	}
+	return nil
+}
+
+// gestureName is a gesture the compositor binds: fingers, then what they do.
+var gestureName = regexp.MustCompile(`^([234])-(swipe-horizontal|swipe-up|swipe-down|pinch-in|pinch-out)$`)
+
+// checkGestures checks "gestures.bindings": known gestures (two fingers
+// only pinch: their swipes are scrolling), each to "app", "workspaces"
+// (left or right swipes) or a shortcut's id.
+func checkGestures(m map[string]string) error {
+	for g, action := range m {
+		p := gestureName.FindStringSubmatch(g)
+		switch {
+		case p == nil:
+			return fmt.Errorf("unknown gesture %q", g)
+		case p[1] == "2" && strings.HasPrefix(p[2], "swipe"):
+			return fmt.Errorf("%s: two-finger swipes are scrolling", g)
+		case action == "workspaces" && p[2] != "swipe-horizontal":
+			return fmt.Errorf("%s: only left or right swipes switch workspace", g)
+		case !shortcutID.MatchString(action):
+			return fmt.Errorf("%s: invalid action %q", g, action)
+		}
 	}
 	return nil
 }
