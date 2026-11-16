@@ -717,3 +717,36 @@ func TestSettingsSavePerActivity(t *testing.T) {
 		t.Fatalf("the default activity's layouts changed: %s", got)
 	}
 }
+
+// Window rules › Activity (while activities are on): a rule can open its
+// window on every activity.
+func TestSettingsRuleActivity(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{
+		"activities.enabled": true,
+		"activities.list":    []map[string]string{{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}},
+	}})
+	dir := filepath.Join(s.Home, "ruled")
+	os.MkdirAll(dir, 0o755)
+	s.Open(filesBinary(s)+" "+dir, "ruled - Files")
+	settings := s.Settings("rules")
+	settings.Click(uitest.Named("Maximise").Role("push button"))
+	var add *uitest.Node
+	if !uitest.WaitUntil(func() bool {
+		for _, n := range settings.LaidOut() {
+			if n.Role == "push button" && strings.HasPrefix(n.Name, "Add a rule for ") && strings.Contains(n.Name, "files") {
+				add = &n
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("Files isn't offered as an open window")
+	}
+	settings.Click(uitest.Named(add.Name).Role("push button"))
+	settings.Click(uitest.Named("Activity").Role("combo box"))
+	settings.WaitFor(uitest.Named("Every activity").Role("menu item"))
+	settings.Activate(uitest.Named("Every activity").Role("menu item"))
+	if !uitest.WaitUntil(func() bool { return strings.Contains(s.Setting("windows.rules"), `"activity":"every"`) }) {
+		t.Fatalf("the activity wasn't saved: %s", s.Setting("windows.rules"))
+	}
+}

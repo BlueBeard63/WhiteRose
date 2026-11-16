@@ -65,6 +65,9 @@ pub struct Actions {
     pub on_top: Option<bool>,
     /// 1-based zone of the snap grid it opens on.
     pub zone: Option<u8>,
+    /// The activity it opens on (an id), or "every" for all of them
+    /// (activities.rs); none: the current one.
+    pub activity: Option<String>,
 }
 
 impl Actions {
@@ -92,6 +95,7 @@ impl Actions {
             opacity: pair("opacity").and_then(|a| opacity(&a[0]).zip(opacity(&a[1]))),
             on_top: bool_of("onTop"),
             zone: small("zone"),
+            activity: o.get("activity").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned),
         }
     }
 
@@ -112,6 +116,7 @@ impl Actions {
         over(&mut self.opacity, &later.opacity);
         over(&mut self.on_top, &later.on_top);
         over(&mut self.zone, &later.zone);
+        over(&mut self.activity, &later.activity);
     }
 
     /// Whether it sets nothing.
@@ -284,6 +289,7 @@ mod tests {
                 opacity: Some((1.0, 0.85)),
                 on_top: Some(true),
                 zone: Some(2),
+                activity: None,
             }
         );
     }

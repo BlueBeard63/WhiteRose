@@ -445,6 +445,9 @@ test("rules: the header names a rule and says what it does", () => {
     assert.equal(R.summary({ app: "a", title: "^x", float: false, position: [0, "5%"], fullscreen: true }, 2),
         "2 · Title ^x · Tiles · At 0, 5% · Full screen");
     assert.equal(R.summary({ app: "a", monitor: "edid:1", maximized: true }, 3, id => "Dell"), "3 · On Dell · Maximised");
+    assert.equal(R.summary({ app: "a", activity: "every" }, 4), "4 · Every activity");
+    assert.equal(R.summary({ app: "a", activity: "a1" }, 5, null, id => id === "a1" ? "Home" : ""), "5 · Home");
+    assert.equal(R.summary({ app: "a", activity: "gone" }, 6, null, id => ""), "6 · Activity gone");
     assert.equal(R.summary({ app: "a" }, 4), "4 · Does nothing yet");
     assert.equal(R.summary({ title: "^PiP$", opacity: [1, 0.85], onTop: true }, 6), "6 · Opacity 100% / 85% · On top");
     assert.equal(R.percent(0.849), "85%");

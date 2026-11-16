@@ -531,6 +531,8 @@ type WindowRule struct {
 	Opacity    []float64         `json:"opacity,omitempty"`
 	OnTop      *bool             `json:"onTop,omitempty"`
 	Zone       *int              `json:"zone,omitempty"`
+	// An activity's id, or "every"; none: the current one.
+	Activity string `json:"activity,omitempty"`
 }
 
 func checkWindowRules(rules []WindowRule) error {
@@ -548,6 +550,9 @@ func checkWindowRules(rules []WindowRule) error {
 func checkWindowRule(r WindowRule) error {
 	if r.App == "" && r.Title == "" {
 		return errors.New("needs an app id or a title")
+	}
+	if len(r.Activity) > 64 {
+		return errors.New("not an activity id")
 	}
 	for _, p := range []string{r.App, r.Title} {
 		if len(p) > 500 {

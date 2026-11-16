@@ -109,11 +109,14 @@ function percent(f) {
 }
 
 // One line saying what a rule does, after its number (1-based `n`).
-// `monitorName`: a monitor id to the name shown.
-function summary(r, n, monitorName) {
+// `monitorName`: a monitor id to the name shown; `activityName`: an
+// activity's id to its name.
+function summary(r, n, monitorName, activityName) {
     if (!r?.app && !r?.title) return n + " · Not saved: it needs an app id or a title";
     const does = [];
     if (r.workspace) does.push("Workspace " + r.workspace);
+    if (r.activity === "every") does.push("Every activity");
+    else if (r.activity) does.push((activityName ? activityName(r.activity) : "") || "Activity " + r.activity);
     if (r.monitor) does.push("On " + (monitorName ? monitorName(r.monitor) : r.monitor));
     const t = tiling(r);
     if (t) does.push(t === "float" ? "Floats" : "Tiles");

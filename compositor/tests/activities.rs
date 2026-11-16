@@ -194,3 +194,36 @@ fn super_shift_a_picks_the_next_activity_or_a_new_one() {
         });
     });
 }
+
+#[test]
+fn a_rule_opens_a_window_on_every_activity_or_another_one() {
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        ask.run(|s| {
+            set(s, "activities.list", json!([{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}]));
+            set(s, "activities.enabled", json!(true));
+            set(
+                s,
+                "windows.rules",
+                json!([{"app": "^chat$", "activity": "every"}, {"app": "^music$", "activity": "home"}]),
+            );
+        });
+        let (a, _ta) = open_with(&mut c, |t| t.set_app_id("chat".into()));
+        c.attach_buffer(&a, 400, 300);
+        let (b, _tb) = open_with(&mut c, |t| t.set_app_id("music".into()));
+        c.attach_buffer(&b, 400, 300);
+        c.queue.roundtrip(&mut c.app).unwrap();
+        ask.run(|s| {
+            let chat = s.workspaces.active_windows().iter().find(|w| s.window_id(w) == 1).cloned().expect("chat here");
+            assert!(s.activities.everywhere.contains(&chat));
+            let music =
+                s.activities.stashed.iter().find(|a| a.id == "home").expect("Home has one").workspaces.mru()[0].clone();
+            assert!(!shown(s, &music), "it opened quietly on Home");
+            assert_eq!(s.activities.current, DEFAULT);
+            s.run_action(Action::Activity("home".into()));
+            assert!(shown(s, &music) && shown(s, &chat));
+        });
+    });
+}

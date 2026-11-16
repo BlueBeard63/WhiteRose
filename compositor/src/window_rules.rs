@@ -117,6 +117,13 @@ impl WhiteRose {
         }
         self.keep_look(w, &a);
 
+        // On every activity, or opening quietly on another one.
+        match a.activity.as_deref() {
+            Some("every") => self.set_window_activity(w, None),
+            Some(id) if id != self.activities.current => self.set_window_activity(w, Some(id)),
+            _ => {}
+        }
+
         // Its first configure went out when it was created (focusing it);
         // this one carries what the rules changed, before it draws.
         w.configure();

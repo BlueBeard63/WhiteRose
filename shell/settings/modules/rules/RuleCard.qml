@@ -36,7 +36,7 @@ Card {
 
     SettingRow {
         title: R.name(card.rule)
-        subtitle: R.summary(card.rule, card.index + 1, card.monitorName)
+        subtitle: R.summary(card.rule, card.index + 1, card.monitorName, Activities.nameOf)
         Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: order.implicitWidth + 4; height: 30; radius: 9
@@ -125,6 +125,22 @@ Card {
             value: card.rule.workspace ?? 0
             options: [{ label: "Where it opens", value: 0 }].concat([1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ label: "Workspace " + n, value: n })))
             onPicked: v => card.patched({ workspace: v || null })
+        }
+    }
+    SettingRow {
+        // (While activities are on, or once a rule has one.)
+        visible: card.open && (Activities.enabled || !!card.rule.activity)
+        title: "Activity"
+        subtitle: "Every activity: it shows on all of them"
+        Choice {
+            value: card.rule.activity ?? ""
+            options: {
+                const named = Activities.list.map(a => ({ label: a.name, value: a.id }));
+                const gone = card.rule.activity && card.rule.activity !== "every" && !named.some(a => a.value === card.rule.activity)
+                    ? [{ label: card.rule.activity, value: card.rule.activity, hint: "Deleted" }] : [];
+                return [{ label: "The current one", value: "" }, { label: "Every activity", value: "every" }].concat(named, gone);
+            }
+            onPicked: v => card.patched({ activity: v || null })
         }
     }
     SettingRow {
