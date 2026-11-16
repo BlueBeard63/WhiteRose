@@ -497,6 +497,27 @@ func TestSettingsMouseAndTouchpad(t *testing.T) {
 	}
 }
 
+// Mouse & touchpad › Gestures: a gesture set to a shortcut, one set back
+// to the app, and three-finger drag. (Far down the page: scrolled to, and
+// the dropdowns' items picked through their accessible action.)
+func TestSettingsGestures(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("mouse")
+	pick := func(combo, item string) {
+		settings.ScrollTo(uitest.Named(combo).Role("combo box"))
+		settings.Click(uitest.Named(combo).Role("combo box"))
+		settings.WaitFor(uitest.Named(item).Role("menu item"))
+		settings.Activate(uitest.Named(item).Role("menu item"))
+	}
+	pick("Three fingers, swipe up", "App launcher")
+	s.WaitSetting("gestures.bindings", map[string]any{"3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher"})
+	pick("Three fingers, swipe left or right", "Pass to app")
+	s.WaitSetting("gestures.bindings", map[string]any{"3-swipe-up": "launcher"})
+	settings.ScrollTo(uitest.Named("Drag a window").Role("check box"))
+	settings.Click(uitest.Named("Drag a window").Role("check box"))
+	s.WaitSetting("gestures.dragWindow", true)
+}
+
 // Windows › Workspaces: the slide when switching is on to start with,
 // and the switch turns it off.
 func TestSettingsWorkspaceSlideSwitch(t *testing.T) {

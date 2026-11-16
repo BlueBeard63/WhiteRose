@@ -1,12 +1,15 @@
 // Mouse & touchpad: scroll direction, pointer speed and acceleration for
-// each, tap to click, shake to find (the pointer grows when shaken), and
+// each, tap to click, shake to find (the pointer grows when shaken),
 // modifiers to hold for a faster pointer (only while they're held; apps
-// still get them, so their own shortcuts keep working). The compositor applies them through libinput to
+// still get them, so their own shortcuts keep working), and what touchpad
+// gestures do (Figma: "Settings - Mouse & touchpad · Gestures"; the
+// compositor's gestures.rs, the shared logic in Gestures.js). The compositor applies them through libinput to
 // every mouse and touchpad, including ones plugged in later. (In a window
 // on another desktop, that desktop's own settings apply.)
 import QtQuick
 import qs
 import qs.settings
+import "../../../Gestures.js" as G
 
 Column {
     id: page
@@ -81,6 +84,69 @@ Column {
                 color: Theme.muted; font { family: Theme.mono; pointSize: Theme.pt(11.5) }
             }
             Timer { id: saveMuch; interval: 250; onTriggered: Daemon.set("mouse.fasterBy", much.shown) }
+        }
+    }
+
+    // ---- gestures --------------------------------------------------------------------
+    readonly property var gestures: G.bindings(Daemon.setting("gestures.bindings", G.DEFAULT))
+    readonly property bool dragWindow: Daemon.setting("gestures.dragWindow", false)
+
+    Section { text: "Gestures" }
+    Card {
+        SettingRow {
+            divider: false
+            title: "Three fingers"
+            subtitle: "For the desktop. Pass to app sends a gesture to the app under the pointer"
+        }
+        Repeater {
+            model: G.KINDS
+            delegate: GestureRow { required property var modelData; fingers: 3; kind: modelData }
+        }
+        SettingRow {
+            title: "Drag a window"
+            subtitle: "Three fingers on a window move it; swipes then take four fingers"
+            Toggle { checked: page.dragWindow; onToggled: on => Daemon.set("gestures.dragWindow", on) }
+        }
+    }
+    Card {
+        SettingRow {
+            divider: false
+            title: "Four fingers"
+            subtitle: page.dragWindow ? "Swipes do what three fingers' do while three fingers drag" : "Apps get these unless you choose something"
+        }
+        Repeater {
+            model: G.KINDS
+            // With drag on, the swipes here are the three-finger ones'.
+            delegate: GestureRow { required property var modelData; fingers: 4; kind: modelData; dimmed: page.dragWindow && modelData.swipe }
+        }
+    }
+    Card {
+        SettingRow {
+            divider: false
+            title: "Two fingers"
+            subtitle: "Apps zoom with these"
+        }
+        Repeater {
+            model: G.KINDS.filter(k => !k.swipe)
+            delegate: GestureRow { required property var modelData; fingers: 2; kind: modelData }
+        }
+    }
+
+    // One gesture: what it does.
+    component GestureRow: SettingRow {
+        id: gesture
+        required property int fingers
+        required property var kind
+        readonly property string action: G.actionOf(page.gestures, fingers, kind.id)
+        readonly property var words: ({ 2: "Two", 3: "Three", 4: "Four" })
+        title: kind.label
+        subtitle: action === "workspaces" ? "Follows your fingers" : ""
+        Choice {
+            label: gesture.words[gesture.fingers] + " fingers, " + gesture.kind.label.toLowerCase()
+            enabled: !gesture.dimmed
+            options: G.options(gesture.kind.id, Compositor.shortcuts)
+            value: gesture.action
+            onPicked: v => Daemon.set("gestures.bindings", G.set(page.gestures, gesture.fingers, gesture.kind.id, v))
         }
     }
 

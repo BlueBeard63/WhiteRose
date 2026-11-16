@@ -1,17 +1,21 @@
 // Island view: the keyboard shortcut sheet (SUPER+K; Figma: "Island v2 -
-// Shortcuts (SUPER+K)"). The shortcuts worth knowing in three groups, plus
-// yours, each on the keys it's on now (Shortcuts.js). Esc, SUPER+K or a
+// Shortcuts (SUPER+K)"). The shortcuts worth knowing in three groups, the
+// touchpad gestures that are bound, plus yours, each on the keys it's on
+// now (Shortcuts.js, Gestures.js). Esc, SUPER+K or a
 // click elsewhere closes it.
 import QtQuick
 import qs
 import "Shortcuts.js" as Sc
+import "Gestures.js" as G
 
 Item {
     id: root
-    readonly property var groups: Sc.groups(Compositor.shortcuts)
+    readonly property var groups: Sc.groups(Compositor.shortcuts,
+        G.sheet(Daemon.setting("gestures.bindings", G.DEFAULT), Daemon.setting("gestures.dragWindow", false), Compositor.shortcuts))
     readonly property int colWidth: 300
     readonly property int gap: 28
-    implicitWidth: 48 + root.groups.length * root.colWidth + Math.max(0, root.groups.length - 1) * root.gap
+    readonly property var columns: Sc.columns(root.groups)
+    implicitWidth: 48 + root.columns.length * root.colWidth + Math.max(0, root.columns.length - 1) * root.gap
     implicitHeight: col.implicitHeight + 36
 
     Component.onCompleted: keys.forceActiveFocus()
@@ -64,44 +68,53 @@ Item {
         Row {
             spacing: root.gap
             Repeater {
-                model: root.groups
+                model: root.columns
                 delegate: Column {
-                    id: group
+                    id: column
                     required property var modelData
                     width: root.colWidth
-                    spacing: 8
-                    Text {
-                        text: group.modelData.name
-                        color: Theme.muted
-                        font { family: Theme.font; pointSize: Theme.pt(11); weight: Font.Medium }
-                        Accessible.role: Accessible.Heading
-                        Accessible.name: text
-                    }
+                    spacing: 18
                     Repeater {
-                        model: group.modelData.rows
-                        delegate: Item {
-                            id: row
+                        model: column.modelData
+                        delegate: Column {
+                            id: group
                             required property var modelData
-                            width: group.width
-                            height: 20
-                            Accessible.role: Accessible.StaticText
-                            Accessible.name: row.modelData.label
-                            Accessible.description: row.modelData.keys.join(" + ")
+                            width: root.colWidth
+                            spacing: 8
                             Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - caps.width - 8
-                                elide: Text.ElideRight
-                                text: row.modelData.label
-                                color: Theme.text
-                                font { family: Theme.font; pointSize: Theme.pt(13) }
+                                text: group.modelData.name
+                                color: Theme.muted
+                                font { family: Theme.font; pointSize: Theme.pt(11); weight: Font.Medium }
+                                Accessible.role: Accessible.Heading
+                                Accessible.name: text
                             }
-                            Row {
-                                id: caps
-                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                                spacing: 3
-                                Repeater {
-                                    model: row.modelData.keys
-                                    delegate: Cap { required property string modelData; text: modelData }
+                            Repeater {
+                                model: group.modelData.rows
+                                delegate: Item {
+                                    id: row
+                                    required property var modelData
+                                    width: group.width
+                                    height: 20
+                                    Accessible.role: Accessible.StaticText
+                                    Accessible.name: row.modelData.label
+                                    Accessible.description: row.modelData.keys.join(" + ")
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - caps.width - 8
+                                        elide: Text.ElideRight
+                                        text: row.modelData.label
+                                        color: Theme.text
+                                        font { family: Theme.font; pointSize: Theme.pt(13) }
+                                    }
+                                    Row {
+                                        id: caps
+                                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                        spacing: 3
+                                        Repeater {
+                                            model: row.modelData.keys
+                                            delegate: Cap { required property string modelData; text: modelData }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -111,7 +124,7 @@ Item {
         }
 
         Text {
-            text: "Change them in Settings › Keyboard. Your own shortcuts show here too."
+            text: "Change them in Settings › Keyboard, and gestures in Mouse & touchpad. Your own shortcuts show here too."
             color: Theme.faint
             font { family: Theme.font; pointSize: Theme.pt(12) }
         }
