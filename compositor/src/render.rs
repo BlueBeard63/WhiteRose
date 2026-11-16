@@ -98,6 +98,12 @@ pub fn output_elements(
         );
     }
 
+    // The overview: its own picture of everything (overview.rs).
+    if let Some(overview) = crate::overview::elements(renderer, output, state) {
+        elements.extend(overview);
+        return (elements, CLEAR);
+    }
+
     // While workspaces slide, a fullscreen window slides with the rest.
     let sliding = state.workspace_sliding(std::time::Instant::now()).is_some();
     match state.fullscreen_on(output).filter(|_| !sliding) {

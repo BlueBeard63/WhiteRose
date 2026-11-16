@@ -130,6 +130,9 @@ pub enum Action {
     /// The snap layout picker: for the focused window (SUPER+Z), or the
     /// window under the pointer (true: a WhiteRose app's maximize button).
     SnapPicker(bool),
+    /// The overview (overview.rs): open or close it (SUPER+W), or just
+    /// open or close it (Some(true), Some(false)).
+    Overview(Option<bool>),
     /// Show the next (or previous) tab of the focused group.
     NextTab,
     PreviousTab,
@@ -386,6 +389,7 @@ impl Def {
             "make-master" => Action::MakeMaster,
             "toggle-group" => Action::ToggleGroup,
             "snap-picker" => Action::SnapPicker(false),
+            "overview" => Action::Overview(None),
             "next-tab" => Action::NextTab,
             "previous-tab" => Action::PreviousTab,
             other => unreachable!("catalog id {other} has no action"),
@@ -438,6 +442,7 @@ pub const CATALOG: &[Def] = &[
     def("make-master", "Make master (master)", "Windows", &["SUPER+M"]),
     def("toggle-group", "Group or ungroup window", "Windows", &["SUPER+G"]),
     def("snap-picker", "Snap layouts", "Windows", &["SUPER+Z"]),
+    def("overview", "Overview", "Windows", &["SUPER+W"]),
     def("next-tab", "Next tab", "Windows", &["SUPER+PERIOD"]),
     def("previous-tab", "Previous tab", "Windows", &["SUPER+COMMA"]),
     Def { range: Range::Digits, ..def("workspace", "Switch to workspace 1–9", "Workspaces", &["SUPER+1-9"]) },

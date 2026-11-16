@@ -124,6 +124,8 @@ func TestValidation(t *testing.T) {
 		"animations.workspaceSwitch":    `"on"`,
 		"gestures.bindings":             `{"5-swipe-up":"app"}`,
 		"gestures.dragWindow":           `1`,
+		"overview.style":                `"kde"`,
+		"overview.superTap":             `"yes"`,
 		"nope.unknown":                  `1`,
 		"Bad Key":                       `1`,
 		"module.x":                      `{not json`,
@@ -457,6 +459,7 @@ func TestGestureBindings(t *testing.T) {
 	good := []map[string]string{
 		{"3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher", "4-pinch-in": "app"},
 		{"2-pinch-out": "close-window", "4-swipe-down": "custom-1"},
+		{"3-swipe-up": "overview-open", "3-pinch-out": "overview-close"},
 	}
 	for _, m := range good {
 		if err := checkGestures(m); err != nil {
@@ -468,6 +471,7 @@ func TestGestureBindings(t *testing.T) {
 		{"3-swipe-up": "workspaces"},
 		{"3-pinch": "app"},
 		{"3-swipe-down": "Close Window"},
+		{"3-swipe-horizontal": "overview-open"},
 	}
 	for _, m := range bad {
 		if err := checkGestures(m); err == nil {

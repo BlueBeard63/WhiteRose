@@ -1387,21 +1387,25 @@ test("shortcut sheet: gestures go under the desktop's shortcuts", () => {
 });
 
 // ---- Gestures (Settings › Mouse & touchpad, and the sheet) ----------------------
-test("gestures: three-finger left or right switch workspace to start with; app otherwise", () => {
+test("gestures: three fingers switch workspace and open the overview to start with; app otherwise", () => {
     assert.equal(G.actionOf(undefined, 3, "swipe-horizontal"), "workspaces");
-    assert.equal(G.actionOf(undefined, 3, "swipe-up"), "app");
+    assert.equal(G.actionOf(undefined, 3, "swipe-up"), "overview-open");
+    assert.equal(G.actionOf(undefined, 3, "swipe-down"), "overview-close");
+    assert.equal(G.actionOf(undefined, 3, "pinch-out"), "app");
+    assert.equal(G.actionOf(undefined, 4, "swipe-up"), "app");
     assert.equal(G.actionOf({}, 3, "swipe-horizontal"), "app", "a saved setting replaces the defaults");
 });
 
 test("gestures: set adds, changes and takes out (app)", () => {
     let b = G.set(undefined, 3, "swipe-up", "launcher");
-    assert.deepEqual(b, { "3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher" });
-    b = G.set(b, 3, "swipe-horizontal", "app");
+    assert.deepEqual(b, { "3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher",
+                          "3-swipe-down": "overview-close", "3-pinch-in": "overview-open" });
+    b = G.set({ "3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher" }, 3, "swipe-horizontal", "app");
     assert.deepEqual(b, { "3-swipe-up": "launcher" });
     assert.equal(G.DEFAULT["3-swipe-horizontal"], "workspaces", "the defaults aren't changed");
 });
 
-test("gestures: the dropdown offers the app, workspaces for left or right, and single shortcuts", () => {
+test("gestures: the dropdown offers the app, workspaces for left or right, the overview otherwise, and single shortcuts", () => {
     const shortcuts = [
         { id: "launcher", name: "App launcher", group: "Shell", defaults: ["SUPER"] },
         { id: "workspace", name: "Switch to workspace 1–9", group: "Workspaces", defaults: ["SUPER+1-9"] },
@@ -1410,9 +1414,10 @@ test("gestures: the dropdown offers the app, workspaces for left or right, and s
         { id: "custom-1", name: "Open Spotify", command: "spotify", keys: [] },
     ];
     assert.deepEqual(G.options("swipe-horizontal", shortcuts).map(o => o.value), ["app", "workspaces", "launcher", "custom-1"]);
-    assert.deepEqual(G.options("pinch-in", shortcuts).map(o => o.value), ["app", "launcher", "custom-1"]);
-    assert.equal(G.options("swipe-up", shortcuts)[2].hint, "Yours");
-    assert.equal(G.options("swipe-up", shortcuts)[1].hint, "Shell");
+    assert.deepEqual(G.options("pinch-in", shortcuts).map(o => o.value),
+                     ["app", "overview-open", "overview-close", "launcher", "custom-1"]);
+    assert.equal(G.options("swipe-up", shortcuts)[4].hint, "Yours");
+    assert.equal(G.options("swipe-up", shortcuts)[3].hint, "Shell");
 });
 
 test("gestures: the sheet shows what's bound, on four fingers when drag is on", () => {

@@ -505,14 +505,18 @@ func TestSettingsGestures(t *testing.T) {
 	settings := s.Settings("mouse")
 	pick := func(combo, item string) {
 		settings.ScrollTo(uitest.Named(combo).Role("combo box"))
+		// Up from the bottom edge, so its menu has room below.
+		settings.Wheel(uitest.Named(combo).Role("combo box"), 3)
 		settings.Click(uitest.Named(combo).Role("combo box"))
 		settings.WaitFor(uitest.Named(item).Role("menu item"))
 		settings.Activate(uitest.Named(item).Role("menu item"))
 	}
 	pick("Three fingers, swipe up", "App launcher")
-	s.WaitSetting("gestures.bindings", map[string]any{"3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher"})
+	s.WaitSetting("gestures.bindings", map[string]any{"3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher",
+		"3-swipe-down": "overview-close", "3-pinch-in": "overview-open"})
 	pick("Three fingers, swipe left or right", "Pass to app")
-	s.WaitSetting("gestures.bindings", map[string]any{"3-swipe-up": "launcher"})
+	s.WaitSetting("gestures.bindings", map[string]any{"3-swipe-up": "launcher",
+		"3-swipe-down": "overview-close", "3-pinch-in": "overview-open"})
 	settings.ScrollTo(uitest.Named("Drag a window").Role("check box"))
 	settings.Click(uitest.Named("Drag a window").Role("check box"))
 	s.WaitSetting("gestures.dragWindow", true)

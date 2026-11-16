@@ -5,7 +5,8 @@
 .pragma library
 
 // What the compositor starts with (keys.go has the same).
-const DEFAULT = { "3-swipe-horizontal": "workspaces" };
+const DEFAULT = { "3-swipe-horizontal": "workspaces", "3-swipe-up": "overview-open",
+                  "3-swipe-down": "overview-close", "3-pinch-in": "overview-open" };
 
 // The gestures, in the order the page lists them; `cap`: how the sheet
 // draws it.
@@ -42,11 +43,13 @@ function usable(s) {
     return !(s.defaults ?? []).some(k => /1-9|ARROWS/i.test(k));
 }
 
-// The dropdown for `kind`: the app, what follows the fingers, then every
+// The dropdown for `kind`: the app, what follows the fingers (switching
+// workspace for left or right; the overview for the rest), then every
 // shortcut it can run (its group shown faintly).
 function options(kind, shortcuts) {
     const out = [{ label: "Pass to app", value: "app" }];
     if (kind === "swipe-horizontal") out.push({ label: "Switch workspace", value: "workspaces" });
+    else out.push({ label: "Open overview", value: "overview-open" }, { label: "Close overview", value: "overview-close" });
     for (const s of (shortcuts ?? []).filter(usable))
         out.push({ label: s.name, value: s.id, hint: s.command != null ? "Yours" : s.group });
     return out;
@@ -68,7 +71,8 @@ function sheet(b, drag, shortcuts) {
             const a = actionOf(b, fingers, k.id);
             if (a === "app") continue;
             const shown = drag && k.swipe && fingers === 3 ? 4 : fingers;
-            const label = a === "workspaces" ? "Switch workspace" : names[a];
+            const label = { "workspaces": "Switch workspace", "overview-open": "Open overview",
+                            "overview-close": "Close overview" }[a] ?? names[a];
             if (!label) continue;
             rows.push({ label: label, keys: [shown + " FINGERS", k.cap] });
         }

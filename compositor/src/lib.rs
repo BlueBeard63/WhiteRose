@@ -26,6 +26,7 @@ pub mod monitor_id;
 pub mod night_light;
 pub mod output_move;
 pub mod outputs;
+pub mod overview;
 pub mod pointer;
 pub mod protocols;
 pub mod ready;

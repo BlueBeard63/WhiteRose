@@ -167,6 +167,10 @@ pub struct WhiteRose {
     /// Touchpad gestures (gestures.rs): what each does, and the one going.
     pub gestures: crate::gestures::GestureSettings,
     pub gesture: crate::gestures::Live,
+    /// The overview (overview.rs), `overview.style` and `overview.superTap`.
+    pub overview: crate::overview::Overview,
+    pub overview_style: String,
+    pub overview_super_tap: bool,
     pub workspace_slide_length: std::time::Duration,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
     pub shortcuts_paused: Option<u64>,
@@ -333,6 +337,9 @@ impl WhiteRose {
             workspace_slide: None,
             gestures: Default::default(),
             gesture: Default::default(),
+            overview: Default::default(),
+            overview_style: "gnome".into(),
+            overview_super_tap: false,
             workspace_slide_length: crate::workspace_slide::SLIDE,
             shortcuts_paused: None,
             idle: Default::default(),
@@ -944,6 +951,9 @@ impl WhiteRose {
             Action::MakeMaster => self.make_master(),
             Action::ToggleGroup => self.toggle_group(),
             Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
+            Action::Overview(None) => self.toggle_overview(),
+            Action::Overview(Some(true)) => self.open_overview(),
+            Action::Overview(Some(false)) => self.close_overview(),
             Action::NextTab => self.next_tab(true),
             Action::PreviousTab => self.next_tab(false),
 

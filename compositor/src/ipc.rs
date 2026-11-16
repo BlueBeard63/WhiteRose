@@ -114,6 +114,38 @@ pub enum Event {
     SnapPicker {
         picker: Option<PickerView>,
     },
+    /// The overview (overview.rs): where the windows are spread, for the
+    /// shell to put their titles under; null when it's closed.
+    Overview {
+        overview: Option<OverviewView>,
+    },
+}
+
+/// The overview, open (or opening).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OverviewView {
+    pub outputs: Vec<OverviewOutput>,
+    /// The window under the pointer (its title and close button show).
+    pub hovered: Option<u64>,
+    /// A window is being dragged (titles hide).
+    pub dragging: bool,
+}
+
+/// One output's spread windows, by output name; rectangles are logical
+/// pixels from the output's top left.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OverviewOutput {
+    pub output: String,
+    pub windows: Vec<OverviewWindow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OverviewWindow {
+    pub id: u64,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 /// The snap layout picker, for the shell to draw exactly there: `x`, `y`
@@ -281,6 +313,10 @@ pub enum Request {
         #[serde(default)]
         under_pointer: bool,
     },
+    /// Open or close the overview (the shell's search, picking a result).
+    Overview {
+        open: bool,
+    },
 }
 
 fn yes() -> bool {
@@ -328,6 +364,7 @@ impl Request {
             }
             Request::WindowsList => Action::Shell(ShellRequest::WindowsList),
             Request::SnapPicker { under_pointer } => Action::SnapPicker(under_pointer),
+            Request::Overview { open } => Action::Overview(Some(open)),
             Request::PauseShortcuts { .. } => unreachable!("handled per client in ipc_request"),
         }
     }
@@ -406,6 +443,7 @@ pub struct Server {
     last_shortcuts: Option<Event>,
     last_keyboard: Option<Event>,
     last_snap_picker: Option<Event>,
+    last_overview: Option<Event>,
 }
 
 impl Server {
@@ -446,6 +484,7 @@ impl Server {
             last_shortcuts: None,
             last_keyboard: None,
             last_snap_picker: None,
+            last_overview: None,
         })
     }
 
@@ -485,6 +524,7 @@ impl Server {
             Event::Shortcuts { .. } => &mut self.last_shortcuts,
             Event::Keyboard { .. } => &mut self.last_keyboard,
             Event::SnapPicker { .. } => &mut self.last_snap_picker,
+            Event::Overview { .. } => &mut self.last_overview,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } | Event::Layers { .. } => {
                 self.broadcast(&event);
                 return;
