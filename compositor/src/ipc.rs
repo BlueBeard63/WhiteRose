@@ -129,6 +129,8 @@ pub struct OverviewView {
     pub hovered: Option<u64>,
     /// A window is being dragged (titles hide).
     pub dragging: bool,
+    /// The output the search is on (where it opened).
+    pub search: Option<String>,
 }
 
 /// One output's spread windows, by output name; rectangles are logical

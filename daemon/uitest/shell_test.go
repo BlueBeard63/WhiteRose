@@ -453,3 +453,35 @@ func TestSuperTSaysTheLayoutAndBackToDefaultForgetsIt(t *testing.T) {
 		t.Error("switching workspaces showed the layout note")
 	}
 }
+
+// SUPER+W opens the overview: each window's title under it, and the
+// search. Typing a window's name lists it under Windows; Enter goes to
+// it and closes the overview.
+func TestOverviewSearchGoesToAWindow(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	for _, d := range []string{"alpha", "beta"} {
+		os.MkdirAll(filepath.Join(s.Home, d), 0o755)
+	}
+	s.Open(filesBinary(s)+" "+filepath.Join(s.Home, "alpha"), "alpha - Files")
+	beta := s.Open(filesBinary(s)+" "+filepath.Join(s.Home, "beta"), "beta - Files")
+	beta.Press("super+w")
+	ov := s.Layer("whiterose-overview")
+	ov.WaitFor(uitest.Named("Search").Role("text"))
+	ov.WaitFor(uitest.Named("alpha - Files"))
+	ov.Type("alpha")
+	ov.WaitFor(uitest.Named("alpha - Files").Role("list item"))
+	ov.Press("Return")
+	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-overview") }) {
+		t.Fatal("the overview stayed open")
+	}
+	if !uitest.WaitUntil(func() bool { _, focused, _ := s.Toplevel("alpha - Files"); return focused }) {
+		t.Fatal("alpha - Files isn't focused")
+	}
+	// Esc closes it too.
+	s.Press("super+w")
+	s.Layer("whiterose-overview")
+	s.Press("Escape")
+	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-overview") }) {
+		t.Fatal("Esc didn't close it")
+	}
+}

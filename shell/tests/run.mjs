@@ -14,7 +14,7 @@ function load(file, names, deps = {}) {
     return new Function(...Object.keys(deps), `${src}\nreturn { ${names.join(", ")} };`)(...Object.values(deps));
 }
 const Calc = load("Calc.js", ["evaluate"]);
-const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results", "shellQuote"]);
+const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results", "shellQuote", "rankWindows", "sectionOf"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
 const N = load("Notifications.js", ["ago", "shouldPopup", "popupTimeout", "buttons", "hasDefault", "iconKind", "themedImageName", "rememberApp"]);
@@ -1384,6 +1384,21 @@ test("shortcut sheet: gestures go under the desktop's shortcuts", () => {
     assert.deepEqual(g.map(x => x.name), ["Windows", "Desktop", "Gestures", "Yours"]);
     assert.deepEqual(Sc.columns(g).map(c => c.map(x => x.name)), [["Windows"], ["Desktop", "Gestures"], ["Yours"]]);
     assert.deepEqual(Sc.groups(list, []).map(x => x.name), ["Windows", "Desktop", "Yours"]);
+});
+
+// ---- The overview's search ---------------------------------------------------
+test("overview search: windows by title or app, not by scattered letters", () => {
+    const ws = [
+        { id: 1, app_id: "code", title: "compositor.go — wm" },
+        { id: 2, app_id: "com.mitchellh.ghostty", title: "~/WhiteRose — nvim" },
+        { id: 3, app_id: "firefox", title: "Codeberg — Mozilla Firefox" },
+    ];
+    assert.deepEqual(Search.rankWindows("code", ws).map(r => r.window.id), [1, 3]);
+    assert.deepEqual(Search.rankWindows("ghostty", ws).map(r => r.window.id), [2]);
+    assert.deepEqual(Search.rankWindows("cwm", ws), [], "scattered letters don't count");
+    assert.deepEqual(Search.rankWindows("  ", ws), []);
+    assert.equal(Search.sectionOf("window"), "Windows");
+    assert.equal(Search.sectionOf("calc"), "Calculator");
 });
 
 // ---- Gestures (Settings › Mouse & touchpad, and the sheet) ----------------------

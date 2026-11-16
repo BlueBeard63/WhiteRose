@@ -51,6 +51,10 @@ ShellRoot {
     // The snap layout picker (SUPER+Z, a drag to the top, a maximize button).
     SnapPicker {}
 
+    // The overview's search and window titles (SUPER+W; the compositor
+    // draws the windows).
+    OverviewView {}
+
     // Snap zones edited on screen (Settings › Snapping, "Edit on screen").
     ZonesOverlay {}
 

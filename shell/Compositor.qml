@@ -30,6 +30,11 @@ Singleton {
     property var switcher: null
     // The snap layout picker while it's open (SnapPicker.qml draws it).
     property var snapPicker: null
+    // The overview (compositor/src/overview.rs; OverviewView.qml draws the
+    // search and titles), null when closed:
+    // { outputs: [{ output, windows: [{ id, x, y, width, height }] }],
+    //   hovered (window id or null), dragging, search (output name) }.
+    property var overview: null
     // Clipboard history, newest first:
     // { id, time, kind: "text"|"image"|"files", preview, image, files: [{ path, exists }], available }.
     property var clipboard: []
@@ -98,6 +103,8 @@ Singleton {
         launch(entry.id, argv, entry.workingDirectory);
     }
     function closeWindow() { send({ cmd: "close_window" }) }
+    // Opens or closes the overview.
+    function setOverview(open) { send({ cmd: "overview", open: open }) }
     // The next window layout on `screenName` (as SUPER+T), saved for the workspace.
     function nextWindowLayout(screenName) { send({ cmd: "next_window_layout", output: screenName }) }
     function screenshot() { send({ cmd: "screenshot" }) }
@@ -153,6 +160,9 @@ Singleton {
             break;
         case "snap_picker":
             root.snapPicker = msg.picker;
+            break;
+        case "overview":
+            root.overview = msg.overview;
             break;
         case "clipboard":
             root.clipboard = msg.entries;

@@ -198,6 +198,8 @@ pub struct Overview {
     pub dragging: Option<Window>,
     /// Where the pointer is (global).
     pub pointer: Point<f64, Logical>,
+    /// The output it opened on (the pointer's): the search is there.
+    pub search_on: Option<String>,
     /// For the shapes drawn: stable ids, and bumped when they change.
     ids: Vec<Id>,
     commit: Cell<CommitCounter>,
@@ -211,6 +213,7 @@ impl Default for Overview {
             pressed: None,
             dragging: None,
             pointer: Point::default(),
+            search_on: None,
             ids: (0..32).map(|_| Id::new()).collect(),
             commit: Cell::new(CommitCounter::default()),
         }
@@ -261,6 +264,7 @@ impl WhiteRose {
         self.overview.open.animate_to(1.0, OPEN.mul_f64(way), anim::Curve::EaseOut, now);
         let at = self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
         self.overview.pointer = at;
+        self.overview.search_on = self.output_at(at).map(|o| o.name());
         self.overview_hover(at);
         self.overview_changed();
     }
@@ -291,7 +295,9 @@ impl WhiteRose {
         let was = self.overview_active();
         self.overview.open.drive(v.clamp(0.0, 1.0), Instant::now());
         if !was {
-            self.overview.pointer = self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
+            let at = self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
+            self.overview.pointer = at;
+            self.overview.search_on = self.output_at(at).map(|o| o.name());
         }
         self.overview_changed();
     }
@@ -502,6 +508,7 @@ impl WhiteRose {
             outputs,
             hovered: self.overview.hovered.as_ref().map(|w| self.window_id(w)),
             dragging: self.overview.dragging.is_some(),
+            search: self.overview.search_on.clone().or_else(|| self.space.outputs().next().map(|o| o.name())),
         })
     }
 

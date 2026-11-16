@@ -207,3 +207,23 @@ function results(s) {
         out.push({ kind: "cmd", cmd: q, terminal: false });
     return { items: out, grid: 0 };
 }
+
+// The overview's search: open windows whose title or app id matches
+// `query` (not by scattered letters: titles are long), best first.
+// windows: the compositor's [{ id, app_id, title }].
+function rankWindows(query, windows, limit) {
+    var q = (query || "").trim();
+    if (!q) return [];
+    var out = [];
+    (windows || []).forEach(function (w) {
+        var s = Math.max(score(q, w.title || ""), score(q, w.app_id || ""));
+        if (s > 30) out.push({ kind: "window", window: w, score: s });
+    });
+    out.sort(function (x, y) { return y.score - x.score; });
+    return out.slice(0, limit || 5);
+}
+
+// The heading a result goes under in the overview.
+function sectionOf(kind) {
+    return ({ window: "Windows", app: "Apps", file: "Files", cmd: "Commands", calc: "Calculator" })[kind] || "";
+}
