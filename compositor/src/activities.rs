@@ -419,6 +419,44 @@ impl WhiteRose {
             .collect()
     }
 
+    /// SUPER+SHIFT+A: opens the picker on the next activity (held SUPER
+    /// keeps it open; letting go switches), or moves it on.
+    pub fn activity_picker(&mut self) {
+        if !self.activities.enabled || self.is_locked() {
+            return;
+        }
+        let cards = self.activities.order.len() + 1;
+        self.activities.picker = Some(match self.activities.picker {
+            Some((i, held)) => ((i + 1) % cards, held),
+            None => {
+                let here = self.activities.order.iter().position(|id| *id == self.activities.current).unwrap_or(0);
+                // Only one: the new-activity card.
+                ((here + 1) % self.activities.order.len().max(1) + usize::from(cards == 2), self.shortcut_mods.logo)
+            }
+        });
+        self.activities_sync();
+    }
+
+    /// The picker's card `dir` along (wrapping).
+    pub fn activity_picker_step(&mut self, dir: isize) {
+        let cards = self.activities.order.len() as isize + 1;
+        if let Some((i, _)) = self.activities.picker.as_mut() {
+            *i = (*i as isize + dir).rem_euclid(cards) as usize;
+        }
+        self.activities_sync();
+    }
+
+    /// Goes to the picker's chosen activity (or makes a new one) and
+    /// closes it.
+    pub fn commit_activity_picker(&mut self) {
+        let Some((i, _)) = self.activities.picker.take() else { return };
+        match self.activities.order.get(i).cloned() {
+            Some(id) => self.switch_activity(&id),
+            None => self.new_activity(),
+        }
+        self.activities_sync();
+    }
+
     /// What the shell's told.
     pub fn activities_event(&self) -> crate::ipc::Event {
         crate::ipc::Event::Activities {

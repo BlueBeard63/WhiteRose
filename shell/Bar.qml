@@ -55,6 +55,23 @@ PanelWindow {
             id: left
             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 6
+            // The current activity's name, while activities are on.
+            Text {
+                id: activityName
+                visible: Activities.enabled
+                anchors.verticalCenter: parent.verticalCenter
+                text: Activities.nameOf(Activities.current)
+                Accessible.role: Accessible.StaticText
+                Accessible.name: "Activity: " + text
+                color: Theme.text
+                font { family: Theme.font; pointSize: Theme.pt(11.5); weight: Font.Medium }
+            }
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 1; height: 12
+                color: Theme.surface2
+                visible: activityName.visible && workspaces.visible
+            }
             Workspaces { id: workspaces; screen: root.modelData; anchors.verticalCenter: parent.verticalCenter; visible: Daemon.setting("bar.workspaces", true) }
             // This screen's window layout; a click moves to the next (SUPER+T).
             Trigger {

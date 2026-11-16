@@ -998,6 +998,7 @@ impl WhiteRose {
             Action::ToggleGroup => self.toggle_group(),
             Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
             Action::Overview(None) => self.toggle_overview(),
+            Action::ActivityPicker => self.activity_picker(),
             Action::Overview(Some(true)) => self.open_overview(),
             Action::Overview(Some(false)) => self.close_overview(),
             Action::NextTab => self.next_tab(true),

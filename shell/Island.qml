@@ -13,9 +13,11 @@ import Quickshell
 Item {
     id: root
 
-    // The switcher (run by the compositor) takes over while ALT+TAB is held.
+    // The switcher (run by the compositor) takes over while ALT+TAB is held,
+    // and the activity picker while SUPER+SHIFT+A is.
     // A view for one screen only leaves the other islands at rest.
-    readonly property string view: Compositor.switcher ? "switcher"
+    readonly property bool picking: (Compositor.activities?.picker ?? null) !== null
+    readonly property string view: Compositor.switcher ? "switcher" : picking ? "activities"
         : ShellState.islandScreen && ShellState.islandScreen !== screenName ? "idle" : ShellState.islandView
     readonly property bool idle: view === "idle"
     // Views that take the keyboard (each says; see IslandView.qml).
@@ -25,6 +27,7 @@ Item {
     Connections {
         target: Compositor
         function onSwitcherChanged() { if (Compositor.switcher) ShellState.islandView = "idle" }
+        function onActivitiesChanged() { if (root.picking) ShellState.islandView = "idle" }
     }
 
     // ---- views -------------------------------------------------------------

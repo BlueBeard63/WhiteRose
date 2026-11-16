@@ -35,6 +35,13 @@ Singleton {
     // { outputs: [{ output, windows: [{ id, x, y, width, height }] }],
     //   hovered (window id or null), dragging, search (output name) }.
     property var overview: null
+    // Activities (compositor/src/activities.rs): the current one's id, and
+    // { enabled, current, everywhere: [window id], picker (the chosen card,
+    // one past the last: a new activity; null when closed),
+    // activities: [{ id, windows, places: [[x, y, w, h] as shares of the
+    // screen]}] }.
+    property string activity: "default"
+    property var activities: null
     // Clipboard history, newest first:
     // { id, time, kind: "text"|"image"|"files", preview, image, files: [{ path, exists }], available }.
     property var clipboard: []
@@ -82,6 +89,12 @@ Singleton {
 
     function workspace(n) { send({ cmd: "workspace", n: n }) }
     function moveToWorkspace(n) { send({ cmd: "move_to_workspace", n: n }) }
+    // Activities: go to one (closes the picker), make a new one and go
+    // there, close the picker, put a window on one (null: every activity).
+    function goToActivity(id) { send({ cmd: "activity", id: id }) }
+    function newActivity() { send({ cmd: "new_activity" }) }
+    function closeActivityPicker() { send({ cmd: "close_activity_picker" }) }
+    function windowActivity(id, activity) { send({ cmd: "window_activity", id: id, activity: activity }) }
     // Window `id` to workspace `n`, wherever it is (the workspace strip).
     function moveWindow(id, n) { send({ cmd: "move_window", id: id, n: n }) }
     function spawn(command) { send({ cmd: "spawn", command: command }) }
@@ -149,6 +162,10 @@ Singleton {
             root.workspaceCount = msg.count;
             root.occupiedWorkspaces = msg.occupied;
             root.windowLayouts = msg.layouts ?? {};
+            root.activity = msg.activity || "default";
+            break;
+        case "activities":
+            root.activities = msg;
             break;
         case "focus":
             root.focusedAppId = msg.app_id ?? "";

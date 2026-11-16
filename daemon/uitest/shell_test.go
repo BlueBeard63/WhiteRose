@@ -573,3 +573,27 @@ func TestWorkspaceStripMovesAWindow(t *testing.T) {
 		t.Fatal("the window didn't come back")
 	}
 }
+
+// Activities: the bar shows the current one's name, and SUPER+SHIFT+A
+// (let go at once: the next one chosen) switches to the next.
+func TestActivitiesSwitchWithTheKey(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{
+		"activities.enabled": true,
+		"activities.list":    []map[string]string{{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}},
+	}})
+	bar := s.Bar()
+	bar.WaitFor(uitest.Named("Activity: Main"))
+	// The settings reach the compositor a moment after the session
+	// starts: until then the key does nothing.
+	switched := false
+	for i := 0; i < 10 && !switched; i++ {
+		bar.Press("super+shift+a")
+		switched = uitest.WaitUntil(func() bool { _, ok := bar.Find(uitest.Named("Activity: Home")); return ok })
+	}
+	if !switched {
+		t.Fatal("SUPER+SHIFT+A didn't switch to Home")
+	}
+	s.WaitSetting("activities.current", "home")
+	bar.Press("super+shift+a")
+	bar.WaitFor(uitest.Named("Activity: Main"))
+}

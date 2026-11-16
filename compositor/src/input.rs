@@ -310,6 +310,9 @@ impl WhiteRose {
                     return FilterResult::Forward;
                 }
                 // While a switcher is open it owns the keyboard.
+                if state.activities.picker.is_some() {
+                    return state.activity_picker_key(sym, pressed, Mods::from(mods), keycode);
+                }
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
                 }
@@ -431,6 +434,53 @@ impl WhiteRose {
 
     /// Keys while ALT+TAB / SUPER+TAB is open. Releasing the modifiers
     /// that opened it focuses the selection.
+    /// A key while the activity picker is open: letting go of SUPER (if
+    /// it was held to open it) or Enter goes there; SUPER+SHIFT+A, Tab or
+    /// the arrows move; Esc closes it. Nothing reaches the app.
+    fn activity_picker_key(
+        &mut self,
+        sym: smithay::input::keyboard::Keysym,
+        pressed: bool,
+        mods: Mods,
+        keycode: smithay::input::keyboard::Keycode,
+    ) -> smithay::input::keyboard::FilterResult<Option<Action>> {
+        use smithay::input::keyboard::{keysyms as k, FilterResult};
+        let Some((_, held)) = self.activities.picker else { return FilterResult::Forward };
+        if !pressed {
+            if let Some(i) = self.swallowed.iter().position(|c| *c == keycode) {
+                self.swallowed.swap_remove(i);
+            }
+            if held && !mods.logo {
+                self.commit_activity_picker();
+            }
+            return FilterResult::Forward;
+        }
+        if is_logo_key(sym)
+            || matches!(
+                sym.raw(),
+                k::KEY_Shift_L | k::KEY_Shift_R | k::KEY_Alt_L | k::KEY_Alt_R | k::KEY_Control_L | k::KEY_Control_R
+            )
+        {
+            return FilterResult::Forward;
+        }
+        match sym.raw() {
+            k::KEY_Tab | k::KEY_ISO_Left_Tab if mods.shift && !mods.logo => self.activity_picker_step(-1),
+            k::KEY_Tab | k::KEY_ISO_Left_Tab | k::KEY_Right | k::KEY_Down | k::KEY_a | k::KEY_A => {
+                self.activity_picker_step(1)
+            }
+            k::KEY_Left | k::KEY_Up => self.activity_picker_step(-1),
+            k::KEY_Escape => {
+                self.activities.picker = None;
+                self.activities_sync();
+            }
+            k::KEY_Return | k::KEY_KP_Enter => self.commit_activity_picker(),
+            _ => {}
+        }
+        self.logo_tap_pending = false;
+        self.swallowed.push(keycode);
+        FilterResult::Intercept(None)
+    }
+
     fn switcher_key(
         &mut self,
         sym: smithay::input::keyboard::Keysym,

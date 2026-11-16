@@ -152,3 +152,45 @@ fn an_activitys_own_layouts_apply_only_while_its_current() {
         });
     });
 }
+
+#[test]
+fn super_shift_a_picks_the_next_activity_or_a_new_one() {
+    let mut h = Headless::new(true);
+    h.drive(|_conn, ask| {
+        ask.run(|s| {
+            // Off: nothing opens.
+            s.run_action(Action::ActivityPicker);
+            assert!(s.activities.picker.is_none());
+
+            set(s, "activities.list", json!([{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}]));
+            set(s, "activities.enabled", json!(true));
+            s.run_action(Action::ActivityPicker);
+            assert_eq!(s.activities.picker.map(|p| p.0), Some(1), "the next one chosen");
+            s.run_action(Action::ActivityPicker);
+            assert_eq!(s.activities.picker.map(|p| p.0), Some(2), "then the new-activity card");
+            s.run_action(Action::ActivityPicker);
+            assert_eq!(s.activities.picker.map(|p| p.0), Some(0), "round again");
+            s.activity_picker_step(1);
+            s.commit_activity_picker();
+            assert!(s.activities.picker.is_none());
+            assert_eq!(s.activities.current, "home");
+
+            // The new-activity card (from Home the next is Main; back one
+            // is the last card): one more, and you're on it.
+            s.run_action(Action::ActivityPicker);
+            assert_eq!(s.activities.picker.map(|p| p.0), Some(0));
+            s.activity_picker_step(-1);
+            assert_eq!(s.activities.picker.map(|p| p.0), Some(2));
+            s.commit_activity_picker();
+            assert_eq!(s.activities.order.len(), 3);
+            assert_eq!(s.activities.current, s.activities.order[2]);
+            assert_eq!(s.activities.entries[2].name, "Activity 2");
+
+            // A click on a card from the shell.
+            s.run_action(Action::ActivityPicker);
+            s.run_action(Action::Activity(DEFAULT.into()));
+            assert!(s.activities.picker.is_none());
+            assert_eq!(s.activities.current, DEFAULT);
+        });
+    });
+}
