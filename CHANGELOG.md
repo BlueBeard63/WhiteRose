@@ -2,6 +2,20 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.4.0-alpha.2 · Overview fix (alpha) (2026-11-16)
+
+The second 0.4 alpha: windows in the overview are drawn at their spread size again. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
+
+### Fixed
+
+- The overview drew big windows full size, past their outline, with a second copy coming out of their workspace at the top; they now shrink to fit, in both the GNOME-style and niri-style overviews
+
+With 0.3.0 or 0.4.0-alpha.1 and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Your settings carry over.
+
+Not in this alpha yet: the task manager, disk imager, clocks and calculator.
+
+Contributors: @BlueBeard63
+
 ## 0.4.0-alpha.1 · Overview, gestures and activities (alpha) (2026-11-16)
 
 A first look at 0.4: an overview of your windows (GNOME-style or niri-style), touchpad gestures that follow your fingers, a workspace strip in the bar, and activities. Expect rough edges. The four new apps come in later alphas. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
