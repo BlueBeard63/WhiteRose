@@ -77,12 +77,13 @@ fn unbound_gestures_stay_the_apps() {
             s.pinch_begin(2, 0);
             assert!(matches!(s.gesture, Live::Passing), "so does pinch to zoom");
             s.pinch_end(1, false);
-            // Three fingers up: held until it's clear, then handed on.
-            swipe(s, 3, &[(0.0, -4.0)]);
-            assert!(matches!(s.gesture, Live::Swipe { .. }));
-            s.swipe_update(9, Point::from((0.0, -20.0)));
+            // Three fingers pinching out: held until it's clear, then handed on.
+            s.pinch_begin(3, 0);
+            s.pinch_update(1, Point::from((0.0, 0.0)), 1.05, 0.0);
+            assert!(matches!(s.gesture, Live::Pinch { .. }));
+            s.pinch_update(2, Point::from((0.0, 0.0)), 1.2, 0.0);
             assert!(matches!(s.gesture, Live::Passing));
-            s.swipe_end(10, false);
+            s.pinch_end(3, false);
             assert_eq!(s.workspaces.active(), 0);
         });
     });

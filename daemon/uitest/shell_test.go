@@ -453,3 +453,56 @@ func TestSuperTSaysTheLayoutAndBackToDefaultForgetsIt(t *testing.T) {
 		t.Error("switching workspaces showed the layout note")
 	}
 }
+
+// SUPER+W opens the overview: each window's title under it, and the
+// search. Typing a window's name lists it under Windows; Enter goes to
+// it and closes the overview.
+func TestOverviewSearchGoesToAWindow(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true})
+	for _, d := range []string{"alpha", "beta"} {
+		os.MkdirAll(filepath.Join(s.Home, d), 0o755)
+	}
+	s.Open(filesBinary(s)+" "+filepath.Join(s.Home, "alpha"), "alpha - Files")
+	beta := s.Open(filesBinary(s)+" "+filepath.Join(s.Home, "beta"), "beta - Files")
+	beta.Press("super+w")
+	ov := s.Layer("whiterose-overview")
+	ov.WaitFor(uitest.Named("Search").Role("text"))
+	ov.WaitFor(uitest.Named("alpha - Files"))
+	ov.Type("alpha")
+	ov.WaitFor(uitest.Named("alpha - Files").Role("list item"))
+	ov.Press("Return")
+	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-overview") }) {
+		t.Fatal("the overview stayed open")
+	}
+	if !uitest.WaitUntil(func() bool { _, focused, _ := s.Toplevel("alpha - Files"); return focused }) {
+		t.Fatal("alpha - Files isn't focused")
+	}
+	// Esc closes it too.
+	s.Press("super+w")
+	s.Layer("whiterose-overview")
+	s.Press("Escape")
+	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-overview") }) {
+		t.Fatal("Esc didn't close it")
+	}
+}
+
+// With "Open with SUPER" on, SUPER on its own opens the overview instead
+// of the launcher.
+func TestSuperOnItsOwnCanOpenTheOverview(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"overview.superTap": true}})
+	bar := s.Bar()
+	// The setting reaches the compositor a moment after the session
+	// starts: until then SUPER opens the launcher (closed again with Esc).
+	opened := false
+	for i := 0; i < 10 && !opened; i++ {
+		bar.Press("super")
+		opened = uitest.WaitUntil(func() bool { return s.HasLayer("whiterose-overview") })
+		if !opened {
+			bar.Press("Escape")
+		}
+	}
+	if !opened {
+		t.Fatal("SUPER on its own didn't open the overview")
+	}
+	s.Layer("whiterose-overview").WaitFor(uitest.Named("Search").Role("text"))
+}

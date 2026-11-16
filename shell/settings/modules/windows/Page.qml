@@ -182,6 +182,31 @@ Column {
     }
 
     // ---- per monitor ------------------------------------------------------------------
+    // ---- overview (Figma: "Settings - Windows · Overview") ----------------------------
+    Section { text: "Overview" }
+    Card {
+        SettingRow {
+            divider: false
+            title: "Style"
+            subtitle: "GNOME: every window spread out, with search. Off: SUPER+W and the gestures do nothing"
+            Segmented {
+                value: Daemon.setting("overview.style", "gnome")
+                options: [{ label: "Off", value: "off" }, { label: "GNOME", value: "gnome" }]
+                onPicked: v => Daemon.set("overview.style", v)
+            }
+        }
+        SettingRow {
+            title: "Open with SUPER"
+            subtitle: "SUPER on its own opens the overview instead of the launcher; SUPER+W always does"
+            dimmed: Daemon.setting("overview.style", "gnome") === "off"
+            Toggle {
+                enabled: Daemon.setting("overview.style", "gnome") !== "off"
+                checked: Daemon.setting("overview.superTap", false)
+                onToggled: on => Daemon.set("overview.superTap", on)
+            }
+        }
+    }
+
     Section { text: "Monitors" }
     Card {
         SettingRow {

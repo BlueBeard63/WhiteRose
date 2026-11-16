@@ -115,6 +115,17 @@ impl WhiteRose {
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         let from = pointer.current_location();
+        // The overview takes the pointer, except over the shell's layers
+        // (the bar, its search).
+        if self.overview_active() && !self.is_locked() && self.top_layer_at(pos).is_none() {
+            pointer.motion(self, None, &MotionEvent { location: pos, serial, time });
+            pointer.frame(self);
+            self.overview_pointer(pos);
+            if self.draws_cursor {
+                self.schedule_redraw();
+            }
+            return;
+        }
         let under = self.surface_under(pos);
         let over_nothing = under.is_none();
         pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
@@ -167,6 +178,16 @@ impl WhiteRose {
             self.shake.reset();
         }
 
+        let at = pointer.current_location();
+        if self.overview_active() && !self.is_locked() && (self.top_layer_at(at).is_none() || pointer.is_grabbed()) {
+            const BTN_LEFT: u32 = 0x110;
+            if button == BTN_LEFT {
+                self.overview_button(button_state == ButtonState::Pressed);
+            }
+            pointer.button(self, &ButtonEvent { button, state: button_state, serial, time });
+            pointer.frame(self);
+            return;
+        }
         if button_state == ButtonState::Pressed && self.is_locked() {
             self.focus_lock_surface();
         } else if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
@@ -300,16 +321,26 @@ impl WhiteRose {
                 }
 
                 // SUPER on its own opens the launcher, on release, and only if no
-                // other key was pressed while it was held.
+                // other key was pressed while it was held (or the overview, if
+                // `overview.superTap` says so).
                 if is_logo_key(sym) {
                     if pressed {
                         state.logo_tap_pending = true;
                     } else if std::mem::take(&mut state.logo_tap_pending) {
+                        if state.overview_super_tap && state.overview_style != "off" {
+                            return FilterResult::Intercept(Some(Action::Overview(None)));
+                        }
                         if let Some(action) = state.bindings.logo_tap().cloned() {
                             return FilterResult::Intercept(Some(action));
                         }
                     }
                     return FilterResult::Forward;
+                }
+
+                // Esc closes the overview.
+                if pressed && state.overview_active() && sym.raw() == smithay::input::keyboard::keysyms::KEY_Escape {
+                    state.swallowed.push(keycode);
+                    return FilterResult::Intercept(Some(Action::Overview(Some(false))));
                 }
 
                 if pressed {

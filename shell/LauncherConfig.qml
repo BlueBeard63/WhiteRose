@@ -22,6 +22,26 @@ Singleton {
         Daemon.set("launcher.launches", l);
     }
     function recordCommand(cmd) { Daemon.set("launcher.commands", Search.pushHistory(root.history, cmd, 20)) }
+    // Opens a search result (the launcher's or the overview's): an app, a
+    // file, a calculation (copied) or a command.
+    function open(item) {
+        if (!item) return;
+        switch (item.kind) {
+        case "app": Compositor.launchEntry(item.app.entry); root.record(item.app.id); break;
+        case "file": Compositor.launch("", ["xdg-open", item.file.path]); break;
+        case "calc":
+            Quickshell.clipboardText = item.result;
+            root.recordCalculation(item.expr, item.result);
+            break;
+        case "cmd":
+            Compositor.launch("", item.terminal
+                ? Search.terminalCommand(Quickshell.env("TERMINAL") || "ptyxis", item.cmd)
+                : ["sh", "-c", item.cmd]);
+            root.recordCommand(item.cmd);
+            break;
+        case "window": Compositor.focusWindow(item.window.id); break;
+        }
+    }
     function recordCalculation(expr, result) {
         Daemon.set("launcher.calculations", Search.pushHistory(root.calcHistory, { expr, result }, 10, (a, b) => a.expr === b.expr));
     }

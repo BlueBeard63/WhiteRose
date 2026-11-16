@@ -70,6 +70,9 @@ pub enum Bound {
     App,
     /// Left or right: the workspace slide follows the fingers.
     Workspaces,
+    /// Up, down or a pinch: the overview follows the fingers open (true)
+    /// or closed.
+    Overview(bool),
     /// A shortcut's id, run when the fingers lift.
     Shortcut(String),
 }
@@ -82,9 +85,18 @@ pub struct GestureSettings {
 }
 
 impl Default for GestureSettings {
-    /// Three-finger swipes left and right switch workspace.
+    /// Three fingers: left and right switch workspace, up or a pinch in
+    /// open the overview, down closes it.
     fn default() -> Self {
-        GestureSettings { bindings: vec![((3, Gesture::SwipeHorizontal), Bound::Workspaces)], drag_window: false }
+        GestureSettings {
+            bindings: vec![
+                ((3, Gesture::SwipeHorizontal), Bound::Workspaces),
+                ((3, Gesture::SwipeUp), Bound::Overview(true)),
+                ((3, Gesture::SwipeDown), Bound::Overview(false)),
+                ((3, Gesture::PinchIn), Bound::Overview(true)),
+            ],
+            drag_window: false,
+        }
     }
 }
 
@@ -107,6 +119,9 @@ impl GestureSettings {
                             "app" => Bound::App,
                             "workspaces" if g == Gesture::SwipeHorizontal => Bound::Workspaces,
                             "workspaces" => return None,
+                            "overview-open" if g != Gesture::SwipeHorizontal => Bound::Overview(true),
+                            "overview-close" if g != Gesture::SwipeHorizontal => Bound::Overview(false),
+                            "overview-open" | "overview-close" => return None,
                             id => Bound::Shortcut(id.to_owned()),
                         };
                         Some(((fingers, g), bound))
@@ -140,6 +155,12 @@ pub const DECIDE: f64 = 12.0;
 pub const PINCH: f64 = 0.12;
 /// How far the fingers move for a whole workspace.
 pub const DISTANCE: f64 = 300.0;
+/// How far a swipe goes to open or close the overview all the way, and
+/// how much a pinch scales; and how far along letting go still opens (or
+/// closes) it.
+pub const OVERVIEW_DISTANCE: f64 = 250.0;
+pub const OVERVIEW_PINCH: f64 = 0.4;
+pub const OVERVIEW_ENOUGH: f64 = 0.3;
 /// Lifted moving at least this fast (workspaces a second) towards the
 /// next one, it goes there even if it's not half way.
 pub const FLICK: f64 = 1.5;
@@ -210,6 +231,14 @@ pub enum Live {
     Workspace {
         dx: f64,
     },
+    /// The overview following the fingers open (or closed): how open it
+    /// was when they started, and how far they've gone (a swipe's
+    /// movement down, or a pinch's scale).
+    Overview {
+        open: bool,
+        from: f64,
+        dy: f64,
+    },
     /// Runs when the fingers lift.
     Shortcut(Action),
     /// Moving a window (the button held, as for SUPER+drag).
@@ -238,6 +267,8 @@ impl WhiteRose {
     fn gesture_decided(&mut self, fingers: u32, g: Gesture) -> Live {
         match self.gestures.bound(fingers, g) {
             Bound::Workspaces => Live::Workspace { dx: 0.0 },
+            Bound::Overview(_) if self.overview_style == "off" => Live::Passing,
+            Bound::Overview(open) => Live::Overview { open, from: self.overview_shown(), dy: 0.0 },
             Bound::Shortcut(id) => match self.gesture_action(&id) {
                 Some(a) => Live::Shortcut(a),
                 None => {
@@ -274,7 +305,7 @@ impl WhiteRose {
                 *dy += delta.y;
                 held.push((time, delta));
                 let Some(g) = swipe_of(*dx, *dy) else { return };
-                let (fingers, began, dx, held) = (*fingers, *began, *dx, std::mem::take(held));
+                let (fingers, began, dx, dy, held) = (*fingers, *began, *dx, *dy, std::mem::take(held));
                 self.gesture = self.gesture_decided(fingers, g);
                 match self.gesture {
                     Live::Passing => {
@@ -287,10 +318,12 @@ impl WhiteRose {
                         self.gesture = Live::Workspace { dx: 0.0 };
                         self.workspace_swipe(dx);
                     }
+                    Live::Overview { .. } => self.overview_swipe(dy),
                     _ => {}
                 }
             }
             Live::Workspace { .. } => self.workspace_swipe(delta.x),
+            Live::Overview { .. } => self.overview_swipe(delta.y),
             Live::Drag => self.on_pointer_relative(delta, time),
             Live::Shortcut(_) | Live::Pinch { .. } | Live::None => {}
         }
@@ -314,6 +347,7 @@ impl WhiteRose {
                 self.end_workspace_drive(!cancelled && switches(along, flick));
             }
             Live::Shortcut(a) if !cancelled => self.run_action(a),
+            Live::Overview { open, from, .. } => self.overview_let_go(open, from, cancelled),
             Live::Drag => self.on_pointer_button(BTN_LEFT, ButtonState::Released, time),
             _ => {}
         }
@@ -367,13 +401,18 @@ impl WhiteRose {
                 let Some(g) = pinch_of(scale) else { return };
                 let (fingers, began, held) = (*fingers, *began, std::mem::take(held));
                 self.gesture = self.gesture_decided(fingers, g);
-                if matches!(self.gesture, Live::Passing) {
-                    self.pass_pinch_begin(fingers, began);
-                    for (t, d, s, r) in held {
-                        self.pass_pinch_update(t, d, s, r);
+                match self.gesture {
+                    Live::Passing => {
+                        self.pass_pinch_begin(fingers, began);
+                        for (t, d, s, r) in held {
+                            self.pass_pinch_update(t, d, s, r);
+                        }
                     }
+                    Live::Overview { .. } => self.overview_pinch(scale),
+                    _ => {}
                 }
             }
+            Live::Overview { .. } => self.overview_pinch(scale),
             _ => {}
         }
     }
@@ -389,8 +428,49 @@ impl WhiteRose {
                 self.pass_pinch_end(time, cancelled);
             }
             Live::Shortcut(a) if !cancelled => self.run_action(a),
+            Live::Overview { open, from, .. } => self.overview_let_go(open, from, cancelled),
             _ => {}
         }
+    }
+
+    /// A swipe moved `dy` more with the overview following it: up opens,
+    /// down closes.
+    fn overview_swipe(&mut self, dy: f64) {
+        let Live::Overview { open, from, dy: total } = &mut self.gesture else { return };
+        *total += dy;
+        let way = if *open { -*total } else { *total } / OVERVIEW_DISTANCE;
+        let (open, from, way) = (*open, *from, way.clamp(0.0, 1.0));
+        self.overview_follow(open, from, way);
+    }
+
+    /// A pinch at `scale` with the overview following it: in opens, out
+    /// closes.
+    fn overview_pinch(&mut self, scale: f64) {
+        let Live::Overview { open, from, .. } = self.gesture else { return };
+        let way = if open { 1.0 - scale } else { scale - 1.0 } / OVERVIEW_PINCH;
+        self.overview_follow(open, from, way.clamp(0.0, 1.0));
+    }
+
+    /// The fingers have gone `way` (0 to 1) of the way to opening (or
+    /// closing) the overview from `from`.
+    fn overview_follow(&mut self, open: bool, from: f64, way: f64) {
+        let v = if open { from + (1.0 - from) * way } else { from * (1.0 - way) };
+        self.drive_overview(v);
+    }
+
+    /// The fingers lifted: open or closed, by how far they took it and how
+    /// fast; cancelled, back to how it was.
+    fn overview_let_go(&mut self, open: bool, from: f64, cancelled: bool) {
+        let now = std::time::Instant::now();
+        let (v, flick) = (self.overview.open.get(now), self.overview.open.flick(now));
+        let opened = if cancelled {
+            from >= 0.5
+        } else if open {
+            flick > -FLICK && (v >= OVERVIEW_ENOUGH || flick >= FLICK)
+        } else {
+            !(flick < FLICK && (v <= 1.0 - OVERVIEW_ENOUGH || flick <= -FLICK))
+        };
+        self.end_overview_drive(opened);
     }
 
     /// A hold (fingers resting) always goes to the app.
@@ -445,15 +525,24 @@ mod tests {
     }
 
     #[test]
-    fn three_finger_left_and_right_switch_workspace_to_start_with() {
+    fn three_fingers_switch_workspace_and_open_the_overview_to_start_with() {
         let s = GestureSettings::default();
         assert_eq!(s.bound(3, Gesture::SwipeHorizontal), Bound::Workspaces);
-        assert_eq!(s.bound(3, Gesture::SwipeUp), Bound::App);
+        assert_eq!(s.bound(3, Gesture::SwipeUp), Bound::Overview(true));
+        assert_eq!(s.bound(3, Gesture::SwipeDown), Bound::Overview(false));
+        assert_eq!(s.bound(3, Gesture::PinchIn), Bound::Overview(true));
+        assert_eq!(s.bound(3, Gesture::PinchOut), Bound::App);
         assert_eq!(s.bound(4, Gesture::SwipeHorizontal), Bound::App);
-        assert!(s.takes(3, true));
+        assert!(s.takes(3, true) && s.takes(3, false));
         assert!(!s.takes(4, true), "four fingers go straight to apps");
         assert!(!s.takes(2, false), "so does pinch to zoom");
-        assert!(!s.takes(3, false));
+    }
+
+    #[test]
+    fn the_overview_is_only_up_down_or_a_pinch() {
+        let s = settings(json!({"3-swipe-horizontal": "overview-open", "4-pinch-out": "overview-close"}), false);
+        assert_eq!(s.bound(3, Gesture::SwipeHorizontal), Bound::App);
+        assert_eq!(s.bound(4, Gesture::PinchOut), Bound::Overview(false));
     }
 
     #[test]

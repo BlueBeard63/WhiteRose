@@ -379,11 +379,16 @@ var Known = map[string]Key{
 	// pinch-in, pinch-out, with 3 or 4 fingers (2: pinches only). Actions:
 	// "app" (passed to the app under the pointer, as for one not listed),
 	// "workspaces" (left or right swipes only: follows the fingers), or a
-	// shortcut's id, run when the fingers lift.
-	"gestures.bindings": {Default: json.RawMessage(`{"3-swipe-horizontal":"workspaces"}`), Check: into(checkGestures)},
+	// shortcut's id, run when the fingers lift; "overview-open" and
+	// "overview-close" (not left or right) follow the fingers too.
+	"gestures.bindings": {Default: json.RawMessage(`{"3-swipe-horizontal":"workspaces","3-swipe-up":"overview-open","3-swipe-down":"overview-close","3-pinch-in":"overview-open"}`), Check: into(checkGestures)},
 	// Three fingers on a window move it; the three-finger swipes then take
 	// four fingers.
 	"gestures.dragWindow": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// The overview (the compositor's overview.rs): which kind, or none;
+	// and whether SUPER on its own opens it instead of the launcher.
+	"overview.style":    {Default: json.RawMessage(`"gnome"`), Check: into(oneOf("off", "gnome"))},
+	"overview.superTap": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	// Switching workspace slides (the compositor's workspace_slide.rs).
 	"animations.workspaceSwitch": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Window layout (the compositor's layout/ module). The global default,
@@ -982,6 +987,8 @@ func checkGestures(m map[string]string) error {
 			return fmt.Errorf("%s: two-finger swipes are scrolling", g)
 		case action == "workspaces" && p[2] != "swipe-horizontal":
 			return fmt.Errorf("%s: only left or right swipes switch workspace", g)
+		case (action == "overview-open" || action == "overview-close") && p[2] == "swipe-horizontal":
+			return fmt.Errorf("%s: left or right swipes don't open the overview", g)
 		case !shortcutID.MatchString(action):
 			return fmt.Errorf("%s: invalid action %q", g, action)
 		}
