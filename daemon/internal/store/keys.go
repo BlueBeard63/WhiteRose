@@ -387,9 +387,10 @@ var Known = map[string]Key{
 	// Three fingers on a window move it; the three-finger swipes then take
 	// four fingers.
 	"gestures.dragWindow": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
-	// The overview (the compositor's overview.rs): which kind, or none;
-	// and whether SUPER on its own opens it instead of the launcher.
-	"overview.style":    {Default: json.RawMessage(`"gnome"`), Check: into(oneOf("off", "gnome"))},
+	// The overview (the compositor's overview.rs, overview_niri.rs): which
+	// kind, or none; and whether SUPER on its own opens it instead of the
+	// launcher.
+	"overview.style":    {Default: json.RawMessage(`"gnome"`), Check: into(oneOf("off", "gnome", "niri"))},
 	"overview.superTap": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	// Switching workspace slides (the compositor's workspace_slide.rs).
 	"animations.workspaceSwitch": {Default: json.RawMessage(`true`), Check: into[bool](nil)},

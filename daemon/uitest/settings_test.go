@@ -523,7 +523,7 @@ func TestSettingsGestures(t *testing.T) {
 }
 
 // Windows › Overview: SUPER on its own can open it, and the style can
-// turn it off.
+// turn it off or pick niri's.
 func TestSettingsOverview(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{})
 	settings := s.Settings("windows")
@@ -535,6 +535,8 @@ func TestSettingsOverview(t *testing.T) {
 	s.WaitSetting("overview.style", "off")
 	settings.Click(uitest.Named("GNOME").Role("radio button"))
 	s.WaitSetting("overview.style", "gnome")
+	settings.Click(uitest.Named("niri").Role("radio button"))
+	s.WaitSetting("overview.style", "niri")
 }
 
 // Windows › Workspaces: the slide when switching is on to start with,

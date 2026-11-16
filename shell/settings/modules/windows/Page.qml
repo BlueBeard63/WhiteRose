@@ -188,10 +188,10 @@ Column {
         SettingRow {
             divider: false
             title: "Style"
-            subtitle: "GNOME: every window spread out, with search. Off: SUPER+W and the gestures do nothing"
+            subtitle: "GNOME: windows spread out, with search. niri: the workspaces side by side, zoomed out"
             Segmented {
                 value: Daemon.setting("overview.style", "gnome")
-                options: [{ label: "Off", value: "off" }, { label: "GNOME", value: "gnome" }]
+                options: [{ label: "Off", value: "off" }, { label: "GNOME", value: "gnome" }, { label: "niri", value: "niri" }]
                 onPicked: v => Daemon.set("overview.style", v)
             }
         }

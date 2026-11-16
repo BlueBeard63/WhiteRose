@@ -124,12 +124,15 @@ pub enum Event {
 /// The overview, open (or opening).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OverviewView {
+    /// "gnome" or "niri" (`overview.style`).
+    pub style: String,
     pub outputs: Vec<OverviewOutput>,
     /// The window under the pointer (its title and close button show).
     pub hovered: Option<u64>,
     /// A window is being dragged (titles hide).
     pub dragging: bool,
-    /// The output the search is on (where it opened).
+    /// The output the search is on (where it opened); none in the niri
+    /// style.
     pub search: Option<String>,
 }
 
@@ -148,6 +151,10 @@ pub struct OverviewWindow {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// The niri style: where the title goes (under its workspace; the
+    /// GNOME style puts it under the window).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_y: Option<i32>,
 }
 
 /// The snap layout picker, for the shell to draw exactly there: `x`, `y`
