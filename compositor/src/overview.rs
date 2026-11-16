@@ -23,7 +23,10 @@ use std::{
 
 use smithay::{
     backend::renderer::{
-        element::{solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement, AsRenderElements, Id, Kind},
+        element::{
+            solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement, utils::RescaleRenderElement,
+            AsRenderElements, Id, Kind,
+        },
         gles::GlesRenderer,
         utils::CommitCounter,
     },
@@ -688,16 +691,26 @@ pub(crate) fn layer_scaled(
     k: f64,
     out: &mut Vec<OutputElement>,
 ) {
-    out.extend(
-        l.render_elements::<WaylandSurfaceRenderElement<_>>(
-            renderer,
-            at.to_physical_precise_round(scale),
-            Scale::from(scale * k),
-            1.0,
-        )
-        .into_iter()
-        .map(OutputElement::Surface),
-    );
+    let at = at.to_physical_precise_round(scale);
+    let elements = l.render_elements::<WaylandSurfaceRenderElement<_>>(renderer, at, Scale::from(scale), 1.0);
+    push_scaled(elements, at, k, out);
+}
+
+/// `elements` (built at the output's scale with their origin at `at`) made
+/// `k` times as big around `at`. A surface element's size comes from the
+/// output's scale when it is drawn, not from the scale it was built with,
+/// so shrinking takes a rescale, not a smaller `Scale`.
+fn push_scaled(
+    elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
+    at: Point<i32, Physical>,
+    k: f64,
+    out: &mut Vec<OutputElement>,
+) {
+    if (k - 1.0).abs() < 1e-9 {
+        out.extend(elements.into_iter().map(OutputElement::Surface));
+    } else {
+        out.extend(elements.into_iter().map(|e| OutputElement::Rescaled(RescaleRenderElement::from_element(e, at, k))));
+    }
 }
 
 /// Flat shapes (the backdrop, workspaces, outlines), each with its own
@@ -754,16 +767,9 @@ pub(crate) fn scaled_window(
     }
     let k = r.w / g.size.w as f64;
     let at = Point::<f64, Logical>::from((r.x - g.loc.x as f64 * k, r.y - g.loc.y as f64 * k));
-    out.extend(
-        w.render_elements::<WaylandSurfaceRenderElement<_>>(
-            renderer,
-            at.to_physical_precise_round(scale),
-            Scale::from(scale * k),
-            alpha,
-        )
-        .into_iter()
-        .map(OutputElement::Surface),
-    );
+    let at = at.to_physical_precise_round(scale);
+    let elements = w.render_elements::<WaylandSurfaceRenderElement<_>>(renderer, at, Scale::from(scale), alpha);
+    push_scaled(elements, at, k, out);
 }
 
 #[cfg(test)]

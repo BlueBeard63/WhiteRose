@@ -10,7 +10,7 @@ use smithay::{
             memory::MemoryRenderBufferRenderElement,
             solid::SolidColorRenderElement,
             surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-            utils::CropRenderElement,
+            utils::{CropRenderElement, RescaleRenderElement},
             AsRenderElements, Kind,
         },
         gles::{GlesRenderer, GlesTarget},
@@ -40,6 +40,8 @@ smithay::backend::renderer::element::render_elements! {
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     /// A tiled window cut to its tile.
     Cropped=CropRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
+    /// A window or layer surface drawn smaller or bigger (the overviews).
+    Rescaled=RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     /// Pixels the compositor draws: the pointer, tab strips.
     Image=MemoryRenderBufferRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,

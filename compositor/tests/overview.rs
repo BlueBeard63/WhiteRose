@@ -226,3 +226,56 @@ fn niri_style_zooms_out_on_the_workspaces_side_by_side() {
         });
     });
 }
+
+fn renderer() -> Option<smithay::backend::renderer::gles::GlesRenderer> {
+    use smithay::backend::egl::{EGLContext, EGLDevice, EGLDisplay};
+    let devices: Vec<EGLDevice> = EGLDevice::enumerate().ok()?.collect();
+    let device = devices
+        .iter()
+        .find(|d| d.extensions().iter().any(|e| e == "EGL_MESA_device_software"))
+        .or(devices.first())?
+        .clone();
+    let display = unsafe { EGLDisplay::new(device) }.ok()?;
+    let context = EGLContext::new(&display).ok()?;
+    unsafe { smithay::backend::renderer::gles::GlesRenderer::new(context) }.ok()
+}
+
+#[test]
+fn spread_windows_are_drawn_at_their_spread_size() {
+    // A surface element's size comes from the output's scale when it is
+    // drawn, so a window built with a smaller `Scale` still came out full
+    // size, past its outline (0.4.0-alpha.1).
+    use smithay::backend::renderer::element::Element;
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        for _ in 0..2 {
+            let (a, _ta) = open(&mut c);
+            c.attach_buffer(&a, 1600, 1000);
+        }
+        c.queue.roundtrip(&mut c.app).unwrap();
+        ask.run(|s| {
+            let Some(mut r) = renderer() else {
+                eprintln!("no EGL device: skipping");
+                return;
+            };
+            s.run_action(Action::Overview(None));
+            s.overview.open.jump(1.0);
+            let o = s.space.outputs().next().cloned().unwrap();
+            let scene = s.overview_scene(&o).expect("a scene");
+            let out = whiterose_wm::overview::elements(&mut r, &o, s).expect("elements");
+            let scale = smithay::utils::Scale::from(o.current_scale().fractional_scale());
+            assert!(scene.windows.iter().all(|(w, _, to)| to.w < w.geometry().size.w as f64 * 0.9), "shrunk");
+            for (_, _, to) in &scene.windows {
+                let found = out.iter().map(|e| e.geometry(scale)).any(|g| {
+                    (g.loc.x - to.x.round() as i32).abs() <= 1
+                        && (g.loc.y - to.y.round() as i32).abs() <= 1
+                        && (g.size.w - to.w.round() as i32).abs() <= 1
+                        && (g.size.h - to.h.round() as i32).abs() <= 1
+                });
+                assert!(found, "nothing drawn at {to:?}");
+            }
+        });
+    });
+}
