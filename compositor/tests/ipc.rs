@@ -91,6 +91,7 @@ fn shell_ipc_round_trip() {
         let close = shortcuts["shortcuts"].as_array().unwrap().iter().find(|s| s["id"] == "close-window").unwrap();
         assert_eq!(close["keys"], serde_json::json!(["SUPER+Q"]));
         assert_eq!(shell.recv()["event"], "keyboard", "and the keyboard layouts");
+        assert_eq!(shell.recv()["event"], "activities", "and the activities");
 
         // 2. Garbage is ignored and the connection survives; duplicates aren't re-sent.
         shell.send("this is not json");
@@ -200,6 +201,7 @@ fn screenshot_without_a_renderer_reports_failure_to_the_shell() {
         shell.recv(); // lock snapshot
         shell.recv(); // shortcuts snapshot
         shell.recv(); // keyboard snapshot
+        shell.recv(); // activities snapshot
         shell.send(r#"{"cmd":"screenshot"}"#);
         shell.recv()
     });

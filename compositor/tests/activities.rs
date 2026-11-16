@@ -1,0 +1,154 @@
+//! Activities: each its own workspaces. Switching puts the shown windows
+//! aside and brings the other activity's; a window on every activity
+//! comes along; a window can be sent to another activity; one deleted,
+//! or activities turned off, brings its windows to the current one; an
+//! activity's own per-workspace layouts apply only while it's current.
+
+mod common;
+
+use common::{tiles::*, *};
+use serde_json::{json, Value};
+use smithay::desktop::Window;
+use whiterose_wm::{activities::DEFAULT, keybind::Action, WhiteRose};
+
+fn set(s: &mut WhiteRose, key: &str, value: Value) {
+    s.daemon_message(&json!({"event": "setting", "key": key, "value": value}));
+}
+
+fn shown(s: &WhiteRose, w: &Window) -> bool {
+    s.space.element_location(w).is_some()
+}
+
+fn by_id(s: &WhiteRose, id: u64) -> Window {
+    s.workspaces
+        .mru()
+        .iter()
+        .chain(s.activities.stashed.iter().flat_map(|a| a.workspaces.mru()))
+        .find(|w| s.window_id(w) == id)
+        .cloned()
+        .expect("a window with that id")
+}
+
+#[test]
+fn each_activity_has_its_own_windows() {
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let mut surfaces = Vec::new();
+        for _ in 0..2 {
+            let (a, ta) = open(&mut c);
+            c.attach_buffer(&a, 600, 400);
+            surfaces.push((a, ta));
+        }
+        c.queue.roundtrip(&mut c.app).unwrap();
+        let (a, b) = ask.run(|s| {
+            set(s, "activities.list", json!([{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}]));
+            set(s, "activities.enabled", json!(true));
+            let ws = s.workspaces.active_windows().to_vec();
+            assert_eq!(ws.len(), 2);
+            let (a, b) = (ws[0].clone(), ws[1].clone());
+
+            // To Home: nothing of Main's shows.
+            s.run_action(Action::Activity("home".into()));
+            assert_eq!(s.activities.current, "home");
+            assert!(s.workspaces.mru().is_empty());
+            assert!(!shown(s, &a) && !shown(s, &b));
+            assert_eq!(s.stashed_activity_of(&a), Some(DEFAULT));
+            assert_eq!(s.activities_view()[0].windows, 2);
+            (s.window_id(&a), s.window_id(&b))
+        });
+        // One opened in Home stays in Home.
+        let (h1, _th) = open(&mut c);
+        c.attach_buffer(&h1, 500, 300);
+        c.queue.roundtrip(&mut c.app).unwrap();
+        ask.run(move |s| {
+            let own = s.workspaces.active_windows().to_vec();
+            assert_eq!(own.len(), 1);
+            let home_window = own[0].clone();
+            s.run_action(Action::Activity(DEFAULT.into()));
+            let (a, b) = (by_id(s, a), by_id(s, b));
+            assert!(shown(s, &a) && shown(s, &b), "Main's are back");
+            assert!(!shown(s, &home_window));
+            assert_eq!(s.stashed_activity_of(&home_window), Some("home"));
+
+            // On every activity: it comes along.
+            let id = s.window_id(&a);
+            s.run_action(Action::WindowActivity(id, None));
+            s.run_action(Action::Activity("home".into()));
+            assert!(shown(s, &a), "carried across");
+            assert!(!shown(s, &b));
+            s.run_action(Action::Activity(DEFAULT.into()));
+            assert!(shown(s, &a) && shown(s, &b));
+
+            // Sent to Home: gone from here, there when you go.
+            let id = s.window_id(&b);
+            s.run_action(Action::WindowActivity(id, Some("home".into())));
+            assert!(!shown(s, &b));
+            assert_eq!(s.stashed_activity_of(&b), Some("home"));
+            // Focusing it goes there.
+            s.activate_window(&b);
+            assert_eq!(s.activities.current, "home");
+            assert!(shown(s, &b));
+
+            // Closed while put aside: forgotten there too.
+            s.run_action(Action::Activity(DEFAULT.into()));
+            s.forget_window(&home_window);
+            assert_eq!(s.stashed_activity_of(&home_window), None);
+
+            // Home deleted: its windows come here.
+            set(s, "activities.list", json!([{"id": "default", "name": "Main"}]));
+            assert!(shown(s, &b));
+            assert_eq!(s.stashed_activity_of(&b), None);
+        });
+        drop(surfaces);
+    });
+}
+
+#[test]
+fn turning_activities_off_brings_every_window_back() {
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        let (a, _ta) = open(&mut c);
+        c.attach_buffer(&a, 600, 400);
+        c.queue.roundtrip(&mut c.app).unwrap();
+        ask.run(|s| {
+            set(s, "activities.list", json!([{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}]));
+            set(s, "activities.enabled", json!(true));
+            let w = s.workspaces.active_windows()[0].clone();
+            let id = s.window_id(&w);
+            s.run_action(Action::WindowActivity(id, Some("home".into())));
+            s.run_action(Action::Activity("home".into()));
+            set(s, "activities.enabled", json!(false));
+            assert_eq!(s.activities.current, DEFAULT);
+            assert!(shown(s, &w));
+            assert!(s.activities.stashed.is_empty());
+            // Off: nothing switches.
+            s.run_action(Action::Activity("home".into()));
+            assert_eq!(s.activities.current, DEFAULT);
+        });
+    });
+}
+
+#[test]
+fn an_activitys_own_layouts_apply_only_while_its_current() {
+    let mut h = Headless::new(true);
+    h.drive(|_conn, ask| {
+        ask.run(|s| {
+            set(s, "activities.list", json!([{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}]));
+            set(s, "activities.enabled", json!(true));
+            set(s, "windows.layout", json!("floating"));
+            set(s, "windows.layout.workspaces", json!({"1": "master"}));
+            let o = s.space.outputs().next().cloned().unwrap();
+            assert_eq!(s.layout_of(0, &o).as_str(), "master");
+            s.run_action(Action::Activity("home".into()));
+            assert_eq!(s.layout_of(0, &o).as_str(), "master", "the default's until it has its own");
+            set(s, "activities.overrides", json!({"home": {"windows.layout.workspaces": {"1": "dwindle"}}}));
+            assert_eq!(s.layout_of(0, &o).as_str(), "dwindle");
+            s.run_action(Action::Activity(DEFAULT.into()));
+            assert_eq!(s.layout_of(0, &o).as_str(), "master");
+        });
+    });
+}

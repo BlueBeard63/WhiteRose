@@ -92,6 +92,13 @@ pub enum Action {
     FocusWindow(u64),
     /// Move a window (by IPC id) to workspace N (1-based), not following it.
     MoveWindow(u64, u8),
+    /// Go to an activity by id (activities.rs), closing the picker.
+    Activity(String),
+    /// Make a new activity and go there.
+    NewActivity,
+    CloseActivityPicker,
+    /// Put a window (by IPC id) on an activity, or on every one (None).
+    WindowActivity(u64, Option<String>),
     /// Focus an app's most recent window, or cycle if it already has focus.
     FocusApp(String),
     /// Delete a screenshot this compositor saved (requested by the shell).

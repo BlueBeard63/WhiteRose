@@ -171,6 +171,8 @@ pub struct WhiteRose {
     pub overview: crate::overview::Overview,
     pub overview_style: String,
     pub overview_super_tap: bool,
+    /// Activities (activities.rs): the others' workspaces put aside.
+    pub activities: crate::activities::Activities,
     pub workspace_slide_length: std::time::Duration,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
     pub shortcuts_paused: Option<u64>,
@@ -340,6 +342,7 @@ impl WhiteRose {
             overview: Default::default(),
             overview_style: "gnome".into(),
             overview_super_tap: false,
+            activities: Default::default(),
             workspace_slide_length: crate::workspace_slide::SLIDE,
             shortcuts_paused: None,
             idle: Default::default(),
@@ -616,6 +619,7 @@ impl WhiteRose {
 
     /// Focuses a window, switching to its workspace first if it's hidden.
     pub fn activate_window(&mut self, w: &Window) {
+        self.activity_for_focus(w);
         if let Some(ws) = self.workspaces.workspace_of(w) {
             if ws != self.workspaces.active() {
                 self.switch_workspace(ws);
@@ -762,6 +766,7 @@ impl WhiteRose {
         self.forget_tiled(w);
         self.forget_snap(w);
         self.workspaces.remove(w);
+        self.forget_in_activities(w);
         self.hidden_at.retain(|(h, _)| h != w);
         self.minimized.retain(|m| m != w);
         self.space.unmap_elem(w);
@@ -904,6 +909,28 @@ impl WhiteRose {
             Action::Capture(shot) => self.request_shot(shot),
             Action::AppSwitcher => self.open_switcher(crate::switcher::Mode::Apps),
             Action::WindowSwitcher => self.open_switcher(crate::switcher::Mode::Windows),
+            Action::Activity(id) => {
+                self.activities.picker = None;
+                if self.activities.enabled && self.activities.order.contains(&id) {
+                    self.switch_activity(&id);
+                }
+                self.activities_sync();
+            }
+            Action::NewActivity => {
+                self.activities.picker = None;
+                self.new_activity();
+                self.activities_sync();
+            }
+            Action::CloseActivityPicker => {
+                self.activities.picker = None;
+                self.activities_sync();
+            }
+            Action::WindowActivity(id, activity) => {
+                let target = self.workspaces.mru().iter().find(|w| self.window_id(w) == id).cloned();
+                if let Some(w) = target {
+                    self.set_window_activity(&w, activity.as_deref());
+                }
+            }
             Action::MoveWindow(id, n) => {
                 let target = self.workspaces.mru().iter().find(|w| self.window_id(w) == id).cloned();
                 match target {

@@ -120,12 +120,15 @@ impl WhiteRose {
         }
     }
 
-    fn daemon_message(&mut self, v: &Value) {
+    /// A message from whiterosed (settings). Also driven by tests.
+    pub fn daemon_message(&mut self, v: &Value) {
         let (mut displays, mut keyboard, mut shortcuts, mut idle, mut layout) = (false, false, false, false, false);
         let mut take = |state: &mut WhiteRose, key: &str, value: &Value| {
             displays |= state.set_display_setting(key, value);
             idle |= state.idle_setting(key, value);
-            layout |= state.layout_setting(key, value);
+            // A per-activity key: the current activity's value of it.
+            let own = state.activities_setting(key, value);
+            layout |= state.layout_setting(key, own.as_ref().unwrap_or(value));
             state.rules_setting(key, value);
             state.pointer_setting(key, value);
             shortcuts |= state.scratchpads_setting(key, value);

@@ -785,7 +785,12 @@ impl WhiteRose {
                 s.workspaces.iter().map(|(w, l)| ((w + 1).to_string(), Value::from(l.as_str()))).collect();
             ("windows.layout.workspaces", map)
         };
-        self.daemon_request(serde_json::json!({"op": "set", "key": key, "value": value}));
+        if key == "windows.layout.workspaces" {
+            // The current activity's.
+            self.save_activity_setting(key, Value::Object(value));
+        } else {
+            self.daemon_request(serde_json::json!({"op": "set", "key": key, "value": value}));
+        }
         self.apply_layout_settings();
     }
 

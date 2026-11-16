@@ -40,6 +40,9 @@ pub enum Event {
         occupied: Vec<u8>,
         #[serde(default)]
         layouts: std::collections::BTreeMap<String, String>,
+        /// The current activity's id (activities.rs).
+        #[serde(default)]
+        activity: String,
     },
     Focus {
         app_id: Option<String>,
@@ -113,6 +116,17 @@ pub enum Event {
     /// The snap layout picker; null when it's closed (snapping.rs).
     SnapPicker {
         picker: Option<PickerView>,
+    },
+    /// Activities (activities.rs): whether they're on, the current one,
+    /// the windows on every activity (ids), the picker's chosen card (one
+    /// past the last: a new activity; null when it's closed), and each
+    /// activity in `activities.list` order (empty while they're off).
+    Activities {
+        enabled: bool,
+        current: String,
+        everywhere: Vec<u64>,
+        picker: Option<usize>,
+        activities: Vec<crate::activities::ActivityView>,
     },
     /// The overview (overview.rs): where the windows are spread, for the
     /// shell to put their titles under; null when it's closed.
@@ -255,6 +269,20 @@ pub enum Request {
     FocusWindow {
         id: u64,
     },
+    /// Go to activity `id` (the picker's card; closes the picker).
+    Activity {
+        id: String,
+    },
+    /// Make a new activity and go there (the picker's last card).
+    NewActivity,
+    /// Close the activity picker without switching.
+    CloseActivityPicker,
+    /// Put window `id` on activity `activity`, or on every activity when
+    /// that's null (the window menu).
+    WindowActivity {
+        id: u64,
+        activity: Option<String>,
+    },
     /// Move window `id` to workspace `n` (1-based), wherever it is (the
     /// bar's workspace strip). Nothing switches workspace.
     MoveWindow {
@@ -370,6 +398,10 @@ impl Request {
             Request::Switcher { mode: crate::switcher::Mode::Windows } => Action::WindowSwitcher,
             Request::FocusWindow { id } => Action::FocusWindow(id),
             Request::MoveWindow { id, n } => Action::MoveWindow(id, n),
+            Request::Activity { id } => Action::Activity(id),
+            Request::NewActivity => Action::NewActivity,
+            Request::CloseActivityPicker => Action::CloseActivityPicker,
+            Request::WindowActivity { id, activity } => Action::WindowActivity(id, activity),
             Request::FocusApp { app_id } => Action::FocusApp(app_id),
             Request::DeleteScreenshot { path } => Action::DeleteScreenshot(path),
             Request::NightLight { on, temperature } => {
@@ -464,6 +496,7 @@ pub struct Server {
     last_keyboard: Option<Event>,
     last_snap_picker: Option<Event>,
     last_overview: Option<Event>,
+    last_activities: Option<Event>,
 }
 
 impl Server {
@@ -505,6 +538,7 @@ impl Server {
             last_keyboard: None,
             last_snap_picker: None,
             last_overview: None,
+            last_activities: None,
         })
     }
 
@@ -545,6 +579,7 @@ impl Server {
             Event::Keyboard { .. } => &mut self.last_keyboard,
             Event::SnapPicker { .. } => &mut self.last_snap_picker,
             Event::Overview { .. } => &mut self.last_overview,
+            Event::Activities { .. } => &mut self.last_activities,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } | Event::Layers { .. } => {
                 self.broadcast(&event);
                 return;
@@ -585,6 +620,7 @@ impl WhiteRose {
             Event::Lock { locked: self.is_locked() },
             self.shortcuts_event(),
             self.keyboard_event(),
+            self.activities_event(),
         ];
         let Some(server) = self.ipc.as_mut() else { return };
         let (Ok(()), Ok(reader)) = (stream.set_nonblocking(true), stream.try_clone()) else { return };
@@ -599,7 +635,8 @@ impl WhiteRose {
         }
         server.clients.push(client);
         // Everyone connected now has this state; don't send it again unless it changes.
-        let [ws, focus, windows, island, outputs, lock, shortcuts, keyboard] = snapshot;
+        let [ws, focus, windows, island, outputs, lock, shortcuts, keyboard, activities] = snapshot;
+        server.last_activities = Some(activities);
         server.last_keyboard = Some(keyboard);
         server.last_shortcuts = Some(shortcuts);
         server.last_outputs = Some(outputs);
@@ -798,6 +835,7 @@ impl WhiteRose {
             count: count as u8,
             occupied: (0..count).filter(|&i| !self.workspaces.windows(i).is_empty()).map(|i| i as u8 + 1).collect(),
             layouts: self.space.outputs().map(|o| (o.name(), self.layout_of(active, o).as_str().to_string())).collect(),
+            activity: self.activities.current.clone(),
         }
     }
 
@@ -838,6 +876,7 @@ impl WhiteRose {
         }
         self.island_sync();
         self.foreign_toplevel_refresh();
+        self.activities_sync();
     }
 
     pub fn island_event(&self) -> Event {
@@ -896,10 +935,10 @@ mod tests {
     #[test]
     fn events_serialize_to_one_json_line() {
         let layouts = [("DP-1".to_string(), "dwindle".to_string())].into();
-        let e = Event::Workspaces { active: 2, count: 9, occupied: vec![1, 2], layouts };
+        let e = Event::Workspaces { active: 2, count: 9, occupied: vec![1, 2], layouts, activity: "default".into() };
         assert_eq!(
             e.to_line(),
-            "{\"event\":\"workspaces\",\"active\":2,\"count\":9,\"occupied\":[1,2],\"layouts\":{\"DP-1\":\"dwindle\"}}\n"
+            "{\"event\":\"workspaces\",\"active\":2,\"count\":9,\"occupied\":[1,2],\"layouts\":{\"DP-1\":\"dwindle\"},\"activity\":\"default\"}\n"
         );
         let e = Event::Action { name: "screenshot_region".into() };
         assert_eq!(e.to_line(), "{\"event\":\"action\",\"name\":\"screenshot_region\"}\n");

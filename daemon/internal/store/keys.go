@@ -392,6 +392,21 @@ var Known = map[string]Key{
 	// launcher.
 	"overview.style":    {Default: json.RawMessage(`"gnome"`), Check: into(oneOf("off", "gnome", "niri"))},
 	"overview.superTap": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	// Activities (the compositor's activities.rs): whether they're on; each
+	// one's id and name ("default" first, and always there); the current
+	// one (the compositor's, so a restart comes back to it); and each
+	// one's own value of a per-activity key (perActivity), which it uses
+	// instead of the plain key, the default activity's.
+	"activities.enabled": {Default: json.RawMessage(`false`), Check: into[bool](nil)},
+	"activities.list":    {Default: json.RawMessage(`[{"id":"default","name":"Main"}]`), Check: into(checkActivities)},
+	"activities.current": {Default: json.RawMessage(`"default"`), Check: into(func(s string) error {
+		if s == "" || len(s) > 64 {
+			return errors.New("not an activity id")
+		}
+		return nil
+	})},
+	// (Its check is set in init: it checks each value with that key's.)
+	"activities.overrides": {Default: json.RawMessage(`{}`)},
 	// Switching workspace slides (the compositor's workspace_slide.rs).
 	"animations.workspaceSwitch": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Window layout (the compositor's layout/ module). The global default,
@@ -882,6 +897,61 @@ func checkKey(key string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown setting %q (settings modules use module.<name>.…)", key)
+}
+
+// The keys an activity can have its own value of.
+var perActivity = []string{"dock.pinned", "wallpaper.current", "windows.layout.workspaces", "windows.snap.zones.workspaces"}
+
+// activities.list: "default" first, ids unique, names given.
+func checkActivities(list []struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}) error {
+	if len(list) == 0 || list[0].ID != "default" {
+		return errors.New(`the "default" activity comes first`)
+	}
+	if len(list) > 32 {
+		return errors.New("too many activities")
+	}
+	seen := map[string]bool{}
+	for _, a := range list {
+		if a.ID == "" || len(a.ID) > 64 || seen[a.ID] {
+			return fmt.Errorf("activity id %q is empty, too long or used twice", a.ID)
+		}
+		seen[a.ID] = true
+		if strings.TrimSpace(a.Name) == "" || len([]rune(a.Name)) > 40 {
+			return fmt.Errorf("activity %q needs a name of up to 40 characters", a.ID)
+		}
+	}
+	return nil
+}
+
+// activities.overrides: {activity id: {per-activity key: value}}, each
+// value one that key takes.
+func checkOverrides(m map[string]map[string]json.RawMessage) error {
+	for id, values := range m {
+		for k, v := range values {
+			known := false
+			for _, p := range perActivity {
+				known = known || p == k
+			}
+			if !known {
+				return fmt.Errorf("%s: %q isn't a setting an activity has its own of", id, k)
+			}
+			if c := Known[k].Check; c != nil {
+				if err := c(v); err != nil {
+					return fmt.Errorf("%s: %s: %w", id, k, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func init() {
+	k := Known["activities.overrides"]
+	k.Check = into(checkOverrides)
+	Known["activities.overrides"] = k
 }
 
 // Validate checks a value for key before it's stored.

@@ -55,6 +55,17 @@ impl<W: Clone + PartialEq> Workspaces<W> {
         self.focus(&w);
     }
 
+    /// Puts a window (from another set of workspaces) on workspace `ws`,
+    /// on top, last in the focus history. Out of range: the last one.
+    pub fn put(&mut self, w: W, ws: usize) {
+        if self.workspace_of(&w).is_some() {
+            return;
+        }
+        let ws = ws.min(self.count() - 1);
+        self.stacks[ws].push(w.clone());
+        self.mru.push(w);
+    }
+
     /// Forgets a window. Returns the workspace it was on.
     pub fn remove(&mut self, w: &W) -> Option<usize> {
         self.mru.retain(|x| x != w);

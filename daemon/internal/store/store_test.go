@@ -126,6 +126,10 @@ func TestValidation(t *testing.T) {
 		"gestures.dragWindow":           `1`,
 		"overview.style":                `"kde"`,
 		"overview.superTap":             `"yes"`,
+		"activities.enabled":            `"on"`,
+		"activities.list":               `[{"id":"home","name":"Home"}]`,
+		"activities.current":            `""`,
+		"activities.overrides":          `{"home":{"windows.gaps.inner":4}}`,
 		"nope.unknown":                  `1`,
 		"Bad Key":                       `1`,
 		"module.x":                      `{not json`,
@@ -136,6 +140,8 @@ func TestValidation(t *testing.T) {
 		}
 	}
 	good := map[string]string{
+		"activities.list":               `[{"id":"default","name":"Main"},{"id":"a1","name":"Home"}]`,
+		"activities.overrides":          `{"a1":{"dock.pinned":["foot.desktop"],"windows.layout.workspaces":{"2":"master"}}}`,
 		"weather.city":                  `"London"`,
 		"weather.latitude":              `51.5`,
 		"module.wallpaper.path":         `"/home/me/bg.png"`,
@@ -477,5 +483,22 @@ func TestGestureBindings(t *testing.T) {
 		if err := checkGestures(m); err == nil {
 			t.Errorf("%v was accepted", m)
 		}
+	}
+}
+
+// An activity's own value is checked as the key's own would be, and the
+// default activity can't go.
+func TestActivitiesChecks(t *testing.T) {
+	bad := map[string]string{
+		"activities.list":      `[{"id":"default","name":"Main"},{"id":"default","name":"Again"}]`,
+		"activities.overrides": `{"a1":{"windows.layout.workspaces":{"10":"master"}}}`,
+	}
+	for k, v := range bad {
+		if err := Validate(k, json.RawMessage(v)); err == nil {
+			t.Errorf("%s = %s was accepted", k, v)
+		}
+	}
+	if err := Validate("activities.list", json.RawMessage(`[{"id":"default","name":" "}]`)); err == nil {
+		t.Error("a blank name was accepted")
 	}
 }
