@@ -407,6 +407,14 @@ var Known = map[string]Key{
 	})},
 	// (Its check is set in init: it checks each value with that key's.)
 	"activities.overrides": {Default: json.RawMessage(`{}`)},
+	// Which activity each recently used file was used in ({path: id}),
+	// kept by the daemon (internal/activityfiles).
+	"activities.recentFiles": {Default: json.RawMessage(`{}`), ReadOnly: true, Check: into(func(m map[string]string) error {
+		if len(m) > 5000 {
+			return errors.New("too many files")
+		}
+		return nil
+	})},
 	// Switching workspace slides (the compositor's workspace_slide.rs).
 	"animations.workspaceSwitch": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Window layout (the compositor's layout/ module). The global default,

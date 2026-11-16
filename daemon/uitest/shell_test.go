@@ -646,3 +646,45 @@ func TestWindowMenu(t *testing.T) {
 		t.Fatal("Close didn't close the window")
 	}
 }
+
+// Recent files per activity: a file used in Home (as an app records it in
+// recently-used.xbel) is tagged Home's by the daemon; the launcher lists
+// it there, not in Main.
+func TestRecentFilesPerActivity(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{
+		"activities.enabled": true,
+		"activities.list":    []map[string]string{{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}},
+		"activities.current": "home",
+	}})
+	bar := s.Bar()
+	bar.WaitFor(uitest.Named("Activity: Home"))
+	doc := filepath.Join(s.Home, "budget.ods")
+	os.WriteFile(doc, nil, 0o644)
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	xbel := `<?xml version="1.0" encoding="UTF-8"?>
+<xbel version="1.0"><bookmark href="file://` + doc + `" added="` + now + `" modified="` + now + `" visited="` + now + `"/></xbel>`
+	tmp := filepath.Join(s.Home, ".local/share/recently-used.xbel.tmp")
+	os.MkdirAll(filepath.Dir(tmp), 0o700)
+	os.WriteFile(tmp, []byte(xbel), 0o600)
+	os.Rename(tmp, filepath.Join(s.Home, ".local/share/recently-used.xbel"))
+	s.WaitSetting("activities.recentFiles", map[string]any{doc: "home"})
+
+	search := uitest.Named("Search").Role("text")
+	found := uitest.Named("budget.ods").Role("list item")
+	bar.Press("super")
+	bar.WaitFor(search)
+	bar.Type("budget")
+	bar.WaitFor(found)
+	bar.Press("Escape")
+	bar.Gone(search)
+
+	bar.Press("super+shift+a")
+	bar.WaitFor(uitest.Named("Activity: Main"))
+	bar.Press("super")
+	bar.WaitFor(search)
+	bar.Type("budget")
+	time.Sleep(500 * time.Millisecond)
+	if _, ok := bar.Find(found); ok {
+		t.Fatal("Home's file is listed in Main")
+	}
+}

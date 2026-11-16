@@ -31,6 +31,15 @@ Singleton {
     // ... for the current activity.
     function setting(key, fallback) { return settingFor(root.current, key, fallback) }
 
+    // Of the recently used `files` (Search.parseRecent), the current
+    // activity's: the daemon tags each with the activity it was used in
+    // ("activities.recentFiles"); one with no tag is the default's.
+    function recentFiles(files) {
+        if (!root.enabled) return files;
+        const tags = Daemon.setting("activities.recentFiles", ({})) ?? {};
+        return files.filter(f => (tags[f.path] ?? "default") === root.current);
+    }
+
     // Saves `key`: a per-activity one as the current activity's own, any
     // other as it is.
     function save(key, value) {

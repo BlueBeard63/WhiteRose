@@ -62,7 +62,7 @@ Item {
         usage: LauncherConfig.launches,
         pinned: DockConfig.pinned,
         // Settings > Privacy can keep recent files out of search.
-        files: Daemon.setting("privacy.recentFiles", true) ? recentFiles : [],
+        files: Daemon.setting("privacy.recentFiles", true) ? Activities.recentFiles(recentFiles) : [],
         commands: LauncherConfig.commands,
         history: LauncherConfig.history,
         calcHistory: LauncherConfig.calcHistory,

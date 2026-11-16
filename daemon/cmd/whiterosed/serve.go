@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 	"whiterose/daemon/internal/accounts"
+	"whiterose/daemon/internal/activityfiles"
 	"whiterose/daemon/internal/audio"
 
 	"github.com/godbus/dbus/v5"
@@ -476,6 +477,9 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	if index != nil {
 		go index.Keep(2*time.Minute, 10*time.Minute)
 	}
+	// Recent files per activity: which one was current when each was used.
+	go keepActivityFiles(st, stderr)
+
 	changes, stopChanges := st.Subscribe()
 	defer stopChanges()
 	go func() {
@@ -723,5 +727,49 @@ func keyringUnlock(secrets *store.Resolver, unlock func(password string) error, 
 		}
 		secrets.Retry()
 		return nil, nil
+	}
+}
+
+// keepActivityFiles tags each recently used file with the activity
+// current when it was used ("activities.recentFiles"), whenever
+// recently-used.xbel changes (internal/activityfiles).
+func keepActivityFiles(st *store.Store, stderr io.Writer) {
+	file := activityfiles.File()
+	var mu sync.Mutex
+	var tagger activityfiles.Tagger
+	tag := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		// (None yet: nothing used so far, and the first one written is new.)
+		var books []activityfiles.Bookmark
+		data, err := os.ReadFile(file)
+		if err == nil {
+			if books, err = activityfiles.Parse(data); err != nil {
+				return
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		var on bool
+		current := ""
+		if st.GetInto("activities.enabled", &on) == nil && on {
+			_ = st.GetInto("activities.current", &current)
+		}
+		var tags map[string]string
+		_ = st.GetInto("activities.recentFiles", &tags)
+		out, changed := tagger.Update(books, current, tags)
+		if !changed {
+			return
+		}
+		if raw, err := json.Marshal(out); err == nil {
+			if err := st.Set("activities.recentFiles", raw); err != nil {
+				fmt.Fprintln(stderr, "whiterosed: recent files per activity:", err)
+			}
+		}
+	}
+	tag()
+	_ = os.MkdirAll(filepath.Dir(file), 0o700)
+	if err := activityfiles.Watch(file, tag, make(chan struct{})); err != nil {
+		fmt.Fprintln(stderr, "whiterosed: not watching recent files:", err)
 	}
 }

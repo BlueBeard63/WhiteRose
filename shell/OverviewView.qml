@@ -45,7 +45,7 @@ Scope {
         apps: apps,
         usage: LauncherConfig.launches,
         pinned: DockConfig.pinned,
-        files: Daemon.setting("privacy.recentFiles", true) ? recentFiles : [],
+        files: Daemon.setting("privacy.recentFiles", true) ? Activities.recentFiles(recentFiles) : [],
         commands: LauncherConfig.commands,
         history: LauncherConfig.history,
         calcHistory: LauncherConfig.calcHistory,
