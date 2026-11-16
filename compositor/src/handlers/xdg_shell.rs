@@ -74,6 +74,20 @@ impl XdgShellHandler for WhiteRose {
         surface.send_repositioned(token);
     }
 
+    /// The app's own title bar, right-clicked: the window menu
+    /// (window_menu.rs) at `location` (from the surface's top left).
+    fn show_window_menu(
+        &mut self,
+        surface: ToplevelSurface,
+        _seat: wl_seat::WlSeat,
+        _serial: Serial,
+        location: smithay::utils::Point<i32, smithay::utils::Logical>,
+    ) {
+        let Some(w) = self.window_for_surface(surface.wl_surface()) else { return };
+        let Some(at) = self.space.element_location(&w) else { return };
+        self.open_window_menu(&w, at + location);
+    }
+
     fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
         let seat = Seat::from_resource(&seat).unwrap();
 

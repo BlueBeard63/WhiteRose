@@ -54,6 +54,7 @@ ShellRoot {
     // The overview's search and window titles (SUPER+W; the compositor
     // draws the windows).
     OverviewView {}
+    WindowMenu {}
 
     // Snap zones edited on screen (Settings › Snapping, "Edit on screen").
     ZonesOverlay {}

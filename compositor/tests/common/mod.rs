@@ -355,6 +355,7 @@ pub struct Client {
     pub layer_shell: ZwlrLayerShellV1,
     pub xdg: xdg_wm_base::XdgWmBase,
     pub shm: wl_shm::WlShm,
+    pub seat: wayland_client::protocol::wl_seat::WlSeat,
 }
 
 impl Client {
@@ -366,6 +367,7 @@ impl Client {
             layer_shell: globals.bind(&qh, 1..=4, ()).expect("zwlr_layer_shell_v1"),
             xdg: globals.bind(&qh, 1..=6, ()).expect("xdg_wm_base"),
             shm: globals.bind(&qh, 1..=1, ()).expect("wl_shm"),
+            seat: globals.bind(&qh, 1..=7, ()).expect("wl_seat"),
             queue,
             app: App::default(),
         }

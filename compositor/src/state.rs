@@ -171,6 +171,8 @@ pub struct WhiteRose {
     pub overview: crate::overview::Overview,
     pub overview_style: String,
     pub overview_super_tap: bool,
+    /// The window menu: whose, and where (global).
+    pub window_menu: Option<(Window, Point<i32, Logical>)>,
     /// Activities (activities.rs): the others' workspaces put aside.
     pub activities: crate::activities::Activities,
     pub workspace_slide_length: std::time::Duration,
@@ -342,6 +344,7 @@ impl WhiteRose {
             overview: Default::default(),
             overview_style: "gnome".into(),
             overview_super_tap: false,
+            window_menu: None,
             activities: Default::default(),
             workspace_slide_length: crate::workspace_slide::SLIDE,
             shortcuts_paused: None,
@@ -767,6 +770,9 @@ impl WhiteRose {
         self.forget_snap(w);
         self.workspaces.remove(w);
         self.forget_in_activities(w);
+        if self.window_menu.as_ref().is_some_and(|(m, _)| m == w) {
+            self.close_window_menu();
+        }
         self.hidden_at.retain(|(h, _)| h != w);
         self.minimized.retain(|m| m != w);
         self.space.unmap_elem(w);
@@ -999,6 +1005,21 @@ impl WhiteRose {
             Action::SnapPicker(under_pointer) => self.snap_picker(under_pointer),
             Action::Overview(None) => self.toggle_overview(),
             Action::ActivityPicker => self.activity_picker(),
+            Action::WindowMenu => {
+                if let Some(w) = self.focused_window() {
+                    let at = self.space.element_geometry(&w).map(|g| g.loc + Point::from((24, 8)));
+                    if let Some(at) = at {
+                        self.open_window_menu(&w, at);
+                    }
+                }
+            }
+            Action::CloseWindowById(id) => {
+                self.close_window_menu();
+                if let Some(w) = self.workspaces.mru().iter().find(|w| self.window_id(w) == id) {
+                    w.close();
+                }
+            }
+            Action::CloseWindowMenu => self.close_window_menu(),
             Action::Overview(Some(true)) => self.open_overview(),
             Action::Overview(Some(false)) => self.close_overview(),
             Action::NextTab => self.next_tab(true),

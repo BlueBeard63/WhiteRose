@@ -117,6 +117,11 @@ pub enum Event {
     SnapPicker {
         picker: Option<PickerView>,
     },
+    /// The window menu (window_menu.rs): whose and where (global logical
+    /// pixels); null when it's closed.
+    WindowMenu {
+        menu: Option<WindowMenuView>,
+    },
     /// Activities (activities.rs): whether they're on, the current one,
     /// the windows on every activity (ids), the picker's chosen card (one
     /// past the last: a new activity; null when it's closed), and each
@@ -133,6 +138,14 @@ pub enum Event {
     Overview {
         overview: Option<OverviewView>,
     },
+}
+
+/// The window menu, open: the window's id and where the menu goes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowMenuView {
+    pub id: u64,
+    pub x: i32,
+    pub y: i32,
 }
 
 /// The overview, open (or opening).
@@ -269,6 +282,12 @@ pub enum Request {
     FocusWindow {
         id: u64,
     },
+    /// Close window `id` (the window menu; closes the menu).
+    CloseWindowById {
+        id: u64,
+    },
+    /// Close the window menu (Esc, a click elsewhere, or after its action).
+    CloseWindowMenu,
     /// Go to activity `id` (the picker's card; closes the picker).
     Activity {
         id: String,
@@ -398,6 +417,8 @@ impl Request {
             Request::Switcher { mode: crate::switcher::Mode::Windows } => Action::WindowSwitcher,
             Request::FocusWindow { id } => Action::FocusWindow(id),
             Request::MoveWindow { id, n } => Action::MoveWindow(id, n),
+            Request::CloseWindowById { id } => Action::CloseWindowById(id),
+            Request::CloseWindowMenu => Action::CloseWindowMenu,
             Request::Activity { id } => Action::Activity(id),
             Request::NewActivity => Action::NewActivity,
             Request::CloseActivityPicker => Action::CloseActivityPicker,
@@ -497,6 +518,7 @@ pub struct Server {
     last_snap_picker: Option<Event>,
     last_overview: Option<Event>,
     last_activities: Option<Event>,
+    last_window_menu: Option<Event>,
 }
 
 impl Server {
@@ -539,6 +561,7 @@ impl Server {
             last_snap_picker: None,
             last_overview: None,
             last_activities: None,
+            last_window_menu: None,
         })
     }
 
@@ -580,6 +603,7 @@ impl Server {
             Event::SnapPicker { .. } => &mut self.last_snap_picker,
             Event::Overview { .. } => &mut self.last_overview,
             Event::Activities { .. } => &mut self.last_activities,
+            Event::WindowMenu { .. } => &mut self.last_window_menu,
             Event::Action { .. } | Event::Screenshot { .. } | Event::ScreenshotFailed { .. } | Event::Layers { .. } => {
                 self.broadcast(&event);
                 return;

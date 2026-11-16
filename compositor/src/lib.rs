@@ -49,6 +49,7 @@ pub mod tab_strip;
 pub mod tiling;
 pub mod toplevel_export;
 pub mod win;
+pub mod window_menu;
 pub mod window_rules;
 pub mod window_state;
 pub mod winit;

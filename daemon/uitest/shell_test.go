@@ -597,3 +597,52 @@ func TestActivitiesSwitchWithTheKey(t *testing.T) {
 	bar.Press("super+shift+a")
 	bar.WaitFor(uitest.Named("Activity: Main"))
 }
+
+// The window menu (ALT+SPACE here; an app's title bar right-clicked
+// asks for the same): move the window to a workspace, put it on every
+// activity, close it.
+func TestWindowMenu(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{
+		"activities.enabled": true,
+		"activities.list":    []map[string]string{{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}},
+	}})
+	os.MkdirAll(filepath.Join(s.Home, "alpha"), 0o755)
+	alpha := s.Open(filesBinary(s)+" "+filepath.Join(s.Home, "alpha"), "alpha - Files")
+
+	alpha.Press("alt+space")
+	menu := s.Layer("whiterose-window-menu")
+	menu.Click(uitest.Named("Workspace 3").Role("push button"))
+	if !uitest.WaitUntil(func() bool { return s.WindowWorkspace("alpha - Files") == 3 }) {
+		t.Fatalf("the window is on workspace %d, not 3", s.WindowWorkspace("alpha - Files"))
+	}
+	if !uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-window-menu") }) {
+		t.Fatal("the menu stayed open")
+	}
+
+	// Back here, then on every activity: it comes along when the activity
+	// changes (to the same workspace there).
+	s.Bar().Press("super+3")
+	if !uitest.WaitUntil(func() bool { return s.HasWindow("alpha - Files") }) {
+		t.Fatal("the window isn't on workspace 3")
+	}
+	s.Press("alt+space")
+	menu = s.Layer("whiterose-window-menu")
+	menu.Click(uitest.Named("Every activity").Role("menu item"))
+	uitest.WaitUntil(func() bool { return !s.HasLayer("whiterose-window-menu") })
+	s.Bar().Press("super+shift+a")
+	s.WaitSetting("activities.current", "home")
+	if !uitest.WaitUntil(func() bool { return s.WindowWorkspace("alpha - Files") == 3 }) {
+		t.Fatal("a window on every activity didn't come along to Home's workspace 3")
+	}
+	s.Bar().Press("super+3")
+	if !uitest.WaitUntil(func() bool { return s.HasWindow("alpha - Files") }) {
+		t.Fatal("it isn't on Home's workspace 3")
+	}
+
+	// Close.
+	s.Press("alt+space")
+	s.Layer("whiterose-window-menu").Click(uitest.Named("Close").Role("menu item"))
+	if !uitest.WaitUntil(func() bool { return s.WindowWorkspace("alpha - Files") == 0 }) {
+		t.Fatal("Close didn't close the window")
+	}
+}

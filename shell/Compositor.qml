@@ -41,6 +41,8 @@ Singleton {
     // activities: [{ id, windows, places: [[x, y, w, h] as shares of the
     // screen]}] }.
     property string activity: "default"
+    // The window menu (WindowMenu.qml): { id, x, y } (global), null when closed.
+    property var windowMenu: null
     property var activities: null
     // Clipboard history, newest first:
     // { id, time, kind: "text"|"image"|"files", preview, image, files: [{ path, exists }], available }.
@@ -91,6 +93,9 @@ Singleton {
     function moveToWorkspace(n) { send({ cmd: "move_to_workspace", n: n }) }
     // Activities: go to one (closes the picker), make a new one and go
     // there, close the picker, put a window on one (null: every activity).
+    // The window menu: close it, or close its window.
+    function closeWindowMenu() { send({ cmd: "close_window_menu" }) }
+    function closeWindowById(id) { send({ cmd: "close_window_by_id", id: id }) }
     function goToActivity(id) { send({ cmd: "activity", id: id }) }
     function newActivity() { send({ cmd: "new_activity" }) }
     function closeActivityPicker() { send({ cmd: "close_activity_picker" }) }
@@ -166,6 +171,9 @@ Singleton {
             break;
         case "activities":
             root.activities = msg;
+            break;
+        case "window_menu":
+            root.windowMenu = msg.menu;
             break;
         case "focus":
             root.focusedAppId = msg.app_id ?? "";

@@ -144,6 +144,11 @@ pub enum Action {
     Overview(Option<bool>),
     /// SUPER+SHIFT+A: the activity picker, or the next card in it.
     ActivityPicker,
+    /// ALT+SPACE: the focused window's menu (window_menu.rs).
+    WindowMenu,
+    /// Close a window by IPC id (the window menu).
+    CloseWindowById(u64),
+    CloseWindowMenu,
     /// Show the next (or previous) tab of the focused group.
     NextTab,
     PreviousTab,
@@ -377,6 +382,7 @@ impl Def {
             "switch-layout" => Action::NextLayout,
             "log-out" => Action::Quit,
             "close-window" => Action::CloseWindow,
+            "window-menu" => Action::WindowMenu,
             "fullscreen" => Action::ToggleFullscreen,
             "workspace" => Action::Workspace(n),
             "move-to-workspace" => Action::MoveToWorkspace(n),
@@ -438,6 +444,7 @@ pub const CATALOG: &[Def] = &[
     def("shortcuts", "Keyboard shortcuts", "Shell", &["SUPER+K"]),
     def("fullscreen", "Toggle fullscreen", "Windows", &["SUPER+F"]),
     def("close-window", "Close window", "Windows", &["SUPER+Q"]),
+    def("window-menu", "Window menu", "Windows", &["ALT+SPACE"]),
     def("window-layout", "Next window layout", "Windows", &["SUPER+T"]),
     def("toggle-floating", "Float or tile window", "Windows", &["SUPER+SHIFT+SPACE"]),
     Def { range: Range::Arrows, ..def("focus-direction", "Focus window ←→↑↓", "Windows", &["SUPER+ARROWS"]) },
