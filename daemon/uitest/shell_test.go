@@ -485,3 +485,24 @@ func TestOverviewSearchGoesToAWindow(t *testing.T) {
 		t.Fatal("Esc didn't close it")
 	}
 }
+
+// With "Open with SUPER" on, SUPER on its own opens the overview instead
+// of the launcher.
+func TestSuperOnItsOwnCanOpenTheOverview(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"overview.superTap": true}})
+	bar := s.Bar()
+	// The setting reaches the compositor a moment after the session
+	// starts: until then SUPER opens the launcher (closed again with Esc).
+	opened := false
+	for i := 0; i < 10 && !opened; i++ {
+		bar.Press("super")
+		opened = uitest.WaitUntil(func() bool { return s.HasLayer("whiterose-overview") })
+		if !opened {
+			bar.Press("Escape")
+		}
+	}
+	if !opened {
+		t.Fatal("SUPER on its own didn't open the overview")
+	}
+	s.Layer("whiterose-overview").WaitFor(uitest.Named("Search").Role("text"))
+}

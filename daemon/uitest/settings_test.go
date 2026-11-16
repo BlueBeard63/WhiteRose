@@ -522,6 +522,21 @@ func TestSettingsGestures(t *testing.T) {
 	s.WaitSetting("gestures.dragWindow", true)
 }
 
+// Windows › Overview: SUPER on its own can open it, and the style can
+// turn it off.
+func TestSettingsOverview(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("windows")
+	settings.ScrollTo(uitest.Named("Open with SUPER").Role("check box"))
+	settings.Click(uitest.Named("Open with SUPER").Role("check box"))
+	s.WaitSetting("overview.superTap", true)
+	settings.ScrollTo(uitest.Named("Off").Role("radio button"))
+	settings.Click(uitest.Named("Off").Role("radio button"))
+	s.WaitSetting("overview.style", "off")
+	settings.Click(uitest.Named("GNOME").Role("radio button"))
+	s.WaitSetting("overview.style", "gnome")
+}
+
 // Windows › Workspaces: the slide when switching is on to start with,
 // and the switch turns it off.
 func TestSettingsWorkspaceSlideSwitch(t *testing.T) {
