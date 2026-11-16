@@ -14,9 +14,22 @@
 
 name: WhiteRose
 repo: BlueBeard63/WhiteRose
-version: 0.4.0-alpha.1
+version: 0.4.0-alpha.2
 
 releases:
+  - version: 0.4.0-alpha.2
+    date: 2026-11-16
+    title: Overview fix (alpha)
+    summary: >-
+      The second 0.4 alpha: windows in the overview are drawn at their spread size again. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
+    fixed:
+      - "The overview drew big windows full size, past their outline, with a second copy coming out of their workspace at the top; they now shrink to fit, in both the GNOME-style and niri-style overviews"
+    notes: |
+      With 0.3.0 or 0.4.0-alpha.1 and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Your settings carry over.
+
+      Not in this alpha yet: the task manager, disk imager, clocks and calculator.
+    contributors: [BlueBeard63]
+
   - version: 0.4.0-alpha.1
     date: 2026-11-16
     title: Overview, gestures and activities (alpha)
