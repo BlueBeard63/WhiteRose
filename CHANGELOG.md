@@ -2,6 +2,36 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.4.0-alpha.1 · Overview, gestures and activities (alpha) (2026-11-16)
+
+A first look at 0.4: an overview of your windows (GNOME-style or niri-style), touchpad gestures that follow your fingers, a workspace strip in the bar, and activities. Expect rough edges. The four new apps come in later alphas. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
+
+### Added
+
+- The overview (SUPER+W, three fingers up, or a pinch in): the workspace's windows spread out live, with every workspace along the top. Click a window to go to it, drag one onto a workspace to move it there, or type to search windows, apps, files and settings
+- A niri-style overview instead (Settings › Windows › Overview): the workspaces zoomed out side by side, live. Scroll, use the arrow keys or swipe to move along them
+- SUPER on its own can open the overview instead of the launcher (Settings › Windows › Overview › Open with SUPER)
+- Touchpad gestures: three fingers left or right switch workspace following your fingers, up opens the overview and down closes it. Any gesture can run any shortcut, and three fingers can move a window instead (Settings › Mouse & touchpad › Gestures)
+- Switching workspace slides the old one out and the new one in (Settings › Windows › Workspaces turns it off)
+- A workspace strip in the bar (Settings › Top bar › Workspaces › Strip): each workspace with its apps' icons. Drag an icon onto another workspace to move that window there; with Workspace previews on, resting the pointer on a workspace shows it live
+- Activities (Settings › Activities, off until you turn them on): separate sets of workspaces, dock pins, wallpaper and recent files. SUPER+SHIFT+A switches, and a window can be on one activity or on all of them
+- A window menu when an app's title bar is right-clicked, or with ALT+SPACE: move the window to a workspace or an activity, or close it
+- Window rules can open a window on another activity, or on every one
+- Bound gestures show on the SUPER+K sheet, under the keyboard shortcuts
+
+### Changed
+
+- Three-finger swipes and pinches now switch workspace and open the overview; two- and four-finger gestures still reach apps, and Settings › Mouse & touchpad › Gestures can give three fingers back to them
+- ALT+SPACE opens the window menu instead of reaching the app (change it in Settings › Keyboard & shortcuts)
+
+Everything new can be turned off, and most of it starts off: the overview has its own key (SUPER+W), activities and the workspace strip wait until you turn them on, and only three-finger gestures are taken. Your settings carry over.
+
+With 0.3.0 and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Moving to 0.4.0 when it's out is a normal update.
+
+Not in this alpha yet: the task manager, disk imager, clocks and calculator.
+
+Contributors: @BlueBeard63
+
 ## 0.3.0 · Layouts (2026-11-15)
 
 Windows that arrange themselves: tiled, snapped to edges and your own zones, placed by per-app rules, or dropped down as scratchpads. 0.3 also brings what a daily desktop can't do without: X11 apps, a session that survives running out of memory, problem reports from the island, and every release in Settings › Updates.
