@@ -75,6 +75,8 @@ type windowInfo struct {
 	Title    *string `json:"title"`
 	Focused  bool    `json:"focused"`
 	Geometry *[4]int `json:"geometry"`
+	// 1-based.
+	Workspace int `json:"workspace"`
 }
 
 // RepoRoot finds the repository (the folder holding project.yaml) above the
@@ -351,6 +353,19 @@ func (s *Session) window(title string) (windowInfo, bool) {
 		}
 	}
 	return windowInfo{}, false
+}
+
+// WindowWorkspace is the workspace (1-based) the window titled `title` is
+// on, shown or not (0: no such window).
+func (s *Session) WindowWorkspace(title string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.windows {
+		if w.Title != nil && *w.Title == title {
+			return w.Workspace
+		}
+	}
+	return 0
 }
 
 // Toplevel is what the compositor says of the window titled `title`: its

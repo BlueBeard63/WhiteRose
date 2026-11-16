@@ -717,6 +717,18 @@ impl WhiteRose {
         }
     }
 
+    /// Where `w` is on its workspace (global): where it's mapped, or where
+    /// it was when its workspace was hidden. None while minimised (or a
+    /// group's hidden tab).
+    pub fn place_of(&self, w: &Window) -> Option<smithay::utils::Rectangle<i32, Logical>> {
+        if let Some(g) = self.space.element_geometry(w) {
+            return Some(g);
+        }
+        let at = self.hidden_at.iter().find(|(h, _)| h == w).map(|(_, l)| *l)?;
+        let g = w.geometry();
+        Some(smithay::utils::Rectangle::new(at + g.loc, g.size))
+    }
+
     pub(crate) fn hide(&mut self, w: &Window) {
         if let Some(loc) = self.space.element_location(w) {
             self.hidden_at.push((w.clone(), loc));
@@ -892,6 +904,13 @@ impl WhiteRose {
             Action::Capture(shot) => self.request_shot(shot),
             Action::AppSwitcher => self.open_switcher(crate::switcher::Mode::Apps),
             Action::WindowSwitcher => self.open_switcher(crate::switcher::Mode::Windows),
+            Action::MoveWindow(id, n) => {
+                let target = self.workspaces.mru().iter().find(|w| self.window_id(w) == id).cloned();
+                match target {
+                    Some(w) => self.move_window_to(&w, usize::from(n).saturating_sub(1)),
+                    None => tracing::debug!(id, "move request for unknown window"),
+                }
+            }
             Action::FocusWindow(id) => {
                 // Clicking a card in the switcher ends it.
                 if self.switcher.take().is_some() {

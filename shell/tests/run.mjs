@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js, Gestures.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js, Gestures.js, Strip.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
@@ -42,6 +42,7 @@ const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactAp
 const P = load("settings/modules/scratchpads/Pads.js", ["ownInstance", "complete", "newId", "make", "name", "place", "size", "summary", "set"], { R });
 const Sc = load("Shortcuts.js", ["groups", "columns"], { K });
 const G = load("Gestures.js", ["DEFAULT", "KINDS", "bindings", "actionOf", "set", "usable", "options", "sheet"]);
+const St = load("Strip.js", ["MAX_ICONS", "shown", "cell", "cellAt", "preview", "caption"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -1451,6 +1452,50 @@ test("gestures: the sheet shows what's bound, on four fingers when drag is on", 
         { label: "App launcher", keys: ["4 FINGERS", "SWIPE ↑"] },
         { label: "App launcher", keys: ["2 FINGERS", "PINCH IN"] },
     ]);
+});
+
+test("strip: at least five workspaces, more when a later one is in use", () => {
+    assert.equal(St.shown(1, []), 5);
+    assert.equal(St.shown(7, [1]), 7);
+    assert.equal(St.shown(2, [2, 8]), 8);
+});
+
+test("strip: a cell's icons, oldest first, then how many more", () => {
+    const ws = [5, 3, 9, 1, 7, 4].map(id => ({ id, workspace: 2 })).concat([{ id: 2, workspace: 1 }]);
+    const c = St.cell(ws, 2);
+    assert.deepEqual(c.windows.map(w => w.id), [1, 3, 4, 5]);
+    assert.equal(c.more, 2);
+    assert.deepEqual(St.cell(ws, 3), { windows: [], more: 0 });
+});
+
+test("strip: which cell the pointer is over", () => {
+    const rects = [{ x: 0, width: 20 }, { x: 23, width: 40 }];
+    assert.equal(St.cellAt(rects, 5), 0);
+    assert.equal(St.cellAt(rects, 30), 1);
+    assert.equal(St.cellAt(rects, 21), -1, "the gap between");
+    assert.equal(St.cellAt(rects, 90), -1);
+});
+
+test("strip: a workspace's preview is its windows on that screen, scaled, bottom first", () => {
+    const screen = { x: 1920, y: 0, width: 2560, height: 1440 };
+    const ws = [
+        { id: 1, workspace: 3, place: [1920 + 1280, 0, 1280, 1440] },
+        { id: 2, workspace: 3, place: [1920, 0, 1280, 720] },
+        { id: 3, workspace: 3, place: [0, 0, 800, 600] },      // the other screen
+        { id: 4, workspace: 2, place: [1920, 0, 100, 100] },   // another workspace
+        { id: 5, workspace: 3, place: null },                  // minimised
+    ];
+    assert.deepEqual(St.preview(ws, 3, screen, 256), [
+        { id: 2, x: 0, y: 0, width: 128, height: 72 },
+        { id: 1, x: 128, y: 0, width: 128, height: 144 },
+    ]);
+    assert.deepEqual(St.preview(ws, 3, null, 256), []);
+});
+
+test("strip: the preview's caption", () => {
+    const ws = [{ id: 1, workspace: 1, title: "notes.md" }, { id: 2, workspace: 1, title: "", app_id: "foot" }];
+    assert.equal(St.caption(ws, 1), "notes.md, foot");
+    assert.equal(St.caption(ws, 4), "No windows");
 });
 
 console.log(`${passed} passed, ${failed} failed`);

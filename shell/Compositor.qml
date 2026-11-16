@@ -82,6 +82,8 @@ Singleton {
 
     function workspace(n) { send({ cmd: "workspace", n: n }) }
     function moveToWorkspace(n) { send({ cmd: "move_to_workspace", n: n }) }
+    // Window `id` to workspace `n`, wherever it is (the workspace strip).
+    function moveWindow(id, n) { send({ cmd: "move_window", id: id, n: n }) }
     function spawn(command) { send({ cmd: "spawn", command: command }) }
     // Start an app in its own systemd scope (compositor/src/app_scope.rs:
     // running out of memory then closes that app, not the session). `appId`

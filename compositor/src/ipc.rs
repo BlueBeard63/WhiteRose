@@ -198,6 +198,10 @@ pub struct WindowInfo {
     /// [x, y, w, h] in global logical pixels while it's on screen.
     #[serde(default)]
     pub geometry: Option<[i32; 4]>,
+    /// Where it is on its workspace, shown or not (none while minimised):
+    /// the bar's workspace previews lay a hidden workspace out from it.
+    #[serde(default)]
+    pub place: Option<[i32; 4]>,
 }
 
 /// A layer-shell surface on screen.
@@ -243,6 +247,12 @@ pub enum Request {
     },
     FocusWindow {
         id: u64,
+    },
+    /// Move window `id` to workspace `n` (1-based), wherever it is (the
+    /// bar's workspace strip). Nothing switches workspace.
+    MoveWindow {
+        id: u64,
+        n: u8,
     },
     FocusApp {
         app_id: String,
@@ -352,6 +362,7 @@ impl Request {
             Request::Switcher { mode: crate::switcher::Mode::Apps } => Action::AppSwitcher,
             Request::Switcher { mode: crate::switcher::Mode::Windows } => Action::WindowSwitcher,
             Request::FocusWindow { id } => Action::FocusWindow(id),
+            Request::MoveWindow { id, n } => Action::MoveWindow(id, n),
             Request::FocusApp { app_id } => Action::FocusApp(app_id),
             Request::DeleteScreenshot { path } => Action::DeleteScreenshot(path),
             Request::NightLight { on, temperature } => {
@@ -798,6 +809,7 @@ impl WhiteRose {
                     workspace: self.workspaces.workspace_of(w).map(|i| i as u8 + 1).unwrap_or(0),
                     focused: Some(w) == focused.as_ref(),
                     geometry: self.space.element_geometry(w).map(|g| [g.loc.x, g.loc.y, g.size.w, g.size.h]),
+                    place: self.place_of(w).map(|g| [g.loc.x, g.loc.y, g.size.w, g.size.h]),
                 }
             })
             .collect();

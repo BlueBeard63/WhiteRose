@@ -17,7 +17,7 @@ PanelWindow {
     anchors { top: true; left: true; right: true }
     // Bar + whatever the island's current view needs (held while morphing
     // so the window never resizes mid-animation).
-    implicitHeight: Theme.barHeight + Math.max(island.reserve, quick.reserve, notifications.reserve, calendar.reserve, popups.reserve) + 4
+    implicitHeight: Theme.barHeight + Math.max(island.reserve, quick.reserve, notifications.reserve, calendar.reserve, popups.reserve, workspaces.reserve) + 4
     exclusiveZone: Theme.barHeight
     color: "transparent"
 
@@ -55,7 +55,7 @@ PanelWindow {
             id: left
             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 6
-            Workspaces { id: workspaces; anchors.verticalCenter: parent.verticalCenter; visible: Daemon.setting("bar.workspaces", true) }
+            Workspaces { id: workspaces; screen: root.modelData; anchors.verticalCenter: parent.verticalCenter; visible: Daemon.setting("bar.workspaces", true) }
             // This screen's window layout; a click moves to the next (SUPER+T).
             Trigger {
                 id: layoutButton

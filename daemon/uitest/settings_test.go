@@ -685,3 +685,14 @@ func needsAccounts(t *testing.T) {
 		t.Skipf("AccountsService isn't running: %v", err)
 	}
 }
+
+// Top bar › Workspaces: the strip, and its previews (only with the strip).
+func TestSettingsWorkspaceStrip(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	settings := s.Settings("topbar")
+	settings.Click(uitest.Named("Strip").Role("radio button"))
+	s.WaitSetting("bar.workspaceStyle", "strip")
+	settings.ScrollTo(uitest.Named("Workspace previews").Role("check box"))
+	settings.Click(uitest.Named("Workspace previews").Role("check box"))
+	s.WaitSetting("bar.workspacePreviews", true)
+}
