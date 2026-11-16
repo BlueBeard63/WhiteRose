@@ -11,11 +11,7 @@ use smithay::{
     desktop::Window,
     input::{
         keyboard::FilterResult,
-        pointer::{
-            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
-            GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
-            GestureSwipeUpdateEvent, GrabStartData, MotionEvent,
-        },
+        pointer::{AxisFrame, ButtonEvent, GestureHoldEndEvent, GrabStartData, MotionEvent},
     },
     utils::{Logical, Point, Serial, SERIAL_COUNTER},
 };
@@ -69,66 +65,17 @@ impl WhiteRose {
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
-            // Touchpad gestures go to the app under the pointer, as they
-            // come (a browser's pinch to zoom, two-finger swipe back).
-            InputEvent::GestureSwipeBegin { event, .. } => {
-                self.activity();
-                let e = GestureSwipeBeginEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
-                    fingers: event.fingers(),
-                };
-                self.with_pointer(|p, s| p.gesture_swipe_begin(s, &e));
-            }
-            InputEvent::GestureSwipeUpdate { event, .. } => {
-                self.activity();
-                let e = GestureSwipeUpdateEvent { time: event.time_msec(), delta: event.delta() };
-                self.with_pointer(|p, s| p.gesture_swipe_update(s, &e));
-            }
-            InputEvent::GestureSwipeEnd { event, .. } => {
-                let e = GestureSwipeEndEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
-                    cancelled: event.cancelled(),
-                };
-                self.with_pointer(|p, s| p.gesture_swipe_end(s, &e));
-            }
-            InputEvent::GesturePinchBegin { event, .. } => {
-                self.activity();
-                let e = GesturePinchBeginEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
-                    fingers: event.fingers(),
-                };
-                self.with_pointer(|p, s| p.gesture_pinch_begin(s, &e));
-            }
+            // Touchpad gestures: the desktop's if bound, else the app's
+            // under the pointer (gestures.rs).
+            InputEvent::GestureSwipeBegin { event, .. } => self.swipe_begin(event.fingers(), event.time_msec()),
+            InputEvent::GestureSwipeUpdate { event, .. } => self.swipe_update(event.time_msec(), event.delta()),
+            InputEvent::GestureSwipeEnd { event, .. } => self.swipe_end(event.time_msec(), event.cancelled()),
+            InputEvent::GesturePinchBegin { event, .. } => self.pinch_begin(event.fingers(), event.time_msec()),
             InputEvent::GesturePinchUpdate { event, .. } => {
-                self.activity();
-                let e = GesturePinchUpdateEvent {
-                    time: event.time_msec(),
-                    delta: event.delta(),
-                    scale: event.scale(),
-                    rotation: event.rotation(),
-                };
-                self.with_pointer(|p, s| p.gesture_pinch_update(s, &e));
+                self.pinch_update(event.time_msec(), event.delta(), event.scale(), event.rotation())
             }
-            InputEvent::GesturePinchEnd { event, .. } => {
-                let e = GesturePinchEndEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
-                    cancelled: event.cancelled(),
-                };
-                self.with_pointer(|p, s| p.gesture_pinch_end(s, &e));
-            }
-            InputEvent::GestureHoldBegin { event, .. } => {
-                self.activity();
-                let e = GestureHoldBeginEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
-                    fingers: event.fingers(),
-                };
-                self.with_pointer(|p, s| p.gesture_hold_begin(s, &e));
-            }
+            InputEvent::GesturePinchEnd { event, .. } => self.pinch_end(event.time_msec(), event.cancelled()),
+            InputEvent::GestureHoldBegin { event, .. } => self.hold_begin(event.fingers(), event.time_msec()),
             InputEvent::GestureHoldEnd { event, .. } => {
                 let e = GestureHoldEndEvent {
                     serial: SERIAL_COUNTER.next_serial(),
@@ -142,7 +89,7 @@ impl WhiteRose {
     }
 
     /// Runs `f` with the seat's pointer.
-    fn with_pointer(&mut self, f: impl FnOnce(&smithay::input::pointer::PointerHandle<Self>, &mut Self)) {
+    pub(crate) fn with_pointer(&mut self, f: impl FnOnce(&smithay::input::pointer::PointerHandle<Self>, &mut Self)) {
         let pointer = self.seat.get_pointer().expect("seat has a pointer");
         f(&pointer, self);
     }

@@ -1,4 +1,4 @@
-// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
+// Tests for the shell's pure JS (Calc.js, Search.js, DragData.js, QuickSettings.js, Notifications.js, CalendarGrid.js, Displays.js, Keys.js, Sun.js, Wallpapers.js, Shot.js, Note.js, Agenda.js, Users.js, Updates.js, Files Format.js, Tabs.js, Reorder.js, FilesActions.js the Snapping page's Zones.js the Window rules page's Rules.js, Report.js, Memory.js, Notepad's Placeholder.js, Shortcuts.js, Gestures.js and .github/scripts/old-version.js). Run: node shell/tests/run.mjs
 // The files are QML JS libraries; strip the `.pragma library` line and load them.
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs";
@@ -40,7 +40,8 @@ const Tabs = load("../apps/files/qml/Tabs.js", ["move", "slot", "afterClose", "t
 const Z = load("settings/modules/snapping/Zones.js", ["fallback", "normalize", "valid", "split", "canMerge", "merge", "lines", "moveLine", "click", "remove", "zoneAt", "draw", "add", "aspect", "monitorName", "shown", "save"]);
 const R = load("settings/modules/rules/Rules.js", ["escape", "exactly", "exactApp", "isPair", "patternError", "complete", "parseLength", "lengthText", "set", "move", "remove", "name", "tiling", "position", "opens", "percent", "summary", "zoneCount", "offers"]);
 const P = load("settings/modules/scratchpads/Pads.js", ["ownInstance", "complete", "newId", "make", "name", "place", "size", "summary", "set"], { R });
-const Sc = load("Shortcuts.js", ["groups"], { K });
+const Sc = load("Shortcuts.js", ["groups", "columns"], { K });
+const G = load("Gestures.js", ["DEFAULT", "KINDS", "bindings", "actionOf", "set", "usable", "options", "sheet"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
 
 let passed = 0, failed = 0;
@@ -1375,6 +1376,61 @@ test("shortcut sheet: live keys, turned-off ones left out, yours last", () => {
     // Before the compositor has sent its list: the mouse moves only.
     assert.deepEqual(Sc.groups([]).map(x => x.name), ["Windows"]);
     assert.deepEqual(Sc.groups(undefined)[0].rows.length, 2);
+});
+
+test("shortcut sheet: gestures go under the desktop's shortcuts", () => {
+    const list = [{ id: "launcher", keys: ["SUPER"] }, { id: "custom-1", name: "Mine", command: "x", keys: ["SUPER+P"] }];
+    const g = Sc.groups(list, [{ label: "Switch workspace", keys: ["3 FINGERS", "SWIPE ←→"] }]);
+    assert.deepEqual(g.map(x => x.name), ["Windows", "Desktop", "Gestures", "Yours"]);
+    assert.deepEqual(Sc.columns(g).map(c => c.map(x => x.name)), [["Windows"], ["Desktop", "Gestures"], ["Yours"]]);
+    assert.deepEqual(Sc.groups(list, []).map(x => x.name), ["Windows", "Desktop", "Yours"]);
+});
+
+// ---- Gestures (Settings › Mouse & touchpad, and the sheet) ----------------------
+test("gestures: three-finger left or right switch workspace to start with; app otherwise", () => {
+    assert.equal(G.actionOf(undefined, 3, "swipe-horizontal"), "workspaces");
+    assert.equal(G.actionOf(undefined, 3, "swipe-up"), "app");
+    assert.equal(G.actionOf({}, 3, "swipe-horizontal"), "app", "a saved setting replaces the defaults");
+});
+
+test("gestures: set adds, changes and takes out (app)", () => {
+    let b = G.set(undefined, 3, "swipe-up", "launcher");
+    assert.deepEqual(b, { "3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher" });
+    b = G.set(b, 3, "swipe-horizontal", "app");
+    assert.deepEqual(b, { "3-swipe-up": "launcher" });
+    assert.equal(G.DEFAULT["3-swipe-horizontal"], "workspaces", "the defaults aren't changed");
+});
+
+test("gestures: the dropdown offers the app, workspaces for left or right, and single shortcuts", () => {
+    const shortcuts = [
+        { id: "launcher", name: "App launcher", group: "Shell", defaults: ["SUPER"] },
+        { id: "workspace", name: "Switch to workspace 1–9", group: "Workspaces", defaults: ["SUPER+1-9"] },
+        { id: "focus-direction", name: "Focus window", group: "Windows", defaults: ["SUPER+ARROWS"] },
+        { id: "scratchpad:term", name: "Terminal pad", keys: ["SUPER+GRAVE"] },
+        { id: "custom-1", name: "Open Spotify", command: "spotify", keys: [] },
+    ];
+    assert.deepEqual(G.options("swipe-horizontal", shortcuts).map(o => o.value), ["app", "workspaces", "launcher", "custom-1"]);
+    assert.deepEqual(G.options("pinch-in", shortcuts).map(o => o.value), ["app", "launcher", "custom-1"]);
+    assert.equal(G.options("swipe-up", shortcuts)[2].hint, "Yours");
+    assert.equal(G.options("swipe-up", shortcuts)[1].hint, "Shell");
+});
+
+test("gestures: the sheet shows what's bound, on four fingers when drag is on", () => {
+    const shortcuts = [{ id: "launcher", name: "App launcher" }];
+    const b = { "3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher", "2-pinch-in": "launcher",
+                "4-swipe-down": "launcher", "3-pinch-out": "gone" };
+    assert.deepEqual(G.sheet(b, false, shortcuts), [
+        { label: "Switch workspace", keys: ["3 FINGERS", "SWIPE ←→"] },
+        { label: "App launcher", keys: ["3 FINGERS", "SWIPE ↑"] },
+        { label: "App launcher", keys: ["4 FINGERS", "SWIPE ↓"] },
+        { label: "App launcher", keys: ["2 FINGERS", "PINCH IN"] },
+    ]);
+    assert.deepEqual(G.sheet(b, true, shortcuts), [
+        { label: "Move a window", keys: ["3 FINGERS", "DRAG"] },
+        { label: "Switch workspace", keys: ["4 FINGERS", "SWIPE ←→"] },
+        { label: "App launcher", keys: ["4 FINGERS", "SWIPE ↑"] },
+        { label: "App launcher", keys: ["2 FINGERS", "PINCH IN"] },
+    ]);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -164,6 +164,9 @@ pub struct WhiteRose {
     /// Switching workspace sliding (workspace_slide.rs), and how long a
     /// switch slides for (zero: `animations.workspaceSwitch` is off).
     pub workspace_slide: Option<crate::workspace_slide::Slide>,
+    /// Touchpad gestures (gestures.rs): what each does, and the one going.
+    pub gestures: crate::gestures::GestureSettings,
+    pub gesture: crate::gestures::Live,
     pub workspace_slide_length: std::time::Duration,
     /// The IPC client (Settings) recording a shortcut: shortcuts are off.
     pub shortcuts_paused: Option<u64>,
@@ -328,6 +331,8 @@ impl WhiteRose {
             input_devices: Vec::new(),
             shake: Default::default(),
             workspace_slide: None,
+            gestures: Default::default(),
+            gesture: Default::default(),
             workspace_slide_length: crate::workspace_slide::SLIDE,
             shortcuts_paused: None,
             idle: Default::default(),

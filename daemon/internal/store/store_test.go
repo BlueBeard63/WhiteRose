@@ -122,6 +122,8 @@ func TestValidation(t *testing.T) {
 		"windows.rules":                 `[{"workspace":2}]`,
 		"windows.scratchpads":           `[{"id":"a","command":""}]`,
 		"animations.workspaceSwitch":    `"on"`,
+		"gestures.bindings":             `{"5-swipe-up":"app"}`,
+		"gestures.dragWindow":           `1`,
 		"nope.unknown":                  `1`,
 		"Bad Key":                       `1`,
 		"module.x":                      `{not json`,
@@ -448,5 +450,28 @@ func TestMoveToKeyringKeepsTheKeyringsOwn(t *testing.T) {
 	}
 	if _, err := fb.Get("files:seal-key"); !errors.Is(err, ErrNoSecret) {
 		t.Fatal("the database copy is left behind")
+	}
+}
+
+func TestGestureBindings(t *testing.T) {
+	good := []map[string]string{
+		{"3-swipe-horizontal": "workspaces", "3-swipe-up": "launcher", "4-pinch-in": "app"},
+		{"2-pinch-out": "close-window", "4-swipe-down": "custom-1"},
+	}
+	for _, m := range good {
+		if err := checkGestures(m); err != nil {
+			t.Errorf("%v: %v", m, err)
+		}
+	}
+	bad := []map[string]string{
+		{"2-swipe-up": "launcher"},
+		{"3-swipe-up": "workspaces"},
+		{"3-pinch": "app"},
+		{"3-swipe-down": "Close Window"},
+	}
+	for _, m := range bad {
+		if err := checkGestures(m); err == nil {
+			t.Errorf("%v was accepted", m)
+		}
 	}
 }

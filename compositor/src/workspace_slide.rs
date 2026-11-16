@@ -75,12 +75,55 @@ impl crate::state::WhiteRose {
     /// to). Going back to where a slide came from turns it round.
     pub(crate) fn slide_workspace(&mut self, from: usize, to: usize) {
         let (now, length) = (Instant::now(), self.workspace_slide_length);
+        // The fingers took it there: it springs on from where they let go.
+        if let Some(s) = self.workspace_slide.as_mut().filter(|s| s.along.driven() && (s.from, s.to) == (from, to)) {
+            s.along.release(1.0, now);
+            self.schedule_redraw();
+            return;
+        }
         if length.is_zero() {
             return;
         }
         match self.workspace_slide.as_mut().filter(|s| s.going(now)) {
             Some(s) if s.from == to && s.to == from => s.back(now, length),
             _ => self.workspace_slide = Some(Slide::new(from, to, now, length)),
+        }
+        self.schedule_redraw();
+    }
+
+    /// The fingers have taken the slide `along` (0 to 1) of the way to
+    /// workspace `to` (None: there's no workspace that way). A slide
+    /// between the same two still going (springing back) carries on from
+    /// where it is.
+    pub(crate) fn drive_workspace(&mut self, to: Option<usize>, along: f64) {
+        let (now, from) = (Instant::now(), self.workspaces.active());
+        match to {
+            None => {
+                if self.workspace_slide.is_some_and(|s| s.from == from) {
+                    self.workspace_slide = None;
+                }
+            }
+            Some(to) => {
+                let same = self.workspace_slide.is_some_and(|s| (s.from, s.to) == (from, to));
+                if !same {
+                    self.workspace_slide = Some(Slide { from, to, along: anim::Value::new(0.0) });
+                }
+                if let Some(s) = self.workspace_slide.as_mut() {
+                    s.along.drive(along.clamp(0.0, 1.0), now);
+                }
+            }
+        }
+        self.schedule_redraw();
+    }
+
+    /// The fingers lifted: on to the workspace they were taking it to
+    /// (`switch`), or back.
+    pub(crate) fn end_workspace_drive(&mut self, switch: bool) {
+        let Some(s) = self.workspace_slide.filter(|s| s.along.driven()) else { return };
+        if switch {
+            self.switch_workspace(s.to);
+        } else if let Some(s) = self.workspace_slide.as_mut() {
+            s.along.release(0.0, Instant::now());
         }
         self.schedule_redraw();
     }

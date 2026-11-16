@@ -40,8 +40,9 @@ const SHEET = [
 
 // The groups to draw: [{ name, rows: [{ label, keys: ["SUPER", "Q"] }] }].
 // A shortcut that's turned off (no keys) is left out; one on several keys
-// shows the first.
-function groups(shortcuts) {
+// shows the first. `gestures`: the bound touchpad gestures' rows
+// (Gestures.js `sheet`), a group of their own after the desktop's.
+function groups(shortcuts, gestures) {
     const byId = {};
     for (const s of shortcuts ?? []) byId[s.id] = s;
     const out = [];
@@ -54,9 +55,21 @@ function groups(shortcuts) {
         }
         if (rows.length > 0) out.push({ name: g.name, rows: rows });
     }
+    if ((gestures ?? []).length > 0) out.push({ name: "Gestures", rows: gestures, below: true });
     const yours = (shortcuts ?? [])
         .filter(s => (s.command !== undefined && s.command !== null || String(s.id).startsWith("scratchpad:")) && s.keys && s.keys.length > 0)
         .map(s => ({ label: s.name, keys: K.caps(s.keys[0]) }));
     if (yours.length > 0) out.push({ name: "Yours", rows: yours });
+    return out;
+}
+
+// The groups as columns: a group marked `below` goes under the one before
+// it (gestures under the desktop's shortcuts, so the sheet stays as wide).
+function columns(groups) {
+    const out = [];
+    for (const g of groups ?? []) {
+        if (g.below && out.length > 0) out[out.length - 1].push(g);
+        else out.push([g]);
+    }
     return out;
 }

@@ -11,6 +11,7 @@ pub mod daemon_client;
 pub mod display_config;
 pub mod drm;
 pub mod foreign_toplevel;
+pub mod gestures;
 pub mod grabs;
 mod handlers;
 pub mod headless;
