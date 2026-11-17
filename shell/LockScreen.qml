@@ -19,6 +19,7 @@ Scope {
 
         WlSessionLockSurface {
             color: Theme.bg
+            Loader { anchors.fill: parent; source: "LockBackdrop.qml" }
             LockView {}
         }
     }

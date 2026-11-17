@@ -317,7 +317,7 @@ func TestSuperLLocksWithTheLockScreen(t *testing.T) {
 	time.Sleep(time.Second)
 	for _, line := range strings.Split(s.Log(), "\n") {
 		// (Any warning: a missing picture used to be one, every lock.)
-		if strings.Contains(line, "Auth.qml") || strings.Contains(line, "LockView.qml") || strings.Contains(line, "LockScreen.qml") || strings.Contains(line, "Avatar.qml") {
+		if strings.Contains(line, "Auth.qml") || strings.Contains(line, "LockView.qml") || strings.Contains(line, "LockScreen.qml") || strings.Contains(line, "LockBackdrop.qml") || strings.Contains(line, "Avatar.qml") {
 			t.Error(line)
 		}
 	}

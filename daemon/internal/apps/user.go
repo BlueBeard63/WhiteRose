@@ -96,6 +96,46 @@ func SetupZsh(ctx context.Context, home, profileDir string, line func(string)) e
 
 const autostartLine = "[ -r /etc/profile.d/whiterose-autostart.sh ] && . /etc/profile.d/whiterose-autostart.sh"
 
+var shellFeaturesLine = regexp.MustCompile(`(?m)^\s*shell-integration-features\s*=`)
+
+// GhosttySSH is the setting SetupGhostty adds: over ssh, Ghostty copies its
+// terminfo to the host (or falls back to xterm-256color), so clear, htop
+// and nano work there.
+const GhosttySSH = "shell-integration-features = ssh-terminfo,ssh-env"
+
+// SetupGhostty turns on Ghostty's ssh integration in configHome/ghostty
+// (config.ghostty, or the older config), unless you've set
+// shell-integration-features yourself.
+func SetupGhostty(configHome string) error {
+	dir := filepath.Join(configHome, "ghostty")
+	target := ""
+	for _, name := range []string{"config.ghostty", "config"} {
+		text, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		if shellFeaturesLine.Match(text) {
+			return nil
+		}
+		if target == "" {
+			target = filepath.Join(dir, name)
+		}
+	}
+	if target == "" {
+		target = filepath.Join(dir, "config.ghostty")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(target, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString("\n# WhiteRose: over ssh, copy Ghostty's terminfo to the host\n" + GhosttySSH + "\n")
+	return err
+}
+
 // VSCodeExtensions installs the extensions listed in profileDir (one id per
 // line) that aren't installed yet.
 func VSCodeExtensions(ctx context.Context, profileDir string, line func(string)) error {

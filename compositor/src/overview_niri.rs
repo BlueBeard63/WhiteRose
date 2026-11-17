@@ -239,8 +239,9 @@ pub(crate) fn elements(
         shapes.solid(&mut out, c, overview::CELL, 1.0);
     }
 
-    // Behind it all.
-    shapes.solid(&mut out, screen, overview::BACKDROP, 1.0);
+    // Behind it all: the wallpaper through glass.
+    shapes.solid(&mut out, screen, overview::BACKDROP, overview::GLASS);
+    overview::layers(renderer, output, scale, &[WlrLayer::Bottom, WlrLayer::Background], &mut out);
     out
 }
 

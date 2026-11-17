@@ -279,3 +279,35 @@ fn spread_windows_are_drawn_at_their_spread_size() {
         });
     });
 }
+
+#[test]
+fn the_hovered_windows_close_button_closes_it_past_its_corner() {
+    // The button is centred on the window's corner, so most of it is off
+    // the window: moving onto it lost the hover, and a click there closed
+    // the overview instead (0.4.0-alpha.2).
+    let mut h = Headless::new(true);
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        c.open_bar();
+        two_windows(&mut c);
+        let closes = c.app.toplevel_closes;
+        ask.run(|s| {
+            s.run_action(Action::Overview(None));
+            s.overview.open.jump(1.0);
+            let o = s.space.outputs().next().cloned().unwrap();
+            let scene = s.overview_scene(&o).expect("a scene");
+            let (w, r) = (scene.windows[0].0.clone(), scene.windows[0].2);
+            s.on_pointer_motion(middle(s, &r), 1);
+            assert_eq!(s.overview.hovered.as_ref(), Some(&w));
+            // Up and right of the corner: on the button, off the window.
+            let at = s.space.output_geometry(&o).unwrap().loc.to_f64() + Point::from((r.x + r.w + 8.0, r.y - 8.0));
+            s.on_pointer_motion(at, 2);
+            assert_eq!(s.overview.hovered.as_ref(), Some(&w), "still hovered on its button");
+            s.on_pointer_button(LEFT, ButtonState::Pressed, 3);
+            s.on_pointer_button(LEFT, ButtonState::Released, 4);
+            assert_eq!(s.overview.open.target(), 1.0, "the overview stays open");
+        });
+        c.queue.roundtrip(&mut c.app).unwrap();
+        assert_eq!(c.app.toplevel_closes, closes + 1, "the window was asked to close");
+    });
+}

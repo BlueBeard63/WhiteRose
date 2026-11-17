@@ -157,6 +157,13 @@ func (s *appSetup) install(ids []string) (any, error) {
 				emit(apps.Event{Step: "Your zsh theme", Apps: []string{id}, State: "running", Line: l})
 			})
 			finish(emit, "Your zsh theme", id, err)
+		case "ghostty":
+			emit(apps.Event{Step: "Your Ghostty settings", Apps: []string{id}, State: "running"})
+			var config string
+			if config, err = os.UserConfigDir(); err == nil {
+				err = apps.SetupGhostty(config)
+			}
+			finish(emit, "Your Ghostty settings", id, err)
 		case "vscode":
 			if _, e := exec.LookPath("code"); e != nil {
 				continue

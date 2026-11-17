@@ -62,6 +62,9 @@ pub const CLOSE: f64 = 26.0;
 // Colours, premultiplied: behind everything, a workspace, an outline, the
 // workspace a window is dragged over.
 pub(crate) const BACKDROP: [f32; 3] = [0.047, 0.047, 0.051];
+/// How much of the wallpaper the backdrop hides: the rest shows through,
+/// like glass (the apps don't: they're drawn spread out, not behind).
+pub(crate) const GLASS: f64 = 0.6;
 pub(crate) const CELL: [f32; 3] = [0.11, 0.11, 0.12];
 pub(crate) const OUTLINE: [f32; 3] = [0.96, 0.96, 0.96];
 pub(crate) const TARGET: [f32; 3] = [0.91, 0.64, 0.68];
@@ -423,6 +426,16 @@ impl WhiteRose {
     fn overview_hover(&mut self, pos: Point<f64, Logical>) {
         let hovered = self.overview_scene_at(pos).and_then(|s| {
             let p = ((pos.x - s.origin.x as f64), (pos.y - s.origin.y as f64));
+            // Its close button reaches past its corner: on it, the window
+            // stays hovered (and the button shown).
+            let on_its_close = self
+                .overview
+                .hovered
+                .as_ref()
+                .is_some_and(|h| s.windows.iter().any(|(w, _, r)| w == h && on_close(r, p)));
+            if on_its_close {
+                return self.overview.hovered.clone();
+            }
             s.window_at(p).map(|(w, _)| w.clone())
         });
         if hovered != self.overview.hovered {
@@ -659,7 +672,7 @@ pub fn elements(renderer: &mut GlesRenderer, output: &Output, state: &WhiteRose)
     }
 
     // Behind it all, fading in over the desktop.
-    shapes.solid(&mut out, Rect::new(0.0, 0.0, ow, oh), BACKDROP, t);
+    shapes.solid(&mut out, Rect::new(0.0, 0.0, ow, oh), BACKDROP, t * GLASS);
     layers(renderer, output, scale, &[WlrLayer::Bottom, WlrLayer::Background], &mut out);
     Some(out)
 }
