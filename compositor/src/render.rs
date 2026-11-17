@@ -103,7 +103,9 @@ pub fn output_elements(
     // The overview: its own picture of everything (overview.rs).
     if let Some(overview) = crate::overview::elements(renderer, output, state) {
         elements.extend(overview);
-        return (elements, CLEAR);
+        // Its backdrop is see-through: dark, not white, without a wallpaper.
+        let [r, g, b] = crate::overview::BACKDROP;
+        return (elements, [r, g, b, 1.0]);
     }
 
     // While workspaces slide, a fullscreen window slides with the rest.
