@@ -2,6 +2,30 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.4.0-alpha.3 · Glass and quieter hidden apps (alpha) (2026-11-17)
+
+The third 0.4 alpha: the overview and lock screen show your wallpaper through glass, apps out of sight are told to rest, and the cursor, the overview's close button and SSH from Ghostty work as they should. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
+
+### Changed
+
+- The overview shows your wallpaper dimmed behind it instead of plain black, in both the GNOME-style and niri-style overviews
+- The lock screen shows your wallpaper blurred and dimmed instead of plain black
+- Windows out of sight (on another workspace or activity, minimized, a background tab or a hidden scratchpad) are told they're suspended, so apps like Firefox, Chrome and GTK apps stop drawing and slow down until you come back. Music and downloads keep going
+
+### Fixed
+
+- The close button on a window in the overview couldn't be clicked: moving onto it lost the window, and the click closed the overview instead
+- The cursor could stay a resize arrow or a hand after moving quickly off an app's edge or a link
+- Over SSH from Ghostty, clear, htop and nano didn't work on the other machine. Installing Ghostty from Settings › Apps now turns on its SSH support, which copies Ghostty's terminal description to the machine you connect to
+
+With 0.3.0 or an earlier 0.4 alpha and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Your settings carry over.
+
+On Ubuntu the lock screen's blur needs `qml6-module-qtquick-effects`, which this release's package installs.
+
+Not in this alpha yet: the task manager, disk imager, clocks and calculator.
+
+Contributors: @BlueBeard63
+
 ## 0.4.0-alpha.2 · Overview fix (alpha) (2026-11-16)
 
 The second 0.4 alpha: windows in the overview are drawn at their spread size again. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
