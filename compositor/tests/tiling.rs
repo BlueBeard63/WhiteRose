@@ -148,6 +148,9 @@ fn closing_and_minimising_give_the_space_back() {
             s.focus_window(Some(second));
             assert_eq!(rects(s), vec![Some(LEFT), Some(RIGHT)]);
         });
+        // Its configures (minimized: suspended; back: awake) answered
+        // before it closes, as an app would.
+        c.queue.roundtrip(&mut c.app).unwrap();
         toplevel.destroy();
         surface.destroy();
         c.queue.roundtrip(&mut c.app).unwrap();

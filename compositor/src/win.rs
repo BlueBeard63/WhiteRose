@@ -108,6 +108,11 @@ pub trait WinExt {
     fn pend(&self, f: impl FnOnce(&mut Pending)) -> bool;
     /// Sends what's pending.
     fn configure(&self);
+    /// Tells it whether it's out of sight (another workspace or activity,
+    /// minimized, a background tab, a hidden scratchpad), so it can stop
+    /// drawing and throttle its work. Wayland apps only: X11 has no such
+    /// state.
+    fn suspend(&self, suspended: bool);
     /// Asks it to close.
     fn close(&self);
     /// Its client's process id.
@@ -215,6 +220,27 @@ impl WinExt for Window {
             return;
         }
         if let Some(t) = self.toplevel() {
+            t.send_pending_configure();
+        }
+    }
+
+    fn suspend(&self, suspended: bool) {
+        let Some(t) = self.toplevel() else { return };
+        if !t.is_initial_configure_sent() {
+            return;
+        }
+        let changed = t.with_pending_state(|s| {
+            if s.states.contains(ToplevelState::Suspended) == suspended {
+                return false;
+            }
+            if suspended {
+                s.states.set(ToplevelState::Suspended);
+            } else {
+                s.states.unset(ToplevelState::Suspended);
+            }
+            true
+        });
+        if changed {
             t.send_pending_configure();
         }
     }

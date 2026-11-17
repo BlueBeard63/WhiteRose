@@ -159,6 +159,10 @@ pub struct App {
     pub toplevel_configures: Vec<(i32, i32, Vec<u32>)>,
     /// How many times the compositor asked a toplevel to close.
     pub toplevel_closes: usize,
+    /// The serial of the pointer's last enter (for set_cursor).
+    pub pointer_enter: Option<u32>,
+    /// How many frame callbacks (wl_surface.frame) were done.
+    pub frames_done: usize,
     /// wlr foreign-toplevel handles and what the compositor told us about each.
     pub handles: Vec<(ZwlrForeignToplevelHandleV1, HandleInfo)>,
     /// hyprland toplevel-export frame events, e.g. "buffer 400x300 stride 1600", "buffer_done", "failed".
@@ -238,6 +242,36 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for App {
 
 delegate_noop!(App: ignore hyprland_toplevel_export_manager_v1::HyprlandToplevelExportManagerV1);
 delegate_noop!(App: ignore wayland_client::protocol::wl_seat::WlSeat);
+
+impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &wayland_client::protocol::wl_pointer::WlPointer,
+        event: wayland_client::protocol::wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wayland_client::protocol::wl_pointer::Event::Enter { serial, .. } = event {
+            app.pointer_enter = Some(serial);
+        }
+    }
+}
+
+impl Dispatch<wayland_client::protocol::wl_callback::WlCallback, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &wayland_client::protocol::wl_callback::WlCallback,
+        event: wayland_client::protocol::wl_callback::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wayland_client::protocol::wl_callback::Event::Done { .. } = event {
+            app.frames_done += 1;
+        }
+    }
+}
 delegate_noop!(App: ignore wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);
 delegate_noop!(App: ignore wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1);
 

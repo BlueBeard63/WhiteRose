@@ -75,6 +75,9 @@ pub struct WhiteRose {
     pub workspaces: Workspaces<Window>,
     /// Where hidden windows were, so switching back restores them.
     pub hidden_at: Vec<(Window, Point<i32, Logical>)>,
+    /// Hidden windows woken from suspended while something previews them
+    /// (render.rs), to suspend again when it stops.
+    pub preview_awake: Vec<Window>,
     /// Floating geometry of maximized/fullscreen windows, for restoring.
     pub restore_geometry: Vec<(Window, smithay::utils::Rectangle<i32, Logical>)>,
     /// Fullscreen windows: at most one per output.
@@ -290,6 +293,7 @@ impl WhiteRose {
             space: Space::default(),
             workspaces: Workspaces::new(WORKSPACES),
             hidden_at: Vec::new(),
+            preview_awake: Vec::new(),
             restore_geometry: Vec::new(),
             fullscreen: Vec::new(),
             filling: Vec::new(),
@@ -741,6 +745,8 @@ impl WhiteRose {
             self.hidden_at.push((w.clone(), loc));
         }
         self.space.unmap_elem(w);
+        // Out of sight: it gets no frames, and is told so it can rest.
+        crate::win::WinExt::suspend(w, true);
     }
 
     pub(crate) fn show(&mut self, w: &Window) {
@@ -751,11 +757,14 @@ impl WhiteRose {
             .map(|i| self.hidden_at.swap_remove(i).1)
             .unwrap_or_default();
         self.space.map_element(w.clone(), loc, false);
+        crate::win::WinExt::suspend(w, false);
+        self.preview_awake.retain(|p| p != w);
     }
 
     /// Forgets a closed window everywhere.
     pub fn forget_window(&mut self, w: &Window) {
         let id = self.window_id(w);
+        self.preview_awake.retain(|p| p != w);
         if let Some((s, _)) = self.switcher.as_mut() {
             if !s.remove_window(id) {
                 self.switcher = None;

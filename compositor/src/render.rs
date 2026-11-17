@@ -461,9 +461,34 @@ pub fn send_frame_callbacks(output: &Output, state: &mut WhiteRose) {
             window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));
         }
     }
-    // Those hidden on another workspace too.
+    // The pointer's own surface, if an app draws it, on the output it's on:
+    // apps wait for this before drawing their next cursor.
+    if let smithay::input::pointer::CursorImageStatus::Surface(cursor) = &state.cursor_status {
+        let on_this = state.seat.get_pointer().is_some_and(|p| {
+            state.space.output_geometry(output).is_some_and(|g| g.to_f64().contains(p.current_location()))
+        });
+        if cursor.is_alive() && on_this {
+            send_scale(cursor, output);
+            smithay::desktop::utils::send_frames_surface_tree(cursor, output, elapsed, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        }
+    }
+    // Those hidden on another workspace too, awake while previewed; ones
+    // no longer previewed rest again.
+    let done: Vec<Window> = state.preview_awake.iter().filter(|w| !exporting.contains(w)).cloned().collect();
+    for window in done {
+        state.preview_awake.retain(|w| *w != window);
+        if state.space.element_location(&window).is_none() {
+            window.suspend(true);
+        }
+    }
     for window in exporting {
         if state.space.element_location(&window).is_none() {
+            if !state.preview_awake.contains(&window) {
+                window.suspend(false);
+                state.preview_awake.push(window.clone());
+            }
             window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| Some(output.clone()));
         }
     }
