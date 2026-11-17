@@ -157,3 +157,43 @@ func TestZshThemeIsInstalledAndSelected(t *testing.T) {
 		t.Fatalf("zprofile: %q", zp)
 	}
 }
+
+func TestGhosttySSHIsTurnedOnUnlessYouSetIt(t *testing.T) {
+	config := t.TempDir()
+	dir := filepath.Join(config, "ghostty")
+	read := func(name string) string {
+		b, _ := os.ReadFile(filepath.Join(dir, name))
+		return string(b)
+	}
+	// No config yet: config.ghostty with the line, once however often it runs.
+	for range 2 {
+		if err := SetupGhostty(config); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := read("config.ghostty"); strings.Count(got, GhosttySSH) != 1 {
+		t.Fatalf("new config: %q", got)
+	}
+
+	// An older config file keeps what's in it, with the line added.
+	_ = os.RemoveAll(dir)
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "config"), []byte("font-size = 12\n"), 0o644)
+	_ = SetupGhostty(config)
+	if got := read("config"); !strings.HasPrefix(got, "font-size = 12\n") || !strings.Contains(got, GhosttySSH) {
+		t.Fatalf("existing config: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "config.ghostty")); err == nil {
+		t.Fatal("made a second config file")
+	}
+
+	// Your own setting, in either file, is left alone.
+	_ = os.RemoveAll(dir)
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "config.ghostty"), []byte("theme = dark\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "config"), []byte("  shell-integration-features = no-cursor\n"), 0o644)
+	_ = SetupGhostty(config)
+	if read("config.ghostty") != "theme = dark\n" || read("config") != "  shell-integration-features = no-cursor\n" {
+		t.Fatalf("changed yours: %q / %q", read("config.ghostty"), read("config"))
+	}
+}
