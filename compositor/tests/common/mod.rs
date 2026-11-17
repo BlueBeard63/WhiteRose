@@ -157,6 +157,8 @@ pub struct App {
     pub toplevel_configured: bool,
     /// Every xdg_toplevel configure: (width, height, states).
     pub toplevel_configures: Vec<(i32, i32, Vec<u32>)>,
+    /// How many times the compositor asked a toplevel to close.
+    pub toplevel_closes: usize,
     /// wlr foreign-toplevel handles and what the compositor told us about each.
     pub handles: Vec<(ZwlrForeignToplevelHandleV1, HandleInfo)>,
     /// hyprland toplevel-export frame events, e.g. "buffer 400x300 stride 1600", "buffer_done", "failed".
@@ -293,6 +295,8 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
         if let xdg_toplevel::Event::Configure { width, height, states } = event {
             let states = states.as_chunks::<4>().0.iter().map(|c| u32::from_ne_bytes(*c)).collect();
             app.toplevel_configures.push((width, height, states));
+        } else if let xdg_toplevel::Event::Close = event {
+            app.toplevel_closes += 1;
         }
     }
 }

@@ -423,6 +423,16 @@ impl WhiteRose {
     fn overview_hover(&mut self, pos: Point<f64, Logical>) {
         let hovered = self.overview_scene_at(pos).and_then(|s| {
             let p = ((pos.x - s.origin.x as f64), (pos.y - s.origin.y as f64));
+            // Its close button reaches past its corner: on it, the window
+            // stays hovered (and the button shown).
+            let on_its_close = self
+                .overview
+                .hovered
+                .as_ref()
+                .is_some_and(|h| s.windows.iter().any(|(w, _, r)| w == h && on_close(r, p)));
+            if on_its_close {
+                return self.overview.hovered.clone();
+            }
             s.window_at(p).map(|(w, _)| w.clone())
         });
         if hovered != self.overview.hovered {
