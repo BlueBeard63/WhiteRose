@@ -311,7 +311,8 @@ impl WhiteRose {
                 }
                 // While a switcher is open it owns the keyboard.
                 if state.activities.picker.is_some() {
-                    return state.activity_picker_key(sym, pressed, Mods::from(mods), keycode);
+                    let text = handle.modified_sym().key_char();
+                    return state.activity_picker_key(sym, text, pressed, Mods::from(mods), keycode);
                 }
                 if state.switcher.is_some() {
                     return state.switcher_key(sym, pressed, Mods::from(mods), keycode);
@@ -440,12 +441,35 @@ impl WhiteRose {
     fn activity_picker_key(
         &mut self,
         sym: smithay::input::keyboard::Keysym,
+        text: Option<char>,
         pressed: bool,
         mods: Mods,
         keycode: smithay::input::keyboard::Keycode,
     ) -> smithay::input::keyboard::FilterResult<Option<Action>> {
         use smithay::input::keyboard::{keysyms as k, FilterResult};
         let Some((_, held)) = self.activities.picker else { return FilterResult::Forward };
+        // Renaming an activity: the name field takes every key. Letting go of
+        // SUPER doesn't switch while it's open, and no key reaches the app.
+        if self.activities.rename.is_some() {
+            if !pressed {
+                if let Some(i) = self.swallowed.iter().position(|c| *c == keycode) {
+                    self.swallowed.swap_remove(i);
+                }
+                return FilterResult::Forward;
+            }
+            match sym.raw() {
+                k::KEY_Escape => self.cancel_activity_rename(),
+                k::KEY_Return | k::KEY_KP_Enter => self.commit_activity_rename(),
+                k::KEY_BackSpace => self.activity_rename_backspace(),
+                _ => {
+                    if let Some(c) = text {
+                        self.activity_rename_char(c);
+                    }
+                }
+            }
+            self.swallowed.push(keycode);
+            return FilterResult::Intercept(None);
+        }
         if !pressed {
             if let Some(i) = self.swallowed.iter().position(|c| *c == keycode) {
                 self.swallowed.swap_remove(i);

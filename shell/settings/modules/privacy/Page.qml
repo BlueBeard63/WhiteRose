@@ -61,6 +61,16 @@ Column {
             Toggle { checked: Daemon.setting("privacy.clipboardHistory", true); onToggled: v => Daemon.set("privacy.clipboardHistory", v) }
         }
         SettingRow {
+            visible: Daemon.setting("privacy.clipboardHistory", true)
+            title: "Copies to keep"
+            subtitle: "Older copies drop off once there are this many, so a long history can't slow copying down"
+            Choice {
+                value: Daemon.setting("privacy.clipboardKeep", 50)
+                options: [10, 25, 50, 100, 200].map(n => ({ label: n + " items", value: n }))
+                onPicked: v => Daemon.set("privacy.clipboardKeep", v)
+            }
+        }
+        SettingRow {
             title: "Recent files in search"
             subtitle: "The launcher shows files you opened recently"
             Toggle { checked: Daemon.setting("privacy.recentFiles", true); onToggled: v => Daemon.set("privacy.recentFiles", v) }

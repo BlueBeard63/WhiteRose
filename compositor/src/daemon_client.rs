@@ -141,7 +141,11 @@ impl WhiteRose {
                 state.memory_protected = serde_json::from_value(value.clone()).unwrap_or_default();
             }
             if key == "privacy.clipboardHistory" {
+                state.clipboard_generation = state.clipboard_generation.wrapping_add(1);
                 state.clipboard_history_on = value.as_bool().unwrap_or(true);
+            }
+            if key == "privacy.clipboardKeep" {
+                state.clipboard_set_limit(value.as_u64().unwrap_or(crate::clipboard::MAX_ENTRIES as u64) as usize);
             }
             let (k, s) = state.keyboard_setting(key, value);
             keyboard |= k;

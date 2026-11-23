@@ -58,7 +58,21 @@ pub struct Activities {
     /// a new activity), and whether SUPER was held when it opened (then
     /// letting go of SUPER switches).
     pub picker: Option<(usize, bool)>,
+    /// Renaming an activity from the picker (its pencil): the activity's
+    /// id and the name typed so far. The compositor edits the buffer and
+    /// the shell draws it; letting go of SUPER doesn't switch while it's on.
+    pub rename: Option<Rename>,
 }
+
+/// An in-progress rename from the picker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rename {
+    pub id: String,
+    pub buffer: String,
+}
+
+/// Longest an activity name may be (matches the Settings page).
+const MAX_NAME: usize = 40;
 
 impl Default for Activities {
     fn default() -> Self {
@@ -72,8 +86,16 @@ impl Default for Activities {
             overrides: Map::new(),
             base: Map::new(),
             picker: None,
+            rename: None,
         }
     }
+}
+
+/// A rename in progress, for the shell's picker to draw.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RenameView {
+    pub id: String,
+    pub text: String,
 }
 
 /// One entry of `activities.list`.
@@ -227,6 +249,7 @@ impl WhiteRose {
     /// shown workspace's come, a window on every activity comes along to
     /// the same workspace. One not seen yet starts empty.
     pub fn switch_activity(&mut self, id: &str) {
+        self.activities.rename = None;
         if id == self.activities.current {
             return;
         }
@@ -450,10 +473,94 @@ impl WhiteRose {
     /// Goes to the picker's chosen activity (or makes a new one) and
     /// closes it.
     pub fn commit_activity_picker(&mut self) {
+        self.activities.rename = None;
         let Some((i, _)) = self.activities.picker.take() else { return };
         match self.activities.order.get(i).cloned() {
             Some(id) => self.switch_activity(&id),
             None => self.new_activity(),
+        }
+        self.activities_sync();
+    }
+
+    /// Applies a new `activities.list` at once (its windows absorbed as
+    /// needed) and saves it.
+    fn save_activity_list(&mut self, list: Vec<Entry>) {
+        let value = serde_json::to_value(&list).unwrap_or(Value::Null);
+        self.activities_setting("activities.list", &value);
+        self.daemon_request(serde_json::json!({"op": "set", "key": "activities.list", "value": value}));
+    }
+
+    /// Starts renaming activity `id` from the picker (its pencil): the name
+    /// field opens with the current name. The picker becomes sticky, so
+    /// letting go of SUPER while typing doesn't switch.
+    pub fn start_activity_rename(&mut self, id: &str) {
+        if !self.activities.enabled || !self.activities.order.iter().any(|x| x == id) {
+            return;
+        }
+        let name = self.activities.entries.iter().find(|e| e.id == id).map(|e| e.name.clone()).unwrap_or_default();
+        if let Some((i, _)) = self.activities.picker {
+            self.activities.picker = Some((i, false));
+        }
+        self.activities.rename = Some(Rename { id: id.to_owned(), buffer: name });
+        self.activities_sync();
+    }
+
+    /// A character typed into the rename field.
+    pub fn activity_rename_char(&mut self, c: char) {
+        if let Some(r) = self.activities.rename.as_mut() {
+            if !c.is_control() && r.buffer.chars().count() < MAX_NAME {
+                r.buffer.push(c);
+                self.activities_sync();
+            }
+        }
+    }
+
+    /// Backspace in the rename field.
+    pub fn activity_rename_backspace(&mut self) {
+        if let Some(r) = self.activities.rename.as_mut() {
+            r.buffer.pop();
+            self.activities_sync();
+        }
+    }
+
+    /// Keeps the typed name (if it isn't blank) and closes the field.
+    pub fn commit_activity_rename(&mut self) {
+        let Some(r) = self.activities.rename.take() else { return };
+        let name = r.buffer.trim();
+        if !name.is_empty() {
+            let mut list = self.activities.entries.clone();
+            if list.is_empty() {
+                list.push(Entry { id: DEFAULT.into(), name: "Main".into() });
+            }
+            if let Some(e) = list.iter_mut().find(|e| e.id == r.id) {
+                e.name = name.to_owned();
+                self.save_activity_list(list);
+            }
+        }
+        self.activities_sync();
+    }
+
+    /// Drops the typed name and closes the field.
+    pub fn cancel_activity_rename(&mut self) {
+        self.activities.rename = None;
+        self.activities_sync();
+    }
+
+    /// Deletes activity `id` from the picker (its trash): its windows come
+    /// to the current activity. The default activity stays.
+    pub fn delete_activity(&mut self, id: &str) {
+        if id == DEFAULT || !self.activities.enabled || !self.activities.order.iter().any(|x| x == id) {
+            return;
+        }
+        if self.activities.rename.as_ref().is_some_and(|r| r.id == id) {
+            self.activities.rename = None;
+        }
+        let list: Vec<Entry> = self.activities.entries.iter().filter(|e| e.id != id).cloned().collect();
+        self.save_activity_list(list);
+        // The card chosen may have been past the end now; keep it in range.
+        let cards = self.activities.order.len();
+        if let Some((i, held)) = self.activities.picker {
+            self.activities.picker = Some((i.min(cards), held));
         }
         self.activities_sync();
     }
@@ -465,6 +572,7 @@ impl WhiteRose {
             current: self.activities.current.clone(),
             everywhere: self.activities.everywhere.iter().map(|w| self.window_id(w)).collect(),
             picker: self.activities.picker.map(|(i, _)| i),
+            rename: self.activities.rename.as_ref().map(|r| RenameView { id: r.id.clone(), text: r.buffer.clone() }),
             activities: if self.activities.enabled { self.activities_view() } else { Vec::new() },
         }
     }

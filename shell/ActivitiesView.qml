@@ -17,6 +17,8 @@ Item {
     onStateChanged: if (state && state.picker !== null && state.picker !== undefined) shown = state
     readonly property var cards: root.shown?.activities ?? []
     readonly property int selected: root.shown?.picker ?? -1
+    // The activity being renamed (its pencil was clicked), or null.
+    readonly property var rename: root.shown?.rename ?? null
 
     implicitWidth: content.width + 48
     implicitHeight: content.height + 38
@@ -52,6 +54,7 @@ Item {
                     required property int index
                     readonly property bool chosen: index === root.selected
                     readonly property bool here: modelData.id === (root.shown?.current ?? "")
+                    readonly property bool editing: (root.rename?.id ?? "") === modelData.id
                     readonly property string name: Activities.nameOf(modelData.id)
                     Accessible.role: Accessible.Button
                     Accessible.name: "Activity " + name
@@ -111,14 +114,32 @@ Item {
                         Row {
                             width: parent.width
                             spacing: 7
-                            Text {
+                            Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: parent.width - countChip.width - 7
-                                leftPadding: 2
-                                text: card.name
-                                elide: Text.ElideRight
-                                color: card.chosen ? Theme.text : Theme.muted
-                                font { family: Theme.font; pointSize: Theme.pt(12.5); weight: Font.Medium }
+                                height: label.implicitHeight
+                                Text {
+                                    id: label
+                                    leftPadding: 2
+                                    width: parent.width
+                                    text: card.editing ? (root.rename?.text ?? "") : card.name
+                                    elide: Text.ElideRight
+                                    color: card.editing || card.chosen ? Theme.text : Theme.muted
+                                    font { family: Theme.font; pointSize: Theme.pt(12.5); weight: Font.Medium }
+                                }
+                                // The caret while renaming (the compositor edits the name).
+                                Rectangle {
+                                    visible: card.editing
+                                    x: Math.min(label.leftPadding + label.contentWidth + 1.5, parent.width - 2)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 1.5; height: label.implicitHeight * 0.82
+                                    color: Theme.rose
+                                    SequentialAnimation on opacity {
+                                        running: card.editing; loops: Animation.Infinite
+                                        NumberAnimation { to: 0; duration: 500; easing.type: Easing.OutQuad }
+                                        NumberAnimation { to: 1; duration: 500; easing.type: Easing.OutQuad }
+                                    }
+                                }
                             }
                             Rectangle {
                                 id: countChip
@@ -136,9 +157,39 @@ Item {
                         }
                     }
                     MouseArea {
+                        id: cardArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: Compositor.goToActivity(card.modelData.id)
+                    }
+                    // Rename (its pencil) or delete (its trash) this activity.
+                    // The default activity holds the base settings, so it stays.
+                    Row {
+                        anchors { top: parent.top; right: parent.right; margins: 12 }
+                        spacing: 6
+                        visible: !card.editing
+                            && (cardArea.containsMouse || pencilBtn.hovered || trashBtn.hovered || card.chosen)
+                        IconButton {
+                            id: pencilBtn
+                            width: 26; height: 26; iconSize: 13
+                            icon: "pencil"
+                            label: "Rename " + card.name
+                            fill: Qt.rgba(0.05, 0.05, 0.06, 0.85)
+                            hoverFill: Theme.surface2
+                            onClicked: Compositor.startActivityRename(card.modelData.id)
+                        }
+                        IconButton {
+                            id: trashBtn
+                            visible: card.modelData.id !== "default"
+                            width: 26; height: 26; iconSize: 13
+                            icon: "trash"
+                            label: "Delete " + card.name
+                            fill: Qt.rgba(0.05, 0.05, 0.06, 0.85)
+                            hoverFill: Theme.rose
+                            iconColor: hovered ? Theme.bg : Theme.text
+                            onClicked: Compositor.deleteActivity(card.modelData.id)
+                        }
                     }
                 }
             }

@@ -99,6 +99,9 @@ Singleton {
     function goToActivity(id) { send({ cmd: "activity", id: id }) }
     function newActivity() { send({ cmd: "new_activity" }) }
     function closeActivityPicker() { send({ cmd: "close_activity_picker" }) }
+    // Rename or delete an activity from the picker (its pencil or trash).
+    function startActivityRename(id) { send({ cmd: "start_activity_rename", id: id }) }
+    function deleteActivity(id) { send({ cmd: "delete_activity", id: id }) }
     function windowActivity(id, activity) { send({ cmd: "window_activity", id: id, activity: activity }) }
     // Window `id` to workspace `n`, wherever it is (the workspace strip).
     function moveWindow(id, n) { send({ cmd: "move_window", id: id, n: n }) }

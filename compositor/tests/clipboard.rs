@@ -92,6 +92,29 @@ fn copied_text_is_recorded_and_secrets_are_not() {
     );
 }
 
+// After a copy the compositor holds the selection itself, so a later
+// Ctrl+V pastes it even once the app that copied has gone.
+#[test]
+fn a_copy_is_held_by_the_compositor_so_a_later_paste_works() {
+    use smithay::wayland::selection::data_device::current_data_device_selection_userdata;
+    use whiterose_wm::clipboard_capture::Offer;
+    let mut h = Headless::new(true);
+    h.state.clipboard_clear();
+    h.run(
+        |conn| {
+            let mut c = Client::connect(&conn);
+            c.open_window();
+            copy(&mut c, &conn, &["text/plain;charset=utf-8", "text/plain"], b"paste me later");
+        },
+        |state, ()| {
+            let owned = current_data_device_selection_userdata(&state.seat)
+                .map(|o| matches!(&*o, Offer::Data(_)))
+                .unwrap_or(false);
+            assert!(owned, "the compositor should own the selection so Ctrl+V works after the source is gone");
+        },
+    );
+}
+
 #[test]
 fn copied_files_are_stored_as_paths() {
     let mut h = Headless::new(true);

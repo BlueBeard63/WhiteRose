@@ -2,6 +2,26 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
+## 0.4.0-alpha.4 · Activities and clipboard polish (alpha) (2026-11-26)
+
+The fourth 0.4 alpha: rename and delete activities right from the SUPER+SHIFT+A picker, paste a copy straight away with Ctrl+V, and a clipboard that stays quick however much you copy. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
+
+### Added
+
+- Rename or delete an activity from the SUPER+SHIFT+A picker: hover a card for its pencil and trash. The first activity stays, and deleting one brings its windows to the current activity
+- Settings › Privacy sets how many clipboard copies to keep (10 to 200)
+
+### Fixed
+
+- After copying from some apps, Ctrl+V pasted nothing until you opened the clipboard (SUPER+V) and picked the copy. The desktop now holds onto each copy, so Ctrl+V pastes the newest one straight away, even once the app that made it has closed
+- Copying could briefly stutter the desktop once the clipboard held a lot: the history is now written in the background, off the path that handles your copy
+
+With 0.3.0 or an earlier 0.4 alpha and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Your settings carry over.
+
+Not in this alpha yet: the task manager, disk imager, clocks and calculator.
+
+Contributors: @BlueBeard63
+
 ## 0.4.0-alpha.3 · Glass and quieter hidden apps (alpha) (2026-11-17)
 
 The third 0.4 alpha: the overview and lock screen show your wallpaper through glass, apps out of sight are told to rest, and the cursor, the overview's close button and SSH from Ghostty work as they should. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.

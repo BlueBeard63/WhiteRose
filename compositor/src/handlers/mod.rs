@@ -69,11 +69,13 @@ impl SelectionHandler for WhiteRose {
         // Only the real clipboard (not the middle-click primary selection),
         // and only copies made by apps.
         if ty == smithay::wayland::selection::SelectionTarget::Clipboard {
+            self.clipboard_generation = self.clipboard_generation.wrapping_add(1);
+            let generation = self.clipboard_generation;
             if let Some(source) = source {
                 // Smithay calls this *before* it records the new selection, so
                 // reading now would read the previous one. Read once it's set.
                 let mimes = source.mime_types();
-                self.loop_handle.insert_idle(move |state| state.capture_clipboard(mimes));
+                self.loop_handle.insert_idle(move |state| state.capture_clipboard(mimes, generation));
             }
         }
     }

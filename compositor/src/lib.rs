@@ -7,6 +7,7 @@ pub mod app_icons;
 pub mod app_scope;
 pub mod clipboard;
 pub mod clipboard_capture;
+pub mod clipboard_save;
 pub mod cursor;
 pub mod daemon_client;
 pub mod display_config;

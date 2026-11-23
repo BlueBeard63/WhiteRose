@@ -289,6 +289,7 @@ var Known = map[string]Key{
 	// Offer pre-releases (alpha, beta) as updates and list them under Releases.
 	"update.prerelease":        {Default: json.RawMessage(`false`), Check: into[bool](nil)},
 	"privacy.clipboardHistory": {Default: json.RawMessage(`true`), Check: into[bool](nil)},
+	"privacy.clipboardKeep":    {Default: json.RawMessage(`50`), Check: into(intRange(1, 200))},
 	"privacy.recentFiles":      {Default: json.RawMessage(`true`), Check: into[bool](nil)},
 	// Mice and touchpads (Settings › Mouse & touchpad; the compositor
 	// applies them through libinput). Speed is libinput's, -1 to 1.
@@ -837,6 +838,16 @@ func minutes(allowed ...int) func(int) error {
 			}
 		}
 		return fmt.Errorf("must be one of %v minutes", allowed)
+	}
+}
+
+// intRange: a whole number from lo to hi inclusive.
+func intRange(lo, hi int) func(int) error {
+	return func(v int) error {
+		if v < lo || v > hi {
+			return fmt.Errorf("must be between %d and %d", lo, hi)
+		}
+		return nil
 	}
 }
 

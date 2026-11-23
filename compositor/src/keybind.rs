@@ -97,6 +97,10 @@ pub enum Action {
     /// Make a new activity and go there.
     NewActivity,
     CloseActivityPicker,
+    /// Start renaming an activity from the picker (its pencil), by id.
+    StartActivityRename(String),
+    /// Delete an activity from the picker (its trash), by id.
+    DeleteActivity(String),
     /// Put a window (by IPC id) on an activity, or on every one (None).
     WindowActivity(u64, Option<String>),
     /// Focus an app's most recent window, or cycle if it already has focus.

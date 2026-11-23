@@ -195,6 +195,53 @@ fn super_shift_a_picks_the_next_activity_or_a_new_one() {
     });
 }
 
+// The picker (SUPER+SHIFT+A): its pencil renames an activity (the
+// compositor edits the name), its trash deletes one; the default stays.
+#[test]
+fn the_picker_renames_and_deletes_an_activity() {
+    let mut h = Headless::new(true);
+    h.drive(|_conn, ask| {
+        ask.run(|s| {
+            set(s, "activities.list", json!([{"id": "default", "name": "Main"}, {"id": "home", "name": "Home"}]));
+            set(s, "activities.enabled", json!(true));
+            s.run_action(Action::ActivityPicker);
+
+            // Pencil: open the name field with the current name, type a new one.
+            s.start_activity_rename("home");
+            assert_eq!(s.activities.rename.as_ref().map(|r| r.buffer.as_str()), Some("Home"));
+            for _ in 0..4 {
+                s.activity_rename_backspace();
+            }
+            for c in "Work".chars() {
+                s.activity_rename_char(c);
+            }
+            s.commit_activity_rename();
+            assert!(s.activities.rename.is_none(), "the field closes on commit");
+            assert_eq!(s.activities.entries.iter().find(|e| e.id == "home").map(|e| e.name.as_str()), Some("Work"));
+
+            // A blank name is ignored: the old one stays.
+            s.start_activity_rename("home");
+            for _ in 0..20 {
+                s.activity_rename_backspace();
+            }
+            s.commit_activity_rename();
+            assert_eq!(s.activities.entries.iter().find(|e| e.id == "home").map(|e| e.name.as_str()), Some("Work"));
+
+            // Esc drops the typing.
+            s.start_activity_rename("home");
+            s.activity_rename_char('Z');
+            s.cancel_activity_rename();
+            assert_eq!(s.activities.entries.iter().find(|e| e.id == "home").map(|e| e.name.as_str()), Some("Work"));
+
+            // Trash: the activity goes; the default can't be deleted.
+            s.delete_activity("home");
+            assert_eq!(s.activities.order, vec![DEFAULT.to_string()]);
+            s.delete_activity(DEFAULT);
+            assert_eq!(s.activities.order, vec![DEFAULT.to_string()], "the default activity stays");
+        });
+    });
+}
+
 #[test]
 fn a_rule_opens_a_window_on_every_activity_or_another_one() {
     let mut h = Headless::new(true);

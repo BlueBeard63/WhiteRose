@@ -131,6 +131,8 @@ pub enum Event {
         current: String,
         everywhere: Vec<u64>,
         picker: Option<usize>,
+        /// The activity being renamed from the picker (its pencil), or null.
+        rename: Option<crate::activities::RenameView>,
         activities: Vec<crate::activities::ActivityView>,
     },
     /// The overview (overview.rs): where the windows are spread, for the
@@ -296,6 +298,15 @@ pub enum Request {
     NewActivity,
     /// Close the activity picker without switching.
     CloseActivityPicker,
+    /// Start renaming activity `id` from the picker (its pencil).
+    StartActivityRename {
+        id: String,
+    },
+    /// Delete activity `id` from the picker (its trash); its windows come
+    /// to the current activity. The default activity stays.
+    DeleteActivity {
+        id: String,
+    },
     /// Put window `id` on activity `activity`, or on every activity when
     /// that's null (the window menu).
     WindowActivity {
@@ -422,6 +433,8 @@ impl Request {
             Request::Activity { id } => Action::Activity(id),
             Request::NewActivity => Action::NewActivity,
             Request::CloseActivityPicker => Action::CloseActivityPicker,
+            Request::StartActivityRename { id } => Action::StartActivityRename(id),
+            Request::DeleteActivity { id } => Action::DeleteActivity(id),
             Request::WindowActivity { id, activity } => Action::WindowActivity(id, activity),
             Request::FocusApp { app_id } => Action::FocusApp(app_id),
             Request::DeleteScreenshot { path } => Action::DeleteScreenshot(path),

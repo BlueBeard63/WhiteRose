@@ -202,6 +202,9 @@ pub struct WhiteRose {
     pub clipboard: crate::clipboard::History,
     pub clipboard_dir: std::path::PathBuf,
     pub clipboard_tx: smithay::reexports::calloop::channel::Sender<crate::clipboard_capture::Captured>,
+    pub clipboard_saver: crate::clipboard_save::Saver,
+    /// Invalidates captures when a newer copy, clear or privacy change arrives.
+    pub clipboard_generation: u64,
     pub popups: PopupManager,
     /// XWayland: X11 apps (xwayland.rs).
     pub xwayland: crate::xwayland::XState,
@@ -369,6 +372,8 @@ impl WhiteRose {
             clipboard,
             clipboard_dir,
             clipboard_tx,
+            clipboard_saver: Default::default(),
+            clipboard_generation: 0,
             popups: PopupManager::default(),
             xwayland,
             seat,
@@ -926,6 +931,7 @@ impl WhiteRose {
             Action::WindowSwitcher => self.open_switcher(crate::switcher::Mode::Windows),
             Action::Activity(id) => {
                 self.activities.picker = None;
+                self.activities.rename = None;
                 if self.activities.enabled && self.activities.order.contains(&id) {
                     self.switch_activity(&id);
                 }
@@ -933,13 +939,17 @@ impl WhiteRose {
             }
             Action::NewActivity => {
                 self.activities.picker = None;
+                self.activities.rename = None;
                 self.new_activity();
                 self.activities_sync();
             }
             Action::CloseActivityPicker => {
                 self.activities.picker = None;
+                self.activities.rename = None;
                 self.activities_sync();
             }
+            Action::StartActivityRename(id) => self.start_activity_rename(&id),
+            Action::DeleteActivity(id) => self.delete_activity(&id),
             Action::WindowActivity(id, activity) => {
                 let target = self.workspaces.mru().iter().find(|w| self.window_id(w) == id).cloned();
                 if let Some(w) = target {

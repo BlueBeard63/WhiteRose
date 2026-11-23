@@ -4,7 +4,7 @@
 //!   history.json   the entries (text inline, images by file name, files by path)
 //!   images/        image data, one file per distinct image
 //!
-//! Limits keep it small: `MAX_ENTRIES` entries, text up to `MAX_TEXT` bytes,
+//! Limits keep it small: a configurable entry cap, text up to `MAX_TEXT` bytes,
 //! images up to `MAX_IMAGE` each and `MAX_IMAGE_TOTAL` together; the oldest
 //! entries go first. Copying something already in the history moves it to
 //! the top instead of storing it twice. Anything a password manager marks as
@@ -21,6 +21,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 pub const MAX_ENTRIES: usize = 50;
+pub const MAX_KEEP: usize = 200;
 pub const MAX_TEXT: usize = 256 * 1024;
 pub const MAX_IMAGE: usize = 16 * 1024 * 1024;
 pub const MAX_IMAGE_TOTAL: u64 = 64 * 1024 * 1024;
@@ -149,11 +150,23 @@ pub struct FileView {
     pub exists: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct History {
     /// Newest first.
     pub entries: Vec<Entry>,
     pub next_id: u64,
+    #[serde(skip, default = "default_limit")]
+    limit: usize,
+}
+
+fn default_limit() -> usize {
+    MAX_ENTRIES
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self { entries: Vec::new(), next_id: 0, limit: MAX_ENTRIES }
+    }
 }
 
 impl History {
@@ -171,8 +184,18 @@ impl History {
         self.next_id += 1;
         let id = self.next_id;
         self.entries.insert(0, Entry { id, time: now, content });
+        (id, self.trim())
+    }
+
+    /// Applies a new cap immediately, also enforcing the image budget.
+    pub fn set_limit(&mut self, keep: usize) -> Vec<String> {
+        self.limit = keep.clamp(1, MAX_KEEP);
+        self.trim()
+    }
+
+    fn trim(&mut self) -> Vec<String> {
         let mut evicted = Vec::new();
-        while self.entries.len() > MAX_ENTRIES || self.image_total() > MAX_IMAGE_TOTAL {
+        while self.entries.len() > self.limit || self.image_total() > MAX_IMAGE_TOTAL {
             if self.entries.len() <= 1 {
                 break; // never evict the copy that was just made
             }
@@ -180,7 +203,7 @@ impl History {
                 evicted.extend(image_file(&e.content));
             }
         }
-        (id, self.unreferenced(evicted))
+        self.unreferenced(evicted)
     }
 
     /// Moves an entry to the top (it was pasted back). Returns false if unknown.
@@ -224,14 +247,16 @@ impl History {
     }
 
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("history serializes")
+        serde_json::to_string(self).expect("history serializes")
     }
 
     /// Loads saved history. A missing or corrupt file gives an empty history
     /// (the clipboard must never stop working because of a bad file).
     pub fn from_json(text: &str) -> History {
         let mut h: History = serde_json::from_str(text).unwrap_or_default();
-        h.entries.truncate(MAX_ENTRIES);
+        // The saved setting arrives from the daemon shortly after startup.
+        // Don't lose copies belonging to a cap larger than the default.
+        h.entries.truncate(MAX_KEEP);
         h.next_id = h.next_id.max(h.entries.iter().map(|e| e.id).max().unwrap_or(0));
         h
     }

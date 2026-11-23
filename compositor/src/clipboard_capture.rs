@@ -18,7 +18,7 @@ use smithay::wayland::selection::{
 };
 
 use crate::{
-    clipboard::{self, Choice, Content},
+    clipboard::{self, Choice, Content, Entry},
     ipc,
     state::WhiteRose,
 };
@@ -47,7 +47,13 @@ pub fn write_offer(data: Arc<Vec<(String, Vec<u8>)>>, mime: String, fd: OwnedFd)
 }
 
 /// Result of reading one selection, sent back to the main loop.
-pub struct Captured(pub Option<Content>);
+pub struct Captured {
+    pub generation: u64,
+    pub content: Option<Content>,
+    /// Prepared on the reader thread, including image reads and file checks.
+    /// Screenshots are already offered and needn't be offered again.
+    pub payloads: Option<Vec<(String, Vec<u8>)>>,
+}
 
 /// How long an app gets to hand over its clipboard data.
 const READ_TIMEOUT: Duration = Duration::from_secs(3);
@@ -105,10 +111,10 @@ impl WhiteRose {
     }
 
     /// A client set the clipboard: read and record it.
-    pub fn capture_clipboard(&mut self, mimes: Vec<String>) {
+    pub fn capture_clipboard(&mut self, mimes: Vec<String>, generation: u64) {
         // Clipboard history turned off (Settings > Privacy): copying still
         // works, nothing is remembered.
-        if !self.clipboard_history_on {
+        if !self.clipboard_history_on || generation != self.clipboard_generation {
             return;
         }
         let Some(choice) = clipboard::choose(&mimes) else { return };
@@ -126,13 +132,17 @@ impl WhiteRose {
         let images = self.clipboard_images_dir();
         std::thread::spawn(move || {
             let content = read_capped(reader, choice.limit()).and_then(|d| to_content(&choice, &d, &images));
-            let _ = tx.send(Captured(content));
+            let payloads = content
+                .as_ref()
+                .and_then(|content| clipboard::payloads(&Entry { id: 0, time: 0, content: content.clone() }, &images));
+            let _ = tx.send(Captured { generation, content, payloads });
         });
     }
 
     /// Puts the compositor's own data on the clipboard (a screenshot, a
     /// history entry), for Wayland and X11 apps alike.
     pub fn offer_clipboard(&mut self, payloads: Vec<(String, Vec<u8>)>) {
+        self.clipboard_generation = self.clipboard_generation.wrapping_add(1);
         let mimes: Vec<String> = payloads.iter().map(|(m, _)| m.clone()).collect();
         set_data_device_selection(&self.display_handle, &self.seat, mimes.clone(), Offer::Data(Arc::new(payloads)));
         self.xwayland.clipboard = Some(mimes.clone());
@@ -164,7 +174,16 @@ impl WhiteRose {
 
     /// Main-loop side of a finished capture.
     pub fn clipboard_captured(&mut self, captured: Captured) {
-        let Some(content) = captured.0 else { return };
+        if captured.generation != self.clipboard_generation || !self.clipboard_history_on {
+            return;
+        }
+        let Some(content) = captured.content else { return };
+        // Keep the selection alive after a short-lived source (e.g. wl-copy
+        // invoked by a terminal) exits. No keyboard shortcut is needed to
+        // promote the newest copy out of history before it can be pasted.
+        if let Some(payloads) = captured.payloads {
+            self.offer_clipboard(payloads);
+        }
         let (_, evicted) = self.clipboard.add(content, now());
         self.after_clipboard_change(evicted);
     }
@@ -176,8 +195,9 @@ impl WhiteRose {
         }
         let tx = self.clipboard_tx.clone();
         let images = self.clipboard_images_dir();
+        let generation = self.clipboard_generation;
         std::thread::spawn(move || {
-            let _ = tx.send(Captured(store_image(&images, "image/png", &png)));
+            let _ = tx.send(Captured { generation, content: store_image(&images, "image/png", &png), payloads: None });
         });
     }
 
@@ -186,9 +206,7 @@ impl WhiteRose {
         for f in unused_images {
             let _ = std::fs::remove_file(images.join(f));
         }
-        if let Err(e) = clipboard::save(&self.clipboard_dir, &self.clipboard) {
-            tracing::warn!(%e, "saving clipboard history failed");
-        }
+        self.clipboard_saver.save(self.clipboard_dir.clone(), self.clipboard.clone());
         self.clipboard_sync();
     }
 
@@ -232,12 +250,19 @@ impl WhiteRose {
     }
 
     pub fn clipboard_delete(&mut self, id: u64) {
+        self.clipboard_generation = self.clipboard_generation.wrapping_add(1);
         let unused = self.clipboard.remove(id);
         self.after_clipboard_change(unused);
     }
 
     pub fn clipboard_clear(&mut self) {
+        self.clipboard_generation = self.clipboard_generation.wrapping_add(1);
         let unused = self.clipboard.clear();
+        self.after_clipboard_change(unused);
+    }
+
+    pub fn clipboard_set_limit(&mut self, keep: usize) {
+        let unused = self.clipboard.set_limit(keep);
         self.after_clipboard_change(unused);
     }
 

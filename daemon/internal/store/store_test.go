@@ -101,6 +101,7 @@ func TestValidation(t *testing.T) {
 		"bar.seconds":                   `"yes"`,
 		"privacy.lockAfter":             `7`,
 		"privacy.screenOffAfter":        `-1`,
+		"privacy.clipboardKeep":         `250`,
 		"apps.terminal":                 `"ghostty --title x"`,
 		"apps.editor":                   `"/usr/bin/code"`,
 		"files.keys":                    `{"new-tab":"Ctrl+T; rm"}`,

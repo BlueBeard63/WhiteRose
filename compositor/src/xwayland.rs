@@ -585,14 +585,16 @@ impl XwmHandler for WhiteRose {
             return;
         }
         self.xwayland.clipboard = None;
+        self.clipboard_generation = self.clipboard_generation.wrapping_add(1);
         set_data_device_selection(&self.display_handle, &self.seat, mime_types.clone(), Offer::X11);
-        self.capture_clipboard(mime_types);
+        self.capture_clipboard(mime_types, self.clipboard_generation);
     }
 
     /// The X11 app whose copy was on the clipboard let it go (it quit).
     fn cleared_selection(&mut self, _: XwmId, selection: SelectionTarget) {
         let ours = matches!(current_data_device_selection_userdata(&self.seat).as_deref(), Some(Offer::X11));
         if selection == SelectionTarget::Clipboard && ours {
+            self.clipboard_generation = self.clipboard_generation.wrapping_add(1);
             clear_data_device_selection(&self.display_handle, &self.seat);
         }
     }
