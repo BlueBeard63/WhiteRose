@@ -123,17 +123,29 @@ Rectangle {
             Repeater {
                 model: N.buttons(root.n.actions)
                 delegate: Rectangle {
+                    id: actionButton
                     required property var modelData
-                    width: label.implicitWidth + 20
+                    readonly property string actionIcon: ({ restart: "restart", snooze: "bell", dismiss: "check" })[modelData.identifier] || ""
+                    width: actionContent.implicitWidth + 20
                     height: 26
                     radius: 8
                     color: btnMouse.containsMouse ? Theme.grip : Theme.surface2
-                    Text {
-                        id: label
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: modelData.text
+                    Accessible.onPressAction: modelData.invoke()
+                    Keys.onReturnPressed: modelData.invoke()
+                    Keys.onSpacePressed: modelData.invoke()
+                    Row {
+                        id: actionContent
                         anchors.centerIn: parent
-                        text: modelData.text
-                        color: Theme.text
-                        font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
+                        spacing: 6
+                        Icon { visible: actionButton.actionIcon !== ""; name: actionButton.actionIcon; size: 12; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            text: actionButton.modelData.text
+                            color: Theme.text
+                            font { family: Theme.font; pointSize: Theme.pt(12); weight: Font.Medium }
+                        }
                     }
                     MouseArea {
                         id: btnMouse

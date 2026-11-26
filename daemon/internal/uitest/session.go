@@ -186,6 +186,7 @@ func Start(t testing.TB, o Options) *Session {
 		// The daemon's search indexer: this checkout's Files, never an
 		// installed one on PATH.
 		"WHITEROSE_FILES="+s.binary("WR_UITEST_FILES", "apps/target/debug/whiterose-files"),
+		"WHITEROSE_CLOCKS="+s.binary("WR_UITEST_CLOCKS", "apps/target/debug/whiterose-clocks"),
 	)
 	s.cmd.Stdout, s.cmd.Stderr = s.log, s.log
 	s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

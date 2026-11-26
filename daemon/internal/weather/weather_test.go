@@ -8,6 +8,26 @@ import (
 	"testing"
 )
 
+func TestSharedCitySearchCarriesZonesAndBoundsResults(t *testing.T) {
+	old := GeocodeURL
+	t.Cleanup(func() { GeocodeURL = old })
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("count"); got != "20" {
+			t.Errorf("count=%s", got)
+		}
+		if got := r.URL.Query().Get("name"); got != "São Paulo" {
+			t.Errorf("name=%s", got)
+		}
+		w.Write([]byte(`{"results":[{"name":"São Paulo","country":"Brazil","timezone":"America/Sao_Paulo","latitude":-23.55,"longitude":-46.63}]}`))
+	}))
+	defer srv.Close()
+	GeocodeURL = srv.URL
+	cities, err := SearchCities(context.Background(), srv.Client(), "São Paulo", 1000)
+	if err != nil || len(cities) != 1 || cities[0].Timezone != "America/Sao_Paulo" || cities[0].Country != "Brazil" {
+		t.Fatal(cities, err)
+	}
+}
+
 func fakeAPI(t *testing.T) (*httptest.Server, *int) {
 	geocodes := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

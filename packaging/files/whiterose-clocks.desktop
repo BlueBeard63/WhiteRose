@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Clocks
+GenericName=Clocks
+Comment=Alarms, timers, stopwatch and world clocks
+Exec=whiterose-clocks
+Icon=whiterose-clocks
+Terminal=false
+Type=Application
+Categories=Utility;Clock;
+Keywords=alarm;timer;stopwatch;world;timezone;time;
+StartupNotify=true

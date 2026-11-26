@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -123,22 +124,40 @@ func Refresh(ctx context.Context, cfg Config, cacheDir string, client *http.Clie
 }
 
 func geocode(ctx context.Context, client *http.Client, city string) (lat, lon float64, name string, err error) {
-	var resp struct {
-		Results []struct {
-			Name      string  `json:"name"`
-			Latitude  float64 `json:"latitude"`
-			Longitude float64 `json:"longitude"`
-		} `json:"results"`
-	}
-	q := url.Values{"name": {city}, "count": {"1"}, "format": {"json"}}
-	if err := getJSON(ctx, client, GeocodeURL+"?"+q.Encode(), &resp); err != nil {
+	results, err := SearchCities(ctx, client, city, 1)
+	if err != nil {
 		return 0, 0, "", err
 	}
-	if len(resp.Results) == 0 {
+	if len(results) == 0 {
 		return 0, 0, "", fmt.Errorf("no place called %q", city)
 	}
-	r := resp.Results[0]
+	r := results[0]
 	return r.Latitude, r.Longitude, r.Name, nil
+}
+
+// City includes the IANA timezone needed by Clocks. Weather and Clocks share
+// the same geocoding endpoint and bounded HTTP decoding.
+type City struct {
+	Name      string  `json:"name"`
+	Country   string  `json:"country"`
+	Timezone  string  `json:"timezone"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+func SearchCities(ctx context.Context, client *http.Client, city string, count int) ([]City, error) {
+	if len(city) > 200 || len(strings.TrimSpace(city)) < 2 {
+		return nil, errors.New("Enter at least two characters")
+	}
+	count = max(1, min(20, count))
+	var resp struct {
+		Results []City `json:"results"`
+	}
+	q := url.Values{"name": {city}, "count": {strconv.Itoa(count)}, "format": {"json"}}
+	if err := getJSON(ctx, client, GeocodeURL+"?"+q.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
 }
 
 func getJSON(ctx context.Context, client *http.Client, u string, into any) error {

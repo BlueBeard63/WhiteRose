@@ -20,6 +20,8 @@ Item {
     readonly property string view: Compositor.switcher ? "switcher" : picking ? "activities"
         : ShellState.islandScreen && ShellState.islandScreen !== screenName ? "idle" : ShellState.islandView
     readonly property bool idle: view === "idle"
+    readonly property bool clockShown: idle && Clocks.readout !== null
+        && screenName === (Compositor.activeScreen || Quickshell.screens[0]?.name || "")
     // Views that take the keyboard (each says; see IslandView.qml).
     readonly property bool wantsKeyboard: !idle && (shown?.keyboard ?? false)
 
@@ -100,7 +102,7 @@ Item {
     Rectangle {
         anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 8 }
         width: 30; height: 3; radius: 2
-        opacity: root.idle && !root.tucked && !root.hidden && !root.morphing ? 1 : 0
+        opacity: root.idle && !root.clockShown && !root.tucked && !root.hidden && !root.morphing ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 120 } }
         color: gripMouse.containsMouse ? Theme.muted : Theme.grip
     }
@@ -122,7 +124,7 @@ Item {
         height: Theme.barHeight
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: ShellState.show("dock")
+        onClicked: if (root.clockShown) Clocks.open(Clocks.readout.view); else ShellState.show("dock")
     }
     MouseArea {
         id: gripMouse
@@ -132,7 +134,11 @@ Item {
         height: shape.bodyHeight
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: ShellState.show("dock")
+        onClicked: if (root.clockShown) Clocks.open(Clocks.readout.view); else ShellState.show("dock")
+    }
+    IdleClocks {
+        x: shape.bodyX + 12
+        visible: root.clockShown && !root.tucked && !root.hidden && !root.morphing
     }
 
     // Each view is loaded while it's shown (and while it fades out), centred

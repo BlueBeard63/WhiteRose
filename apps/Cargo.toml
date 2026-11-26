@@ -1,6 +1,6 @@
 # WhiteRose's own apps (Qt Quick UI, Rust core) and the kit they share.
 [workspace]
-members = ["kit", "notepad", "files", "calculator"]
+members = ["kit", "notepad", "files", "calculator", "clocks"]
 resolver = "2"
 
 [workspace.package]
