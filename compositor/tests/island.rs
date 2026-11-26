@@ -10,7 +10,8 @@ use whiterose_wm::ipc::Event;
 #[test]
 fn a_window_under_the_island_covers_it_and_moving_it_away_uncovers_it() {
     let mut h = Headless::new(true);
-    assert_eq!(h.state.island_event(), Event::Island { covered: vec![], fullscreen: vec![] }, "empty desktop");
+    let Event::Island { covered, fullscreen, .. } = h.state.island_event() else { unreachable!() };
+    assert!(covered.is_empty() && fullscreen.is_empty(), "empty desktop");
     h.drive(|conn, ask| {
         let mut c = Client::connect(&conn);
         c.open_bar(); // reserves the 26 px the island hangs below
@@ -28,8 +29,11 @@ fn a_window_under_the_island_covers_it_and_moving_it_away_uncovers_it() {
             st.space.map_element(w, (W / 2 - 300, 300), false);
             st.island_event()
         });
-        assert_eq!(under, Event::Island { covered: vec!["TEST-1".into()], fullscreen: vec![] });
-        assert_eq!(below, Event::Island { covered: vec![], fullscreen: vec![] });
+        let Event::Island { covered, fullscreen, .. } = under else { unreachable!() };
+        assert_eq!(covered, vec!["TEST-1".to_string()]);
+        assert!(fullscreen.is_empty());
+        let Event::Island { covered, fullscreen, .. } = below else { unreachable!() };
+        assert!(covered.is_empty() && fullscreen.is_empty());
     });
 }
 
@@ -47,7 +51,30 @@ fn each_screen_has_its_own_island() {
             st.space.map_element(w, (W + W / 2 - 300, 0), false);
             st.island_event()
         });
-        assert_eq!(second, Event::Island { covered: vec!["TEST-2".into()], fullscreen: vec![] });
+        let Event::Island { covered, fullscreen, .. } = second else { unreachable!() };
+        assert_eq!(covered, vec!["TEST-2".to_string()], "only the screen it tucks under");
+        assert!(fullscreen.is_empty());
+    });
+}
+
+// A view opens on the active screen: the focused window's, so with several
+// monitors SUPER+SHIFT+N and the like show on the screen in use.
+#[test]
+fn the_active_screen_follows_the_focused_window() {
+    let mut h = Headless::new(true);
+    h.add_output("TEST-2", (W, 0));
+    h.drive(|conn, ask| {
+        let mut c = Client::connect(&conn);
+        let (surface, _t) = c.open_window();
+        c.attach_buffer(&surface, 600, 400);
+        let active = ask.run(|st| {
+            let w = st.space.elements().next().unwrap().clone();
+            st.space.map_element(w.clone(), (W + 100, 100), false);
+            st.focus_window(Some(w));
+            let Event::Island { active, .. } = st.island_event() else { unreachable!() };
+            active
+        });
+        assert_eq!(active, "TEST-2", "the focused window's screen is the active one");
     });
 }
 

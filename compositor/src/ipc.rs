@@ -86,10 +86,14 @@ pub enum Event {
     /// the idle island (a maximized window's title bar): the shell tucks
     /// that screen's island into its bar. And those with a fullscreen
     /// window (the bar isn't drawn there): the island waits in the top edge
-    /// and drops over the window when a view opens.
+    /// and drops over the window when a view opens. `active` names the
+    /// output to open a view on (the focused window's, else the pointer's),
+    /// so with several monitors a view opens on one — the one in use — and
+    /// only that island takes the keyboard (empty: the first/only screen).
     Island {
         covered: Vec<String>,
         fullscreen: Vec<String>,
+        active: String,
     },
     /// Every connected output and what this backend can change about them
     /// (the Displays page); `trial_until` while a layout is being tried out.
@@ -927,7 +931,16 @@ impl WhiteRose {
             .map(|o| o.name())
             .collect();
         let fullscreen = self.space.outputs().filter(|o| self.fullscreen_on(o).is_some()).map(|o| o.name()).collect();
-        Event::Island { covered, fullscreen }
+        // Where a view should open: the focused window's output, else the
+        // one under the pointer, else the first (what pointer_output falls
+        // back to). So SUPER+SHIFT+N and the like open on the screen in use.
+        let active = self
+            .focused_window()
+            .and_then(|w| self.output_of(&w))
+            .or_else(|| self.pointer_output())
+            .map(|o| o.name())
+            .unwrap_or_default();
+        Event::Island { covered, fullscreen, active }
     }
 
     /// Re-checks the area under the island (windows mapped, moved, resized).

@@ -77,11 +77,9 @@ fn shell_ipc_round_trip() {
         let windows = shell.recv();
         assert_eq!(windows, serde_json::json!({"event": "windows", "windows": []}));
         let island = shell.recv();
-        assert_eq!(
-            island,
-            serde_json::json!({"event": "island", "covered": [], "fullscreen": []}),
-            "nothing under the island"
-        );
+        assert_eq!(island["event"], "island");
+        assert_eq!(island["covered"], serde_json::json!([]), "nothing under the island");
+        assert_eq!(island["fullscreen"], serde_json::json!([]));
         let outputs = shell.recv();
         assert_eq!(outputs["event"], "outputs", "the Displays page learns the outputs");
         let lock = shell.recv();

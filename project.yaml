@@ -28,6 +28,7 @@ releases:
     fixed:
       - "After copying from some apps, Ctrl+V pasted nothing until you opened the clipboard (SUPER+V) and picked the copy. The desktop now holds onto each copy, so Ctrl+V pastes the newest one straight away, even once the app that made it has closed"
       - "Copying could briefly stutter the desktop once the clipboard held a lot: the history is now written in the background, off the path that handles your copy"
+      - "With more than one monitor, opening the note (SUPER+SHIFT+N), the agenda (SUPER+A) or the launcher could flash open and close at once, as each screen's island fought over the keyboard. Island views now open on the screen in use — the focused window's, else the one under the pointer — and only that island takes the keyboard"
     notes: |
       With 0.3.0 or an earlier 0.4 alpha and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Your settings carry over.
 

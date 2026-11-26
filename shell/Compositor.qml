@@ -54,6 +54,10 @@ Singleton {
     property var islandCovered: []
     // Screens with a fullscreen window (the bar isn't drawn there).
     property var fullscreen: []
+    // The screen a view should open on (the focused window's, else the
+    // pointer's): with several monitors it opens on the one in use, and only
+    // that island takes the keyboard. "" (the first/only screen) when unknown.
+    property string activeScreen: ""
 
     // Connected monitors, built-in first: { id, strong, connector, make, model,
     // builtin, physical_mm, modes: [{ width, height, refresh (mHz), preferred }],
@@ -212,6 +216,7 @@ Singleton {
         case "island":
             root.islandCovered = Array.isArray(msg.covered) ? msg.covered : [];
             root.fullscreen = Array.isArray(msg.fullscreen) ? msg.fullscreen : [];
+            root.activeScreen = msg.active ?? "";
             break;
         case "lock":
             // A restarted shell finds the session still locked: lock again.

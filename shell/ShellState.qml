@@ -36,9 +36,28 @@ Singleton {
     // The screen (connector) a view is for, if only one: the others' islands
     // stay at rest. "" for every screen.
     property string islandScreen: ""
+    // Whether screen `connector` has a bar (and so an island): every screen,
+    // or only the main one (the first enabled output) when bar.screens is
+    // "main". Matches shell.qml's Variants model and editZones below.
+    function screenHasBar(connector) {
+        if (!connector) return false;
+        return Daemon.setting("bar.screens", "all") !== "main"
+            || (Compositor.outputs.find(o => o.enabled)?.connector ?? "") === connector;
+    }
+
     // (islandViews, not views: read while islandViews is changing, views
     // can still be the old list.)
-    function show(view) { if (view === "idle" || islandViews.includes(view)) { islandView = view; islandScreen = ""; if (view !== "idle") panel = "" } }
+    // A view opens on the active screen (the focused window's, else the
+    // pointer's), so with several monitors it shows on the one in use and
+    // only that island takes the keyboard — the others stay idle. When that
+    // screen has no bar (bar.screens "main", focus on another monitor), or
+    // none is known yet, it falls back to every island.
+    function show(view) {
+        if (view !== "idle" && !islandViews.includes(view)) return;
+        islandView = view;
+        islandScreen = view !== "idle" && screenHasBar(Compositor.activeScreen) ? Compositor.activeScreen : "";
+        if (view !== "idle") panel = "";
+    }
     function toggle(view) { islandView === view ? close() : show(view) }
     function close() { islandView = "idle"; islandScreen = "" }
 
