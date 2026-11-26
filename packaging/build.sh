@@ -53,6 +53,7 @@ install -Dm755 "$work/target/release/whiterose-wm" "$v/bin/whiterose-wm"
 install -Dm755 "$work/whiterosed" "$v/bin/whiterosed"
 install -Dm755 "$work/apps-target/release/whiterose-notepad" "$v/bin/whiterose-notepad"
 install -Dm755 "$work/apps-target/release/whiterose-files" "$v/bin/whiterose-files"
+install -Dm755 "$work/apps-target/release/whiterose-calculator" "$v/bin/whiterose-calculator"
 install -Dm755 "$qs_bin" "$v/bin/quickshell"
 ln -s quickshell "$v/bin/qs"
 mkdir -p "$v"
@@ -65,7 +66,7 @@ install -Dm755 packaging/files/whiterose-select "$meta/usr/lib/whiterose/select"
 install -Dm755 "$work/whiterose-launch" "$meta/usr/lib/whiterose/launch"
 install -Dm755 packaging/files/whiterose-session "$meta/usr/bin/whiterose-session"
 # /usr/bin commands: run the version this session uses.
-for b in whiterose-wm whiterosed whiterose-notepad whiterose-files; do
+for b in whiterose-wm whiterosed whiterose-notepad whiterose-files whiterose-calculator; do
     printf '#!/bin/sh\nd=$(/usr/lib/whiterose/select) || exit 1\nexec "$d/bin/%s" "$@"\n' "$b" > "$meta/usr/bin/$b"
     chmod 755 "$meta/usr/bin/$b"
 done
@@ -74,7 +75,8 @@ chmod 755 "$meta/usr/bin/whiterose-settings"
 install -Dm644 packaging/files/whiterose-notepad.desktop "$meta/usr/share/applications/whiterose-notepad.desktop"
 install -Dm644 packaging/files/whiterose-files.desktop "$meta/usr/share/applications/whiterose-files.desktop"
 install -Dm644 packaging/files/whiterose-settings.desktop "$meta/usr/share/applications/whiterose-settings.desktop"
-# The apps' icons (Settings, Notepad, Files), every size.
+install -Dm644 packaging/files/whiterose-calculator.desktop "$meta/usr/share/applications/whiterose-calculator.desktop"
+# The apps' icons, every size.
 mkdir -p "$meta/usr/share/icons"
 cp -r packaging/icons/hicolor "$meta/usr/share/icons/"
 # Folders open in Files, in a WhiteRose session only.
@@ -103,7 +105,7 @@ install -Dm644 profile/vscode-extensions.txt "$meta/usr/share/whiterose/profile/
 
 # ---- dependencies: what the binaries link, plus what the shell uses ------------
 # (Xwayland: X11 apps; the compositor starts it when the first one connects.)
-bins="$v/bin/whiterose-wm $v/bin/quickshell $v/bin/whiterose-notepad $v/bin/whiterose-files"
+bins="$v/bin/whiterose-wm $v/bin/quickshell $v/bin/whiterose-notepad $v/bin/whiterose-files $v/bin/whiterose-calculator"
 case "$FORMAT" in
 deb)
     # dpkg-shlibdeps maps each linked library to its package.

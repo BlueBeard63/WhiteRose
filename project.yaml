@@ -19,10 +19,12 @@ version: 0.4.0-alpha.4
 releases:
   - version: 0.4.0-alpha.4
     date: 2026-11-26
-    title: Activities and clipboard polish (alpha)
+    title: Calculator, activities and clipboard polish (alpha)
     summary: >-
-      The fourth 0.4 alpha: rename and delete activities right from the SUPER+SHIFT+A picker, paste a copy straight away with Ctrl+V, and a clipboard that stays quick however much you copy. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
+      The fourth 0.4 alpha adds Calculator with standard and scientific modes and saved history, plus activity and clipboard fixes. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
     added:
+      - "Calculator: standard and scientific modes, degrees or radians, editable expressions, live results and saved history with reuse and copy"
+      - "Launcher calculations now understand more scientific functions, inverse trigonometry and factorial, using the same safe engine as Calculator"
       - "Rename or delete an activity from the SUPER+SHIFT+A picker: hover a card for its pencil and trash. The first activity stays, and deleting one brings its windows to the current activity"
       - "Settings › Privacy sets how many clipboard copies to keep (10 to 200)"
     fixed:
@@ -34,7 +36,7 @@ releases:
     notes: |
       With 0.3.0 or an earlier 0.4 alpha and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Your settings carry over.
 
-      Not in this alpha yet: the task manager, disk imager, clocks and calculator.
+      Not in this alpha yet: the task manager, disk imager and clocks.
     contributors: [BlueBeard63]
 
   - version: 0.4.0-alpha.3

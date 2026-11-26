@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/qt/qml/WhiteRose/Calculator/qml">
+    <file alias="Calc.js">../../shell/Calc.js</file>
+    <file alias="Input.js">qml/Input.js</file>
+</qresource>
+</RCC>

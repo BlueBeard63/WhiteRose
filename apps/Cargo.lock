@@ -1385,6 +1385,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "whiterose-calculator"
+version = "0.1.0"
+dependencies = [
+ "cxx",
+ "cxx-qt",
+ "cxx-qt-build",
+ "cxx-qt-lib",
+ "libc",
+ "serde",
+ "serde_json",
+ "whiterose-kit",
+]
+
+[[package]]
 name = "whiterose-files"
 version = "0.1.0"
 dependencies = [

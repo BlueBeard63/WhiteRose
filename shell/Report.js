@@ -20,7 +20,7 @@ const areas = [
 ];
 
 // WhiteRose's own apps by app ID.
-const ownApps = { "whiterose-settings": "Settings", "whiterose-files": "Files", "whiterose-notepad": "Notepad" };
+const ownApps = { "whiterose-settings": "Settings", "whiterose-files": "Files", "whiterose-notepad": "Notepad", "whiterose-calculator": "Calculator" };
 
 function appLabel(id) {
     return ownApps[id] ?? id;

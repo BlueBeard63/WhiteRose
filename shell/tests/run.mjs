@@ -13,7 +13,8 @@ function load(file, names, deps = {}) {
     const src = readFileSync(join(here, "..", file), "utf8").replace(/^\.pragma library\s*$/m, "").replace(/^\.import .*$/gm, "");
     return new Function(...Object.keys(deps), `${src}\nreturn { ${names.join(", ")} };`)(...Object.values(deps));
 }
-const Calc = load("Calc.js", ["evaluate"]);
+const Calc = load("Calc.js", ["evaluate", "calculate"]);
+const CalcInput = load("../apps/calculator/qml/Input.js", ["operandRange", "transform", "keys"]);
 const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results", "shellQuote", "rankWindows", "sectionOf"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
@@ -81,6 +82,56 @@ test("floating point noise is trimmed", () => {
 test("not calculations", () => {
     for (const s of ["", "firefox", "12", "  42 ", "1/0", "2+", "(2+3", "2+3)", "alert(1)", "2+foo", "process.exit()", "sqrt"])
         assert.equal(Calc.evaluate(s), null, JSON.stringify(s));
+});
+
+// ---- Search ------------------------------------------------------------
+test("scientific functions and angle modes share the calculator engine", () => {
+    assert.equal(Calc.calculate("sin(30)+2^3", { angle: "deg" }).result, "8.5");
+    assert.equal(Calc.calculate("asin(0.5)", { angle: "deg" }).result, "30");
+    assert.equal(Calc.evaluate("sin(pi/2)"), "1");
+    assert.equal(Calc.evaluate("acos(1)"), "0");
+    assert.equal(Calc.evaluate("sin(1e-20)"), "1e-20");
+    assert.equal(Calc.evaluate("log2(8)+log10(100)"), "5");
+    assert.equal(Calc.evaluate("cbrt(-27)"), "-3");
+    assert.equal(Calc.evaluate("exp(ln(2))"), "2");
+    assert.equal(Calc.evaluate("sinh(0)+cosh(0)+tanh(0)"), "1");
+    assert.equal(Calc.evaluate("asinh(0)+acosh(1)+atanh(0)"), "0");
+    assert.equal(Calc.evaluate("5!"), "120");
+    assert.equal(Calc.evaluate("fact(0)"), "1");
+    assert.equal(Calc.evaluate("2^3!"), "64");
+    assert.equal(Calc.evaluate("-3!"), "-6");
+    assert.equal(Calc.evaluate("percent(25)*80"), "20");
+    assert.equal(Calc.evaluate("π*2"), Calc.evaluate("tau"));
+    assert.equal(Calc.calculate("42").result, "42", "app accepts bare numbers");
+    assert.equal(Calc.evaluate("42"), null, "launcher still hides bare numbers");
+});
+test("calculator rejects malformed syntax, domain errors and executable input", () => {
+    for (const input of ["1 2+", "2pi", "2(3)", "sqrt 16", "sin()", "1..2", "constructor(1)", "toString(1)",
+        "1/0", "2%0", "sqrt(-1)", "ln(-1)", "asin(2)", "(-1)!", "1.5!", "171!", "exp(10000)",
+        "1e999", "Math.sin(1)", "alert(1)", "globalThis", "x=1", "1;2"]) {
+        assert.equal(Calc.calculate(input).ok, false, input);
+    }
+    assert.equal(Calc.calculate("tan(90)", { angle: "deg" }).ok, false);
+    assert.equal(Calc.calculate("(".repeat(100) + "1" + ")".repeat(100)).ok, false);
+    assert.equal(Calc.calculate("1+".repeat(3000) + "1").ok, false);
+    assert.equal(Calc.calculate("1+".repeat(700) + "1").ok, false);
+    assert.equal(Calc.calculate("-0").result, "0");
+    assert.equal(Calc.calculate("1e-20").result, "1e-20");
+});
+test("calculator operand buttons respect selection, parentheses and exponents", () => {
+    const edit = (text, op) => CalcInput.transform(text, text.length, 0, 0, op).text;
+    assert.equal(edit("12+3", "square"), "12+(3)^2");
+    assert.equal(edit("12+-3", "square"), "12+(-3)^2");
+    assert.equal(edit("2*1e-3", "negate"), "2*-(1e-3)");
+    assert.equal(edit("2+sin(30)", "reciprocal"), "2+1/(sin(30))");
+    assert.equal(edit("(2+3)", "sqrt"), "sqrt((2+3))");
+    assert.equal(edit("25", "percent"), "percent(25)");
+    assert.equal(edit("2+3", "clear"), "2+");
+    assert.equal(edit("12+(3)^2", "clear"), "12+");
+    assert.equal(edit("12+3^-2", "clear"), "12+");
+    assert.equal(CalcInput.transform("12+3", 4, 0, 2, "sqrt").text, "sqrt(12)+3");
+    assert.equal(CalcInput.keys(false).length, 24);
+    assert.equal(CalcInput.keys(true).length, 36);
 });
 
 // ---- Search ------------------------------------------------------------
@@ -1234,6 +1285,9 @@ test("UI text follows the copy rules", () => {
         readFileSync(file, "utf8").split("\n").forEach((line, i) => {
             if (/^\s*(\/\/|\*|import )/.test(line)) return;
             for (const [, text] of line.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+                // Factorial notation and parser operator alphabets are maths,
+                // not enthusiastic prose.
+                if (["n!", ")!", "+-*/%^()!"].includes(text)) continue;
                 for (const [re, what] of rules) {
                     if (re.test(text)) problems.push(`${file.replace(join(here, "..", ".."), "")}:${i + 1} has ${what}: ${text}`);
                 }

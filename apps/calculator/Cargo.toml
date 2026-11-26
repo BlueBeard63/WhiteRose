@@ -1,0 +1,21 @@
+[package]
+name = "whiterose-calculator"
+description = "WhiteRose Calculator: standard and scientific calculations with history."
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "whiterose-calculator"
+path = "src/main.rs"
+
+[dependencies]
+whiterose-kit = { path = "../kit" }
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"
+
+[build-dependencies]
+cxx-qt-build.workspace = true
