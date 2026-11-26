@@ -24,6 +24,15 @@ Item {
     readonly property alias text: area.text
     readonly property alias area: area
     property bool loading: false
+    property bool initialized: false
+    // Compare actual text, not textChanged signals: syntax highlighting and
+    // TextEdit initialization can emit those without the user editing.
+    property string savedText: ""
+    Component.onCompleted: {
+        ed.savedText = area.text;
+        ed.dirty = false;
+        ed.initialized = true;
+    }
 
     readonly property string title: scratch ? "Scratch" : path === "" ? "Untitled" : path.substring(path.lastIndexOf("/") + 1)
 
@@ -31,17 +40,18 @@ Item {
         if (scratch) {
             ed.loading = true;
             area.text = Files.scratch();
-            ed.loading = false;
             ed.wrap = true;
             ed.language = "Markdown";
             ed.syntax = "Markdown";
+            ed.savedText = area.text;
+            ed.dirty = false;
+            ed.loading = false;
             return true;
         }
         const r = JSON.parse(Files.open(path));
         if (!r.ok) { ed.error = r.error; return false; }
         ed.loading = true;
         area.text = r.text;
-        ed.loading = false;
         ed.eol = r.eol;
         ed.savedMtime = r.mtime;
         ed.dirty = false;
@@ -51,6 +61,8 @@ Item {
         ed.syntax = l.syntax;
         // Prose wraps; code doesn't (so line numbers line up).
         ed.wrap = l.syntax === "" || l.syntax === "Markdown";
+        ed.savedText = area.text;
+        ed.loading = false;
         return true;
     }
 
@@ -67,6 +79,7 @@ Item {
             ed.syntax = l.syntax;
         }
         ed.savedMtime = r.mtime;
+        ed.savedText = area.text;
         ed.dirty = false;
         ed.changedOnDisk = false;
         return "";
@@ -182,6 +195,7 @@ Item {
             width: ed.wrap ? flick.width : Math.max(flick.width, contentWidth + leftPadding + rightPadding)
             height: Math.max(flick.height, contentHeight + topPadding + bottomPadding)
             wrapMode: ed.wrap ? TextEdit.Wrap : TextEdit.NoWrap
+            textFormat: TextEdit.PlainText
             color: Theme.text
             selectionColor: Theme.tint(0.35)
             selectedTextColor: Theme.text
@@ -193,12 +207,14 @@ Item {
             tabStopDistance: metrics.averageCharacterWidth * 4
             persistentSelection: true
             selectByMouse: true
+            Accessible.role: Accessible.EditableText
+            Accessible.name: "Document"
             focus: true
             onCursorRectangleChanged: flick.ensureVisible(cursorRectangle)
             onTextChanged: {
-                if (ed.loading) return;
+                if (ed.loading || !ed.initialized) return;
                 if (ed.scratch) autosave.restart();
-                else ed.dirty = true;
+                else ed.dirty = area.text !== ed.savedText;
             }
             // Tab inserts spaces in code, a tab in prose.
             Keys.onTabPressed: e => {

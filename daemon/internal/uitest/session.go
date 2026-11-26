@@ -343,6 +343,11 @@ func (s *Session) Spawn(command string) {
 	s.send(map[string]any{"cmd": "spawn", "command": command})
 }
 
+// Launch runs an app with literal arguments (including paths containing spaces).
+func (s *Session) Launch(appID string, argv ...string) {
+	s.send(map[string]any{"cmd": "launch", "app_id": appID, "argv": argv})
+}
+
 // windowAt is the screen position of the window titled `title`.
 func (s *Session) window(title string) (windowInfo, bool) {
 	s.mu.Lock()
@@ -395,6 +400,20 @@ func (s *Session) WindowGeometry(title string) ([4]int, bool) {
 func (s *Session) HasWindow(title string) bool {
 	_, ok := s.window(title)
 	return ok
+}
+
+// AppWindowCount counts all of an app's windows, including hidden workspaces.
+// Useful for checking that opening another file reuses the existing window.
+func (s *Session) AppWindowCount(appID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, w := range s.windows {
+		if w.AppID != nil && *w.AppID == appID {
+			count++
+		}
+	}
+	return count
 }
 
 // layer is where the layer surface named `namespace` (the bar:

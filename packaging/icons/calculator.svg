@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect x="68" y="28" width="376" height="456" rx="64" fill="#151517" stroke="#5A5A62" stroke-width="8"/>
+  <rect x="96" y="58" width="320" height="116" rx="26" fill="#EAE8E6"/>
+  <g fill="none" stroke="#39373C" stroke-width="9" stroke-linecap="round">
+    <path d="M324 96h36v38h-36zM272 96h26v38h-26zM220 96h26v38h-26z"/>
+  </g>
+  <g fill="#3A3A3E">
+    <rect x="98" y="204" width="88" height="68" rx="16"/>
+    <rect x="212" y="204" width="88" height="68" rx="16"/>
+    <rect x="326" y="204" width="88" height="68" rx="16"/>
+    <rect x="98" y="294" width="88" height="68" rx="16"/>
+    <rect x="212" y="294" width="88" height="68" rx="16"/>
+    <rect x="98" y="384" width="88" height="68" rx="16"/>
+    <rect x="212" y="384" width="88" height="68" rx="16"/>
+  </g>
+  <rect x="326" y="294" width="88" height="158" rx="16" fill="#E8A3AE"/>
+  <g fill="none" stroke="#F4F4F5" stroke-width="8" stroke-linecap="round">
+    <path d="M126 238h32m98-16v32m-16-16h32m82-12 24 24m0-24-24 24"/>
+  </g>
+  <path d="M352 360h36m-36 24h36" fill="none" stroke="#141216" stroke-width="8" stroke-linecap="round"/>
+</svg>

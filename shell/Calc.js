@@ -1,125 +1,167 @@
 .pragma library
-// Launcher calculator: a small expression parser (no eval), so text typed
-// into the search field can never run code.
-//
-// Supports + - * / % ^, parentheses, unary minus, decimals and exponents
-// (1.5e3), constants pi and e, and sqrt abs round floor ceil sin cos tan
-// ln log. Returns null for anything that isn't a calculation (including a
-// bare number, which isn't worth "calculating").
+// Shared by the launcher and Calculator (embedded by calculator.qrc).
+// A bounded expression parser, never eval. evaluate() preserves the launcher's
+// radians and hides bare numbers; calculate() also accepts them for the app.
 
 var FUNCS = {
-    sqrt: Math.sqrt, abs: Math.abs, round: Math.round, floor: Math.floor, ceil: Math.ceil,
-    sin: Math.sin, cos: Math.cos, tan: Math.tan, ln: Math.log, log: Math.log10
+    sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, round: Math.round,
+    floor: Math.floor, ceil: Math.ceil, trunc: Math.trunc, sign: Math.sign,
+    sin: Math.sin, cos: Math.cos, tan: Math.tan,
+    asin: Math.asin, acos: Math.acos, atan: Math.atan,
+    sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
+    asinh: Math.asinh, acosh: Math.acosh, atanh: Math.atanh,
+    ln: Math.log, log: Math.log10, log10: Math.log10, log2: Math.log2,
+    exp: Math.exp, percent: function(x) { return x / 100; },
+    fact: factorial
 };
-var CONSTS = { pi: Math.PI, e: Math.E };
-// Unary minus sits between * and ^, so -2^2 is -(2^2) = -4, as in maths.
-var PREC = { "+": 1, "-": 1, "*": 2, "/": 2, "%": 2, "neg": 2.5, "^": 3 };
+var CONSTS = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI };
+var PREC = { "+": 10, "-": 10, "*": 20, "/": 20, "%": 20, "^": 30 };
+var MAX_INPUT = 4096;
+var MAX_TOKENS = 1024;
+var MAX_DEPTH = 64;
 
-function tokenize(s) {
-    var out = [], i = 0;
-    while (i < s.length) {
-        var c = s[i];
-        if (c === " " || c === "\t") { i++; continue; }
-        var num = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(s.slice(i));
-        if (num) { out.push({ t: "num", v: parseFloat(num[0]) }); i += num[0].length; continue; }
-        var word = /^[a-z]+/i.exec(s.slice(i));
-        if (word) {
-            var w = word[0].toLowerCase();
-            if (w in CONSTS) out.push({ t: "num", v: CONSTS[w], c: true });
-            else if (w in FUNCS) out.push({ t: "fn", v: w });
-            else return null;
-            i += word[0].length; continue;
-        }
-        if ("+-*/%^()".indexOf(c) >= 0 || c === "×" || c === "÷") {
-            out.push({ t: "op", v: c === "×" ? "*" : c === "÷" ? "/" : c }); i++; continue;
-        }
-        return null;
-    }
-    return out;
+function owns(object, key) { return Object.prototype.hasOwnProperty.call(object, key); }
+
+function factorial(x) {
+    if (!Number.isInteger(x) || x < 0) throw new Error("Factorial needs a non-negative whole number");
+    if (x > 170) throw new Error("Result is out of range");
+    var result = 1;
+    for (var n = 2; n <= x; n++) result *= n;
+    return result;
 }
 
-// Shunting-yard to RPN.
-function toRpn(tokens) {
-    var out = [], ops = [], prev = null;
-    for (var i = 0; i < tokens.length; i++) {
-        var tk = tokens[i];
-        if (tk.t === "num") out.push(tk);
-        else if (tk.t === "fn") ops.push(tk);
-        else if (tk.v === "(") ops.push(tk);
-        else if (tk.v === ")") {
-            while (ops.length && ops[ops.length - 1].v !== "(") out.push(ops.pop());
-            if (!ops.length) return null;
-            ops.pop();
-            if (ops.length && ops[ops.length - 1].t === "fn") out.push(ops.pop());
-        } else {
-            var op = tk.v;
-            var unary = op === "-" && (prev === null || (prev.t === "op" && prev.v !== ")"));
-            if (op === "+" && (prev === null || (prev.t === "op" && prev.v !== ")"))) { prev = tk; continue; }
-            if (unary) {
-                // A prefix operator has no left operand: push it without popping.
-                ops.push({ t: "op", v: "neg" });
-                prev = tk;
+function finite(value) {
+    if (Number.isNaN(value)) throw new Error("This calculation has no real result");
+    if (!Number.isFinite(value)) throw new Error("Result is out of range");
+    return value;
+}
+
+function tokenize(input) {
+    var tokens = [], i = 0;
+    while (i < input.length) {
+        if (tokens.length >= MAX_TOKENS) throw new Error("Expression is too long");
+        var c = input[i];
+        if (/\s/.test(c)) { i++; continue; }
+        var number = /^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i.exec(input.slice(i));
+        if (number) {
+            tokens.push({ type: "number", value: finite(Number(number[0])) });
+            i += number[0].length;
+            continue;
+        }
+        if (c === "π" || c === "τ") {
+            tokens.push({ type: "number", value: c === "π" ? Math.PI : 2 * Math.PI, named: true });
+            i++;
+            continue;
+        }
+        var word = /^[a-z][a-z0-9]*/i.exec(input.slice(i));
+        if (word) {
+            var name = word[0].toLowerCase();
+            if (owns(CONSTS, name)) tokens.push({ type: "number", value: CONSTS[name], named: true });
+            else if (owns(FUNCS, name)) tokens.push({ type: "function", value: name });
+            else throw new Error("Unknown function or constant");
+            i += word[0].length;
+            continue;
+        }
+        if (c === "×") c = "*";
+        else if (c === "÷") c = "/";
+        else if (c === "−") c = "-";
+        if ("+-*/%^()!".indexOf(c) < 0) throw new Error("Not a calculation");
+        tokens.push({ type: "operator", value: c });
+        i++;
+    }
+    return tokens;
+}
+
+function callFunction(name, value, degrees) {
+    if (name === "sin" || name === "cos" || name === "tan") {
+        var radians = degrees ? value * Math.PI / 180 : value;
+        if (name === "tan" && Math.abs(Math.cos(radians)) < 1e-14)
+            throw new Error("Tangent is undefined at this angle");
+        return finite(FUNCS[name](radians));
+    }
+    var answer = finite(FUNCS[name](value));
+    if (degrees && (name === "asin" || name === "acos" || name === "atan")) answer *= 180 / Math.PI;
+    return finite(answer);
+}
+
+// Pratt parser. Unary signs bind less tightly than powers, but more tightly
+// than multiplication: -2^2 = -4, 2^-1 = 0.5, and 2^3^2 = 512.
+function parse(tokens, degrees) {
+    var at = 0;
+    function expression(minimum, depth) {
+        if (depth > MAX_DEPTH) throw new Error("Expression is nested too deeply");
+        var token = tokens[at++], left;
+        if (!token) throw new Error("Finish the expression");
+        if (token.type === "number") left = token.value;
+        else if (token.value === "-" || token.value === "+") {
+            left = expression(25, depth + 1);
+            if (token.value === "-") left = -left;
+        } else if (token.value === "(") {
+            left = expression(0, depth + 1);
+            if (!tokens[at] || tokens[at++].value !== ")") throw new Error("Close the parentheses");
+        } else if (token.type === "function") {
+            if (!tokens[at] || tokens[at++].value !== "(") throw new Error("Use parentheses after a function");
+            var argument = expression(0, depth + 1);
+            if (!tokens[at] || tokens[at++].value !== ")") throw new Error("Close the parentheses");
+            left = callFunction(token.value, argument, degrees);
+        } else throw new Error("Finish the expression");
+        while (at < tokens.length) {
+            var op = tokens[at].value;
+            if (op === "!") {
+                if (40 < minimum) break;
+                at++;
+                left = factorial(left);
                 continue;
             }
-            while (ops.length) {
-                var top = ops[ops.length - 1];
-                if (top.t === "fn") { out.push(ops.pop()); continue; }
-                if (top.v === "(") break;
-                var rightAssoc = op === "^" || op === "neg";
-                if (PREC[top.v] > PREC[op] || (PREC[top.v] === PREC[op] && !rightAssoc)) out.push(ops.pop());
-                else break;
+            if (!owns(PREC, op) || PREC[op] < minimum) break;
+            at++;
+            var right = expression(PREC[op] + (op === "^" ? 0 : 1), depth + 1);
+            if ((op === "/" || op === "%") && right === 0) throw new Error("Cannot divide by zero");
+            switch (op) {
+            case "+": left += right; break;
+            case "-": left -= right; break;
+            case "*": left *= right; break;
+            case "/": left /= right; break;
+            case "%": left %= right; break; // Keep the launcher's remainder operator.
+            case "^": left = Math.pow(left, right); break;
             }
-            ops.push({ t: "op", v: op });
+            finite(left);
         }
-        prev = tk;
+        return finite(left);
     }
-    while (ops.length) {
-        var o = ops.pop();
-        if (o.v === "(") return null;
-        out.push(o);
-    }
-    return out;
+    var value = expression(0, 0);
+    if (at !== tokens.length) throw new Error("Check the expression");
+    return value;
 }
 
-function run(rpn) {
-    var st = [];
-    for (var i = 0; i < rpn.length; i++) {
-        var tk = rpn[i];
-        if (tk.t === "num") { st.push(tk.v); continue; }
-        if (tk.t === "fn") { if (!st.length) return null; st.push(FUNCS[tk.v](st.pop())); continue; }
-        if (tk.v === "neg") { if (!st.length) return null; st.push(-st.pop()); continue; }
-        if (st.length < 2) return null;
-        var b = st.pop(), a = st.pop();
-        switch (tk.v) {
-        case "+": st.push(a + b); break;
-        case "-": st.push(a - b); break;
-        case "*": st.push(a * b); break;
-        case "/": st.push(a / b); break;
-        case "%": st.push(a % b); break;
-        case "^": st.push(Math.pow(a, b)); break;
-        }
+function format(value) {
+    if (!Number.isFinite(value)) return null;
+    if (value === 0) return "0"; // Includes negative zero.
+    if (Number.isInteger(value) && Math.abs(value) < 1e15) return String(value);
+    var parts = value.toPrecision(12).split("e");
+    if (parts[0].indexOf(".") >= 0) parts[0] = parts[0].replace(/0+$/, "").replace(/\.$/, "");
+    return parts[0] + (parts.length === 2 ? "e" + parts[1] : "");
+}
+
+// {ok, result, value} or {ok: false, error}. Without options, angles are radians.
+function calculate(input, options) {
+    try {
+        if (typeof input !== "string" || input.length > MAX_INPUT) throw new Error("Expression is too long");
+        var source = input.trim().replace(/=$/, "").trim();
+        if (!source) throw new Error("Enter a calculation");
+        var tokens = tokenize(source);
+        if (options && options.requireCalculation && !tokens.some(function(t) {
+            return t.type === "function" || t.named || (t.type === "operator" && t.value !== "(" && t.value !== ")");
+        })) throw new Error("Enter a calculation");
+        var value = parse(tokens, options && options.angle === "deg");
+        return { ok: true, result: format(value), value: value };
+    } catch (e) {
+        return { ok: false, error: e.message || "Check the expression" };
     }
-    return st.length === 1 ? st[0] : null;
 }
 
-function format(v) {
-    if (!isFinite(v)) return null;
-    if (Number.isInteger(v) && Math.abs(v) < 1e15) return String(v);
-    var s = v.toPrecision(12);
-    if (s.indexOf("e") < 0 && s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
-    return s;
-}
-
-// Returns the formatted result, or null.
+// Backwards-compatible launcher API: a result string or null.
 function evaluate(input) {
-    var s = (input || "").trim().replace(/=$/, "");
-    if (!s) return null;
-    var tokens = tokenize(s);
-    if (!tokens || !tokens.length) return null;
-    // Must be a calculation: an operator, a function, or a named constant.
-    if (!tokens.some(function (t) { return t.t === "fn" || t.c || (t.t === "op" && t.v !== "(" && t.v !== ")"); })) return null;
-    var rpn = toRpn(tokens);
-    if (!rpn) return null;
-    var v = run(rpn);
-    return v === null ? null : format(v);
+    var result = calculate(input, { requireCalculation: true });
+    return result.ok ? result.result : null;
 }

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Calculator
+GenericName=Calculator
+Comment=Standard and scientific calculations, with history
+Exec=whiterose-calculator
+Icon=whiterose-calculator
+Terminal=false
+Type=Application
+Categories=Utility;Calculator;
+Keywords=math;arithmetic;scientific;calculator;
+StartupNotify=true

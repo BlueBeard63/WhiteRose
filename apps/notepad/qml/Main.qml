@@ -5,6 +5,7 @@
 // tab, Ctrl+Tab / Ctrl+Shift+Tab switch, Ctrl+F find, Ctrl+H replace,
 // Ctrl+G go to line, Ctrl+= / Ctrl+- / Ctrl+0 text size.
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import WhiteRose.Kit
@@ -28,9 +29,10 @@ AppWindow {
     Component { id: editorComponent; Editor { objectName: "editor"; anchors.fill: parent; visible: false } }
 
     function newEditor(path, scratch) {
-        return editorComponent.createObject(stack, { path: path, scratch: !!scratch });
+        return editorComponent.createObject(stack, { path: path ? Files.normalize(path) : "", scratch: !!scratch });
     }
     function openFile(path) {
+        path = Files.normalize(path);
         const at = editors.findIndex(e => e.path === path);
         if (at >= 0) { show(at); return }
         const e = newEditor(path);
@@ -45,6 +47,16 @@ AppWindow {
     function newFile() {
         const e = newEditor("");
         Qt.callLater(() => show(editors.indexOf(e)));
+    }
+    function openRequested(paths) {
+        for (const p of paths) openFile(p);
+        if (win.visibility === Window.Minimized) win.showNormal();
+        win.raise();
+        win.requestActivate();
+    }
+    Connections {
+        target: Files
+        function onOpenRequested(paths) { win.openRequested(JSON.parse(paths)) }
     }
     function show(i) {
         if (i < 0 || i >= editors.length) return;
@@ -149,6 +161,10 @@ AppWindow {
                     required property var modelData
                     required property int index
                     readonly property bool on: index === win.currentIndex
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: modelData.title
+                    Accessible.selected: on
+                    Accessible.onPressAction: win.show(index)
                     height: 30
                     width: Math.min(200, tabRow.implicitWidth + 24)
                     radius: 9
@@ -225,7 +241,10 @@ AppWindow {
         }
         Text {
             anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
-            text: win.current?.scratch ? "Scratch note · saved as you type" : (win.current?.path || "Not saved yet")
+            text: win.current?.scratch ? "Scratch note · saved as you type"
+                : (win.current?.path || (win.current?.dirty ? "Not saved yet" : "New document"))
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
             elide: Text.ElideMiddle
             width: parent.width / 2
             color: Theme.faint

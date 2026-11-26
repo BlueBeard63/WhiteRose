@@ -87,13 +87,13 @@ run-nested:          ## WhiteRose in a window on your current desktop: bar + a t
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
 	cd $(WM) && PATH="$(CURDIR)/build:$$PATH" WHITEROSE_FILES="$(CURDIR)/apps/target/release/whiterose-files" dbus-run-session -- $(CARGO) run --release -- --daemon "whiterosed serve" --shell "qs -p $(CURDIR)/shell" -c "ptyxis --standalone"
 
-# Settings, Notepad and Files in the launcher, with their icons, running
+# WhiteRose's apps in the launcher, with their icons, running
 # straight from this checkout (your ~/.local only; dev-apps-remove undoes it).
 # An installed package's entries are shadowed by these until then.
-dev-apps:            ## Settings, Notepad and Files in your launcher, run from this checkout
+dev-apps:            ## WhiteRose's apps in your launcher, run from this checkout
 	cd apps && $(CARGO) build --release --locked
 	mkdir -p $(HOME)/.local/share/applications $(HOME)/.local/share/icons
-	for a in notepad files; do \
+	for a in notepad files calculator; do \
 		sed "s|^Exec=whiterose-|Exec=$(CURDIR)/apps/target/release/whiterose-|" packaging/files/whiterose-$$a.desktop \
 			> $(HOME)/.local/share/applications/whiterose-$$a.desktop; \
 	done
@@ -107,9 +107,11 @@ dev-apps:            ## Settings, Notepad and Files in your launcher, run from t
 dev-apps-remove:     ## Takes dev-apps' launcher entries and icons out again
 	rm -f $(HOME)/.local/share/applications/whiterose-notepad.desktop $(HOME)/.local/share/applications/whiterose-files.desktop \
 		$(HOME)/.local/share/applications/whiterose-settings.desktop
+	rm -f $(HOME)/.local/share/applications/whiterose-calculator.desktop
 	rm -f $(HOME)/.local/bin/whiterose-settings
 	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-files.png $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-notepad.png \
 		$(HOME)/.local/share/icons/hicolor/*/apps/whiterose-settings.png
+	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-calculator.png
 
 run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl+Alt+F3) first
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed
