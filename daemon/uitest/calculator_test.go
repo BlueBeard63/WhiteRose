@@ -50,6 +50,7 @@ func TestCalculatorArithmeticScientificHistoryAndClipboard(t *testing.T) {
 	app := s.WaitWindow("Calculator")
 	result := uitest.Named("Result")
 	expression := uitest.Named("Expression").Role("text")
+	app.Gone(uitest.Named("Type an expression · Enter = · Esc clears"))
 	calculatorExpression(app, "(125+75)*4")
 	app.WaitFor(result.Described("800"))
 	app.Press("Return")
@@ -182,4 +183,37 @@ func TestCalculatorNarrowHistoryAndShortWindow(t *testing.T) {
 	app.WaitFor(uitest.Named("Result").Described("42"))
 	app.WaitFor(uitest.Named("Copied").Role("push button"))
 	calculatorShot(t, s, app, "short")
+}
+
+func TestCalculatorDisplayLongNumbersAndExponents(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	s.Launch("whiterose-calculator", calculatorBinary(s))
+	app := s.WaitWindow("Calculator")
+	expression := uitest.Named("Expression").Role("text")
+	result := uitest.Named("Result")
+	for _, example := range []struct{ input, result string }{
+		{"12500-154.33", "12345.67"},
+		{"-1/1000", "-0.001"},
+		{"6.02*10^23", "6.02e+23"},
+		{"1/7", "0.142857142857"},
+	} {
+		calculatorExpression(app, example.input)
+		app.Press("Return")
+		app.WaitFor(result.Described(example.result))
+		app.Click(uitest.Named("Copy").Role("push button"))
+		app.Click(expression)
+		app.Press("ctrl+a")
+		app.Press("ctrl+v")
+		if got := app.Text(expression); got != example.result {
+			t.Fatalf("%s copied as %q, want %q", example.input, got, example.result)
+		}
+	}
+	calculatorExpression(app, "12500-154.33")
+	app.Press("Return")
+	app.WaitFor(result.Described("12345.67"))
+	calculatorShot(t, s, app, "doto-decimal")
+	calculatorExpression(app, "6.02*10^23")
+	app.Press("Return")
+	app.WaitFor(result.Described("6.02e+23"))
+	calculatorShot(t, s, app, "doto-exponent")
 }

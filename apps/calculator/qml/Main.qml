@@ -1,4 +1,5 @@
-// Figma: Calculator — Standard / Scientific / Scientific + History.
+// Figma: Calculator — Standard / Scientific / Scientific + History;
+// Doto display refinement approved from frame 191:3284.
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls.Basic
@@ -154,6 +155,8 @@ AppWindow {
     // Another Calculator window may have added/cleared history.
     onActiveChanged: if (active && ready) win.receive(Store.load())
     Timer { id: copiedTimer; interval: 1200; onTriggered: win.copied = false }
+    // App-local: Doto is an instrument display, not a desktop-wide font.
+    FontLoader { id: displayFont; source: Qt.resolvedUrl("../fonts/Doto.ttf") }
 
     Item {
         id: calcArea
@@ -199,7 +202,7 @@ AppWindow {
                         color: Theme.muted
                         selectionColor: Theme.rose
                         selectedTextColor: Theme.onAccent
-                        font { family: Theme.mono; pointSize: Theme.pt(16) }
+                        font { family: displayFont.name; pointSize: Theme.pt(16); weight: Font.Normal }
                         maximumLength: 4096
                         selectByMouse: true
                         clip: true
@@ -236,7 +239,7 @@ AppWindow {
                         textFormat: Text.PlainText
                         horizontalAlignment: Text.AlignRight
                         verticalAlignment: Text.AlignVCenter
-                        font { family: Theme.mono; pointSize: Theme.pt(44) }
+                        font { family: displayFont.name; pointSize: Theme.pt(52); weight: Font.Bold }
                         fontSizeMode: Text.HorizontalFit
                         minimumPointSize: Theme.pt(16)
                         color: win.error ? Theme.rose : Theme.text
@@ -306,9 +309,10 @@ AppWindow {
                 }
                 Text {
                     width: parent.width
-                    text: win.storageError || "Type an expression · Enter = · Esc clears"
+                    visible: win.storageError !== ""
+                    text: win.storageError
                     wrapMode: Text.Wrap
-                    color: win.storageError ? Theme.rose : Theme.muted
+                    color: Theme.rose
                     font { family: Theme.font; pointSize: Theme.pt(11) }
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
