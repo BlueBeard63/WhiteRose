@@ -4,6 +4,7 @@ extern crate whiterose_kit;
 
 mod core;
 mod doc;
+mod instance;
 mod lang;
 #[cfg(test)]
 #[path = "../../scratch.rs"]
@@ -13,6 +14,25 @@ mod session;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
 fn main() {
+    // Forward file-open requests before creating another Qt application/window.
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let paths = std::env::args()
+        .skip(1)
+        .filter(|a| !a.starts_with('-'))
+        .map(|a| {
+            instance::argument_path(&a, &cwd)
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    match instance::launch(&instance::socket_path(), paths) {
+        Ok(instance::Launch::Forwarded) => return,
+        Ok(instance::Launch::Primary(primary)) => instance::install(primary),
+        Err(e) => {
+            eprintln!("Notepad couldn't open: {e}");
+            std::process::exit(1);
+        }
+    }
     let mut app = QGuiApplication::new();
     if let Some(mut a) = app.as_mut() {
         // Also the Wayland app id: the dock finds whiterose-notepad.desktop by it.

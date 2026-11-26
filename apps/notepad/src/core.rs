@@ -37,10 +37,21 @@ pub mod qobject {
         /// Files named on the command line (absolute paths), as JSON.
         #[qinvokable]
         fn arguments(self: &Files) -> QString;
+        /// Canonical absolute path, shared by all ways of opening a file.
+        #[qinvokable]
+        fn normalize(self: &Files, path: &QString) -> QString;
+        /// A later launch asks this window to open files (JSON array), or
+        /// simply activate when the array is empty.
+        #[qsignal]
+        #[cxx_name = "openRequested"]
+        fn open_requested(self: Pin<&mut Files>, paths: QString);
         /// {name, syntax} for a path: the highlighting definition's name.
         #[qinvokable]
         fn language(self: &Files, path: &QString) -> QString;
     }
+
+    impl cxx_qt::Threading for Files {}
+    impl cxx_qt::Initialize for Files {}
 }
 
 use cxx_qt_lib::QString;
@@ -48,9 +59,39 @@ use serde_json::json;
 use std::path::Path;
 
 use crate::{doc, lang, session};
+use cxx_qt::{CxxQtType, Threading};
+use std::pin::Pin;
 
 #[derive(Default)]
-pub struct FilesRust;
+pub struct FilesRust {
+    arguments: Vec<String>,
+}
+
+impl cxx_qt::Initialize for qobject::Files {
+    fn initialize(mut self: Pin<&mut Self>) {
+        if let Some(primary) = crate::instance::take() {
+            self.as_mut().rust_mut().arguments = primary.arguments.clone();
+            let thread = self.qt_thread();
+            primary.serve(move |paths| {
+                thread
+                    .queue(move |mut obj| {
+                        obj.as_mut().open_requested(QString::from(
+                            serde_json::to_string(&paths).unwrap().as_str(),
+                        ));
+                        // requestActivate() also supports other desktops. WhiteRose
+                        // can bring the existing window back from another workspace.
+                        if let Some(socket) = whiterose_kit::compositor::socket_path() {
+                            whiterose_kit::compositor::send(
+                                &socket,
+                                r#"{"cmd":"focus_app","app_id":"whiterose-notepad"}"#,
+                            );
+                        }
+                    })
+                    .is_ok()
+            });
+        }
+    }
+}
 
 fn q(v: serde_json::Value) -> QString {
     QString::from(v.to_string().as_str())
@@ -101,22 +142,16 @@ impl qobject::Files {
     }
 
     pub fn arguments(&self) -> QString {
+        q(json!(self.arguments))
+    }
+
+    pub fn normalize(&self, path: &QString) -> QString {
         let cwd = std::env::current_dir().unwrap_or_default();
-        let files: Vec<String> = std::env::args()
-            .skip(1)
-            .filter(|a| !a.starts_with('-'))
-            .map(|a| {
-                let p = Path::new(a.strip_prefix("file://").unwrap_or(&a));
-                if p.is_absolute() {
-                    p.to_path_buf()
-                } else {
-                    cwd.join(p)
-                }
+        QString::from(
+            crate::instance::normalize(Path::new(&path.to_string()), &cwd)
                 .to_string_lossy()
-                .into_owned()
-            })
-            .collect();
-        q(json!(files))
+                .as_ref(),
+        )
     }
 
     pub fn language(&self, path: &QString) -> QString {

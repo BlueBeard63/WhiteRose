@@ -348,9 +348,11 @@ Each app is Qt Quick for the UI and Rust for the work, bridged with cxx-qt. It i
 - **App icons:** `packaging/icons/hicolor/<size>/apps/whiterose-{settings,notepad,files}.png` (16 to 512 px), installed to `/usr/share/icons/hicolor` by the packages. `make dev-apps` puts the three launcher entries (pointing at this checkout's builds) and the icons in `~/.local` for running from source; `make dev-apps-remove` takes them out.
 - **Notepad** (`apps/notepad`, `whiterose-notepad [FILE…]`):
   - **Tabs:** the scratch note first, then files. The scratch note always stays and saves itself as you type.
+  - **One window per session:** `src/instance.rs` claims a display-scoped runtime socket under a kernel lock before starting Qt. Later launches forward absolute file paths to that window (`Files.openRequested`); an already-open file selects its tab without reloading unsaved edits. Launching without files activates the existing window. Only the initial process restores the saved tabs; stale sockets can be replaced after a crash.
   - **Editing:** find and replace, go to line, wrap, line numbers placed at each line's real position (only the visible ones), and text size.
   - **Highlighting:** KDE's syntax-highlighting library when installed (a package dependency; plain text without it).
   - **Saving:** a new file is written and renamed over the old, keeping permissions and line endings. Binary, non-UTF-8 and >20 MiB files are refused.
+  - **Unsaved state:** the editor is explicitly plain text and compares its content with the last loaded/saved text. Initialization and highlighting don't count as edits; undoing back to the saved content clears the marker. A blank new tab says "New document", not "Not saved yet".
   - **Changes on disk:** a file changed underneath you reloads if you haven't edited it, else asks.
   - **Session:** the open files come back next time (`$XDG_DATA_HOME/whiterose/notepad`).
 - **Settings sub-pages:** a module's `module.json` can list `pages` ({id, name, icon, file, keywords}); they show indented under it in the sidebar while it's open (or match a search), and open as `module/page` (`whiterose-settings files/search`, the IPC `open`).

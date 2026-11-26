@@ -1433,6 +1433,7 @@ dependencies = [
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
+ "libc",
  "serde",
  "serde_json",
  "whiterose-kit",
