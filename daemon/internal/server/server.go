@@ -48,6 +48,7 @@ type Server struct {
 	mu      sync.Mutex
 	clients map[*client]struct{}
 	state   json.RawMessage
+	topics  map[string]json.RawMessage
 }
 
 type client struct {
@@ -118,6 +119,21 @@ func (s *Server) Broadcast(v any) {
 	}
 }
 
+// SetTopic pushes a subsystem snapshot and replays it on each new connection.
+// Registration and replay share the same lock, so reconnects can't miss a change.
+func (s *Server) SetTopic(name string, value any) {
+	b := line(map[string]any{"event": name, "state": value})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.topics == nil {
+		s.topics = map[string]json.RawMessage{}
+	}
+	s.topics[name] = append(json.RawMessage(nil), b...)
+	for c := range s.clients {
+		c.send(b)
+	}
+}
+
 // SetState records the system state and pushes it if it changed.
 func (s *Server) SetState(v any) {
 	b, err := json.Marshal(v)
@@ -153,6 +169,9 @@ func (s *Server) serveClient(conn net.Conn) {
 	s.mu.Lock()
 	if s.state != nil {
 		c.out <- append(append([]byte(nil), s.state...), '\n')
+	}
+	for _, topic := range s.topics {
+		c.out <- append([]byte(nil), topic...)
 	}
 	s.clients[c] = struct{}{}
 	s.mu.Unlock()

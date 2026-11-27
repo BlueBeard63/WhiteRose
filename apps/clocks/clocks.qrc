@@ -1,0 +1,9 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/qt/qml/WhiteRose/Clocks/qml">
+    <file alias="Clocks.js">../../shell/Clocks.js</file>
+</qresource>
+<qresource prefix="/qt/qml/WhiteRose/Clocks/fonts">
+    <file alias="Doto.ttf">../calculator/fonts/Doto.ttf</file>
+    <file alias="OFL.txt">../calculator/fonts/OFL.txt</file>
+</qresource>
+</RCC>

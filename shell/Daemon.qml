@@ -19,6 +19,7 @@ Singleton {
     property var settings: ({})
     // The latest system state ({ brightness, airplane, radios, weather, calendars }).
     property var state: null
+    property var clocks: null
 
     // App setup progress: { step, apps, state: running|done|failed, line, error }.
     signal appsEvent(var e)
@@ -90,6 +91,7 @@ Singleton {
         case "settings": root.settings = msg.values; break;
         case "setting": root.apply(msg.key, msg.value); break;
         case "state": root.state = msg; break;
+        case "clocks": root.clocks = msg.state; break;
         case "lock": root.lockRequested(); break;
         case "apps": root.appsEvent(msg); break;
         case "fingerprint": root.fingerprintEvent(msg); break;
@@ -109,6 +111,7 @@ Singleton {
         parser: SplitParser { onRead: line => root.handle(line) }
         onConnectedChanged: {
             if (connected) return;
+            root.clocks = null;
             // Replies that will never come.
             const waiting = root.pending;
             root.pending = {};

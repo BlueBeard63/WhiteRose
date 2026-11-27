@@ -462,6 +462,9 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		srv.Ops[name] = op
 	}
 	go mem.run()
+	clocksDone := make(chan struct{})
+	defer close(clocksDone)
+	startClocks(srv, clocksDone, stderr)
 	every := func(d time.Duration, fn func()) {
 		for {
 			fn()

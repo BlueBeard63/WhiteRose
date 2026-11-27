@@ -10,6 +10,7 @@ Rectangle {
     property bool mono: false
     property bool error: false
     property bool reveal: false
+    property string icon: ""
     signal accepted()
     // Being typed in.
     readonly property bool editing: input.activeFocus
@@ -31,7 +32,7 @@ Rectangle {
         Accessible.name: root.label || root.placeholder
         // (Not Accessible.passwordEdit: Qt then drops the name. The echo
         // mode already keeps what's typed out of the tree, as dots.)
-        anchors { fill: parent; leftMargin: 12; rightMargin: root.secret ? 34 : 12 }
+        anchors { fill: parent; leftMargin: root.icon ? 34 : 12; rightMargin: root.secret ? 34 : 12 }
         verticalAlignment: TextInput.AlignVCenter
         clip: true
         color: Theme.text
@@ -48,6 +49,11 @@ Rectangle {
             color: Theme.faint
             font: input.font
         }
+    }
+    Icon {
+        visible: root.icon !== ""
+        name: root.icon; size: 14; color: Theme.muted
+        anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
     }
     Icon {
         visible: root.secret

@@ -15,6 +15,7 @@ function load(file, names, deps = {}) {
 }
 const Calc = load("Calc.js", ["evaluate", "calculate"]);
 const CalcInput = load("../apps/calculator/qml/Input.js", ["operandRange", "transform", "keys"]);
+const Clocks = load("Clocks.js", ["duration", "remaining", "elapsed", "alarmTime", "alarmNext", "repeat", "offset", "zoneTime", "zoneDate", "idle"]);
 const Search = load("Search.js", ["score", "rankApps", "frequent", "parseRecent", "matchFiles", "tildify", "matchCommands", "pushHistory", "terminalCommand", "results", "shellQuote", "rankWindows", "sectionOf"]);
 const DragData = load("DragData.js", ["fileUri", "forFiles", "forEntry"]);
 const QS = load("QuickSettings.js", ["uptime", "duration", "batteryLine", "nightLightUntil", "nextProfile", "profileName", "initials", "displayName"]);
@@ -51,6 +52,44 @@ let passed = 0, failed = 0;
 function test(name, fn) {
     try { fn(); passed++; } catch (e) { failed++; console.error(`FAIL ${name}\n  ${e.message}`); }
 }
+
+// ---- Calc --------------------------------------------------------------
+test("clock formatting keeps boundaries, hundredths and half-hour zones", () => {
+    assert.equal(Clocks.duration(1), "00:01");
+    assert.equal(Clocks.duration(60000), "01:00");
+    assert.equal(Clocks.duration(3600000), "01:00:00");
+    assert.equal(Clocks.duration(12345, true), "00:00:12.34");
+    assert.equal(Clocks.remaining({running:true,deadline:1000},2000), 0);
+    assert.equal(Clocks.remaining({running:false,remaining:1234},9999), 1234);
+    assert.equal(Clocks.elapsed({running:true,elapsed:1000,started:2000},5000), 4000);
+    assert.equal(Clocks.repeat([0,4]), "Mon, Fri");
+    assert.equal(Clocks.repeat([]), "Once");
+    assert.equal(Clocks.offset(19800), "5 h 30 min ahead");
+    assert.equal(Clocks.offset(-3600), "1 hour behind");
+    const now = Date.UTC(2026,10,26,15,26);
+    assert.equal(Clocks.zoneTime(now,9*3600), "00:26");
+    assert.equal(Clocks.zoneDate(now,9*3600), "Fri 27 Nov");
+});
+test("idle clocks prioritise alerts then earliest timer, stopwatch and alarm", () => {
+    const state = { timers:[], alarms:[], alerts:[], stopwatch:{running:false} };
+    assert.equal(Clocks.idle(state,0), null);
+    state.alarms.push({id:"a",enabled:true,next:60000,hour:7,minute:30});
+    assert.equal(Clocks.idle(state,0).view, "alarms");
+    state.stopwatch = {running:true,started:0,elapsed:0};
+    assert.equal(Clocks.idle(state,5000).view, "stopwatch");
+    state.timers = [{name:"Later",running:true,deadline:20000},{name:"Soon",running:true,deadline:10000}];
+    assert.equal(Clocks.idle(state,0).label, "Soon");
+    assert.equal(Clocks.idle(state,0).extra, "+1");
+    state.alerts = [{kind:"alarm",name:"Wake-up"}];
+    assert.equal(Clocks.idle(state,0).alert, true);
+    state.alerts[0].silenced = true;
+    assert.equal(Clocks.idle(state,0).value, "Silent");
+    assert.equal(Clocks.idle(state,0).view, "alarms");
+    state.alerts = []; state.timers = [];
+    state.stopwatch.running = false;
+    state.alarms[0].enabled = false; state.alarms[0].snooze = 300000;
+    assert.equal(Clocks.idle(state,0).view, "alarms");
+});
 
 // ---- Calc --------------------------------------------------------------
 test("arithmetic and precedence", () => {

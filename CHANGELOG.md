@@ -2,12 +2,17 @@
 
 Every WhiteRose release, newest first. Written from `project.yaml` by `make changelog`; edit that, not this.
 
-## 0.4.0-alpha.4 · Activities and clipboard polish (alpha) (2026-11-26)
+## 0.4.0-alpha.4 · Calculator, Clocks and desktop polish (alpha) (2026-11-26)
 
-The fourth 0.4 alpha: rename and delete activities right from the SUPER+SHIFT+A picker, paste a copy straight away with Ctrl+V, and a clipboard that stays quick however much you copy. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
+The fourth 0.4 alpha adds Calculator and Clocks, plus activity and clipboard fixes. With Pre-releases on (Settings › Updates), it comes through Settings › Updates.
 
 ### Added
 
+- Calculator: standard and scientific modes, degrees or radians, editable expressions, live results and saved history with reuse and copy
+- Clocks: named timers, alarms with repeat days and snooze, a stopwatch with laps, and world clocks with city or timezone search. Timers and alarms keep going with the app closed, with sound and critical notifications
+- Choose each alarm's chime or your own audio, volume, snooze length, ring duration and gradual volume, with a preview. Set defaults for new alarms without changing existing ones
+- The idle island shows the next timer, stopwatch or alarm on the active monitor. Click its readout to open Clocks on the right view
+- Launcher calculations now understand more scientific functions, inverse trigonometry and factorial, using the same safe engine as Calculator
 - Rename or delete an activity from the SUPER+SHIFT+A picker: hover a card for its pencil and trash. The first activity stays, and deleting one brings its windows to the current activity
 - Settings › Privacy sets how many clipboard copies to keep (10 to 200)
 
@@ -21,7 +26,7 @@ The fourth 0.4 alpha: rename and delete activities right from the SUPER+SHIFT+A 
 
 With 0.3.0 or an earlier 0.4 alpha and Pre-releases on (Settings › Updates), install it from Settings › Updates › Releases; otherwise install it with this release's `install.sh`. Your settings carry over.
 
-Not in this alpha yet: the task manager, disk imager, clocks and calculator.
+Not in this alpha yet: the task manager and disk imager.
 
 Contributors: @BlueBeard63
 

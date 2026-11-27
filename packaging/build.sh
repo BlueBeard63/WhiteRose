@@ -54,6 +54,7 @@ install -Dm755 "$work/whiterosed" "$v/bin/whiterosed"
 install -Dm755 "$work/apps-target/release/whiterose-notepad" "$v/bin/whiterose-notepad"
 install -Dm755 "$work/apps-target/release/whiterose-files" "$v/bin/whiterose-files"
 install -Dm755 "$work/apps-target/release/whiterose-calculator" "$v/bin/whiterose-calculator"
+install -Dm755 "$work/apps-target/release/whiterose-clocks" "$v/bin/whiterose-clocks"
 install -Dm755 "$qs_bin" "$v/bin/quickshell"
 ln -s quickshell "$v/bin/qs"
 mkdir -p "$v"
@@ -66,7 +67,7 @@ install -Dm755 packaging/files/whiterose-select "$meta/usr/lib/whiterose/select"
 install -Dm755 "$work/whiterose-launch" "$meta/usr/lib/whiterose/launch"
 install -Dm755 packaging/files/whiterose-session "$meta/usr/bin/whiterose-session"
 # /usr/bin commands: run the version this session uses.
-for b in whiterose-wm whiterosed whiterose-notepad whiterose-files whiterose-calculator; do
+for b in whiterose-wm whiterosed whiterose-notepad whiterose-files whiterose-calculator whiterose-clocks; do
     printf '#!/bin/sh\nd=$(/usr/lib/whiterose/select) || exit 1\nexec "$d/bin/%s" "$@"\n' "$b" > "$meta/usr/bin/$b"
     chmod 755 "$meta/usr/bin/$b"
 done
@@ -76,6 +77,7 @@ install -Dm644 packaging/files/whiterose-notepad.desktop "$meta/usr/share/applic
 install -Dm644 packaging/files/whiterose-files.desktop "$meta/usr/share/applications/whiterose-files.desktop"
 install -Dm644 packaging/files/whiterose-settings.desktop "$meta/usr/share/applications/whiterose-settings.desktop"
 install -Dm644 packaging/files/whiterose-calculator.desktop "$meta/usr/share/applications/whiterose-calculator.desktop"
+install -Dm644 packaging/files/whiterose-clocks.desktop "$meta/usr/share/applications/whiterose-clocks.desktop"
 # The apps' icons, every size.
 mkdir -p "$meta/usr/share/icons"
 cp -r packaging/icons/hicolor "$meta/usr/share/icons/"
@@ -105,7 +107,7 @@ install -Dm644 profile/vscode-extensions.txt "$meta/usr/share/whiterose/profile/
 
 # ---- dependencies: what the binaries link, plus what the shell uses ------------
 # (Xwayland: X11 apps; the compositor starts it when the first one connects.)
-bins="$v/bin/whiterose-wm $v/bin/quickshell $v/bin/whiterose-notepad $v/bin/whiterose-files $v/bin/whiterose-calculator"
+bins="$v/bin/whiterose-wm $v/bin/quickshell $v/bin/whiterose-notepad $v/bin/whiterose-files $v/bin/whiterose-calculator $v/bin/whiterose-clocks"
 case "$FORMAT" in
 deb)
     # dpkg-shlibdeps maps each linked library to its package.
@@ -114,7 +116,7 @@ deb)
     # QuickShell uses Qt's private API: exactly this Qt.
     qtabi=$(dpkg-query -W -f='${Provides}\n' libqt6core6t64 libqt6qml6 2>/dev/null | tr ',' '\n' | grep -E 'private-abi' | sed 's/^ *//' | paste -sd, -)
     extra="qml6-module-org-kde-syntaxhighlighting, udisks2, qml6-module-qtmultimedia, qml6-module-qtquick-pdf, qml6-module-qtquick-controls, libegl-mesa0, libgl1-mesa-dri, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, pipewire-audio, pipewire-pulse, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtquick-effects, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, qml6-module-qtquick-layouts, libqt6svg6, qt6-image-formats-plugins, libegl1, libgles2, pipewire, wireplumber, upower, network-manager, bluez, accountsservice, polkitd, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-user-session, libglib2.0-bin, adwaita-icon-theme, xdg-utils, procps, findutils, libpam-runtime, xwayland, curl"
-    depends="$libs${qtabi:+, $qtabi}, $extra"
+    depends="$libs${qtabi:+, $qtabi}, $extra, pipewire-bin, tzdata, ffmpeg"
     # Fingerprint unlock and sign-in, when there's a reader (installed by
     # default, removable).
     recommends="fprintd, libpam-fprintd"
@@ -126,7 +128,7 @@ rpm)
     libs=$(for b in $bins; do readelf -d "$b"; done | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u | grep -vE '^(ld-linux)' | sed 's/$/()(64bit)/' | paste -sd, -)
     qtver=$(rpm -q --qf '%{VERSION}' qt6-qtbase)
     extra="kf6-syntax-highlighting, udisks2, qt6-qtmultimedia, qt6-qtpdf, mesa-dri-drivers, mesa-libgbm, fontconfig, dejavu-sans-fonts, google-noto-color-emoji-fonts, pipewire-pulseaudio, qt6-qtbase = $qtver, qt6-qtdeclarative = $qtver, qt6-qtwayland, qt6-qtsvg, qt6-qtimageformats, mesa-libEGL, mesa-libGLES, pipewire, wireplumber, upower, NetworkManager, bluez, accountsservice, polkit, xdg-desktop-portal, xdg-desktop-portal-gtk, dbus-tools, glib2, adwaita-cursor-theme, xdg-utils, procps-ng, findutils, pam, xorg-x11-server-Xwayland, curl"
-    depends="$libs, $extra"
+    depends="$libs, $extra, pipewire-utils, tzdata, ffmpeg-free"
     recommends="fprintd, fprintd-pam"
     ;;
 *) echo "format must be deb or rpm" >&2; exit 2 ;;
