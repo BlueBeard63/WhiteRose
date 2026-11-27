@@ -41,6 +41,9 @@ type Options struct {
 	// Start as on a new install: the first-run app setup is offered
 	// (Settings opens on Apps). Otherwise it counts as done.
 	FirstRun bool
+	// Extra environment for the session (daemon and compositor), e.g. a test
+	// fixture that points a subsystem at made-up files. Overrides the defaults.
+	Env map[string]string
 }
 
 // Session is one isolated WhiteRose session for a test.
@@ -188,6 +191,9 @@ func Start(t testing.TB, o Options) *Session {
 		"WHITEROSE_FILES="+s.binary("WR_UITEST_FILES", "apps/target/debug/whiterose-files"),
 		"WHITEROSE_CLOCKS="+s.binary("WR_UITEST_CLOCKS", "apps/target/debug/whiterose-clocks"),
 	)
+	for k, v := range o.Env {
+		s.cmd.Env = append(s.cmd.Env, k+"="+v)
+	}
 	s.cmd.Stdout, s.cmd.Stderr = s.log, s.log
 	s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := s.cmd.Start(); err != nil {

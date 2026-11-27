@@ -1,0 +1,9 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/qt/qml/WhiteRose/Tasks/qml">
+    <file alias="Tasks.js">Tasks.js</file>
+</qresource>
+<qresource prefix="/qt/qml/WhiteRose/Tasks/fonts">
+    <file alias="Doto.ttf">../calculator/fonts/Doto.ttf</file>
+    <file alias="OFL.txt">../calculator/fonts/OFL.txt</file>
+</qresource>
+</RCC>

@@ -47,6 +47,7 @@ const G = load("Gestures.js", ["DEFAULT", "KINDS", "bindings", "actionOf", "set"
 const St = load("Strip.js", ["MAX_ICONS", "shown", "cell", "cellAt", "preview", "caption"]);
 const Act2 = load("settings/modules/activities/Activities.js", ["rename", "remove", "newName", "add", "subtitle"]);
 const Cal = load("CalendarGrid.js", ["key", "monthGrid", "gridRange", "busyDays", "onDay", "dayLabel", "timeRange"]);
+const Tk = load("../apps/tasks/Tasks.js", ["size", "rate", "percent", "name", "rows"]);
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -89,6 +90,34 @@ test("idle clocks prioritise alerts then earliest timer, stopwatch and alarm", (
     state.stopwatch.running = false;
     state.alarms[0].enabled = false; state.alarms[0].snooze = 300000;
     assert.equal(Clocks.idle(state,0).view, "alarms");
+});
+
+// ---- Task manager ------------------------------------------------------
+test("task manager formats counters, names apps, and filters/sorts rows", () => {
+    assert.equal(Tk.size(null), "Unavailable");
+    assert.equal(Tk.size(0), "0 B");
+    assert.equal(Tk.size(1536), "1.5 KiB");
+    assert.equal(Tk.size(1048576), "1.0 MiB");
+    assert.equal(Tk.rate(undefined), "Unavailable");
+    assert.equal(Tk.rate(2048), "2.0 KiB/s");
+    assert.equal(Tk.percent(null), "Unavailable");
+    assert.equal(Tk.percent(12.34), "12.3%");
+    assert.equal(Tk.name("com.example.Demo"), "Demo");
+    assert.equal(Tk.name("whiterose-tasks"), "tasks");
+    assert.equal(Tk.name(""), "Unknown app");
+    const apps = [
+        { id: "com.a.Alpha", unit: "app-whiterose-com.a.Alpha-1-0.scope", memory: 100, cpu: 5, processes: [{ name: "alpha", pid: 11 }] },
+        { id: "com.b.Beta", unit: "app-whiterose-com.b.Beta-2-0.scope", memory: 300, cpu: 1, processes: [{ name: "beta", pid: 22 }] },
+        { id: "loose", unit: "pid:33", memory: 50, cpu: null, processes: [{ name: "loose", pid: 33 }] },
+    ];
+    // onlyApps hides out-of-scope processes; memory sorts descending.
+    assert.deepEqual(Tk.rows(apps, "", "memory", true).map(a => a.id), ["com.b.Beta", "com.a.Alpha"]);
+    assert.deepEqual(Tk.rows(apps, "", "cpu", true).map(a => a.id), ["com.a.Alpha", "com.b.Beta"]);
+    assert.deepEqual(Tk.rows(apps, "", "name", true).map(a => a.id), ["com.a.Alpha", "com.b.Beta"]);
+    // All processes include loose ones; search matches ids, process names and PIDs.
+    assert.deepEqual(Tk.rows(apps, "33", "memory", false).map(a => a.id), ["loose"]);
+    assert.deepEqual(Tk.rows(apps, "beta", "memory", true).map(a => a.id), ["com.b.Beta"]);
+    assert.equal(Tk.rows(apps, "nothing", "memory", false).length, 0);
 });
 
 // ---- Calc --------------------------------------------------------------

@@ -1467,6 +1467,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "whiterose-tasks"
+version = "0.1.0"
+dependencies = [
+ "cxx",
+ "cxx-qt",
+ "cxx-qt-build",
+ "cxx-qt-lib",
+ "serde_json",
+ "whiterose-kit",
+]
+
+[[package]]
 name = "winapi-util"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
