@@ -25,6 +25,7 @@ releases:
     added:
       - "Calculator: standard and scientific modes, degrees or radians, editable expressions, live results and saved history with reuse and copy"
       - "Clocks: named timers, alarms with repeat days and snooze, a stopwatch with laps, and world clocks with city or timezone search. Timers and alarms keep going with the app closed, with sound and critical notifications"
+      - "Choose each alarm's chime or your own audio, volume, snooze length, ring duration and gradual volume, with a preview. Set defaults for new alarms without changing existing ones"
       - "The idle island shows the next timer, stopwatch or alarm on the active monitor. Click its readout to open Clocks on the right view"
       - "Launcher calculations now understand more scientific functions, inverse trigonometry and factorial, using the same safe engine as Calculator"
       - "Rename or delete an activity from the SUPER+SHIFT+A picker: hover a card for its pencil and trash. The first activity stays, and deleting one brings its windows to the current activity"

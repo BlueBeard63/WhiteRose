@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import WhiteRose.Kit
 import WhiteRose.Clocks
 import "Clocks.js" as Format
@@ -29,12 +30,26 @@ AppWindow {
     property var selectedCity: null
     property string localError: ""
     property bool closeWhenDone: false
-    onDialogChanged: if (dialog) Qt.callLater(() => {
-        formScroll.contentY = 0;
-        if (win.dialog === "timer") timerMinutes.focusField();
-        else if (win.dialog === "alarm") alarmHours.focusField();
-        else if (win.dialog === "city") cityQuery.focusField();
-    })
+    property var draftOptions: ({sound:"chime", volume:100, snooze_duration:300000, ring_duration:0, fade_duration:0})
+    property var previousOptions: null
+    property bool closeAfterPreview: false
+    onClosing: close => {
+        if (win.closeAfterPreview) close.accepted = false;
+        else if (Clock.previewing) {
+            close.accepted = false;
+            win.closeAfterPreview = true;
+            Clock.stopPreview();
+        }
+    }
+    onDialogChanged: {
+        Clock.stopPreview();
+        if (dialog) Qt.callLater(() => {
+            formScroll.contentY = 0;
+            if (win.dialog === "timer") timerMinutes.focusField();
+            else if (win.dialog === "alarm") alarmHours.focusField();
+            else if (win.dialog === "city") cityQuery.focusField();
+        })
+    }
     onPageChanged: if (Clock.view !== win.page) Clock.view = win.page
 
     toolbar: Text {
@@ -47,6 +62,10 @@ AppWindow {
     onActiveChanged: if (active && Clock.connected) Clock.refresh()
     Connections {
         target: Clock
+        function onPreviewStopped() {
+            if (win.closeAfterPreview) { win.closeAfterPreview = false; win.close() }
+        }
+        function onSoundImported(sound) { win.draftOptions = Object.assign({}, win.draftOptions, {sound:sound}) }
         function onViewChanged() { win.page = Clock.view; if (win.visibility === Window.Minimized) win.showNormal(); win.raise(); win.requestActivate() }
         function onBusyChanged() {
             if (!Clock.busy && win.closeWhenDone) {
@@ -83,6 +102,7 @@ AppWindow {
         alarmMinutes.text = Format.pad(alarm ? alarm.minute : 30);
         alarmName.text = alarm ? alarm.name : "";
         win.repeatDays = alarm ? (alarm.days || []).slice() : [];
+        win.draftOptions = Object.assign({}, alarm ? alarm.options : win.data.defaults || win.draftOptions);
         win.localError = ""; win.dialog = "alarm";
     }
     function submitTimer() {
@@ -96,7 +116,17 @@ AppWindow {
         if (!alarmHours.text || !alarmMinutes.text || Number(alarmHours.text) > 23 || Number(alarmMinutes.text) > 59) {
             win.localError = "Choose a valid alarm time"; return;
         }
-        win.send("alarm_save", { id: win.editingAlarm, name: alarmName.text.trim() || "Alarm", hour: Number(alarmHours.text), minute: Number(alarmMinutes.text), days: win.repeatDays, enabled: win.editingEnabled }, true);
+        win.send("alarm_save", { id: win.editingAlarm, name: alarmName.text.trim() || "Alarm", hour: Number(alarmHours.text), minute: Number(alarmMinutes.text), days: win.repeatDays, enabled: win.editingEnabled, options:win.draftOptions }, true);
+    }
+    function alarmDefaults() {
+        win.draftOptions = Object.assign({}, win.data.defaults || win.draftOptions);
+        win.localError = ""; win.dialog = "defaults";
+    }
+    function cancelDialog() {
+        if (win.dialog === "alarmOptions") {
+            win.draftOptions = win.previousOptions;
+            win.dialog = "alarm";
+        } else win.dialog = "";
     }
     function addCity() { cityQuery.text = ""; win.selectedCity = null; win.localError = ""; Clock.search(""); win.dialog = "city" }
     function nextLabel(alarm) {
@@ -195,6 +225,12 @@ AppWindow {
                             else win.addCity();
                         }
                     }
+                    Action {
+                        anchors.right: parent.right; anchors.rightMargin: 118
+                        visible: win.page === "alarms"
+                        text: "Defaults"; icon: "bell"; width: 104
+                        onClicked: win.alarmDefaults()
+                    }
                 }
                 Label {
                     visible: !Clock.connected || Clock.error !== ""
@@ -212,10 +248,10 @@ AppWindow {
                         border { color: Theme.rose; width: 1 }
                         Column {
                             x: 16; y: 12; width: parent.width - 32; spacing: 10
-                            Label { width: parent.width; elide: Text.ElideRight; text: modelData.name + (modelData.kind === "timer" ? " finished" : " · alarm"); font.weight: Font.Medium }
+                            Label { width: parent.width; elide: Text.ElideRight; text: modelData.name + (modelData.kind === "timer" ? " finished" : modelData.silenced ? " · silenced" : " · alarm"); font.weight: Font.Medium }
                             Row {
                                 spacing: 8
-                                Action { text: modelData.kind === "alarm" ? "Snooze 5 min" : "Restart timer"; icon: modelData.kind === "alarm" ? "bell" : "restart"; onClicked: win.send(modelData.kind === "alarm" ? "alert_snooze" : "alert_restart", {id:modelData.id}) }
+                                Action { text: modelData.kind === "alarm" ? "Snooze " + (modelData.options?.snooze_duration || 300000)/60000 + " min" : "Restart timer"; icon: modelData.kind === "alarm" ? "bell" : "restart"; onClicked: win.send(modelData.kind === "alarm" ? "alert_snooze" : "alert_restart", {id:modelData.id}) }
                                 Action { text: "Dismiss"; icon: "check"; kind: "primary"; onClicked: win.send("alert_dismiss", {id:modelData.id}) }
                             }
                         }
@@ -414,7 +450,7 @@ AppWindow {
                     Column {
                         id: form
                         width: parent.width; spacing: 18
-                        Label { text: win.dialog === "timer" ? "New timer" : win.dialog === "alarm" ? win.editingAlarm ? "Edit alarm" : "New alarm" : "Add city"; font { pointSize: Theme.pt(20); weight: Font.Medium } }
+                        Label { text: win.dialog === "timer" ? "New timer" : win.dialog === "alarm" ? win.editingAlarm ? "Edit alarm" : "New alarm" : win.dialog === "defaults" ? "Alarm defaults" : win.dialog === "alarmOptions" ? "Sound & behavior" : "Add city"; font { pointSize: Theme.pt(20); weight: Font.Medium } }
                         Row {
                             visible: win.dialog === "timer"
                             width: parent.width; spacing: 12
@@ -463,6 +499,31 @@ AppWindow {
                             Label { text: win.repeatDays.length ? Format.repeat(win.repeatDays.slice().sort()) : "Once, at the next occurrence"; color: Theme.muted; font.pointSize: Theme.pt(12) }
                         }
                         Column {
+                            width: parent.width; spacing: 8
+                            visible: win.dialog === "alarm"
+                            Action {
+                                text: "Sound & behavior"; icon: "music"; width: parent.width
+                                onClicked: { win.previousOptions = Object.assign({}, win.draftOptions); win.localError = ""; win.dialog = "alarmOptions" }
+                            }
+                            Label {
+                                width: parent.width; color: Theme.muted; wrapMode: Text.Wrap; font.pointSize: Theme.pt(11)
+                                text: (win.data.sounds || []).find(s => s.id === win.draftOptions.sound)?.name + " · " + win.draftOptions.volume + "% · " + win.draftOptions.snooze_duration/60000 + " min snooze"
+                            }
+                        }
+                        Label {
+                            visible: win.dialog === "defaults"; width: parent.width
+                            text: "Used for new alarms only. Existing alarms keep their own settings."
+                            color: Theme.muted; wrapMode: Text.Wrap; font.pointSize: Theme.pt(12)
+                        }
+                        AlarmOptions {
+                            visible: win.dialog === "defaults" || win.dialog === "alarmOptions"
+                            width: parent.width
+                            value: win.draftOptions
+                            sounds: win.data.sounds || []
+                            onEdited: options => win.draftOptions = options
+                            onImportRequested: audioPicker.open()
+                        }
+                        Column {
                             visible: win.dialog === "city"; width: parent.width; spacing: 12
                             Label { text: "Search cities"; color: Theme.muted; font.pointSize: Theme.pt(12) }
                             Item {
@@ -505,17 +566,19 @@ AppWindow {
                     Label { visible: win.localError !== "" || Clock.error !== ""; width: parent.width; text: win.localError || Clock.error; wrapMode: Text.Wrap; color: Theme.rose }
                     Item {
                         width: parent.width; height: 36
-                        Action { text: "Cancel"; icon: "x"; height: 36; enabled: !Clock.busy; onClicked: win.dialog = "" }
+                        Action { text: "Cancel"; icon: "x"; height: 36; enabled: !Clock.busy; onClicked: win.cancelDialog() }
                         Action {
                             anchors.right: parent.right
-                            text: win.dialog === "timer" ? "Start timer" : win.dialog === "alarm" ? "Save alarm" : "Add city"
+                            text: win.dialog === "timer" ? "Start timer" : win.dialog === "alarm" ? "Save alarm" : win.dialog === "defaults" ? "Save defaults" : win.dialog === "alarmOptions" ? "Done" : "Add city"
                             Accessible.name: win.dialog === "city" ? "Add selected city" : text
-                            icon: win.dialog === "timer" ? "play" : win.dialog === "alarm" ? "check" : "plus"
+                            icon: win.dialog === "timer" ? "play" : win.dialog === "city" ? "plus" : "check"
                             kind: "primary"; height: 36
                             enabled: Clock.connected && !Clock.busy && (win.dialog !== "city" || win.selectedCity !== null)
                             onClicked: {
                                 if (win.dialog === "timer") win.submitTimer();
                                 else if (win.dialog === "alarm") win.submitAlarm();
+                                else if (win.dialog === "defaults") win.send("defaults_save", {options:win.draftOptions}, true);
+                                else if (win.dialog === "alarmOptions") win.dialog = "alarm";
                                 else win.send("city_add", {name:win.selectedCity.name, country:win.selectedCity.country, zone:win.selectedCity.zone}, true);
                             }
                         }
@@ -524,7 +587,13 @@ AppWindow {
             }
         }
     }
-    Shortcut { sequence: "Escape"; enabled: win.dialog !== ""; onActivated: Qt.callLater(() => win.dialog = "") }
+    FileDialog {
+        id: audioPicker
+        title: "Choose alarm audio"
+        nameFilters: ["Audio files (*.wav *.flac *.ogg *.mp3 *.m4a *.opus)", "All files (*)"]
+        onAccepted: Clock.importSound(selectedFile.toString())
+    }
+    Shortcut { sequence: "Escape"; enabled: win.dialog !== ""; onActivated: Qt.callLater(win.cancelDialog) }
     Shortcut { sequence: "Alt+1"; enabled: win.dialog === ""; onActivated: win.page = "timers" }
     Shortcut { sequence: "Alt+2"; enabled: win.dialog === ""; onActivated: win.page = "stopwatch" }
     Shortcut { sequence: "Alt+3"; enabled: win.dialog === ""; onActivated: win.page = "alarms" }

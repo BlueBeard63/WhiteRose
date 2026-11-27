@@ -36,7 +36,7 @@ function idle(state, now) {
     var alerts = state.alerts || [];
     if (alerts.length) {
         var a = alerts[0];
-        return { view: a.kind === "alarm" ? "alarms" : "timers", icon: a.kind === "alarm" ? "bell" : "timer", label: a.name, value: a.kind === "alarm" ? "Alarm" : "Done", alert: true };
+        return { view: a.kind === "alarm" ? "alarms" : "timers", icon: a.kind === "alarm" ? "bell" : "timer", label: a.name, value: a.kind === "alarm" ? a.silenced ? "Silent" : "Alarm" : "Done", alert: true };
     }
     var running = (state.timers || []).filter(function(t) { return t.running; }).sort(function(a,b) { return a.deadline - b.deadline; });
     if (running.length) {

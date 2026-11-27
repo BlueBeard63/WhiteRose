@@ -82,6 +82,9 @@ test("idle clocks prioritise alerts then earliest timer, stopwatch and alarm", (
     assert.equal(Clocks.idle(state,0).extra, "+1");
     state.alerts = [{kind:"alarm",name:"Wake-up"}];
     assert.equal(Clocks.idle(state,0).alert, true);
+    state.alerts[0].silenced = true;
+    assert.equal(Clocks.idle(state,0).value, "Silent");
+    assert.equal(Clocks.idle(state,0).view, "alarms");
     state.alerts = []; state.timers = [];
     state.stopwatch.running = false;
     state.alarms[0].enabled = false; state.alarms[0].snooze = 300000;

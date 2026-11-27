@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"whiterose/daemon/internal/clocks"
@@ -37,6 +38,34 @@ func startClocks(srv *server.Server, done <-chan struct{}, log io.Writer) {
 		return
 	}
 	srv.Ops["clocks_state"] = func(server.Request) (any, error) { return service.Snapshot(), nil }
+	preview := &clockPreview{}
+	go func() { <-done; preview.stop() }()
+	srv.Ops["clocks_preview"] = func(r server.Request) (any, error) { return preview.request(r, service.ValidateOptions, clockSound) }
+	var soundImport sync.Mutex
+	srv.Ops["clocks_import_sound"] = func(r server.Request) (any, error) {
+		var x struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(r.Args, &x); err != nil {
+			return nil, err
+		}
+		soundImport.Lock()
+		defer soundImport.Unlock()
+		if len(service.Snapshot().Sounds) >= len(clocks.BuiltinSounds())+50 {
+			return nil, fmt.Errorf("At most 50 imported alarm sounds")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		sound, err := clocks.ImportSound(ctx, x.Path, clocks.SoundDirectory())
+		if err != nil {
+			return nil, err
+		}
+		state, err := service.RegisterSound(sound)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"state": state, "sound": sound.ID}, nil
+	}
 	srv.Ops["clocks_command"] = func(r server.Request) (any, error) {
 		var c clocks.Command
 		if err := json.Unmarshal(r.Args, &c); err != nil {

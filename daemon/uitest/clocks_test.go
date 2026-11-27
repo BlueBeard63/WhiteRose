@@ -5,7 +5,9 @@ package uitest_test
 import (
 	"encoding/json"
 	"image/png"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -193,6 +195,98 @@ func TestClocksNarrowDialogsAndMultipleTimers(t *testing.T) {
 	app.WaitFor(uitest.Named("That timezone is already in your world clocks"))
 	app.Click(uitest.Named("Cancel").Role("push button"))
 	app.Click(uitest.Named("Remove Kolkata").Role("push button"))
+}
+
+func clocksChoice(app *uitest.Window, label, value string) {
+	app.Click(uitest.Named(label).Role("combo box"))
+	// Qt reports popup entries relative to the popup, not the app window.
+	// Press the entry through AT-SPI rather than clicking an incorrect offset.
+	app.Activate(uitest.Named(value).Role("menu item"))
+	app.WaitFor(uitest.Named(label).Role("combo box").Described(value))
+}
+
+func TestClocksAlarmSoundAndDefaultSettings(t *testing.T) {
+	s := uitest.Start(t, uitest.Options{})
+	s.Request("clocks_command", map[string]any{"action": "alarm_save", "name": "Existing", "hour": 7, "enabled": true})
+	s.Launch("whiterose-clocks", clocksBinary(s), "--view", "alarms")
+	app := s.WaitWindow("Clocks")
+	app.Click(uitest.Named("Defaults").Role("push button"))
+	clocksChoice(app, "Alarm chime", "Soft bells")
+	app.Click(uitest.Named("Alarm volume").Role("slider"))
+	clocksChoice(app, "Snooze duration", "15 minutes")
+	clocksChoice(app, "Ring duration", "2 minutes")
+	clocksChoice(app, "Fade-in duration", "Fade in over 10 seconds")
+	clocksShot(t, s, app, "alarm-defaults")
+	app.Click(uitest.Named("Save defaults").Role("push button"))
+	state := clocksState(t, s)
+	if state.Defaults.Sound != "bells" || state.Defaults.SnoozeDuration != 900000 || state.Defaults.RingDuration != 120000 || state.Defaults.FadeDuration != 10000 || state.Alarms[0].Options != clocks.DefaultAlarmOptions() {
+		t.Fatal(state)
+	}
+	app.Click(uitest.Named("New alarm").Role("push button"))
+	clocksField(app, "Alarm name", "Custom wake")
+	app.Click(uitest.Named("Sound & behavior").Role("push button"))
+	app.WaitFor(uitest.Named("Alarm chime").Described("Soft bells"))
+	clocksChoice(app, "Alarm chime", "Pulse")
+	clocksChoice(app, "Snooze duration", "10 minutes")
+	clocksShot(t, s, app, "alarm-sound-options")
+	app.Click(uitest.Named("Done").Role("push button"))
+	app.Click(uitest.Named("Save alarm").Role("push button"))
+	app.WaitFor(uitest.Named("Custom wake alarm"))
+	state = clocksState(t, s)
+	if state.Alarms[1].Options.Sound != "pulse" || state.Alarms[1].Options.SnoozeDuration != 600000 || state.Alarms[1].Options.Volume != state.Defaults.Volume {
+		t.Fatal(state)
+	}
+	app.Click(uitest.Named("Edit Custom wake").Role("push button"))
+	app.Click(uitest.Named("Sound & behavior").Role("push button"))
+	clocksChoice(app, "Alarm chime", "Dawn")
+	app.Click(uitest.Named("Cancel").Role("push button"))
+	app.Click(uitest.Named("Save alarm").Role("push button"))
+	app.WaitFor(uitest.Named("Custom wake alarm"))
+	if clocksState(t, s).Alarms[1].Options.Sound != "pulse" {
+		t.Fatal("cancel kept draft changes")
+	}
+}
+
+func TestClocksImportedAlarmAudioPersistsWithoutOriginal(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	s := uitest.Start(t, uitest.Options{Settings: map[string]any{"appearance.theme": "light"}})
+	pcm, _ := clocks.SoundPCM("dawn", "")
+	path := filepath.Join(s.Home, "Wake up ü.wav")
+	if err := os.WriteFile(path, clocks.WAV(pcm), 0600); err != nil {
+		t.Fatal(err)
+	}
+	raw := s.Request("clocks_import_sound", map[string]any{"path": (&url.URL{Scheme: "file", Path: path}).String()})
+	var imported struct {
+		Sound string `json:"sound"`
+	}
+	if err := json.Unmarshal(raw, &imported); err != nil || imported.Sound == "" {
+		t.Fatal(string(raw), err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	s.Launch("whiterose-clocks", clocksBinary(s), "--view", "alarms")
+	app := s.WaitWindow("Clocks")
+	app.Click(uitest.Named("Defaults").Role("push button"))
+	clocksChoice(app, "Alarm chime", "Wake up ü")
+	clocksShot(t, s, app, "imported-alarm-audio-light")
+	app.Click(uitest.Named("Save defaults").Role("push button"))
+	if clocksState(t, s).Defaults.Sound != imported.Sound {
+		t.Fatal("custom sound wasn't saved")
+	}
+	app.Click(uitest.Named("Close").Role("push button"))
+	app.Closed()
+	s.Launch("whiterose-clocks", clocksBinary(s), "--view", "alarms")
+	app = s.WaitWindow("Clocks")
+	app.Click(uitest.Named("New alarm").Role("push button"))
+	clocksField(app, "Alarm name", "Imported")
+	app.Click(uitest.Named("Save alarm").Role("push button"))
+	app.WaitFor(uitest.Named("Imported alarm"))
+	if clocksState(t, s).Alarms[0].Options.Sound != imported.Sound {
+		t.Fatal("new alarm didn't inherit the imported sound")
+	}
 }
 func TestClocksIslandReopensAppAndTimerAlertsWithAppClosed(t *testing.T) {
 	s := uitest.Start(t, uitest.Options{Shell: true, Settings: map[string]any{"quick.doNotDisturb": true}})

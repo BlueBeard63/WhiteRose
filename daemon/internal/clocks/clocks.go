@@ -52,6 +52,7 @@ type Alarm struct {
 	Next       int64  `json:"next"`
 	Snooze     int64  `json:"snooze"`
 	snoozeBoot int64
+	Options    AlarmOptions `json:"options"`
 }
 type Stopwatch struct {
 	Running bool    `json:"running"`
@@ -68,33 +69,40 @@ type City struct {
 	Local   bool   `json:"local,omitempty"`
 }
 type Alert struct {
-	ID      string `json:"id"`
-	Kind    string `json:"kind"`
-	ItemID  string `json:"item_id"`
-	Name    string `json:"name"`
-	Time    int64  `json:"time"`
-	Message string `json:"message"`
+	ID        string       `json:"id"`
+	Kind      string       `json:"kind"`
+	ItemID    string       `json:"item_id"`
+	Name      string       `json:"name"`
+	Time      int64        `json:"time"`
+	Message   string       `json:"message"`
+	Options   AlarmOptions `json:"options"`
+	Elapsed   int64        `json:"elapsed"`
+	Silenced  bool         `json:"silenced"`
+	soundBoot int64
 }
 type State struct {
-	Revision  uint64    `json:"revision"`
-	Now       int64     `json:"now"`
-	Timers    []Timer   `json:"timers"`
-	Alarms    []Alarm   `json:"alarms"`
-	Stopwatch Stopwatch `json:"stopwatch"`
-	Cities    []City    `json:"cities"`
-	Alerts    []Alert   `json:"alerts"`
+	Revision  uint64       `json:"revision"`
+	Now       int64        `json:"now"`
+	Timers    []Timer      `json:"timers"`
+	Alarms    []Alarm      `json:"alarms"`
+	Stopwatch Stopwatch    `json:"stopwatch"`
+	Cities    []City       `json:"cities"`
+	Alerts    []Alert      `json:"alerts"`
+	Defaults  AlarmOptions `json:"defaults"`
+	Sounds    []Sound      `json:"sounds"`
 }
 type Command struct {
-	Action   string `json:"action"`
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Duration int64  `json:"duration"`
-	Hour     int    `json:"hour"`
-	Minute   int    `json:"minute"`
-	Days     []int  `json:"days"`
-	Enabled  bool   `json:"enabled"`
-	Zone     string `json:"zone"`
-	Country  string `json:"country"`
+	Action   string        `json:"action"`
+	ID       string        `json:"id"`
+	Name     string        `json:"name"`
+	Duration int64         `json:"duration"`
+	Hour     int           `json:"hour"`
+	Minute   int           `json:"minute"`
+	Days     []int         `json:"days"`
+	Enabled  bool          `json:"enabled"`
+	Zone     string        `json:"zone"`
+	Country  string        `json:"country"`
+	Options  *AlarmOptions `json:"options,omitempty"`
 }
 
 type Service struct {
@@ -137,6 +145,20 @@ func New(path string, loc *time.Location, now func() Stamp, changed func(State))
 	}
 	n := now()
 	s.last = n
+	if s.state.Defaults.Sound == "" {
+		s.state.Defaults = DefaultAlarmOptions()
+	}
+	for _, sound := range s.state.Sounds {
+		if !IsCustomSound(sound.ID) || !validName(sound.Name) {
+			return nil, errors.New("Invalid saved alarm sound")
+		}
+	}
+	if len(s.state.Sounds) > 50 {
+		return nil, errors.New("Too many saved alarm sounds")
+	}
+	if err := s.validOptions(s.state.Defaults); err != nil {
+		return nil, err
+	}
 	for i := range s.state.Timers {
 		t := &s.state.Timers[i]
 		if t.Duration < 1 || t.Duration > MaxDuration || t.Remaining < 0 || t.Remaining > t.Duration || !validName(t.Name) || t.ID == "" {
@@ -148,6 +170,12 @@ func New(path string, loc *time.Location, now func() Stamp, changed func(State))
 	}
 	for i := range s.state.Alarms {
 		a := &s.state.Alarms[i]
+		if a.Options.Sound == "" {
+			a.Options = DefaultAlarmOptions()
+		}
+		if err := s.validOptions(a.Options); err != nil {
+			return nil, err
+		}
 		if !validAlarm(*a) {
 			return nil, errors.New("Invalid saved alarm")
 		}
@@ -159,6 +187,24 @@ func New(path string, loc *time.Location, now func() Stamp, changed func(State))
 		if a.Enabled && (a.Next == 0 || a.Next < n.Wall-5*60*1000 || next.Hour() != a.Hour || next.Minute() != a.Minute) {
 			a.Next = Next(*a, time.UnixMilli(n.Wall), loc).UnixMilli()
 		}
+	}
+	for i := range s.state.Alerts {
+		a := &s.state.Alerts[i]
+		if a.Options.Sound == "" {
+			a.Options = DefaultAlarmOptions()
+		}
+		if err := s.validOptions(a.Options); err != nil {
+			return nil, err
+		}
+		if a.Elapsed < 0 {
+			return nil, errors.New("Invalid saved alert duration")
+		}
+		savedAt := s.state.Now
+		if savedAt == 0 {
+			savedAt = a.Time
+		}
+		a.Elapsed += max(int64(0), n.Wall-savedAt)
+		a.soundBoot = n.Boot
 	}
 	sw := &s.state.Stopwatch
 	if sw.Elapsed < 0 {
@@ -240,6 +286,10 @@ func (s *Service) snapshot(n Stamp) State {
 	var out State
 	_ = json.Unmarshal(data, &out)
 	out.Now = n.Wall
+	out.Sounds = append(BuiltinSounds(), out.Sounds...)
+	for i := range out.Alerts {
+		out.Alerts[i].Elapsed = alertElapsed(s.state.Alerts[i], n)
+	}
 	if out.Timers == nil {
 		out.Timers = []Timer{}
 	}
@@ -294,6 +344,10 @@ func (s *Service) save(n Stamp) error {
 	data, _ := json.Marshal(s.state)
 	var saved State
 	_ = json.Unmarshal(data, &saved)
+	saved.Now = n.Wall
+	for i := range saved.Alerts {
+		saved.Alerts[i].Elapsed = alertElapsed(s.state.Alerts[i], n)
+	}
 	for i := range saved.Timers {
 		if saved.Timers[i].Running {
 			saved.Timers[i].Remaining = max(int64(0), s.state.Timers[i].endBoot-n.Boot)
@@ -365,6 +419,7 @@ func (s *Service) Apply(c Command) (State, error) {
 	backup.Alerts = append([]Alert(nil), s.state.Alerts...)
 	backup.Cities = append([]City(nil), s.state.Cities...)
 	backup.Stopwatch.Laps = append([]int64(nil), s.state.Stopwatch.Laps...)
+	backup.Sounds = append([]Sound(nil), s.state.Sounds...)
 	if err := s.apply(c, n); err != nil {
 		s.state = backup
 		return State{}, err
@@ -380,6 +435,29 @@ func (s *Service) Apply(c Command) (State, error) {
 }
 func (s *Service) apply(c Command, n Stamp) error {
 	switch c.Action {
+	case "sound_register":
+		if !IsCustomSound(c.ID) || !validName(c.Name) {
+			return errors.New("Invalid imported sound")
+		}
+		for _, sound := range s.state.Sounds {
+			if sound.ID == c.ID {
+				return nil
+			}
+		}
+		if len(s.state.Sounds) >= 50 {
+			return errors.New("At most 50 imported alarm sounds")
+		}
+		s.state.Sounds = append(s.state.Sounds, Sound{ID: c.ID, Name: c.Name, Custom: true})
+		return nil
+	case "defaults_save":
+		if c.Options == nil {
+			return errors.New("Choose default alarm settings")
+		}
+		if err := s.validOptions(*c.Options); err != nil {
+			return err
+		}
+		s.state.Defaults = *c.Options
+		return nil
 	case "timer_add":
 		if c.Duration < 1 || c.Duration > MaxDuration || !validName(c.Name) || len(s.state.Timers) >= MaxItems {
 			return errors.New("Name the timer and choose a duration between 1 ms and 7 days (at most 100 timers)")
@@ -418,6 +496,21 @@ func (s *Service) apply(c Command, n Stamp) error {
 		return errors.New("Timer no longer exists")
 	case "alarm_save":
 		a := Alarm{ID: c.ID, Name: strings.TrimSpace(c.Name), Hour: c.Hour, Minute: c.Minute, Days: append([]int(nil), c.Days...), Enabled: c.Enabled}
+		a.Options = s.state.Defaults
+		if c.ID != "" {
+			for _, existing := range s.state.Alarms {
+				if existing.ID == c.ID {
+					a.Options = existing.Options
+					break
+				}
+			}
+		}
+		if c.Options != nil {
+			a.Options = *c.Options
+		}
+		if err := s.validOptions(a.Options); err != nil {
+			return err
+		}
 		if !validAlarm(a) {
 			return errors.New("Choose a valid time, name and repeat days")
 		}
@@ -529,8 +622,8 @@ func (s *Service) apply(c Command, n Stamp) error {
 				found := false
 				for j := range s.state.Alarms {
 					if s.state.Alarms[j].ID == alert.ItemID {
-						s.state.Alarms[j].Snooze = n.Wall + 300000
-						s.state.Alarms[j].snoozeBoot = n.Boot + 300000
+						s.state.Alarms[j].Snooze = n.Wall + alert.Options.SnoozeDuration
+						s.state.Alarms[j].snoozeBoot = n.Boot + alert.Options.SnoozeDuration
 						found = true
 						break
 					}
@@ -582,25 +675,32 @@ func (s *Service) Tick() error {
 		t := &s.state.Timers[i]
 		if t.Running && t.endBoot <= n.Boot {
 			t.Running, t.Remaining = false, 0
-			s.state.Alerts = append(s.state.Alerts, Alert{ID: id(), Kind: "timer", ItemID: t.ID, Name: t.Name, Time: n.Wall, Message: "Your timer is complete."})
+			s.state.Alerts = append(s.state.Alerts, Alert{ID: id(), Kind: "timer", ItemID: t.ID, Name: t.Name, Time: n.Wall, Message: "Your timer is complete.", Options: DefaultAlarmOptions(), soundBoot: n.Boot})
 			changed = true
 		}
 	}
 	for i := range s.state.Alarms {
 		a := &s.state.Alarms[i]
 		if a.Snooze > 0 && a.snoozeBoot <= n.Boot {
-			s.state.Alerts = append(s.state.Alerts, Alert{ID: id(), Kind: "alarm", ItemID: a.ID, Name: a.Name, Time: n.Wall, Message: "Snoozed alarm"})
+			s.state.Alerts = append(s.state.Alerts, s.newAlarmAlert(*a, n, "Snoozed alarm"))
 			a.Snooze = 0
 			changed = true
 		}
 		if a.Enabled && a.Next > 0 && a.Next <= n.Wall {
 			when := time.UnixMilli(a.Next)
-			s.state.Alerts = append(s.state.Alerts, Alert{ID: id(), Kind: "alarm", ItemID: a.ID, Name: a.Name, Time: n.Wall, Message: when.In(s.loc).Format("15:04 · Monday")})
+			s.state.Alerts = append(s.state.Alerts, s.newAlarmAlert(*a, n, when.In(s.loc).Format("15:04 · Monday")))
 			if len(a.Days) == 0 {
 				a.Enabled, a.Next = false, 0
 			} else {
 				a.Next = Next(*a, time.UnixMilli(n.Wall), s.loc).UnixMilli()
 			}
+			changed = true
+		}
+	}
+	for i := range s.state.Alerts {
+		a := &s.state.Alerts[i]
+		if !a.Silenced && a.Options.RingDuration > 0 && alertElapsed(*a, n) >= a.Options.RingDuration {
+			a.Silenced = true
 			changed = true
 		}
 	}
@@ -642,6 +742,11 @@ func (s *Service) Wait() time.Duration {
 		}
 		if a.Snooze > 0 {
 			add(a.snoozeBoot - n.Boot)
+		}
+	}
+	for _, a := range s.state.Alerts {
+		if !a.Silenced && a.Options.RingDuration > 0 {
+			add(a.Options.RingDuration - alertElapsed(a, n))
 		}
 	}
 	if s.state.Stopwatch.Running || s.dirty {

@@ -102,7 +102,7 @@ func TestClockCriticalNotificationsActionsAndServerReconnect(t *testing.T) {
 	sound := make(chan struct{}, 32)
 	go func() {
 		defer close(finished)
-		runClockNotifications(s, updates, done, io.Discard, func(context.Context) error { sound <- struct{}{}; return nil })
+		runClockNotifications(s, updates, done, io.Discard, func(context.Context, clocks.AlarmOptions, int64) error { sound <- struct{}{}; return nil })
 	}()
 	defer func() { close(done); <-finished }()
 	if _, err = s.Apply(clocks.Command{Action: "timer_add", Name: "Tea", Duration: 1000}); err != nil {
@@ -123,7 +123,14 @@ func TestClockCriticalNotificationsActionsAndServerReconnect(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("no chime")
 	}
-	if _, err = server.ReleaseName(iface); err != nil {
+	// A real restart has a new unique bus owner, not only a released name.
+	server.Close()
+	server, err = dbus.Connect(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	if err = server.Export(fake, path, iface); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = server.RequestName(iface, dbus.NameFlagDoNotQueue); err != nil {

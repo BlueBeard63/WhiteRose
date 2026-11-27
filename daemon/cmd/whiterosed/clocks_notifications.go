@@ -2,14 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"html"
 	"io"
-	"math"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -22,16 +17,18 @@ func clockNotifications(s *clocks.Service, updates <-chan clocks.State, done <-c
 	runClockNotifications(s, updates, done, log, clockSound)
 }
 
-func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done <-chan struct{}, log io.Writer, sound func(context.Context) error) {
+func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done <-chan struct{}, log io.Writer, sound func(context.Context, clocks.AlarmOptions, int64) error) {
 	var conn *dbus.Conn
 	signals := make(chan *dbus.Signal, 32)
 	ids := map[uint32]string{}
+	owner := ""
 	connect := func() {
 		if conn != nil && conn.Connected() {
 			return
 		}
 		// A new bus cannot retain notification IDs from the old connection.
 		ids = map[uint32]string{}
+		owner = ""
 		if conn != nil {
 			conn.Close()
 		}
@@ -55,33 +52,59 @@ func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done 
 		}
 	}()
 	var retry <-chan time.Time
-	var soundCancel context.CancelFunc
+	ringing := map[string]context.CancelFunc{}
 	defer func() {
-		if soundCancel != nil {
-			soundCancel()
+		for _, cancel := range ringing {
+			cancel()
 		}
 	}()
-	lastSound := time.Time{}
 	sync := func() {
 		state := s.Snapshot()
 		active := map[string]clocks.Alert{}
 		for _, a := range state.Alerts {
 			active[a.ID] = a
 		}
+		for id, cancel := range ringing {
+			a, exists := active[id]
+			if !exists || a.Silenced || a.Options.Volume == 0 {
+				cancel()
+				delete(ringing, id)
+			}
+		}
+		for _, a := range state.Alerts {
+			if _, playing := ringing[a.ID]; playing || a.Silenced || a.Options.Volume == 0 {
+				continue
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			ringing[a.ID] = cancel
+			go clockRing(ctx, a, sound, log)
+		}
 		if len(active) > 0 {
 			connect()
+		}
+		if conn != nil && conn.Connected() && (len(active) > 0 || len(ids) > 0) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			var current string
+			_ = conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.GetNameOwner", 0, "org.freedesktop.Notifications").Store(&current)
+			cancel()
+			if current != owner {
+				// A snapshot update can arrive before NameOwnerChanged.
+				// Bind IDs to the actual current server, not signal timing.
+				owner = current
+				ids = map[uint32]string{}
+			}
 		}
 		for notification, alert := range ids {
 			if _, ok := active[alert]; !ok {
 				delete(ids, notification)
-				if conn != nil && conn.Connected() {
+				if conn != nil && conn.Connected() && owner != "" {
 					ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-					_ = conn.Object("org.freedesktop.Notifications", "/org/freedesktop/Notifications").CallWithContext(ctx, "org.freedesktop.Notifications.CloseNotification", 0, notification).Err
+					_ = conn.Object(owner, "/org/freedesktop/Notifications").CallWithContext(ctx, "org.freedesktop.Notifications.CloseNotification", 0, notification).Err
 					cancel()
 				}
 			}
 		}
-		if conn != nil && conn.Connected() {
+		if conn != nil && conn.Connected() && owner != "" {
 			for _, a := range state.Alerts {
 				exists := false
 				for _, id := range ids {
@@ -98,7 +121,7 @@ func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done 
 				if a.Kind == "timer" {
 					title += " finished"
 				} else {
-					actions = []string{"snooze", "Snooze 5 min", "dismiss", "Dismiss"}
+					actions = []string{"snooze", fmt.Sprintf("Snooze %d min", a.Options.SnoozeDuration/60000), "dismiss", "Dismiss"}
 				}
 				hints := map[string]dbus.Variant{
 					"urgency":        dbus.MakeVariant(byte(2)),
@@ -107,7 +130,7 @@ func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done 
 				}
 				var id uint32
 				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-				err := conn.Object("org.freedesktop.Notifications", "/org/freedesktop/Notifications").CallWithContext(ctx, "org.freedesktop.Notifications.Notify", 0, "Clocks", uint32(0), "whiterose-clocks", title, html.EscapeString(a.Message), actions, hints, int32(0)).Store(&id)
+				err := conn.Object(owner, "/org/freedesktop/Notifications").CallWithContext(ctx, "org.freedesktop.Notifications.Notify", 0, "Clocks", uint32(0), "whiterose-clocks", title, html.EscapeString(a.Message), actions, hints, int32(0)).Store(&id)
 				cancel()
 				if err == nil {
 					ids[id] = a.ID
@@ -116,28 +139,11 @@ func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done 
 		}
 		if len(active) == 0 {
 			retry = nil
-			if soundCancel != nil {
-				soundCancel()
-				soundCancel = nil
-			}
 			return
 		}
 		// Retry delivery after the shell starts/restarts, and repeat the chime
 		// while an alert is pending. No polling or subprocess when idle.
 		retry = time.After(2 * time.Second)
-		if time.Since(lastSound) >= 4*time.Second {
-			if soundCancel != nil {
-				soundCancel()
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			soundCancel = cancel
-			lastSound = time.Now()
-			go func() {
-				if err := sound(ctx); err != nil && ctx.Err() == nil {
-					fmt.Fprintln(log, "whiterosed: alarm sound:", err)
-				}
-			}()
-		}
 	}
 	sync()
 	for {
@@ -153,15 +159,12 @@ func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done 
 				continue
 			}
 			if sig.Name == "org.freedesktop.DBus.NameOwnerChanged" {
-				ids = map[uint32]string{}
-				// Don't send between the loss and acquisition signals: the
-				// replacement may already own the name, yielding an orphaned
-				// notification when the acquisition resets our IDs again.
-				if len(sig.Body) >= 3 && sig.Body[2] != "" {
+				if sig.Sender == "org.freedesktop.DBus" {
 					sync()
-				} else if len(s.Snapshot().Alerts) > 0 {
-					retry = time.After(2 * time.Second)
 				}
+				continue
+			}
+			if sig.Sender != owner {
 				continue
 			}
 			if len(sig.Body) < 2 {
@@ -200,60 +203,7 @@ func runClockNotifications(s *clocks.Service, updates <-chan clocks.State, done 
 	}
 }
 
-func clockSound(ctx context.Context) error {
-	dir := os.Getenv("XDG_CACHE_HOME")
-	if dir == "" {
-		dir = filepath.Join(os.Getenv("HOME"), ".cache")
-	}
-	dir = filepath.Join(dir, "whiterose/clocks")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	path := filepath.Join(dir, "chime.wav")
-	if _, err := os.Stat(path); err != nil {
-		if err := os.WriteFile(path, clockChime(), 0o600); err != nil {
-			return err
-		}
-	}
-	for _, player := range []string{"pw-play", "paplay"} {
-		if bin, err := exec.LookPath(player); err == nil {
-			return exec.CommandContext(ctx, bin, path).Run()
-		}
-	}
-	return fmt.Errorf("no PipeWire or PulseAudio sound player installed")
-}
-
-// A short, enveloped two-tone chime; generated locally, with no downloaded
-// sound file or theme dependency.
 func clockChime() []byte {
-	const rate = 24000
-	const count = rate
-	b := make([]byte, 44+count*2)
-	copy(b, "RIFF")
-	binary.LittleEndian.PutUint32(b[4:], uint32(len(b)-8))
-	copy(b[8:], "WAVEfmt ")
-	binary.LittleEndian.PutUint32(b[16:], 16)
-	binary.LittleEndian.PutUint16(b[20:], 1)
-	binary.LittleEndian.PutUint16(b[22:], 1)
-	binary.LittleEndian.PutUint32(b[24:], rate)
-	binary.LittleEndian.PutUint32(b[28:], rate*2)
-	binary.LittleEndian.PutUint16(b[32:], 2)
-	binary.LittleEndian.PutUint16(b[34:], 16)
-	copy(b[36:], "data")
-	binary.LittleEndian.PutUint32(b[40:], count*2)
-	for i := 0; i < count; i++ {
-		t := float64(i) / rate
-		local := math.Mod(t, 0.5)
-		if local > 0.30 {
-			continue
-		}
-		envelope := math.Min(1, local/0.02) * math.Min(1, (0.30-local)/0.08)
-		frequency := 660.0
-		if t >= 0.5 {
-			frequency = 880
-		}
-		sample := int16(9000 * envelope * math.Sin(2*math.Pi*frequency*t))
-		binary.LittleEndian.PutUint16(b[44+i*2:], uint16(sample))
-	}
-	return b
+	pcm, _ := clocks.SoundPCM("chime", "")
+	return clocks.WAV(pcm)
 }

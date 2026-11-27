@@ -16,6 +16,7 @@ pub mod qobject {
         #[qproperty(bool, busy)]
         #[qproperty(bool, searching)]
         #[qproperty(QString, view)]
+        #[qproperty(bool, previewing)]
         type Clock = super::ClockRust;
 
         #[qinvokable]
@@ -24,6 +25,20 @@ pub mod qobject {
         fn refresh(self: Pin<&mut Clock>);
         #[qinvokable]
         fn search(self: Pin<&mut Clock>, query: &QString);
+        #[qinvokable]
+        fn preview(self: Pin<&mut Clock>, options: &QString);
+        #[qinvokable]
+        #[cxx_name = "stopPreview"]
+        fn stop_preview(self: Pin<&mut Clock>);
+        #[qinvokable]
+        #[cxx_name = "importSound"]
+        fn import_sound(self: Pin<&mut Clock>, path: &QString);
+        #[qsignal]
+        #[cxx_name = "soundImported"]
+        fn sound_imported(self: Pin<&mut Clock>, sound: QString);
+        #[qsignal]
+        #[cxx_name = "previewStopped"]
+        fn preview_stopped(self: Pin<&mut Clock>);
         #[qinvokable]
         #[cxx_name = "bootTime"]
         fn boot_time(self: &Clock) -> f64;
@@ -54,6 +69,9 @@ pub struct ClockRust {
     busy: bool,
     searching: bool,
     view: QString,
+    previewing: bool,
+    preview_seq: u64,
+    preview_client: String,
     revision: u64,
     search_id: Arc<AtomicU64>,
 }
@@ -73,6 +91,9 @@ impl Default for ClockRust {
             busy: false,
             searching: false,
             view: QString::from(view),
+            previewing: false,
+            preview_seq: 0,
+            preview_client: format!("{}-{:?}", std::process::id(), std::time::SystemTime::now()),
             revision: 0,
             search_id: Arc::new(AtomicU64::new(0)),
         }
@@ -126,6 +147,78 @@ impl cxx_qt::Initialize for qobject::Clock {
     }
 }
 impl qobject::Clock {
+    pub fn preview(mut self: Pin<&mut Self>, options: &QString) {
+        let Ok(options) = serde_json::from_str::<Value>(&options.to_string()) else {
+            return;
+        };
+        self.as_mut().rust_mut().preview_seq += 1;
+        let sequence = self.preview_seq;
+        let client = self.preview_client.clone();
+        self.as_mut().set_previewing(true);
+        self.as_mut().set_error(QString::default());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = daemon::request(
+                json!({"op":"clocks_preview","args":{"client":client,"sequence":sequence,"options":options}}),
+                Duration::from_secs(10),
+            );
+            let _ = thread.queue(move |mut obj| {
+                if obj.preview_seq != sequence {
+                    return;
+                }
+                obj.as_mut().set_previewing(false);
+                if let Err(error) = result {
+                    obj.as_mut().set_error(QString::from(error.as_str()))
+                }
+            });
+        });
+    }
+    pub fn stop_preview(mut self: Pin<&mut Self>) {
+        if !self.previewing {
+            return;
+        }
+        self.as_mut().rust_mut().preview_seq += 1;
+        let sequence = self.preview_seq;
+        let client = self.preview_client.clone();
+        self.as_mut().set_previewing(false);
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let _ = daemon::request(
+                json!({"op":"clocks_preview","args":{"client":client,"sequence":sequence,"stop":true}}),
+                Duration::from_secs(2),
+            );
+            let _ = thread.queue(|mut obj| obj.as_mut().preview_stopped());
+        });
+    }
+    pub fn import_sound(mut self: Pin<&mut Self>, path: &QString) {
+        if self.busy {
+            return;
+        }
+        let path = path.to_string();
+        self.as_mut().set_busy(true);
+        self.as_mut().set_error(QString::default());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = daemon::request(
+                json!({"op":"clocks_import_sound","args":{"path":path}}),
+                Duration::from_secs(20),
+            );
+            let _ = thread.queue(move |mut obj| {
+                match result {
+                    Ok(result) => {
+                        if let Some(state) = result.get("state") {
+                            obj.as_mut().receive(state.clone())
+                        }
+                        if let Some(sound) = result["sound"].as_str() {
+                            obj.as_mut().sound_imported(QString::from(sound))
+                        }
+                    }
+                    Err(error) => obj.as_mut().set_error(QString::from(error.as_str())),
+                }
+                obj.as_mut().set_busy(false);
+            });
+        });
+    }
     fn receive(mut self: Pin<&mut Self>, state: Value) {
         let revision = state["revision"].as_u64().unwrap_or(0);
         if revision < self.revision {

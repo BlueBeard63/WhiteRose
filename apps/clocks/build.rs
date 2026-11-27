@@ -6,6 +6,7 @@ fn main() {
         "qml/Readout.qml",
         "qml/TimeField.qml",
         "qml/Action.qml",
+        "qml/AlarmOptions.qml",
     ]))
     .qrc("clocks.qrc")
     .qt_module("Quick")
