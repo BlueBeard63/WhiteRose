@@ -93,7 +93,7 @@ run-nested:          ## WhiteRose in a window on your current desktop: bar + a t
 dev-apps:            ## WhiteRose's apps in your launcher, run from this checkout
 	cd apps && $(CARGO) build --release --locked
 	mkdir -p $(HOME)/.local/share/applications $(HOME)/.local/share/icons
-	for a in notepad files calculator clocks; do \
+	for a in notepad files calculator clocks tasks; do \
 		sed "s|^Exec=whiterose-|Exec=$(CURDIR)/apps/target/release/whiterose-|" packaging/files/whiterose-$$a.desktop \
 			> $(HOME)/.local/share/applications/whiterose-$$a.desktop; \
 	done
@@ -109,11 +109,13 @@ dev-apps-remove:     ## Takes dev-apps' launcher entries and icons out again
 		$(HOME)/.local/share/applications/whiterose-settings.desktop
 	rm -f $(HOME)/.local/share/applications/whiterose-calculator.desktop
 	rm -f $(HOME)/.local/share/applications/whiterose-clocks.desktop
+	rm -f $(HOME)/.local/share/applications/whiterose-tasks.desktop
 	rm -f $(HOME)/.local/bin/whiterose-settings
 	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-files.png $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-notepad.png \
 		$(HOME)/.local/share/icons/hicolor/*/apps/whiterose-settings.png
 	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-calculator.png
 	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-clocks.png
+	rm -f $(HOME)/.local/share/icons/hicolor/*/apps/whiterose-tasks.png
 
 run-tty:             ## WhiteRose on the real screens: log in on a console (Ctrl+Alt+F3) first
 	cd $(DAEMON) && $(GO) build -o ../build/whiterosed ./cmd/whiterosed

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Task manager
+GenericName=Task manager
+Comment=Apps, processes, performance and memory protection
+Exec=whiterose-tasks
+Icon=whiterose-tasks
+Terminal=false
+Type=Application
+Categories=Utility;System;Monitor;
+Keywords=task;process;cpu;memory;performance;monitor;system;
+StartupNotify=true
